@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../theme/todo_theme.dart';
 import 'task_checkbox.dart';
+import 'task_pickers.dart';
 
 class TaskListTile extends StatelessWidget {
   const TaskListTile({
@@ -32,17 +33,6 @@ class TaskListTile extends StatelessWidget {
   final bool isSelected;
   final bool isMultiSelected;
   final Widget? trailingHandle;
-
-  String _formatDueDate(BuildContext context, DateTime date) {
-    final l10n = AppLocalizations.of(context);
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final target = DateTime(date.year, date.month, date.day);
-    final diff = target.difference(today).inDays;
-    if (diff == 0) return l10n.today;
-    if (diff == 1) return l10n.tomorrow;
-    return DateFormat.MMMd().format(date);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -93,7 +83,7 @@ class TaskListTile extends StatelessWidget {
       metadataWidgets.add(
         _MetaItem(
           icon: Icons.calendar_today_outlined,
-          label: _formatDueDate(context, task.dueDate!),
+          label: formatRelativeDate(context, task.dueDate!),
           color: dueColor,
         ),
       );

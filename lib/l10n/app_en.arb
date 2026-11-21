@@ -153,5 +153,18 @@
   "plannedLater": "Later",
   "themeTabColor": "Color",
   "themeTabPhoto": "Photo",
-  "removeEmoji": "Remove emoji"
+  "removeEmoji": "Remove emoji",
+  "yesterday": "Yesterday",
+  "dueOn": "Due {date}",
+  "@dueOn": {
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
+  "remindMeAt": "Remind me at {time}",
+  "@remindMeAt": {
+    "placeholders": {
+      "time": {"type": "String"}
+    }
+  }
 }

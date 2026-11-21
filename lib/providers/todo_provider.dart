@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../data/local/todo_local_storage.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
+import '../widgets/task_pickers.dart';
 
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   throw UnimplementedError('sharedPreferencesProvider must be overridden');
@@ -80,9 +81,7 @@ class TodoState {
 
   List<TaskItem> tasksForList(TodoList list) {
     final Iterable<TaskItem> filtered = switch (list.smartType) {
-      SmartListType.myDay => tasks.where(
-          (t) => t.isInMyDay || (showDueTodayInMyDay && _isDueToday(t.dueDate)),
-        ),
+      SmartListType.myDay => tasks.where((t) => t.isInMyDay),
       SmartListType.important => tasks.where((t) => t.isImportant),
       SmartListType.planned =>
         tasks.where((t) => t.dueDate != null || t.reminderAt != null),
@@ -256,6 +255,25 @@ class TodoNotifier extends Notifier<TodoState> {
       _storage.saveLastMyDayResetDate(todayKey);
     }
 
+    if (snapshot.showDueTodayInMyDay) {
+      var autoAdded = false;
+      tasks = [
+        for (final task in tasks)
+          if (!task.isInMyDay &&
+              task.dueDate != null &&
+              _isSameDay(task.dueDate!, now))
+            () {
+              autoAdded = true;
+              return task.copyWith(isInMyDay: true, myDayDate: now);
+            }()
+          else
+            task,
+      ];
+      if (autoAdded) {
+        _storage.saveTasks(tasks);
+      }
+    }
+
     return TodoState(
       lists: snapshot.lists,
       groups: snapshot.groups,
@@ -366,7 +384,31 @@ class TodoNotifier extends Notifier<TodoState> {
   }
 
   void setShowDueTodayInMyDay(bool value) {
-    state = state.copyWith(showDueTodayInMyDay: value);
+    if (value) {
+      final now = DateTime.now();
+      var changed = false;
+      final updatedTasks = [
+        for (final task in state.tasks)
+          if (!task.isInMyDay &&
+              task.dueDate != null &&
+              _isSameDay(task.dueDate!, now))
+            () {
+              changed = true;
+              return task.copyWith(isInMyDay: true, myDayDate: now);
+            }()
+          else
+            task,
+      ];
+      state = state.copyWith(
+        showDueTodayInMyDay: value,
+        tasks: changed ? updatedTasks : state.tasks,
+      );
+      if (changed) {
+        _storage.saveTasks(updatedTasks);
+      }
+    } else {
+      state = state.copyWith(showDueTodayInMyDay: value);
+    }
     _storage.saveShowDueTodayInMyDay(value);
   }
 
@@ -634,8 +676,15 @@ class TodoNotifier extends Notifier<TodoState> {
     final resolvedListId = targetListId ??
         (currentList.isSmartList ? 'tasks' : currentList.id);
 
-    final inMyDay = isInMyDay || currentList.smartType == SmartListType.myDay;
     final now = DateTime.now();
+    final effectiveDueDate = dueDate ??
+        (currentList.smartType == SmartListType.planned ? now : null);
+    final dueTodayAutoMyDay = state.showDueTodayInMyDay &&
+        effectiveDueDate != null &&
+        _isSameDay(effectiveDueDate, now);
+    final inMyDay = isInMyDay ||
+        currentList.smartType == SmartListType.myDay ||
+        dueTodayAutoMyDay;
     final newTask = TaskItem(
       id: _nextId('task'),
       listId: resolvedListId,
@@ -645,8 +694,7 @@ class TodoNotifier extends Notifier<TodoState> {
       myDayDate: inMyDay ? now : null,
       isImportant:
           isImportant || currentList.smartType == SmartListType.important,
-      dueDate: dueDate ??
-          (currentList.smartType == SmartListType.planned ? now : null),
+      dueDate: effectiveDueDate,
       reminderAt: reminderAt,
       recurrence: recurrence,
     );
@@ -853,10 +901,30 @@ class TodoNotifier extends Notifier<TodoState> {
   }
 
   void setTaskDueDate(String taskId, DateTime? dueDate) {
+    final now = DateTime.now();
+    final autoMyDay = dueDate != null &&
+        state.showDueTodayInMyDay &&
+        _isSameDay(dueDate, now);
     final updated = [
       for (final task in state.tasks)
         if (task.id == taskId)
-          task.copyWith(dueDate: dueDate, clearDueDate: dueDate == null)
+          () {
+            final wasDueToday =
+                task.dueDate != null && _isSameDay(task.dueDate!, now);
+            final leavingToday =
+                wasDueToday && (dueDate == null || !_isSameDay(dueDate, now));
+            return task.copyWith(
+              dueDate: dueDate,
+              clearDueDate: dueDate == null,
+              recurrence:
+                  dueDate == null ? RecurrenceType.none : task.recurrence,
+              isInMyDay: autoMyDay
+                  ? true
+                  : (leavingToday ? false : task.isInMyDay),
+              myDayDate: autoMyDay ? now : task.myDayDate,
+              clearMyDayDate: leavingToday && !autoMyDay,
+            );
+          }()
         else
           task,
     ];
@@ -880,10 +948,28 @@ class TodoNotifier extends Notifier<TodoState> {
   }
 
   void setTaskRecurrence(String taskId, RecurrenceType recurrence) {
+    final now = DateTime.now();
     final updated = [
       for (final task in state.tasks)
         if (task.id == taskId)
-          task.copyWith(recurrence: recurrence)
+          () {
+            final nextDue =
+                (recurrence != RecurrenceType.none && task.dueDate == null)
+                    ? defaultDueDateForRecurrence(
+                        recurrence,
+                        reminderAt: task.reminderAt,
+                      )
+                    : task.dueDate;
+            final autoMyDay = nextDue != null &&
+                state.showDueTodayInMyDay &&
+                _isSameDay(nextDue, now);
+            return task.copyWith(
+              recurrence: recurrence,
+              dueDate: nextDue,
+              isInMyDay: autoMyDay ? true : task.isInMyDay,
+              myDayDate: autoMyDay ? now : task.myDayDate,
+            );
+          }()
         else
           task,
     ];
@@ -969,10 +1055,30 @@ class TodoNotifier extends Notifier<TodoState> {
   }
 
   void batchSetDueDate(Set<String> taskIds, DateTime? dueDate) {
+    final now = DateTime.now();
+    final autoMyDay = dueDate != null &&
+        state.showDueTodayInMyDay &&
+        _isSameDay(dueDate, now);
     final updated = [
       for (final task in state.tasks)
         if (taskIds.contains(task.id))
-          task.copyWith(dueDate: dueDate, clearDueDate: dueDate == null)
+          () {
+            final wasDueToday =
+                task.dueDate != null && _isSameDay(task.dueDate!, now);
+            final leavingToday =
+                wasDueToday && (dueDate == null || !_isSameDay(dueDate, now));
+            return task.copyWith(
+              dueDate: dueDate,
+              clearDueDate: dueDate == null,
+              recurrence:
+                  dueDate == null ? RecurrenceType.none : task.recurrence,
+              isInMyDay: autoMyDay
+                  ? true
+                  : (leavingToday ? false : task.isInMyDay),
+              myDayDate: autoMyDay ? now : task.myDayDate,
+              clearMyDayDate: leavingToday && !autoMyDay,
+            );
+          }()
         else
           task,
     ];

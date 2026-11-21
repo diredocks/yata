@@ -1,5 +1,4 @@
 import 'package:material_ui/material_ui.dart';
-import 'package:intl/intl.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
@@ -126,7 +125,13 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
     );
 
     if (picked != null && mounted) {
-      setState(() => _recurrence = picked);
+      setState(() {
+        _recurrence = picked;
+        _dueDate ??= defaultDueDateForRecurrence(
+          picked,
+          reminderAt: _reminderAt,
+        );
+      });
     }
   }
 
@@ -261,12 +266,16 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
                     label: Text(
                       _dueDate == null
                           ? l10n.addDueDate
-                          : DateFormat.MMMd().format(_dueDate!),
+                          : l10n.dueOn(formatRelativeDate(context, _dueDate!)),
                     ),
                     selected: _dueDate != null,
+                    showCheckmark: false,
                     onSelected: (_) => _pickDueDate(),
                     onDeleted: _dueDate != null
-                        ? () => setState(() => _dueDate = null)
+                        ? () => setState(() {
+                              _dueDate = null;
+                              _recurrence = RecurrenceType.none;
+                            })
                         : null,
                   ),
                   const SizedBox(width: 8),
@@ -275,9 +284,10 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
                     label: Text(
                       _reminderAt == null
                           ? l10n.remindMe
-                          : DateFormat.MMMd().add_jm().format(_reminderAt!),
+                          : formatReminderLabel(context, _reminderAt!),
                     ),
                     selected: _reminderAt != null,
+                    showCheckmark: false,
                     onSelected: (_) => _pickReminder(),
                     onDeleted: _reminderAt != null
                         ? () => setState(() => _reminderAt = null)
@@ -288,6 +298,7 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
                     avatar: const Icon(Icons.repeat, size: 16),
                     label: Text(_recurrenceLabel(l10n, _recurrence)),
                     selected: _recurrence != RecurrenceType.none,
+                    showCheckmark: false,
                     onSelected: (_) => _pickRecurrence(),
                     onDeleted: _recurrence != RecurrenceType.none
                         ? () => setState(() => _recurrence = RecurrenceType.none)

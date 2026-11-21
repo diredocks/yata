@@ -131,8 +131,9 @@ void main() {
     expect(find.text('Daily standup'), findsOneWidget);
     await tester.tap(find.text('Daily standup'));
     await tester.pumpAndSettle();
-    expect(find.text('Added to My Day'), findsNothing);
-    expect(find.text('Add to My Day'), findsOneWidget);
+    // Due today automatically adds the task to My Day
+    expect(find.text('Added to My Day'), findsOneWidget);
+    expect(find.text('Add to My Day'), findsNothing);
 
     final taskId = container.read(todoProvider).tasks.first.id;
     container.read(todoProvider.notifier).toggleTaskCompleted(taskId);

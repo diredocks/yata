@@ -112,5 +112,8 @@
   "plannedLater": "稍后",
   "themeTabColor": "颜色",
   "themeTabPhoto": "照片",
-  "removeEmoji": "移除表情符号"
+  "removeEmoji": "移除表情符号",
+  "yesterday": "昨天",
+  "dueOn": "{date} 到期",
+  "remindMeAt": "在 {time} 时提醒我"
 }

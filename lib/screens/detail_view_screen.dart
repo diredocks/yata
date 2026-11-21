@@ -502,11 +502,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                           : l10n.addToMyDay,
                       labelColor: task.isInMyDay ? accent : secondaryText,
                       removeColor: secondaryText,
-                      onTap: () {
-                        if (!task.isInMyDay) {
-                          notifier.toggleTaskMyDay(task.id);
-                        }
-                      },
+                      onTap: () => notifier.toggleTaskMyDay(task.id),
                       onRemove: task.isInMyDay
                           ? () => notifier.toggleTaskMyDay(task.id)
                           : null,
@@ -529,9 +525,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                               ? accent
                               : secondaryText,
                           label: task.reminderAt != null
-                              ? DateFormat.MMMd()
-                                  .add_jm()
-                                  .format(task.reminderAt!)
+                              ? formatReminderLabel(context, task.reminderAt!)
                               : l10n.remindMe,
                           labelColor: task.reminderAt != null
                               ? accent
@@ -551,7 +545,9 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                                   : accent)
                               : secondaryText,
                           label: task.dueDate != null
-                              ? DateFormat.yMMMd().format(task.dueDate!)
+                              ? l10n.dueOn(
+                                  formatRelativeDate(context, task.dueDate!),
+                                )
                               : l10n.addDueDate,
                           labelColor: task.dueDate != null
                               ? (task.isOverdue

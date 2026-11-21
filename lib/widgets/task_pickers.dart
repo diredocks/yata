@@ -1,6 +1,60 @@
+import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 import '../l10n/app_localizations.dart';
+import '../models/task_item.dart';
 import '../models/todo_list.dart';
+
+/// Formats a date relative to today (`Today`, `Tomorrow`, `Yesterday`, or `MMMd`/`yMMMd`),
+/// matching `yp.r.D` in `mstodo.apk`.
+String formatRelativeDate(BuildContext context, DateTime date) {
+  final l10n = AppLocalizations.of(context);
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final target = DateTime(date.year, date.month, date.day);
+  final diff = target.difference(today).inDays;
+  if (diff == 0) return l10n.today;
+  if (diff == 1) return l10n.tomorrow;
+  if (diff == -1) return l10n.yesterday;
+  if (date.year != now.year) return DateFormat.yMMMd().format(date);
+  return DateFormat.MMMd().format(date);
+}
+
+/// Formats a reminder timestamp as `Remind me at <time>` (plus relative date if not today).
+String formatReminderLabel(BuildContext context, DateTime reminderAt) {
+  final l10n = AppLocalizations.of(context);
+  final timeStr = DateFormat.jm().format(reminderAt);
+  final now = DateTime.now();
+  final isToday = reminderAt.year == now.year &&
+      reminderAt.month == now.month &&
+      reminderAt.day == now.day;
+  if (isToday) {
+    return l10n.remindMeAt(timeStr);
+  }
+  return '${l10n.remindMeAt(timeStr)}, ${formatRelativeDate(context, reminderAt)}';
+}
+
+/// Computes the default due date when setting [recurrence] with no due date,
+/// matching `RecurrenceUtils.java` (`yp.v1.a`) in `mstodo.apk`.
+DateTime? defaultDueDateForRecurrence(
+  RecurrenceType recurrence, {
+  DateTime? reminderAt,
+}) {
+  if (recurrence == RecurrenceType.none) return null;
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  if (recurrence == RecurrenceType.weekdays) {
+    var candidate = today;
+    while (candidate.weekday == DateTime.saturday ||
+        candidate.weekday == DateTime.sunday) {
+      candidate = candidate.add(const Duration(days: 1));
+    }
+    return candidate;
+  }
+  if (reminderAt != null) {
+    return DateTime(reminderAt.year, reminderAt.month, reminderAt.day);
+  }
+  return today;
+}
 
 /// Computes the first day of next week respecting [startOfWeek].
 DateTime computeNextWeekDate(DateTime from, WeekStart startOfWeek) {
