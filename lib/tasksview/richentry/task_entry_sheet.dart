@@ -31,6 +31,7 @@ class TaskEntrySheet extends StatefulWidget {
 
 class _TaskEntrySheetState extends State<TaskEntrySheet> {
   final _controller = TextEditingController();
+  final _focusNode = FocusNode();
   late String _targetListId;
   DateTime? _dueDate;
   DateTime? _reminderAt;
@@ -48,6 +49,7 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -61,7 +63,13 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
       reminderAt: _reminderAt,
       recurrence: _recurrence,
     );
-    Navigator.of(context).pop();
+    _controller.clear();
+    setState(() {
+      _dueDate = null;
+      _reminderAt = null;
+      _recurrence = RecurrenceType.none;
+    });
+    _focusNode.requestFocus();
   }
 
   Future<void> _pickDueDate() async {
@@ -216,6 +224,7 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
                   Expanded(
                     child: TextField(
                       controller: _controller,
+                      focusNode: _focusNode,
                       autofocus: true,
                       textInputAction: TextInputAction.done,
                       onSubmitted: (_) => _handleSubmit(),

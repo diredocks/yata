@@ -50,8 +50,12 @@ void main() {
     await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
     await tester.pumpAndSettle();
     expect(find.text('Buy milk'), findsOneWidget);
+    // Entry sheet stays open for continuous task entry
+    expect(find.byType(TextField), findsOneWidget);
 
-    // Open DetailView for the new task
+    // Dismiss entry sheet, then open DetailView for the new task
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Buy milk'));
     await tester.pumpAndSettle();
     expect(find.text('Added to My Day'), findsOneWidget);

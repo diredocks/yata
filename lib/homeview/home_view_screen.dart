@@ -188,49 +188,66 @@ class HomeViewScreen extends ConsumerWidget {
             ),
 
             // Footer (home_view_footer.xml)
-            SizedBox(
-              height: 48,
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
               child: Row(
                 children: [
                   Expanded(
-                    child: InkWell(
-                      onTap: () async {
-                        final result = await showListEditorDialog(
-                          context: context,
-                          dialogTitle: l10n.newList,
-                          confirmLabel: l10n.create,
-                        );
-                        if (result != null) {
-                          notifier.addList(
-                            result.title,
-                            result.themeColor,
-                            emoji: result.emoji,
-                            themePhoto: result.themePhoto,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 1,
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(6),
+                        onTap: () async {
+                          final result = await showListEditorDialog(
+                            context: context,
+                            dialogTitle: l10n.newList,
+                            confirmLabel: l10n.create,
                           );
-                          final created = ref.read(todoProvider).selectedList;
-                          onSelectList(created);
-                        }
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.add,
-                              color: TodoColors.homeViewIconColor(
-                                theme.brightness,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Text(
-                              l10n.newList,
-                              style: theme.textTheme.bodyLarge?.copyWith(
+                          if (result != null) {
+                            notifier.addList(
+                              result.title,
+                              result.themeColor,
+                              emoji: result.emoji,
+                              themePhoto: result.themePhoto,
+                            );
+                            final created =
+                                ref.read(todoProvider).selectedList;
+                            onSelectList(created);
+                          }
+                        },
+                        child: Container(
+                          constraints: const BoxConstraints(minHeight: 46),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.add,
+                                size: 22,
                                 color: TodoColors.homeViewIconColor(
                                   theme.brightness,
                                 ),
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Text(
+                                  l10n.newList,
+                                  style: theme.textTheme.bodyLarge?.copyWith(
+                                    fontSize: 15,
+                                    color: TodoColors.homeViewIconColor(
+                                      theme.brightness,
+                                    ),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
