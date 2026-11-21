@@ -377,4 +377,51 @@ void main() {
     expect(find.text('Important'), findsOneWidget);
     expect(find.text('Planned'), findsOneWidget);
   });
+
+  testWidgets('Creating a group via UI opens member picker and persists group', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+        child: const YataApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Create a custom list first so showGroupListsDialog is triggered after group creation
+    await tester.tap(find.text('New list'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Shopping');
+    await tester.pump();
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+    expect(find.text('Shopping'), findsWidgets);
+
+    // Tap the New group icon button in the sidebar
+    await tester.tap(find.byIcon(Icons.create_new_folder_outlined));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'Personal');
+    await tester.pump();
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+
+    // Member picker dialog should now be open (not popped prematurely)
+    expect(find.text('Add/remove lists'), findsOneWidget);
+    await tester.tap(find.text('Shopping').last);
+    await tester.pump();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Personal'), findsOneWidget);
+  });
 }

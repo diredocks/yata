@@ -167,10 +167,12 @@ class _SingleFieldDialogState extends State<_SingleFieldDialog> {
   }
 
   void _submit() {
-    if (_controller.text.trim().isNotEmpty) {
-      widget.onConfirm(_controller.text);
-      Navigator.of(context).pop();
-    }
+    final text = _controller.text;
+    if (text.trim().isEmpty) return;
+    // Pop this dialog before invoking onConfirm so any follow-up dialog
+    // (such as showGroupListsDialog) is not popped by this call.
+    Navigator.of(context).pop();
+    widget.onConfirm(text);
   }
 
   @override
