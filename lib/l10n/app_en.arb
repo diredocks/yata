@@ -1,4 +1,127 @@
 {
   "@@locale": "en",
-  "appTitle": "YATA"
+  "appTitle": "YATA",
+  "myDay": "My Day",
+  "important": "Important",
+  "planned": "Planned",
+  "all": "All",
+  "completedList": "Completed",
+  "tasks": "Tasks",
+  "newList": "New list",
+  "newGroup": "New group",
+  "untitledGroup": "Untitled group",
+  "listNameHint": "Enter list title",
+  "groupNameHint": "Enter group title",
+  "create": "Create",
+  "cancel": "Cancel",
+  "save": "Save",
+  "delete": "Delete",
+  "done": "Done",
+  "createGroup": "Create group",
+  "renameGroup": "Rename group",
+  "ungroupLists": "Ungroup lists",
+  "modifyGroupLists": "Add/remove lists",
+  "addTaskPlaceholder": "Add a task",
+  "addStepPlaceholder": "Add step",
+  "addNotePlaceholder": "Add note",
+  "addToMyDay": "Add to My Day",
+  "addedToMyDay": "Added to My Day",
+  "remindMe": "Remind me",
+  "addDueDate": "Add due date",
+  "repeat": "Repeat",
+  "today": "Today",
+  "tomorrow": "Tomorrow",
+  "nextWeek": "Next week",
+  "pickDate": "Pick a date",
+  "completed": "Completed",
+  "stepsProgress": "{completed} of {total}",
+  "@stepsProgress": {
+    "placeholders": {
+      "completed": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "createdOn": "Created on {date}",
+  "@createdOn": {
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
+  "search": "Search",
+  "searchHint": "Search tasks",
+  "searchEmptyPrompt": "What would you like to find?",
+  "searchNoResults": "We searched far and wide and couldn't find any tasks matching your search.",
+  "emptyListTitle": "Tasks show up here if they aren't part of any lists you've created.",
+  "emptyMyDayTitle": "Focus on your day",
+  "emptyMyDaySubtitle": "Get things done with My Day, a list that refreshes every day.",
+  "emptyImportantTitle": "Try starring some tasks to see them here.",
+  "emptyPlannedTitle": "Tasks with due dates or reminders show up here.",
+  "emptyCompletedTitle": "Completed tasks show up here.",
+  "settings": "Settings",
+  "general": "General",
+  "smartListsSection": "Smart lists",
+  "aboutSection": "About",
+  "theme": "Theme",
+  "themeSystem": "System default",
+  "themeLight": "Light",
+  "themeDark": "Dark",
+  "addNewTasksOnTop": "Add new tasks on top",
+  "moveStarredTasksToTop": "Move starred tasks to top",
+  "confirmBeforeDeleting": "Confirm before deleting",
+  "showDueTodayInMyDay": "Show due today tasks in My Day",
+  "startOfWeek": "Start of the week",
+  "weekStartSystem": "System default",
+  "weekStartSunday": "Sunday",
+  "weekStartMonday": "Monday",
+  "weekStartSaturday": "Saturday",
+  "autoHideEmptySmartLists": "Auto-hide empty smart lists",
+  "appVersion": "Version",
+  "showCompletedTasks": "Show completed tasks",
+  "sortBy": "Sort by",
+  "sortByDefault": "Default",
+  "sortByImportance": "Importance",
+  "sortByDueDate": "Due date",
+  "sortByAlphabetical": "Alphabetically",
+  "reorderTasks": "Reorder",
+  "moveToList": "Move to list",
+  "selectAll": "Select all",
+  "selectedCount": "{count} selected",
+  "@selectedCount": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "deleteSelectedConfirm": "Delete {count} selected tasks permanently?",
+  "@deleteSelectedConfirm": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "repeatDaily": "Daily",
+  "repeatWeekdays": "Weekdays",
+  "repeatWeekly": "Weekly",
+  "repeatMonthly": "Monthly",
+  "repeatYearly": "Yearly",
+  "deleteTaskTitle": "Delete task",
+  "deleteTaskConfirm": "\"{title}\" will be permanently deleted.",
+  "@deleteTaskConfirm": {
+    "placeholders": {
+      "title": {"type": "String"}
+    }
+  },
+  "userName": "Local Account",
+  "userSubtitle": "Offline workspace",
+  "listThemeColor": "Theme color",
+  "moreOptions": "More options",
+  "renameList": "Rename list",
+  "changeTheme": "Change theme",
+  "hideCompletedTasks": "Hide completed tasks",
+  "duplicateList": "Duplicate list",
+  "deleteList": "Delete list",
+  "deleteListConfirm": "\"{title}\" and all its tasks will be permanently deleted.",
+  "@deleteListConfirm": {
+    "placeholders": {
+      "title": {"type": "String"}
+    }
+  }
 }
