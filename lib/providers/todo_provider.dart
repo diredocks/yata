@@ -83,16 +83,20 @@ class TodoState {
     };
 
     final result = filtered.toList();
+    _sortTasks(result, list);
+    return result;
+  }
+
+  static void _sortTasks(List<TaskItem> result, TodoList list) {
     final dir = list.sortAscending ? 1 : -1;
     switch (list.sortOption) {
       case TaskSortOption.defaultOrder:
-        if (list.smartType == SmartListType.completed) {
-          result.sort((a, b) {
-            final aTime = a.completedAt ?? a.createdAt;
-            final bTime = b.completedAt ?? b.createdAt;
-            return bTime.compareTo(aTime);
-          });
-        }
+        if (list.smartType != SmartListType.completed) return;
+        result.sort((a, b) {
+          final aTime = a.completedAt ?? a.createdAt;
+          final bTime = b.completedAt ?? b.createdAt;
+          return bTime.compareTo(aTime);
+        });
       case TaskSortOption.importance:
         result.sort((a, b) {
           final aVal = a.isImportant ? 1 : 0;
@@ -123,7 +127,6 @@ class TodoState {
       case TaskSortOption.creationDate:
         result.sort((a, b) => a.createdAt.compareTo(b.createdAt) * dir);
     }
-    return result;
   }
 
   int activeCountForList(TodoList list) {
@@ -248,20 +251,18 @@ class TodoNotifier extends Notifier<TodoState> {
     final now = DateTime.now();
     final todayKey = _todayKey(now);
     var changed = false;
-    final tasks = [
-      for (final task in snapshot.tasks)
-        () {
-          final synced = syncMyDayFlag(
-            task,
-            now: now,
-            showDueTodayInMyDay: snapshot.showDueTodayInMyDay,
-          );
-          if (!identical(synced, task)) {
-            changed = true;
-          }
-          return synced;
-        }(),
-    ];
+    final tasks = <TaskItem>[];
+    for (final task in snapshot.tasks) {
+      final synced = syncMyDayFlag(
+        task,
+        now: now,
+        showDueTodayInMyDay: snapshot.showDueTodayInMyDay,
+      );
+      if (!identical(synced, task)) {
+        changed = true;
+      }
+      tasks.add(synced);
+    }
     if (changed) {
       storage.saveTasks(tasks);
     }

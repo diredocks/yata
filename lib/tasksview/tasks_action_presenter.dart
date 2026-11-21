@@ -11,30 +11,45 @@ class TasksActionPresenter {
   TodoNotifier get _store => _ref.read(todoProvider.notifier);
   TodoState get _state => _ref.read(todoProvider);
 
-  void batchSetMyDay(Set<String> taskIds, bool value) {
-    final now = DateTime.now();
+  void _commitTasks(List<TaskItem> updated, {bool clearSelectedTaskId = false}) {
+    _store.commit(
+      _state.copyWith(
+        tasks: updated,
+        clearSelectedTaskId: clearSelectedTaskId,
+      ),
+    );
+    _store.storage.saveTasks(updated);
+  }
+
+  void _mapSelectedTasks(
+    Set<String> taskIds,
+    TaskItem Function(TaskItem task) transform,
+  ) {
     final updated = [
       for (final task in _state.tasks)
-        if (taskIds.contains(task.id))
-          TodoNotifier.syncMyDayFlag(
-            task.copyWith(
-              myDayDate: value ? now : null,
-              clearMyDayDate: !value,
-              postponedDay: !value &&
-                      task.dueDate != null &&
-                      TodoNotifier.isSameDay(task.dueDate!, now)
-                  ? now
-                  : task.postponedDay,
-              clearPostponedDay: value,
-            ),
-            now: now,
-            showDueTodayInMyDay: _state.showDueTodayInMyDay,
-          )
-        else
-          task,
+        if (taskIds.contains(task.id)) transform(task) else task,
     ];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _commitTasks(updated);
+  }
+
+  void batchSetMyDay(Set<String> taskIds, bool value) {
+    final now = DateTime.now();
+    _mapSelectedTasks(taskIds, (task) {
+      return TodoNotifier.syncMyDayFlag(
+        task.copyWith(
+          myDayDate: value ? now : null,
+          clearMyDayDate: !value,
+          postponedDay: !value &&
+                  task.dueDate != null &&
+                  TodoNotifier.isSameDay(task.dueDate!, now)
+              ? now
+              : task.postponedDay,
+          clearPostponedDay: value,
+        ),
+        now: now,
+        showDueTodayInMyDay: _state.showDueTodayInMyDay,
+      );
+    });
   }
 
   void batchAddToMyDay(Set<String> taskIds) {
@@ -52,20 +67,18 @@ class TasksActionPresenter {
     final movedToTop = <TaskItem>[];
     final rest = <TaskItem>[];
     for (final task in _state.tasks) {
-      if (taskIds.contains(task.id)) {
-        final next = task.copyWith(isImportant: value);
-        if (value && _state.moveStarredTasksToTop && !task.isImportant) {
-          movedToTop.add(next);
-        } else {
-          rest.add(next);
-        }
-      } else {
+      if (!taskIds.contains(task.id)) {
         rest.add(task);
+        continue;
+      }
+      final next = task.copyWith(isImportant: value);
+      if (value && _state.moveStarredTasksToTop && !task.isImportant) {
+        movedToTop.add(next);
+      } else {
+        rest.add(next);
       }
     }
-    final updated = [...movedToTop, ...rest];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _commitTasks([...movedToTop, ...rest]);
   }
 
   void batchMarkImportant(Set<String> taskIds) {
@@ -102,62 +115,44 @@ class TasksActionPresenter {
     final updated = _state.addNewTasksOnTop
         ? [...copies, ..._state.tasks]
         : [..._state.tasks, ...copies];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _commitTasks(updated);
   }
 
   void batchSetDueDate(Set<String> taskIds, DateTime? dueDate) {
     final now = DateTime.now();
-    final updated = [
-      for (final task in _state.tasks)
-        if (taskIds.contains(task.id))
-          () {
-            final clearPostponed = dueDate != null &&
-                _state.showDueTodayInMyDay &&
-                task.postponedDay != null &&
-                TodoNotifier.isSameDay(dueDate, task.postponedDay!);
-            return TodoNotifier.syncMyDayFlag(
-              task.copyWith(
-                dueDate: dueDate,
-                clearDueDate: dueDate == null,
-                recurrence:
-                    dueDate == null ? RecurrenceType.none : task.recurrence,
-                clearPostponedDay: clearPostponed,
-              ),
-              now: now,
-              showDueTodayInMyDay: _state.showDueTodayInMyDay,
-            );
-          }()
-        else
-          task,
-    ];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _mapSelectedTasks(taskIds, (task) {
+      final clearPostponed = dueDate != null &&
+          _state.showDueTodayInMyDay &&
+          task.postponedDay != null &&
+          TodoNotifier.isSameDay(dueDate, task.postponedDay!);
+      return TodoNotifier.syncMyDayFlag(
+        task.copyWith(
+          dueDate: dueDate,
+          clearDueDate: dueDate == null,
+          recurrence: dueDate == null ? RecurrenceType.none : task.recurrence,
+          clearPostponedDay: clearPostponed,
+        ),
+        now: now,
+        showDueTodayInMyDay: _state.showDueTodayInMyDay,
+      );
+    });
   }
 
   void batchMoveToList(Set<String> taskIds, String targetListId) {
-    final updated = [
-      for (final task in _state.tasks)
-        if (taskIds.contains(task.id))
-          task.copyWith(listId: targetListId)
-        else
-          task,
-    ];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _mapSelectedTasks(
+      taskIds,
+      (task) => task.copyWith(listId: targetListId),
+    );
   }
 
   void batchDeleteTasks(Set<String> taskIds) {
     final updated =
         _state.tasks.where((t) => !taskIds.contains(t.id)).toList();
-    _store.commit(
-      _state.copyWith(
-        tasks: updated,
-        clearSelectedTaskId: _state.selectedTaskId != null &&
-            taskIds.contains(_state.selectedTaskId),
-      ),
+    _commitTasks(
+      updated,
+      clearSelectedTaskId: _state.selectedTaskId != null &&
+          taskIds.contains(_state.selectedTaskId),
     );
-    _store.storage.saveTasks(updated);
   }
 }
 

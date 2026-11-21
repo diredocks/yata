@@ -20,54 +20,62 @@ class TasksViewPresenter {
     setListSortOption(_state.selectedListId, option);
   }
 
+  void _updateListById(
+    String listId,
+    TodoList Function(TodoList list) transform, {
+    TaskSortOption? sortOption,
+  }) {
+    final updated = [
+      for (final list in _state.lists)
+        if (list.id == listId) transform(list) else list,
+    ];
+    _store.commit(_state.copyWith(lists: updated, sortOption: sortOption));
+    _store.storage.saveLists(updated);
+    if (sortOption != null) {
+      _store.storage.saveSortOption(sortOption);
+    }
+  }
+
+  void _commitTasks(List<TaskItem> updated) {
+    _store.commit(_state.copyWith(tasks: updated));
+    _store.storage.saveTasks(updated);
+  }
+
   void setListSortOption(
     String listId,
     TaskSortOption option, {
     bool? ascending,
   }) {
-    final updated = [
-      for (final list in _state.lists)
-        if (list.id == listId)
-          list.copyWith(
-            sortOption: option,
-            sortAscending: ascending ??
-                (list.sortOption == option &&
-                        option != TaskSortOption.defaultOrder
-                    ? !list.sortAscending
-                    : option.defaultAscending),
-          )
-        else
-          list,
-    ];
-    _store.commit(_state.copyWith(lists: updated, sortOption: option));
-    _store.storage.saveLists(updated);
-    _store.storage.saveSortOption(option);
+    _updateListById(
+      listId,
+      (list) => list.copyWith(
+        sortOption: option,
+        sortAscending: ascending ??
+            (list.sortOption == option && option != TaskSortOption.defaultOrder
+                ? !list.sortAscending
+                : option.defaultAscending),
+      ),
+      sortOption: option,
+    );
   }
 
   void toggleListSortDirection(String listId) {
-    final updated = [
-      for (final list in _state.lists)
-        if (list.id == listId && list.sortOption != TaskSortOption.defaultOrder)
-          list.copyWith(sortAscending: !list.sortAscending)
-        else
-          list,
-    ];
-    _store.commit(_state.copyWith(lists: updated));
-    _store.storage.saveLists(updated);
+    _updateListById(
+      listId,
+      (list) => list.sortOption == TaskSortOption.defaultOrder
+          ? list
+          : list.copyWith(sortAscending: !list.sortAscending),
+    );
   }
 
   void toggleListShowCompleted(String listId) {
-    final updated = [
-      for (final list in _state.lists)
-        if (list.id == listId &&
-            list.smartType != SmartListType.all &&
-            list.smartType != SmartListType.completed)
-          list.copyWith(showCompleted: !list.showCompleted)
-        else
-          list,
-    ];
-    _store.commit(_state.copyWith(lists: updated));
-    _store.storage.saveLists(updated);
+    _updateListById(
+      listId,
+      (list) => (list.smartType == SmartListType.all ||
+              list.smartType == SmartListType.completed)
+          ? list
+          : list.copyWith(showCompleted: !list.showCompleted),
+    );
   }
 
   void updateList(
@@ -81,22 +89,19 @@ class TasksViewPresenter {
   }) {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return;
-    final updated = [
-      for (final list in _state.lists)
-        if (list.id == listId && !list.isSmartList)
-          list.copyWith(
-            title: trimmed,
-            emoji: emoji,
-            clearEmoji: clearEmoji,
-            themeColor: themeColor,
-            themePhoto: themePhoto,
-            clearThemePhoto: clearThemePhoto,
-          )
-        else
-          list,
-    ];
-    _store.commit(_state.copyWith(lists: updated));
-    _store.storage.saveLists(updated);
+    _updateListById(
+      listId,
+      (list) => list.isSmartList
+          ? list
+          : list.copyWith(
+              title: trimmed,
+              emoji: emoji,
+              clearEmoji: clearEmoji,
+              themeColor: themeColor,
+              themePhoto: themePhoto,
+              clearThemePhoto: clearThemePhoto,
+            ),
+    );
   }
 
   void renameList(String listId, String newTitle) {
@@ -108,19 +113,14 @@ class TasksViewPresenter {
     ListThemeColor themeColor, {
     ListThemePhoto? themePhoto,
   }) {
-    final updated = [
-      for (final list in _state.lists)
-        if (list.id == listId)
-          list.copyWith(
-            themeColor: themeColor,
-            themePhoto: themePhoto,
-            clearThemePhoto: themePhoto == null,
-          )
-        else
-          list,
-    ];
-    _store.commit(_state.copyWith(lists: updated));
-    _store.storage.saveLists(updated);
+    _updateListById(
+      listId,
+      (list) => list.copyWith(
+        themeColor: themeColor,
+        themePhoto: themePhoto,
+        clearThemePhoto: themePhoto == null,
+      ),
+    );
   }
 
   String _deduplicateListTitle(String title) {
@@ -254,8 +254,7 @@ class TasksViewPresenter {
     final updated = _state.addNewTasksOnTop
         ? [newTask, ..._state.tasks]
         : [..._state.tasks, newTask];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _commitTasks(updated);
   }
 
   void reorderActiveTasks(
@@ -339,57 +338,59 @@ class TasksViewPresenter {
     }
   }
 
+  TaskItem _buildNextRecurringTask(TaskItem task, DateTime now) {
+    final baseDate = task.dueDate ?? DateTime(now.year, now.month, now.day);
+    final nextDue = _nextDueDate(baseDate, task.recurrence);
+    final nextReminder = task.reminderAt == null
+        ? null
+        : DateTime(
+            nextDue.year,
+            nextDue.month,
+            nextDue.day,
+            task.reminderAt!.hour,
+            task.reminderAt!.minute,
+          );
+    return TodoNotifier.syncMyDayFlag(
+      TaskItem(
+        id: _store.nextId('task'),
+        listId: task.listId,
+        title: task.title,
+        createdAt: now,
+        isImportant: task.isImportant,
+        dueDate: nextDue,
+        reminderAt: nextReminder,
+        recurrence: task.recurrence,
+        note: task.note,
+        steps: [
+          for (final step in task.steps)
+            TaskStep(id: _store.nextId('step'), title: step.title),
+        ],
+      ),
+      now: now,
+      showDueTodayInMyDay: _state.showDueTodayInMyDay,
+    );
+  }
+
   void toggleTaskCompleted(String taskId) {
     TaskItem? nextOccurrence;
     final updated = <TaskItem>[];
+    final now = DateTime.now();
 
     for (final task in _state.tasks) {
-      if (task.id == taskId) {
-        final nowCompleted = !task.isCompleted;
-        final now = DateTime.now();
-        updated.add(
-          task.copyWith(
-            isCompleted: nowCompleted,
-            completedAt: nowCompleted ? now : null,
-            clearCompletedAt: !nowCompleted,
-          ),
-        );
-        if (nowCompleted && task.recurrence != RecurrenceType.none) {
-          final baseDate =
-              task.dueDate ?? DateTime(now.year, now.month, now.day);
-          final nextDue = _nextDueDate(baseDate, task.recurrence);
-          DateTime? nextReminder;
-          if (task.reminderAt != null) {
-            nextReminder = DateTime(
-              nextDue.year,
-              nextDue.month,
-              nextDue.day,
-              task.reminderAt!.hour,
-              task.reminderAt!.minute,
-            );
-          }
-          nextOccurrence = TodoNotifier.syncMyDayFlag(
-            TaskItem(
-              id: _store.nextId('task'),
-              listId: task.listId,
-              title: task.title,
-              createdAt: now,
-              isImportant: task.isImportant,
-              dueDate: nextDue,
-              reminderAt: nextReminder,
-              recurrence: task.recurrence,
-              note: task.note,
-              steps: [
-                for (final step in task.steps)
-                  TaskStep(id: _store.nextId('step'), title: step.title),
-              ],
-            ),
-            now: now,
-            showDueTodayInMyDay: _state.showDueTodayInMyDay,
-          );
-        }
-      } else {
+      if (task.id != taskId) {
         updated.add(task);
+        continue;
+      }
+      final nowCompleted = !task.isCompleted;
+      updated.add(
+        task.copyWith(
+          isCompleted: nowCompleted,
+          completedAt: nowCompleted ? now : null,
+          clearCompletedAt: !nowCompleted,
+        ),
+      );
+      if (nowCompleted && task.recurrence != RecurrenceType.none) {
+        nextOccurrence = _buildNextRecurringTask(task, now);
       }
     }
 
@@ -401,31 +402,29 @@ class TasksViewPresenter {
       }
     }
 
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _commitTasks(updated);
   }
 
   void toggleTaskImportant(String taskId) {
     TaskItem? movedToTop;
     final updated = <TaskItem>[];
     for (final task in _state.tasks) {
-      if (task.id == taskId) {
-        final nextImportant = !task.isImportant;
-        final nextTask = task.copyWith(isImportant: nextImportant);
-        if (nextImportant && _state.moveStarredTasksToTop) {
-          movedToTop = nextTask;
-        } else {
-          updated.add(nextTask);
-        }
-      } else {
+      if (task.id != taskId) {
         updated.add(task);
+        continue;
+      }
+      final nextImportant = !task.isImportant;
+      final nextTask = task.copyWith(isImportant: nextImportant);
+      if (nextImportant && _state.moveStarredTasksToTop) {
+        movedToTop = nextTask;
+      } else {
+        updated.add(nextTask);
       }
     }
     if (movedToTop != null) {
       updated.insert(0, movedToTop);
     }
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _commitTasks(updated);
   }
 }
 

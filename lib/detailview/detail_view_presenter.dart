@@ -13,6 +13,27 @@ class DetailViewPresenter {
   TodoNotifier get _store => _ref.read(todoProvider.notifier);
   TodoState get _state => _ref.read(todoProvider);
 
+  void _commitTasks(List<TaskItem> updated, {bool clearSelectedTaskId = false}) {
+    _store.commit(
+      _state.copyWith(
+        tasks: updated,
+        clearSelectedTaskId: clearSelectedTaskId,
+      ),
+    );
+    _store.storage.saveTasks(updated);
+  }
+
+  void _updateTaskById(
+    String taskId,
+    TaskItem Function(TaskItem task) transform,
+  ) {
+    final updated = [
+      for (final task in _state.tasks)
+        if (task.id == taskId) transform(task) else task,
+    ];
+    _commitTasks(updated);
+  }
+
   void toggleTaskCompleted(String taskId) {
     _ref.read(tasksViewPresenterProvider).toggleTaskCompleted(taskId);
   }
@@ -23,200 +44,137 @@ class DetailViewPresenter {
 
   void toggleTaskMyDay(String taskId) {
     final now = DateTime.now();
-    final updated = [
-      for (final task in _state.tasks)
-        if (task.id == taskId)
-          () {
-            final adding = !task.isInMyDay;
-            final dueToday = task.dueDate != null &&
-                TodoNotifier.isSameDay(task.dueDate!, now);
-            return TodoNotifier.syncMyDayFlag(
-              task.copyWith(
-                myDayDate: adding ? now : null,
-                clearMyDayDate: !adding,
-                postponedDay: !adding && dueToday ? now : task.postponedDay,
-                clearPostponedDay: adding,
-              ),
-              now: now,
-              showDueTodayInMyDay: _state.showDueTodayInMyDay,
-            );
-          }()
-        else
-          task,
-    ];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _updateTaskById(taskId, (task) {
+      final adding = !task.isInMyDay;
+      final dueToday =
+          task.dueDate != null && TodoNotifier.isSameDay(task.dueDate!, now);
+      return TodoNotifier.syncMyDayFlag(
+        task.copyWith(
+          myDayDate: adding ? now : null,
+          clearMyDayDate: !adding,
+          postponedDay: !adding && dueToday ? now : task.postponedDay,
+          clearPostponedDay: adding,
+        ),
+        now: now,
+        showDueTodayInMyDay: _state.showDueTodayInMyDay,
+      );
+    });
   }
 
   void updateTaskTitle(String taskId, String title) {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return;
-    final updated = [
-      for (final task in _state.tasks)
-        if (task.id == taskId) task.copyWith(title: trimmed) else task,
-    ];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _updateTaskById(taskId, (task) => task.copyWith(title: trimmed));
   }
 
   void updateTaskNote(String taskId, String note) {
     final now = DateTime.now();
     var changed = false;
-    final updated = [
-      for (final task in _state.tasks)
-        if (task.id == taskId && task.note != note)
-          () {
-            changed = true;
-            return task.copyWith(note: note, noteUpdatedAt: now);
-          }()
-        else
-          task,
-    ];
+    final updated = <TaskItem>[];
+    for (final task in _state.tasks) {
+      if (task.id == taskId && task.note != note) {
+        changed = true;
+        updated.add(task.copyWith(note: note, noteUpdatedAt: now));
+      } else {
+        updated.add(task);
+      }
+    }
     if (!changed) return;
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _commitTasks(updated);
   }
 
   void moveTaskToList(String taskId, String targetListId) {
-    final updated = [
-      for (final task in _state.tasks)
-        if (task.id == taskId) task.copyWith(listId: targetListId) else task,
-    ];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _updateTaskById(taskId, (task) => task.copyWith(listId: targetListId));
   }
 
   void setTaskDueDate(String taskId, DateTime? dueDate) {
     final now = DateTime.now();
-    final updated = [
-      for (final task in _state.tasks)
-        if (task.id == taskId)
-          () {
-            final clearPostponed = dueDate != null &&
-                _state.showDueTodayInMyDay &&
-                task.postponedDay != null &&
-                TodoNotifier.isSameDay(dueDate, task.postponedDay!);
-            return TodoNotifier.syncMyDayFlag(
-              task.copyWith(
-                dueDate: dueDate,
-                clearDueDate: dueDate == null,
-                recurrence:
-                    dueDate == null ? RecurrenceType.none : task.recurrence,
-                clearPostponedDay: clearPostponed,
-              ),
-              now: now,
-              showDueTodayInMyDay: _state.showDueTodayInMyDay,
-            );
-          }()
-        else
-          task,
-    ];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _updateTaskById(taskId, (task) {
+      final clearPostponed = dueDate != null &&
+          _state.showDueTodayInMyDay &&
+          task.postponedDay != null &&
+          TodoNotifier.isSameDay(dueDate, task.postponedDay!);
+      return TodoNotifier.syncMyDayFlag(
+        task.copyWith(
+          dueDate: dueDate,
+          clearDueDate: dueDate == null,
+          recurrence: dueDate == null ? RecurrenceType.none : task.recurrence,
+          clearPostponedDay: clearPostponed,
+        ),
+        now: now,
+        showDueTodayInMyDay: _state.showDueTodayInMyDay,
+      );
+    });
   }
 
   void setTaskReminder(String taskId, DateTime? reminderAt) {
-    final updated = [
-      for (final task in _state.tasks)
-        if (task.id == taskId)
-          task.copyWith(
-            reminderAt: reminderAt,
-            clearReminderAt: reminderAt == null,
-          )
-        else
-          task,
-    ];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _updateTaskById(
+      taskId,
+      (task) => task.copyWith(
+        reminderAt: reminderAt,
+        clearReminderAt: reminderAt == null,
+      ),
+    );
   }
 
   void setTaskRecurrence(String taskId, RecurrenceType recurrence) {
     final now = DateTime.now();
-    final updated = [
-      for (final task in _state.tasks)
-        if (task.id == taskId)
-          () {
-            final nextDue =
-                (recurrence != RecurrenceType.none && task.dueDate == null)
-                    ? defaultDueDateForRecurrence(
-                        recurrence,
-                        reminderAt: task.reminderAt,
-                      )
-                    : task.dueDate;
-            return TodoNotifier.syncMyDayFlag(
-              task.copyWith(
-                recurrence: recurrence,
-                dueDate: nextDue,
-              ),
-              now: now,
-              showDueTodayInMyDay: _state.showDueTodayInMyDay,
-            );
-          }()
-        else
-          task,
-    ];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _updateTaskById(taskId, (task) {
+      final nextDue =
+          (recurrence != RecurrenceType.none && task.dueDate == null)
+              ? defaultDueDateForRecurrence(
+                  recurrence,
+                  reminderAt: task.reminderAt,
+                )
+              : task.dueDate;
+      return TodoNotifier.syncMyDayFlag(
+        task.copyWith(recurrence: recurrence, dueDate: nextDue),
+        now: now,
+        showDueTodayInMyDay: _state.showDueTodayInMyDay,
+      );
+    });
   }
 
   void deleteTask(String taskId) {
     final updated = _state.tasks.where((t) => t.id != taskId).toList();
-    _store.commit(
-      _state.copyWith(
-        tasks: updated,
-        clearSelectedTaskId: _state.selectedTaskId == taskId,
-      ),
+    _commitTasks(
+      updated,
+      clearSelectedTaskId: _state.selectedTaskId == taskId,
     );
-    _store.storage.saveTasks(updated);
   }
 
   void addStep(String taskId, String title) {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return;
     final newStep = TaskStep(id: _store.nextId('step'), title: trimmed);
-    final updated = [
-      for (final task in _state.tasks)
-        if (task.id == taskId)
-          task.copyWith(steps: [...task.steps, newStep])
-        else
-          task,
-    ];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _updateTaskById(
+      taskId,
+      (task) => task.copyWith(steps: [...task.steps, newStep]),
+    );
   }
 
   void toggleStepCompleted(String taskId, String stepId) {
-    final updated = [
-      for (final task in _state.tasks)
-        if (task.id == taskId)
-          task.copyWith(
-            steps: [
-              for (final step in task.steps)
-                if (step.id == stepId)
-                  step.copyWith(isCompleted: !step.isCompleted)
-                else
-                  step,
-            ],
-          )
-        else
-          task,
-    ];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _updateTaskById(
+      taskId,
+      (task) => task.copyWith(
+        steps: [
+          for (final step in task.steps)
+            if (step.id == stepId)
+              step.copyWith(isCompleted: !step.isCompleted)
+            else
+              step,
+        ],
+      ),
+    );
   }
 
   void deleteStep(String taskId, String stepId) {
-    final updated = [
-      for (final task in _state.tasks)
-        if (task.id == taskId)
-          task.copyWith(
-            steps: task.steps.where((s) => s.id != stepId).toList(),
-          )
-        else
-          task,
-    ];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _updateTaskById(
+      taskId,
+      (task) => task.copyWith(
+        steps: task.steps.where((s) => s.id != stepId).toList(),
+      ),
+    );
   }
 
   void renameStep(String taskId, String stepId, String newTitle) {
@@ -225,57 +183,50 @@ class DetailViewPresenter {
       deleteStep(taskId, stepId);
       return;
     }
-    final updated = [
-      for (final task in _state.tasks)
-        if (task.id == taskId)
-          task.copyWith(
-            steps: [
-              for (final step in task.steps)
-                if (step.id == stepId) step.copyWith(title: trimmed) else step,
-            ],
-          )
-        else
-          task,
-    ];
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _updateTaskById(
+      taskId,
+      (task) => task.copyWith(
+        steps: [
+          for (final step in task.steps)
+            if (step.id == stepId) step.copyWith(title: trimmed) else step,
+        ],
+      ),
+    );
   }
 
   void promoteStepToTask(String taskId, String stepId) {
     TaskItem? promoted;
     final updated = <TaskItem>[];
     for (final task in _state.tasks) {
-      if (task.id == taskId) {
-        final step = task.steps.where((s) => s.id == stepId).firstOrNull;
-        if (step != null && !step.isCompleted) {
-          promoted = TaskItem(
-            id: _store.nextId('task'),
-            listId: task.listId,
-            title: step.title,
-            createdAt: DateTime.now(),
-            isCompleted: false,
-          );
-          updated.add(
-            task.copyWith(
-              steps: task.steps.where((s) => s.id != stepId).toList(),
-            ),
-          );
-        } else {
-          updated.add(task);
-        }
-      } else {
+      if (task.id != taskId) {
         updated.add(task);
+        continue;
       }
-    }
-    if (promoted != null) {
-      if (_state.addNewTasksOnTop) {
-        updated.insert(0, promoted);
-      } else {
-        updated.add(promoted);
+      final step = task.steps.where((s) => s.id == stepId).firstOrNull;
+      if (step == null || step.isCompleted) {
+        updated.add(task);
+        continue;
       }
+      promoted = TaskItem(
+        id: _store.nextId('task'),
+        listId: task.listId,
+        title: step.title,
+        createdAt: DateTime.now(),
+        isCompleted: false,
+      );
+      updated.add(
+        task.copyWith(
+          steps: task.steps.where((s) => s.id != stepId).toList(),
+        ),
+      );
     }
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    if (promoted == null) return;
+    if (_state.addNewTasksOnTop) {
+      updated.insert(0, promoted);
+    } else {
+      updated.add(promoted);
+    }
+    _commitTasks(updated);
   }
 }
 
