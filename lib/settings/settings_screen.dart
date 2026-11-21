@@ -123,31 +123,56 @@ class SettingsScreen extends ConsumerWidget {
           const Divider(),
           _SectionHeader(title: l10n.smartListsSection),
           SwitchListTile(
-            secondary: const Icon(Icons.star_outline),
+            secondary: Icon(
+              Icons.star_outline,
+              color: theme.brightness == Brightness.dark
+                  ? TodoColors.secondaryTextDark
+                  : null,
+            ),
             title: Text(l10n.important),
             value: state.showSmartListImportant,
             onChanged: notifier.setShowSmartListImportant,
           ),
           SwitchListTile(
-            secondary: const Icon(Icons.calendar_today_outlined),
+            secondary: Icon(
+              Icons.calendar_today_outlined,
+              color: theme.brightness == Brightness.dark
+                  ? TodoColors.secondaryTextDark
+                  : null,
+            ),
             title: Text(l10n.planned),
             value: state.showSmartListPlanned,
             onChanged: notifier.setShowSmartListPlanned,
           ),
           SwitchListTile(
-            secondary: const Icon(Icons.all_inclusive),
+            secondary: Icon(
+              Icons.all_inclusive,
+              color: theme.brightness == Brightness.dark
+                  ? TodoColors.secondaryTextDark
+                  : null,
+            ),
             title: Text(l10n.all),
             value: state.showSmartListAll,
             onChanged: notifier.setShowSmartListAll,
           ),
           SwitchListTile(
-            secondary: const Icon(Icons.check_circle_outline),
+            secondary: Icon(
+              Icons.check_circle_outline,
+              color: theme.brightness == Brightness.dark
+                  ? TodoColors.secondaryTextDark
+                  : null,
+            ),
             title: Text(l10n.completedList),
             value: state.showSmartListCompleted,
             onChanged: notifier.setShowSmartListCompleted,
           ),
           SwitchListTile(
-            secondary: const Icon(Icons.visibility_off_outlined),
+            secondary: Icon(
+              Icons.visibility_off_outlined,
+              color: theme.brightness == Brightness.dark
+                  ? TodoColors.secondaryTextDark
+                  : null,
+            ),
             title: Text(l10n.autoHideEmptySmartLists),
             value: state.autoHideEmptySmartLists,
             onChanged: notifier.setAutoHideEmptySmartLists,

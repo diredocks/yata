@@ -13,6 +13,7 @@ class DetailsHeaderView extends StatefulWidget {
     required this.onToggleCompleted,
     required this.onToggleImportant,
     required this.onTitleSubmitted,
+    this.accentColor,
     this.onClose,
   });
 
@@ -22,6 +23,7 @@ class DetailsHeaderView extends StatefulWidget {
   final VoidCallback onToggleCompleted;
   final VoidCallback onToggleImportant;
   final ValueChanged<String> onTitleSubmitted;
+  final Color? accentColor;
   final VoidCallback? onClose;
 
   @override
@@ -59,8 +61,8 @@ class _DetailsHeaderViewState extends State<DetailsHeaderView> {
     final isDark = theme.brightness == Brightness.dark;
     final secondaryText =
         isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
-    final accent =
-        isDark ? TodoColors.attentionDark : TodoColors.attentionLight;
+    final accent = widget.accentColor ??
+        (isDark ? TodoColors.attentionDark : TodoColors.attentionLight);
 
     return Material(
       color: widget.backgroundColor,
@@ -97,6 +99,7 @@ class _DetailsHeaderViewState extends State<DetailsHeaderView> {
                 TaskCheckbox(
                   isChecked: widget.task.isCompleted,
                   onTap: widget.onToggleCompleted,
+                  accentColor: accent,
                   size: 24,
                 ),
                 const SizedBox(width: 6),

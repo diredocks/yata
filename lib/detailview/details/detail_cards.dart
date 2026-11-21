@@ -11,11 +11,13 @@ class MyDayCardView extends StatelessWidget {
     required this.task,
     required this.cardColor,
     required this.onToggleMyDay,
+    this.accentColor,
   });
 
   final TaskItem task;
   final Color cardColor;
   final VoidCallback onToggleMyDay;
+  final Color? accentColor;
 
   @override
   Widget build(BuildContext context) {
@@ -23,8 +25,8 @@ class MyDayCardView extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final secondaryText =
         isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
-    final accent =
-        isDark ? TodoColors.attentionDark : TodoColors.attentionLight;
+    final accent = accentColor ??
+        (isDark ? TodoColors.attentionDark : TodoColors.attentionLight);
 
     return Card(
       color: cardColor,
@@ -58,6 +60,7 @@ class TaskSchedulingCardView extends StatelessWidget {
     required this.onClearDueDate,
     required this.onPickRecurrence,
     required this.onClearRecurrence,
+    this.accentColor,
   });
 
   final TaskItem task;
@@ -69,6 +72,7 @@ class TaskSchedulingCardView extends StatelessWidget {
   final VoidCallback onClearDueDate;
   final VoidCallback onPickRecurrence;
   final VoidCallback onClearRecurrence;
+  final Color? accentColor;
 
   @override
   Widget build(BuildContext context) {
@@ -76,8 +80,8 @@ class TaskSchedulingCardView extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final secondaryText =
         isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
-    final accent =
-        isDark ? TodoColors.attentionDark : TodoColors.attentionLight;
+    final accent = accentColor ??
+        (isDark ? TodoColors.attentionDark : TodoColors.attentionLight);
 
     return Card(
       color: cardColor,

@@ -85,11 +85,11 @@ class TodoColors {
     ListThemeColor themeColor, {
     Brightness brightness = Brightness.light,
   }) {
-    if (brightness == Brightness.dark && isLightTheme(themeColor)) {
+    if (brightness == Brightness.dark) {
       return const LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [Color(0xFF121212), Color(0xFF1A1A1A)],
+        colors: [primaryBackgroundDark, primaryBackgroundDark],
       );
     }
 
@@ -162,23 +162,22 @@ class TodoColors {
     ListThemeColor themeColor, {
     Brightness brightness = Brightness.light,
   }) {
-    if (!isLightTheme(themeColor)) return Colors.white;
     if (brightness == Brightness.dark) {
-      return switch (themeColor) {
-        ListThemeColor.lightBlue => const Color(0xFFA0CBF1),
-        ListThemeColor.lightRose => const Color(0xFFF5B6C2),
-        ListThemeColor.lightTeal => const Color(0xFF8BD3CE),
-        ListThemeColor.lightGreen => const Color(0xFF9AD2BA),
-        ListThemeColor.lightPurple => const Color(0xFFD6BDE7),
-        ListThemeColor.lightRed => const Color(0xFFECBDA2),
-        ListThemeColor.lightGrey => const Color(0xFFBAC8D4),
-        _ => Colors.white,
-      };
+      return isLightTheme(themeColor)
+          ? _lightNightFor(themeColor)
+          : _darkBottomFor(themeColor);
     }
+    if (!isLightTheme(themeColor)) return Colors.white;
     return accentFor(themeColor);
   }
 
-  static Color swatchColorFor(ListThemeColor themeColor) {
+  static Color swatchColorFor(
+    ListThemeColor themeColor, {
+    Brightness brightness = Brightness.light,
+  }) {
+    if (brightness == Brightness.dark) {
+      return accentFor(themeColor, brightness: Brightness.dark);
+    }
     return switch (themeColor) {
       ListThemeColor.lightBlue => const Color(0xFFDFEDF9),
       ListThemeColor.lightRose => const Color(0xFFFFE4E9),
@@ -191,7 +190,15 @@ class TodoColors {
     };
   }
 
-  static Color accentFor(ListThemeColor themeColor) {
+  static Color accentFor(
+    ListThemeColor themeColor, {
+    Brightness brightness = Brightness.light,
+  }) {
+    if (brightness == Brightness.dark) {
+      return isLightTheme(themeColor)
+          ? _lightNightFor(themeColor)
+          : _darkBottomFor(themeColor);
+    }
     return switch (themeColor) {
       ListThemeColor.blue => const Color(0xFF5C70BE),
       ListThemeColor.rose => const Color(0xFFC14C6C),

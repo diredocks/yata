@@ -650,9 +650,13 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
-                color: TodoColors.isLightTheme(currentList.themeColor)
-                    ? Colors.white.withValues(alpha: 0.72)
-                    : Colors.black.withValues(alpha: 0.25),
+                color: currentList.themePhoto != null
+                    ? Colors.black.withValues(alpha: 0.35)
+                    : (Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white.withValues(alpha: 0.10)
+                        : (TodoColors.isLightTheme(currentList.themeColor)
+                            ? Colors.white.withValues(alpha: 0.72)
+                            : Colors.black.withValues(alpha: 0.25))),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Row(
@@ -706,7 +710,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         : baseTitle;
     final accentColor = currentList.themePhoto != null
         ? TodoColors.photoFabBackgroundFor(currentList.themePhoto!)
-        : TodoColors.accentFor(currentList.themeColor);
+        : TodoColors.accentFor(
+            currentList.themeColor,
+            brightness: brightness,
+          );
     final gradient = TodoColors.gradientFor(
       currentList.themeColor,
       brightness: brightness,
@@ -859,17 +866,12 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          if (currentList.themePhoto != null) ...[
+          if (currentList.themePhoto != null)
             Image.asset(
               TodoColors.photoAssetFor(currentList.themePhoto!),
               fit: BoxFit.cover,
-            ),
-            Container(
-              color: Colors.black.withValues(
-                alpha: isDark ? 0.35 : 0.12,
-              ),
-            ),
-          ] else
+            )
+          else
             DecoratedBox(decoration: BoxDecoration(gradient: gradient)),
           SafeArea(
             bottom: false,
@@ -1412,7 +1414,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                       brightness: brightness,
                     ),
               foregroundColor: currentList.themePhoto != null
-                  ? Colors.white
+                  ? (isDark ? Colors.black : Colors.white)
                   : TodoColors.fabForegroundFor(
                       currentList.themeColor,
                       brightness: brightness,

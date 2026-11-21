@@ -16,6 +16,7 @@ class StepsSection extends StatefulWidget {
     required this.onPromoteStepToTask,
     required this.onDeleteStep,
     required this.onAddStep,
+    this.accentColor,
   });
 
   final TaskItem task;
@@ -25,6 +26,7 @@ class StepsSection extends StatefulWidget {
   final ValueChanged<String> onPromoteStepToTask;
   final ValueChanged<String> onDeleteStep;
   final ValueChanged<String> onAddStep;
+  final Color? accentColor;
 
   @override
   State<StepsSection> createState() => _StepsSectionState();
@@ -72,8 +74,8 @@ class _StepsSectionState extends State<StepsSection> {
     final isDark = theme.brightness == Brightness.dark;
     final secondaryText =
         isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
-    final accent =
-        isDark ? TodoColors.attentionDark : TodoColors.attentionLight;
+    final accent = widget.accentColor ??
+        (isDark ? TodoColors.attentionDark : TodoColors.attentionLight);
 
     return Material(
       color: widget.backgroundColor,
@@ -86,6 +88,7 @@ class _StepsSectionState extends State<StepsSection> {
                 TaskCheckbox(
                   isChecked: step.isCompleted,
                   onTap: () => widget.onToggleStepCompleted(step.id),
+                  accentColor: accent,
                   size: 18,
                 ),
                 const SizedBox(width: 6),

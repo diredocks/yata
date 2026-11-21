@@ -146,14 +146,18 @@ class _ThemePickerViewState extends State<ThemePickerView> {
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: TodoColors.swatchColorFor(color),
+                            color: TodoColors.swatchColorFor(
+                              color,
+                              brightness: theme.brightness,
+                            ),
                             shape: BoxShape.circle,
                             border: isSelected
                                 ? Border.all(
                                     color: theme.colorScheme.onSurface,
                                     width: 2.5,
                                   )
-                                : (TodoColors.isLightTheme(color)
+                                : (TodoColors.isLightTheme(color) &&
+                                        theme.brightness == Brightness.light
                                     ? Border.all(
                                         color: TodoColors.accentFor(color)
                                             .withValues(alpha: 0.45),
@@ -165,9 +169,11 @@ class _ThemePickerViewState extends State<ThemePickerView> {
                               ? Icon(
                                   Icons.check,
                                   size: 18,
-                                  color: TodoColors.isLightTheme(color)
-                                      ? TodoColors.accentFor(color)
-                                      : Colors.white,
+                                  color: theme.brightness == Brightness.dark
+                                      ? Colors.black
+                                      : (TodoColors.isLightTheme(color)
+                                          ? TodoColors.accentFor(color)
+                                          : Colors.white),
                                 )
                               : null,
                         ),

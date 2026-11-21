@@ -190,14 +190,22 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
     final secondaryText =
         isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
 
+    final originList =
+        state.lists.where((l) => l.id == task.listId).firstOrNull;
+    final listAccent = originList == null
+        ? (isDark ? TodoColors.attentionDark : TodoColors.attentionLight)
+        : (originList.themePhoto != null
+            ? TodoColors.photoFabBackgroundFor(originList.themePhoto!)
+            : TodoColors.accentFor(
+                originList.themeColor,
+                brightness: theme.brightness,
+              ));
     final originListTitle = widget.listTitle ??
-        state.lists
-            .where((l) => l.id == task.listId)
-            .map(
-              (l) => l.smartType == SmartListType.tasks ? l10n.tasks : l.title,
-            )
-            .firstOrNull ??
-        l10n.tasks;
+        (originList == null
+            ? l10n.tasks
+            : (originList.smartType == SmartListType.tasks
+                ? l10n.tasks
+                : originList.title));
 
     return Scaffold(
       backgroundColor: bodyBg,
@@ -208,6 +216,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
               task: task,
               originListTitle: originListTitle,
               backgroundColor: primaryBg,
+              accentColor: listAccent,
               onToggleCompleted: () => notifier.toggleTaskCompleted(task.id),
               onToggleImportant: () => notifier.toggleTaskImportant(task.id),
               onTitleSubmitted: (val) => notifier.updateTaskTitle(task.id, val),
@@ -220,6 +229,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                   StepsSection(
                     task: task,
                     backgroundColor: primaryBg,
+                    accentColor: listAccent,
                     onToggleStepCompleted: (stepId) =>
                         notifier.toggleStepCompleted(task.id, stepId),
                     onRenameStep: (stepId, val) =>
@@ -240,12 +250,14 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                         MyDayCardView(
                           task: task,
                           cardColor: cardBg,
+                          accentColor: listAccent,
                           onToggleMyDay: () =>
                               notifier.toggleTaskMyDay(task.id),
                         ),
                         TaskSchedulingCardView(
                           task: task,
                           cardColor: cardBg,
+                          accentColor: listAccent,
                           recurrenceLabel:
                               _recurrenceLabel(l10n, task.recurrence),
                           onPickReminder: () =>
