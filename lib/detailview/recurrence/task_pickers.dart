@@ -33,6 +33,40 @@ String formatReminderLabel(BuildContext context, DateTime reminderAt) {
   return '${l10n.remindMeAt(timeStr)}, ${formatRelativeDate(context, reminderAt)}';
 }
 
+/// Formats task creation timestamp matching `yp.r.j` in the original app:
+/// - Today: `Created a few moments ago` / `Created X minute(s) ago` / `Created X hour(s) ago`
+/// - Yesterday: `Created yesterday`
+/// - Earlier: `Created on <MMMEd>` (or `<yMMMEd>` if different year)
+String formatCreatedDateLabel(
+  BuildContext context,
+  DateTime createdAt, {
+  DateTime? now,
+}) {
+  final l10n = AppLocalizations.of(context);
+  final current = now ?? DateTime.now();
+  final today = DateTime(current.year, current.month, current.day);
+  final createdDay = DateTime(createdAt.year, createdAt.month, createdAt.day);
+  final dayDiff = today.difference(createdDay).inDays;
+
+  if (dayDiff == 0) {
+    final diff = current.difference(createdAt);
+    if (diff.inHours > 0) {
+      return l10n.createdAgo(l10n.createdHoursAgo(diff.inHours));
+    }
+    if (diff.inMinutes > 0) {
+      return l10n.createdAgo(l10n.createdMinutesAgo(diff.inMinutes));
+    }
+    return l10n.createdAgo(l10n.createdMomentsAgo);
+  }
+  if (dayDiff == 1) {
+    return l10n.createdAgo(l10n.createdYesterday);
+  }
+  final formatted = createdAt.year != current.year
+      ? DateFormat.yMMMEd().format(createdAt)
+      : DateFormat.MMMEd().format(createdAt);
+  return l10n.createdOn(formatted);
+}
+
 /// Computes the default due date when setting [recurrence] with no due date,
 /// matching `RecurrenceUtils.java` (`yp.v1.a`) in `mstodo.apk`.
 DateTime? defaultDueDateForRecurrence(

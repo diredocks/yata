@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
@@ -300,9 +299,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                         const SizedBox(width: 16),
                         Expanded(
                           child: Text(
-                            l10n.createdOn(
-                              DateFormat.MMMd().format(task.createdAt),
-                            ),
+                            formatCreatedDateLabel(context, task.createdAt),
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: secondaryText,
                             ),

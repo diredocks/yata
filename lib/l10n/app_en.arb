@@ -47,6 +47,26 @@
       "date": {"type": "String"}
     }
   },
+  "createdAgo": "Created {time}",
+  "@createdAgo": {
+    "placeholders": {
+      "time": {"type": "String"}
+    }
+  },
+  "createdMomentsAgo": "a few moments ago",
+  "createdMinutesAgo": "{count, plural, =1{1 minute ago} other{{count} minutes ago}}",
+  "@createdMinutesAgo": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "createdHoursAgo": "{count, plural, =1{1 hour ago} other{{count} hours ago}}",
+  "@createdHoursAgo": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "createdYesterday": "yesterday",
   "search": "Search",
   "searchHint": "Search tasks",
   "searchEmptyPrompt": "What would you like to find?",
