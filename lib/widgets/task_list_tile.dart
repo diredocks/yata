@@ -136,15 +136,15 @@ class TaskListTile extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: const EdgeInsets.only(bottom: 2),
       child: Material(
         color: cardColor,
-        borderRadius: BorderRadius.circular(8),
-        elevation: 0,
+        borderRadius: BorderRadius.circular(4),
+        elevation: 1,
         child: InkWell(
           onTap: onTap,
           onLongPress: onLongPress,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(4),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 52),
             child: Padding(

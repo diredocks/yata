@@ -33,6 +33,18 @@ enum ListThemeColor {
   lightGrey,
 }
 
+enum ListThemePhoto {
+  beach,
+  desert,
+  fern,
+  field,
+  gradient,
+  lighthouse,
+  safari,
+  sea,
+  tvTower,
+}
+
 enum TaskSortOption {
   defaultOrder,
   importance,
@@ -50,6 +62,7 @@ class TodoList {
     this.smartType,
     this.groupId,
     this.themeColor = ListThemeColor.blue,
+    this.themePhoto,
     this.icon = Icons.format_list_bulleted,
     this.sortOption = TaskSortOption.defaultOrder,
     this.sortAscending = true,
@@ -61,6 +74,7 @@ class TodoList {
   final SmartListType? smartType;
   final String? groupId;
   final ListThemeColor themeColor;
+  final ListThemePhoto? themePhoto;
   final IconData icon;
   final TaskSortOption sortOption;
   final bool sortAscending;
@@ -75,6 +89,8 @@ class TodoList {
     String? groupId,
     bool clearGroupId = false,
     ListThemeColor? themeColor,
+    ListThemePhoto? themePhoto,
+    bool clearThemePhoto = false,
     IconData? icon,
     TaskSortOption? sortOption,
     bool? sortAscending,
@@ -86,6 +102,7 @@ class TodoList {
       smartType: smartType ?? this.smartType,
       groupId: clearGroupId ? null : (groupId ?? this.groupId),
       themeColor: themeColor ?? this.themeColor,
+      themePhoto: clearThemePhoto ? null : (themePhoto ?? this.themePhoto),
       icon: icon ?? this.icon,
       sortOption: sortOption ?? this.sortOption,
       sortAscending: sortAscending ?? this.sortAscending,
@@ -112,6 +129,7 @@ class TodoList {
       'smartType': smartType?.name,
       'groupId': groupId,
       'themeColor': themeColor.name,
+      'themePhoto': themePhoto?.name,
       'sortOption': sortOption.name,
       'sortAscending': sortAscending,
       'showCompleted': showCompleted,
@@ -128,6 +146,10 @@ class TodoList {
       (e) => e.name == colorName,
       orElse: () => ListThemeColor.blue,
     );
+    final photoName = json['themePhoto'] as String?;
+    final themePhoto = photoName == null
+        ? null
+        : ListThemePhoto.values.where((e) => e.name == photoName).firstOrNull;
     final sortName = json['sortOption'] as String? ?? 'defaultOrder';
     final sortOption = TaskSortOption.values.firstWhere(
       (e) => e.name == sortName,
@@ -140,6 +162,7 @@ class TodoList {
       smartType: smartType,
       groupId: json['groupId'] as String?,
       themeColor: themeColor,
+      themePhoto: themePhoto,
       icon: iconForSmartType(smartType),
       sortOption: sortOption,
       sortAscending: json['sortAscending'] as bool? ?? true,

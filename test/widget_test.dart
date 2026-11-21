@@ -291,5 +291,20 @@ void main() {
     await tester.tap(find.text('Planned'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Today'), findsWidgets);
+
+    // Switch to a Photo theme in Change theme dialog
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Change theme'));
+    await tester.pumpAndSettle();
+    expect(find.text('Color'), findsOneWidget);
+    expect(find.text('Photo'), findsOneWidget);
+    await tester.tap(find.text('Photo'));
+    await tester.pumpAndSettle();
+
+    // Tap first photo thumbnail inside the AlertDialog
+    await tester.tap(find.byKey(const ValueKey('photo_theme_beach')));
+    await tester.pumpAndSettle();
+    expect(container.read(todoProvider).selectedList.themePhoto, isNotNull);
   });
 }

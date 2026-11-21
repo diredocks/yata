@@ -299,6 +299,36 @@ class TodoColors {
         ? Colors.white
         : _lightTopFor(themeColor);
   }
+
+  static String photoAssetFor(ListThemePhoto photo) {
+    final fileName = switch (photo) {
+      ListThemePhoto.beach => 'photo_beach.webp',
+      ListThemePhoto.desert => 'photo_desert.webp',
+      ListThemePhoto.fern => 'photo_fern.webp',
+      ListThemePhoto.field => 'photo_field.webp',
+      ListThemePhoto.gradient => 'photo_gradient.webp',
+      ListThemePhoto.lighthouse => 'photo_lighthouse.webp',
+      ListThemePhoto.safari => 'photo_safari.webp',
+      ListThemePhoto.sea => 'photo_sea.webp',
+      ListThemePhoto.tvTower => 'photo_tv_tower.webp',
+    };
+    return 'assets/themes/$fileName';
+  }
+
+  /// Exact photo FAB colors from mstodo.apk (`colors.xml` `image_*_fab_color`).
+  static Color photoFabBackgroundFor(ListThemePhoto photo) {
+    return switch (photo) {
+      ListThemePhoto.beach => const Color(0xFF8888B4),
+      ListThemePhoto.desert => const Color(0xFF377D95),
+      ListThemePhoto.fern => const Color(0xFF397946),
+      ListThemePhoto.field => const Color(0xFF4C7999),
+      ListThemePhoto.gradient => const Color(0xFFCD415E),
+      ListThemePhoto.lighthouse => const Color(0xFF488399),
+      ListThemePhoto.safari => const Color(0xFF5674AF),
+      ListThemePhoto.sea => const Color(0xFF37807B),
+      ListThemePhoto.tvTower => const Color(0xFF437D8A),
+    };
+  }
 }
 
 class TodoTheme {

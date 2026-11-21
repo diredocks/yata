@@ -332,64 +332,166 @@ class _SingleFieldDialogState extends State<_SingleFieldDialog> {
 Future<void> showChangeThemeDialog({
   required BuildContext context,
   required ListThemeColor currentColor,
-  required void Function(ListThemeColor color) onSelectColor,
+  ListThemePhoto? currentPhoto,
+  required void Function(ListThemeColor color, ListThemePhoto? photo)
+      onSelectTheme,
 }) async {
-  final l10n = AppLocalizations.of(context);
-
   await showDialog<void>(
     context: context,
-    builder: (dialogContext) {
-      return AlertDialog(
-        title: Text(l10n.changeTheme),
-        content: Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            for (final color in ListThemeColor.values)
-              GestureDetector(
-                onTap: () {
-                  onSelectColor(color);
-                  Navigator.of(dialogContext).pop();
-                },
-                child: Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: TodoColors.swatchColorFor(color),
-                    shape: BoxShape.circle,
-                    border: currentColor == color
-                        ? Border.all(
-                            color: Theme.of(dialogContext).colorScheme.onSurface,
-                            width: 2.5,
-                          )
-                        : (TodoColors.isLightTheme(color)
-                            ? Border.all(
-                                color: TodoColors.accentFor(color)
-                                    .withValues(alpha: 0.45),
-                                width: 1,
-                              )
-                            : null),
-                  ),
-                  child: currentColor == color
-                      ? Icon(
-                          Icons.check,
-                          size: 18,
-                          color: TodoColors.isLightTheme(color)
-                              ? TodoColors.accentFor(color)
-                              : Colors.white,
-                        )
-                      : null,
-                ),
-              ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: Text(l10n.cancel),
-          ),
-        ],
-      );
-    },
+    builder: (dialogContext) => _ChangeThemeDialog(
+      currentColor: currentColor,
+      currentPhoto: currentPhoto,
+      onSelectTheme: onSelectTheme,
+    ),
   );
+}
+
+class _ChangeThemeDialog extends StatefulWidget {
+  const _ChangeThemeDialog({
+    required this.currentColor,
+    this.currentPhoto,
+    required this.onSelectTheme,
+  });
+
+  final ListThemeColor currentColor;
+  final ListThemePhoto? currentPhoto;
+  final void Function(ListThemeColor color, ListThemePhoto? photo)
+      onSelectTheme;
+
+  @override
+  State<_ChangeThemeDialog> createState() => _ChangeThemeDialogState();
+}
+
+class _ChangeThemeDialogState extends State<_ChangeThemeDialog> {
+  late bool _showPhotos;
+
+  @override
+  void initState() {
+    super.initState();
+    _showPhotos = widget.currentPhoto != null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+
+    return AlertDialog(
+      title: Text(l10n.changeTheme),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              ChoiceChip(
+                label: Text(l10n.themeTabColor),
+                selected: !_showPhotos,
+                onSelected: (_) => setState(() => _showPhotos = false),
+              ),
+              const SizedBox(width: 8),
+              ChoiceChip(
+                label: Text(l10n.themeTabPhoto),
+                selected: _showPhotos,
+                onSelected: (_) => setState(() => _showPhotos = true),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (!_showPhotos)
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final color in ListThemeColor.values)
+                  GestureDetector(
+                    onTap: () {
+                      widget.onSelectTheme(color, null);
+                      Navigator.of(context).pop();
+                    },
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: TodoColors.swatchColorFor(color),
+                        shape: BoxShape.circle,
+                        border: widget.currentPhoto == null &&
+                                widget.currentColor == color
+                            ? Border.all(
+                                color: theme.colorScheme.onSurface,
+                                width: 2.5,
+                              )
+                            : (TodoColors.isLightTheme(color)
+                                ? Border.all(
+                                    color: TodoColors.accentFor(color)
+                                        .withValues(alpha: 0.45),
+                                    width: 1,
+                                  )
+                                : null),
+                      ),
+                      child: widget.currentPhoto == null &&
+                              widget.currentColor == color
+                          ? Icon(
+                              Icons.check,
+                              size: 18,
+                              color: TodoColors.isLightTheme(color)
+                                  ? TodoColors.accentFor(color)
+                                  : Colors.white,
+                            )
+                          : null,
+                    ),
+                  ),
+              ],
+            )
+          else
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final photo in ListThemePhoto.values)
+                  GestureDetector(
+                    key: ValueKey('photo_theme_${photo.name}'),
+                    onTap: () {
+                      widget.onSelectTheme(widget.currentColor, photo);
+                      Navigator.of(context).pop();
+                    },
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: widget.currentPhoto == photo
+                            ? Border.all(
+                                color: theme.colorScheme.primary,
+                                width: 2.5,
+                              )
+                            : null,
+                        image: DecorationImage(
+                          image: AssetImage(TodoColors.photoAssetFor(photo)),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      child: widget.currentPhoto == photo
+                          ? const Center(
+                              child: Icon(
+                                Icons.check,
+                                size: 20,
+                                color: Colors.white,
+                              ),
+                            )
+                          : null,
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.cancel),
+        ),
+      ],
+    );
+  }
 }

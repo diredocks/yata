@@ -446,11 +446,19 @@ class TodoNotifier extends Notifier<TodoState> {
     _storage.saveLists(updated);
   }
 
-  void changeListTheme(String listId, ListThemeColor themeColor) {
+  void changeListTheme(
+    String listId,
+    ListThemeColor themeColor, {
+    ListThemePhoto? themePhoto,
+  }) {
     final updated = [
       for (final list in state.lists)
         if (list.id == listId)
-          list.copyWith(themeColor: themeColor)
+          list.copyWith(
+            themeColor: themeColor,
+            themePhoto: themePhoto,
+            clearThemePhoto: themePhoto == null,
+          )
         else
           list,
     ];

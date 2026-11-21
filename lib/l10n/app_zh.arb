@@ -109,5 +109,7 @@
   "no": "否",
   "plannedEarlier": "先前",
   "plannedThisWeek": "本周",
-  "plannedLater": "稍后"
+  "plannedLater": "稍后",
+  "themeTabColor": "颜色",
+  "themeTabPhoto": "照片"
 }

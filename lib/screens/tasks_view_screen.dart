@@ -38,7 +38,7 @@ class TasksViewScreen extends ConsumerStatefulWidget {
 class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   bool _completedExpanded = true;
   bool _isReordering = false;
-  bool _isScrolled = false;
+  double _scrollOffset = 0.0;
   final Set<String> _multiSelectedIds = {};
   final Set<String> _collapsedPlannedBuckets = {};
   final Set<String> _collapsedCompletedListBuckets = {};
@@ -528,8 +528,12 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         showChangeThemeDialog(
           context: context,
           currentColor: currentList.themeColor,
-          onSelectColor: (color) =>
-              notifier.changeListTheme(currentList.id, color),
+          currentPhoto: currentList.themePhoto,
+          onSelectTheme: (color, photo) => notifier.changeListTheme(
+            currentList.id,
+            color,
+            themePhoto: photo,
+          ),
         );
       case _ListMenuAction.toggleCompleted:
         notifier.toggleListShowCompleted(currentList.id);
@@ -685,15 +689,19 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final brightness = Theme.of(context).brightness;
     final currentList = state.selectedList;
     final listTitle = _localizedListTitle(l10n, currentList);
-    final accentColor = TodoColors.accentFor(currentList.themeColor);
+    final accentColor = currentList.themePhoto != null
+        ? TodoColors.photoFabBackgroundFor(currentList.themePhoto!)
+        : TodoColors.accentFor(currentList.themeColor);
     final gradient = TodoColors.gradientFor(
       currentList.themeColor,
       brightness: brightness,
     );
-    final headerFg = TodoColors.headerForegroundFor(
-      currentList.themeColor,
-      brightness: brightness,
-    );
+    final headerFg = currentList.themePhoto != null
+        ? Colors.white
+        : TodoColors.headerForegroundFor(
+            currentList.themeColor,
+            brightness: brightness,
+          );
 
     final allTasks = state.tasksForList(currentList);
     final isCompletedList = currentList.smartType == SmartListType.completed;
@@ -809,20 +817,35 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
               ],
             )
           : null,
-      body: Container(
-        decoration: BoxDecoration(gradient: gradient),
-        child: SafeArea(
-          bottom: false,
-          child: NotificationListener<ScrollNotification>(
-            onNotification: (notification) {
-              final scrolled = notification.metrics.pixels > 4;
-              if (scrolled != _isScrolled) {
-                setState(() => _isScrolled = scrolled);
-              }
-              return false;
-            },
-            child: CustomScrollView(
-              slivers: [
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (currentList.themePhoto != null) ...[
+            Image.asset(
+              TodoColors.photoAssetFor(currentList.themePhoto!),
+              fit: BoxFit.cover,
+            ),
+            Container(
+              color: Colors.black.withValues(
+                alpha: isDark ? 0.35 : 0.12,
+              ),
+            ),
+          ] else
+            DecoratedBox(decoration: BoxDecoration(gradient: gradient)),
+          SafeArea(
+            bottom: false,
+            child: Stack(
+              children: [
+                NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    final offset = notification.metrics.pixels;
+                    if ((offset - _scrollOffset).abs() > 0.5) {
+                      setState(() => _scrollOffset = offset);
+                    }
+                    return false;
+                  },
+                  child: CustomScrollView(
+                    slivers: [
               if (!_isMultiSelecting)
                 SliverAppBar(
                   backgroundColor: Colors.transparent,
@@ -830,6 +853,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                   expandedHeight: subtitle != null ? 144 : 116,
                   pinned: true,
                   elevation: 0,
+                  scrolledUnderElevation: 0,
                   leading: widget.onBackPressed != null
                       ? IconButton(
                           onPressed: widget.onBackPressed,
@@ -862,75 +886,90 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                         ),
                       ),
                   ],
-                  flexibleSpace: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final topPadding = MediaQuery.paddingOf(context).top;
-                      final collapsedHeight = kToolbarHeight + topPadding;
-                      final expandedHeight =
-                          (subtitle != null ? 144.0 : 116.0) + topPadding;
-                      final denom =
-                          (expandedHeight - collapsedHeight).clamp(1.0, 200.0);
-                      final t = ((expandedHeight - constraints.maxHeight) /
-                              denom)
-                          .clamp(0.0, 1.0);
-                      final startPad = widget.onBackPressed != null
-                          ? 16.0 + 40.0 * t
-                          : 15.0;
-                      final bottomPad = subtitle != null
-                          ? 42.0 - 20.0 * t
-                          : 14.0;
-                      final subtitleSize = 20.0 - 7.0 * t;
-
-                      return FlexibleSpaceBar(
-                        expandedTitleScale: 1.5,
-                        titlePadding: EdgeInsetsDirectional.only(
-                          start: startPad,
-                          bottom: bottomPad,
-                          end: 56,
-                        ),
-                        title: Text(
-                          listTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: headerFg,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 20,
+                  flexibleSpace: ClipRect(
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (currentList.themePhoto != null) ...[
+                          Image.asset(
+                            TodoColors.photoAssetFor(currentList.themePhoto!),
+                            fit: BoxFit.cover,
+                            alignment: Alignment.topCenter,
                           ),
-                        ),
-                        background: subtitle != null
-                            ? Align(
-                                alignment: AlignmentDirectional.bottomStart,
-                                child: Padding(
-                                  padding: EdgeInsetsDirectional.only(
-                                    start: startPad,
-                                    bottom: 10.0 - 4.0 * t,
-                                    end: 56,
-                                  ),
-                                  child: Text(
-                                    subtitle,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: headerFg.withValues(alpha: 0.92),
-                                      fontSize: subtitleSize,
-                                      fontWeight: FontWeight.w400,
-                                    ),
-                                  ),
-                                ),
-                              )
-                            : null,
-                      );
-                    },
-                  ),
-                ),
+                          Container(
+                            color: Colors.black.withValues(
+                              alpha: isDark ? 0.35 : 0.12,
+                            ),
+                          ),
+                        ] else
+                          ColoredBox(color: gradient.colors.first),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final topPadding = MediaQuery.paddingOf(context).top;
+                            final collapsedHeight = kToolbarHeight + topPadding;
+                            final expandedHeight =
+                                (subtitle != null ? 144.0 : 116.0) + topPadding;
+                            final denom = (expandedHeight - collapsedHeight)
+                                .clamp(1.0, 200.0);
+                            final t =
+                                ((expandedHeight - constraints.maxHeight) /
+                                        denom)
+                                    .clamp(0.0, 1.0);
+                            final startPad = widget.onBackPressed != null
+                                ? 16.0 + 40.0 * t
+                                : 15.0;
+                            final bottomPad = subtitle != null
+                                ? 42.0 - 26.0 * t
+                                : 16.0;
+                            final subtitleSize = 20.0 - 7.0 * t;
 
-              // Header shadow (tasks_list_layout.xml header_shadow)
-              if (_isScrolled && !_isMultiSelecting)
-                SliverToBoxAdapter(
-                  child: Container(
-                    height: 3,
-                    decoration: TodoColors.horizontalShadowDecoration,
+                            return FlexibleSpaceBar(
+                              expandedTitleScale: 1.5,
+                              titlePadding: EdgeInsetsDirectional.only(
+                                start: startPad,
+                                bottom: bottomPad,
+                                end: 56,
+                              ),
+                              title: Text(
+                                listTitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: headerFg,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 20,
+                                ),
+                              ),
+                              background: subtitle != null
+                                  ? Align(
+                                      alignment:
+                                          AlignmentDirectional.bottomStart,
+                                      child: Padding(
+                                        padding: EdgeInsetsDirectional.only(
+                                          start: startPad,
+                                          bottom: 10.0 - 4.0 * t,
+                                          end: 56,
+                                        ),
+                                        child: Text(
+                                          subtitle,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: headerFg.withValues(
+                                              alpha: 0.92,
+                                            ),
+                                            fontSize: subtitleSize,
+                                            fontWeight: FontWeight.w400,
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  : null,
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ),
 
@@ -1025,10 +1064,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
               // Task list (clean themed background when empty, matching original MS To Do)
               if (activeTasks.isEmpty && completedTasks.isEmpty)
-                const SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: SizedBox.shrink(),
-                )
+                const SliverToBoxAdapter(child: SizedBox.shrink())
               else ...[
                 if (_isReordering)
                   SliverPadding(
@@ -1252,7 +1288,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
                 if (completedTasks.isNotEmpty && _completedExpanded)
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(8, 2, 8, 84),
+                    padding: const EdgeInsets.fromLTRB(8, 2, 8, 16),
                     sliver: SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
@@ -1280,30 +1316,106 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                         childCount: completedTasks.length,
                       ),
                     ),
-                  )
-                else
-                  const SliverToBoxAdapter(child: SizedBox(height: 84)),
+                  ),
               ],
+
+              // Ruled lines only in remaining empty space below all tasks/buckets
+              SliverFillRemaining(
+                hasScrollBody: false,
+                fillOverscroll: true,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 84),
+                  child: CustomPaint(
+                    painter: _RuledLinesPainter(
+                      lineColor: currentList.themePhoto != null
+                          ? Colors.white.withValues(alpha: 0.22)
+                          : (TodoColors.isLightTheme(currentList.themeColor) &&
+                                  !isDark
+                              ? Colors.black.withValues(alpha: 0.08)
+                              : Colors.white.withValues(alpha: 0.16)),
+                      rowHeight: 54.0,
+                      horizontalInset: 8.0,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
           ),
+                if (_scrollOffset > 4 && !_isMultiSelecting)
+                  Positioned(
+                    top: ((subtitle != null ? 144.0 : 116.0) - _scrollOffset)
+                        .clamp(
+                      kToolbarHeight,
+                      subtitle != null ? 144.0 : 116.0,
+                    ),
+                    left: 0,
+                    right: 0,
+                    child: IgnorePointer(
+                      child: Container(
+                        height: 3,
+                        decoration: TodoColors.horizontalShadowDecoration,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
         ),
+        ],
       ),
       floatingActionButton: (_isReordering || _isMultiSelecting || isCompletedList)
           ? null
           : FloatingActionButton(
               onPressed: () => _openAddTaskSheet(state),
-              backgroundColor: TodoColors.fabBackgroundFor(
-                currentList.themeColor,
-                brightness: brightness,
-              ),
-              foregroundColor: TodoColors.fabForegroundFor(
-                currentList.themeColor,
-                brightness: brightness,
-              ),
+              backgroundColor: currentList.themePhoto != null
+                  ? TodoColors.photoFabBackgroundFor(currentList.themePhoto!)
+                  : TodoColors.fabBackgroundFor(
+                      currentList.themeColor,
+                      brightness: brightness,
+                    ),
+              foregroundColor: currentList.themePhoto != null
+                  ? Colors.white
+                  : TodoColors.fabForegroundFor(
+                      currentList.themeColor,
+                      brightness: brightness,
+                    ),
               tooltip: l10n.addTaskPlaceholder,
               child: const Icon(Icons.add),
             ),
     );
+  }
+}
+
+class _RuledLinesPainter extends CustomPainter {
+  const _RuledLinesPainter({
+    required this.lineColor,
+    required this.rowHeight,
+    required this.horizontalInset,
+  });
+
+  final Color lineColor;
+  final double rowHeight;
+  final double horizontalInset;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = lineColor
+      ..strokeWidth = 1.0;
+
+    for (var y = rowHeight; y < size.height; y += rowHeight) {
+      canvas.drawLine(
+        Offset(horizontalInset, y),
+        Offset(size.width - horizontalInset, y),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _RuledLinesPainter oldDelegate) {
+    return oldDelegate.lineColor != lineColor ||
+        oldDelegate.rowHeight != rowHeight ||
+        oldDelegate.horizontalInset != horizontalInset;
   }
 }

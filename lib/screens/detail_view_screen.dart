@@ -236,7 +236,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(6, 0, 8, 12),
+                    padding: const EdgeInsets.fromLTRB(6, 0, 4, 12),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
@@ -304,12 +304,6 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                   ),
                 ],
               ),
-            ),
-
-            // Header shadow (default_shadow_horizontal.xml)
-            Container(
-              height: 3,
-              decoration: TodoColors.horizontalShadowDecoration,
             ),
 
             // Body (detailview_content.xml)
@@ -388,42 +382,46 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                                         ),
                                       ),
                               ),
-                              PopupMenuButton<String>(
-                                icon: Icon(
-                                  Icons.more_vert,
-                                  size: 18,
-                                  color: secondaryText,
+                              Padding(
+                                padding: const EdgeInsets.only(right: 2),
+                                child: PopupMenuButton<String>(
+                                  icon: Icon(
+                                    Icons.more_vert,
+                                    size: 20,
+                                    color: secondaryText,
+                                  ),
+                                  onSelected: (action) {
+                                    if (action == 'promote') {
+                                      notifier.promoteStepToTask(
+                                        task.id,
+                                        step.id,
+                                      );
+                                    } else if (action == 'delete') {
+                                      notifier.deleteStep(task.id, step.id);
+                                    }
+                                  },
+                                  itemBuilder: (_) => [
+                                    PopupMenuItem(
+                                      value: 'promote',
+                                      child: ListTile(
+                                        leading: const Icon(Icons.add),
+                                        title: Text(l10n.promoteStepToTask),
+                                        contentPadding: EdgeInsets.zero,
+                                        dense: true,
+                                      ),
+                                    ),
+                                    PopupMenuItem(
+                                      value: 'delete',
+                                      child: ListTile(
+                                        leading:
+                                            const Icon(Icons.delete_outline),
+                                        title: Text(l10n.deleteStep),
+                                        contentPadding: EdgeInsets.zero,
+                                        dense: true,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                onSelected: (action) {
-                                  if (action == 'promote') {
-                                    notifier.promoteStepToTask(
-                                      task.id,
-                                      step.id,
-                                    );
-                                  } else if (action == 'delete') {
-                                    notifier.deleteStep(task.id, step.id);
-                                  }
-                                },
-                                itemBuilder: (_) => [
-                                  PopupMenuItem(
-                                    value: 'promote',
-                                    child: ListTile(
-                                      leading: const Icon(Icons.add),
-                                      title: Text(l10n.promoteStepToTask),
-                                      contentPadding: EdgeInsets.zero,
-                                      dense: true,
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'delete',
-                                    child: ListTile(
-                                      leading: const Icon(Icons.delete_outline),
-                                      title: Text(l10n.deleteStep),
-                                      contentPadding: EdgeInsets.zero,
-                                      dense: true,
-                                    ),
-                                  ),
-                                ],
                               ),
                             ],
                           ),
@@ -478,6 +476,11 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                       ],
                     ),
                   ),
+                  // Header + Steps shadow (default_shadow_horizontal.xml)
+                  Container(
+                    height: 3,
+                    decoration: TodoColors.horizontalShadowDecoration,
+                  ),
                   Padding(
                     padding: const EdgeInsets.all(8),
                     child: Column(
@@ -491,30 +494,22 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: ListTile(
-                      leading: Icon(
-                        Icons.wb_sunny_outlined,
-                        color: task.isInMyDay ? accent : secondaryText,
-                      ),
-                      title: Text(
-                        task.isInMyDay ? l10n.addedToMyDay : l10n.addToMyDay,
-                        style: TextStyle(
-                          color: task.isInMyDay ? accent : secondaryText,
-                        ),
-                      ),
-                      trailing: task.isInMyDay
-                          ? IconButton(
-                              onPressed: () =>
-                                  notifier.toggleTaskMyDay(task.id),
-                              icon: Icon(Icons.close,
-                                  size: 18, color: secondaryText),
-                            )
-                          : null,
+                    child: _DetailActionRow(
+                      icon: Icons.wb_sunny_outlined,
+                      iconColor: task.isInMyDay ? accent : secondaryText,
+                      label: task.isInMyDay
+                          ? l10n.addedToMyDay
+                          : l10n.addToMyDay,
+                      labelColor: task.isInMyDay ? accent : secondaryText,
+                      removeColor: secondaryText,
                       onTap: () {
                         if (!task.isInMyDay) {
                           notifier.toggleTaskMyDay(task.id);
                         }
                       },
+                      onRemove: task.isInMyDay
+                          ? () => notifier.toggleTaskMyDay(task.id)
+                          : null,
                     ),
                   ),
 
@@ -528,94 +523,65 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                     ),
                     child: Column(
                       children: [
-                        ListTile(
-                          leading: Icon(
-                            Icons.notifications_none,
-                            color: task.reminderAt != null
-                                ? accent
-                                : secondaryText,
-                          ),
-                          title: Text(
-                            task.reminderAt != null
-                                ? DateFormat.MMMd()
-                                    .add_jm()
-                                    .format(task.reminderAt!)
-                                : l10n.remindMe,
-                            style: TextStyle(
-                              color: task.reminderAt != null
-                                  ? accent
-                                  : secondaryText,
-                            ),
-                          ),
-                          trailing: task.reminderAt != null
-                              ? IconButton(
-                                  onPressed: () =>
-                                      notifier.setTaskReminder(task.id, null),
-                                  icon: Icon(Icons.close,
-                                      size: 18, color: secondaryText),
-                                )
-                              : null,
+                        _DetailActionRow(
+                          icon: Icons.notifications_none,
+                          iconColor: task.reminderAt != null
+                              ? accent
+                              : secondaryText,
+                          label: task.reminderAt != null
+                              ? DateFormat.MMMd()
+                                  .add_jm()
+                                  .format(task.reminderAt!)
+                              : l10n.remindMe,
+                          labelColor: task.reminderAt != null
+                              ? accent
+                              : secondaryText,
+                          removeColor: secondaryText,
                           onTap: () => _pickReminder(task, state.startOfWeek),
-                        ),
-                        const Divider(height: 1, indent: 64),
-                        ListTile(
-                          leading: Icon(
-                            Icons.calendar_today_outlined,
-                            color: task.dueDate != null
-                                ? (task.isOverdue
-                                    ? TodoColors.overdueRed
-                                    : accent)
-                                : secondaryText,
-                          ),
-                          title: Text(
-                            task.dueDate != null
-                                ? DateFormat.yMMMd().format(task.dueDate!)
-                                : l10n.addDueDate,
-                            style: TextStyle(
-                              color: task.dueDate != null
-                                  ? (task.isOverdue
-                                      ? TodoColors.overdueRed
-                                      : accent)
-                                  : secondaryText,
-                            ),
-                          ),
-                          trailing: task.dueDate != null
-                              ? IconButton(
-                                  onPressed: () =>
-                                      notifier.setTaskDueDate(task.id, null),
-                                  icon: Icon(Icons.close,
-                                      size: 18, color: secondaryText),
-                                )
+                          onRemove: task.reminderAt != null
+                              ? () => notifier.setTaskReminder(task.id, null)
                               : null,
-                          onTap: () => _pickDueDate(task, state.startOfWeek),
                         ),
                         const Divider(height: 1, indent: 64),
-                        ListTile(
-                          leading: Icon(
-                            Icons.repeat,
-                            color: task.recurrence != RecurrenceType.none
-                                ? accent
-                                : secondaryText,
-                          ),
-                          title: Text(
-                            _recurrenceLabel(l10n, task.recurrence),
-                            style: TextStyle(
-                              color: task.recurrence != RecurrenceType.none
-                                  ? accent
-                                  : secondaryText,
-                            ),
-                          ),
-                          trailing: task.recurrence != RecurrenceType.none
-                              ? IconButton(
-                                  onPressed: () => notifier.setTaskRecurrence(
+                        _DetailActionRow(
+                          icon: Icons.calendar_today_outlined,
+                          iconColor: task.dueDate != null
+                              ? (task.isOverdue
+                                  ? TodoColors.overdueRed
+                                  : accent)
+                              : secondaryText,
+                          label: task.dueDate != null
+                              ? DateFormat.yMMMd().format(task.dueDate!)
+                              : l10n.addDueDate,
+                          labelColor: task.dueDate != null
+                              ? (task.isOverdue
+                                  ? TodoColors.overdueRed
+                                  : accent)
+                              : secondaryText,
+                          removeColor: secondaryText,
+                          onTap: () => _pickDueDate(task, state.startOfWeek),
+                          onRemove: task.dueDate != null
+                              ? () => notifier.setTaskDueDate(task.id, null)
+                              : null,
+                        ),
+                        const Divider(height: 1, indent: 64),
+                        _DetailActionRow(
+                          icon: Icons.repeat,
+                          iconColor: task.recurrence != RecurrenceType.none
+                              ? accent
+                              : secondaryText,
+                          label: _recurrenceLabel(l10n, task.recurrence),
+                          labelColor: task.recurrence != RecurrenceType.none
+                              ? accent
+                              : secondaryText,
+                          removeColor: secondaryText,
+                          onTap: () => _pickRecurrence(task),
+                          onRemove: task.recurrence != RecurrenceType.none
+                              ? () => notifier.setTaskRecurrence(
                                     task.id,
                                     RecurrenceType.none,
-                                  ),
-                                  icon: Icon(Icons.close,
-                                      size: 18, color: secondaryText),
-                                )
+                                  )
                               : null,
-                          onTap: () => _pickRecurrence(task),
                         ),
                       ],
                     ),
@@ -709,6 +675,69 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Row layout matching `DetailViewCardRow` & `DetailViewRowRemove` in `styles.xml`.
+class _DetailActionRow extends StatelessWidget {
+  const _DetailActionRow({
+    required this.icon,
+    required this.iconColor,
+    required this.label,
+    required this.labelColor,
+    required this.removeColor,
+    required this.onTap,
+    this.onRemove,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String label;
+  final Color labelColor;
+  final Color removeColor;
+  final VoidCallback onTap;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 50),
+        child: Row(
+          children: [
+            const SizedBox(width: 16),
+            Icon(icon, size: 24, color: iconColor),
+            const SizedBox(width: 24),
+            Expanded(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      fontSize: 15,
+                      color: labelColor,
+                    ),
+              ),
+            ),
+            if (onRemove != null)
+              InkWell(
+                onTap: onRemove,
+                borderRadius: BorderRadius.circular(24),
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.only(
+                    start: 16,
+                    end: 14,
+                    top: 13,
+                    bottom: 13,
+                  ),
+                  child: Icon(Icons.close, size: 22, color: removeColor),
+                ),
+              )
+            else
+              const SizedBox(width: 16),
           ],
         ),
       ),
