@@ -385,6 +385,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     AppLocalizations l10n,
     TodoList list,
     bool showCompleted,
+    int activeTasksCount,
   ) {
     final items = <PopupMenuEntry<_ListMenuAction>>[];
     final isCustom = !list.isSmartList;
@@ -392,9 +393,11 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         list.smartType == SmartListType.myDay ||
         list.smartType == SmartListType.all ||
         list.smartType == SmartListType.tasks;
-    final supportsReorder = isCustom ||
-        list.smartType == SmartListType.myDay ||
-        list.smartType == SmartListType.tasks;
+    final supportsReorder = (isCustom ||
+            list.smartType == SmartListType.myDay ||
+            list.smartType == SmartListType.tasks) &&
+        list.sortOption == TaskSortOption.defaultOrder &&
+        activeTasksCount >= 2;
     final supportsToggleCompleted = list.smartType != SmartListType.all &&
         list.smartType != SmartListType.completed;
 
@@ -541,6 +544,12 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       case _ListMenuAction.sort:
         await _showSortSheet(state, currentList);
       case _ListMenuAction.reorder:
+        if (currentList.sortOption != TaskSortOption.defaultOrder) {
+          notifier.setListSortOption(
+            currentList.id,
+            TaskSortOption.defaultOrder,
+          );
+        }
         setState(() {
           _isReordering = true;
           _multiSelectedIds.clear();
@@ -776,8 +785,27 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: _isMultiSelecting
+      appBar: _isReordering
           ? AppBar(
+              backgroundColor: isDark
+                  ? const Color(0xFF2B2B2B)
+                  : TodoColors.secondaryTextLight,
+              foregroundColor: Colors.white,
+              leading: IconButton(
+                onPressed: () => setState(() => _isReordering = false),
+                icon: const Icon(Icons.arrow_back),
+              ),
+              title: Text(l10n.reorderTasks),
+              actions: [
+                IconButton(
+                  tooltip: l10n.done,
+                  onPressed: () => setState(() => _isReordering = false),
+                  icon: const Icon(Icons.check),
+                ),
+              ],
+            )
+          : (_isMultiSelecting
+              ? AppBar(
               backgroundColor: isDark
                   ? const Color(0xFF2B2B2B)
                   : TodoColors.secondaryTextLight,
@@ -872,7 +900,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 ),
               ],
             )
-          : null,
+          : null),
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -897,8 +925,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                   },
                   child: CustomScrollView(
                     slivers: [
-              if (!_isMultiSelecting)
-                SliverAppBar(
+                      if (!_isMultiSelecting && !_isReordering)
+                        SliverAppBar(
                   backgroundColor: Colors.transparent,
                   foregroundColor: headerFg,
                   expandedHeight: subtitle != null ? 144 : 116,
@@ -934,6 +962,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                           l10n,
                           currentList,
                           currentList.showCompleted,
+                          activeTasks.length,
                         ),
                       ),
                   ],
@@ -1136,17 +1165,43 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                           child: TaskListTile(
                             task: task,
                             accentColor: accentColor,
+                            isReordering: true,
                             onTap: () {},
-                            onToggleCompleted: () =>
-                                notifier.toggleTaskCompleted(task.id),
-                            onToggleImportant: () =>
-                                notifier.toggleTaskImportant(task.id),
-                            trailingHandle: ReorderableDragStartListener(
-                              index: index,
-                              child: const Padding(
-                                padding: EdgeInsets.all(8),
-                                child: Icon(Icons.drag_handle),
-                              ),
+                            onToggleCompleted: () {},
+                            onToggleImportant: () {},
+                            trailingHandle: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  onPressed: index > 0
+                                      ? () => notifier.reorderActiveTasks(
+                                            activeTasks,
+                                            index,
+                                            index - 1,
+                                          )
+                                      : null,
+                                  icon: const Icon(Icons.keyboard_arrow_up),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                IconButton(
+                                  onPressed: index < activeTasks.length - 1
+                                      ? () => notifier.reorderActiveTasks(
+                                            activeTasks,
+                                            index,
+                                            index + 1,
+                                          )
+                                      : null,
+                                  icon: const Icon(Icons.keyboard_arrow_down),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                ReorderableDragStartListener(
+                                  index: index,
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(8),
+                                    child: Icon(Icons.drag_handle),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         );

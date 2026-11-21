@@ -19,6 +19,7 @@ class TaskListTile extends StatelessWidget {
     this.accentColor,
     this.isSelected = false,
     this.isMultiSelected = false,
+    this.isReordering = false,
     this.trailingHandle,
   });
 
@@ -32,6 +33,7 @@ class TaskListTile extends StatelessWidget {
   final Color? accentColor;
   final bool isSelected;
   final bool isMultiSelected;
+  final bool isReordering;
   final Widget? trailingHandle;
 
   @override
@@ -142,10 +144,16 @@ class TaskListTile extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  TaskCheckbox(
-                    isChecked: task.isCompleted,
-                    onTap: onToggleCompleted,
-                    accentColor: accentColor,
+                  IgnorePointer(
+                    ignoring: isReordering,
+                    child: Opacity(
+                      opacity: isReordering ? 0.45 : 1.0,
+                      child: TaskCheckbox(
+                        isChecked: task.isCompleted,
+                        onTap: onToggleCompleted,
+                        accentColor: accentColor,
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 6),
                   Expanded(

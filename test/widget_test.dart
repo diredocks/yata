@@ -185,7 +185,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.drag_handle), findsNWidgets(2));
-    expect(find.text('Done'), findsOneWidget);
+    expect(find.byIcon(Icons.check), findsOneWidget);
 
     final active = container
         .read(todoProvider)
@@ -198,7 +198,7 @@ void main() {
         .tasksForList(container.read(todoProvider).selectedList);
     expect(reordered.first.title, 'First task');
 
-    await tester.tap(find.text('Done'));
+    await tester.tap(find.byIcon(Icons.check));
     await tester.pumpAndSettle();
 
     // Long-press enters multi-select mode; secondary actions are in overflow menu
