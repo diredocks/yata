@@ -103,6 +103,7 @@ void main() {
     await tester.tap(find.text('New list'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Groceries');
+    await tester.pump();
     await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
 

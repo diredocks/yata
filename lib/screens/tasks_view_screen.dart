@@ -504,28 +504,44 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     return items;
   }
 
-  void _handleMenuAction(
+  Future<void> _handleMenuAction(
     _ListMenuAction action,
     TodoState state,
     TodoList currentList,
-  ) {
+  ) async {
     final notifier = ref.read(todoProvider.notifier);
+    final l10n = AppLocalizations.of(context);
     switch (action) {
       case _ListMenuAction.rename:
-        showRenameListDialog(
+        final result = await showListEditorDialog(
           context: context,
+          dialogTitle: l10n.renameList,
+          confirmLabel: l10n.save,
           initialTitle: currentList.title,
-          onRename: (title) => notifier.renameList(currentList.id, title),
+          initialEmoji: currentList.emoji,
+          initialColor: currentList.themeColor,
+          initialPhoto: currentList.themePhoto,
         );
+        if (result != null) {
+          notifier.updateList(
+            currentList.id,
+            title: result.title,
+            emoji: result.emoji,
+            clearEmoji: result.emoji == null,
+            themeColor: result.themeColor,
+            themePhoto: result.themePhoto,
+            clearThemePhoto: result.themePhoto == null,
+          );
+        }
       case _ListMenuAction.sort:
-        _showSortSheet(state, currentList);
+        await _showSortSheet(state, currentList);
       case _ListMenuAction.reorder:
         setState(() {
           _isReordering = true;
           _multiSelectedIds.clear();
         });
       case _ListMenuAction.changeTheme:
-        showChangeThemeDialog(
+        await showThemePickerBottomSheet(
           context: context,
           currentColor: currentList.themeColor,
           currentPhoto: currentList.themePhoto,
@@ -538,9 +554,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       case _ListMenuAction.toggleCompleted:
         notifier.toggleListShowCompleted(currentList.id);
       case _ListMenuAction.duplicate:
-        _duplicateListWithPrompt(state, currentList);
+        await _duplicateListWithPrompt(state, currentList);
       case _ListMenuAction.delete:
-        _confirmDeleteList(currentList, state.confirmBeforeDeleting);
+        await _confirmDeleteList(currentList, state.confirmBeforeDeleting);
     }
   }
 
@@ -688,7 +704,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final l10n = AppLocalizations.of(context);
     final brightness = Theme.of(context).brightness;
     final currentList = state.selectedList;
-    final listTitle = _localizedListTitle(l10n, currentList);
+    final baseTitle = _localizedListTitle(l10n, currentList);
+    final listTitle = (currentList.emoji != null && currentList.emoji!.isNotEmpty)
+        ? '${currentList.emoji!} $baseTitle'
+        : baseTitle;
     final accentColor = currentList.themePhoto != null
         ? TodoColors.photoFabBackgroundFor(currentList.themePhoto!)
         : TodoColors.accentFor(currentList.themeColor);
@@ -1327,12 +1346,11 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                   constraints: const BoxConstraints(minHeight: 84),
                   child: CustomPaint(
                     painter: _RuledLinesPainter(
-                      lineColor: currentList.themePhoto != null
-                          ? Colors.white.withValues(alpha: 0.22)
-                          : (TodoColors.isLightTheme(currentList.themeColor) &&
-                                  !isDark
-                              ? Colors.black.withValues(alpha: 0.08)
-                              : Colors.white.withValues(alpha: 0.16)),
+                      lineColor: currentList.themePhoto == null &&
+                              TodoColors.isLightTheme(currentList.themeColor) &&
+                              !isDark
+                          ? TodoColors.taskViewDividerLight
+                          : TodoColors.taskViewDividerDark,
                       rowHeight: 54.0,
                       horizontalInset: 8.0,
                     ),

@@ -21,8 +21,10 @@ class TodoColors {
   static const Color primaryTextDark = Color(0xFFF3F3F3);
   static const Color secondaryTextDark = Color(0xFFA6A6A8);
 
-  static const Color dividerLight = Color(0x14000000);
-  static const Color dividerDark = Color(0x14FFFFFF);
+  static const Color dividerLight = Color(0x1F000000);
+  static const Color dividerDark = Color(0x1FFFFFFF);
+  static const Color taskViewDividerLight = Color(0x14000000);
+  static const Color taskViewDividerDark = Color(0x14FFFFFF);
 
   static const Color overdueRed = Color(0xFFD92C2C);
 
@@ -346,6 +348,11 @@ class TodoTheme {
       ),
       scaffoldBackgroundColor: TodoColors.primaryBackgroundLight,
       dividerColor: TodoColors.dividerLight,
+      dividerTheme: const DividerThemeData(
+        color: TodoColors.dividerLight,
+        thickness: 1,
+        space: 1,
+      ),
       cardColor: TodoColors.primaryBackgroundLight,
       appBarTheme: const AppBarTheme(
         backgroundColor: TodoColors.primaryBackgroundLight,
@@ -368,6 +375,11 @@ class TodoTheme {
       ),
       scaffoldBackgroundColor: TodoColors.primaryBackgroundDark,
       dividerColor: TodoColors.dividerDark,
+      dividerTheme: const DividerThemeData(
+        color: TodoColors.dividerDark,
+        thickness: 1,
+        space: 1,
+      ),
       cardColor: TodoColors.cardDark,
       appBarTheme: const AppBarTheme(
         backgroundColor: TodoColors.primaryBackgroundDark,

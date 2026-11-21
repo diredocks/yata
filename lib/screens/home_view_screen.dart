@@ -128,7 +128,7 @@ class HomeViewScreen extends ConsumerWidget {
                       onTap: () => onSelectList(list),
                     ),
                   const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: EdgeInsets.fromLTRB(16, 12, 0, 12),
                     child: Divider(height: 1),
                   ),
                   for (final group in state.groups) ...[
@@ -154,6 +154,7 @@ class HomeViewScreen extends ConsumerWidget {
                           .where((l) => l.groupId == group.id))
                         _HomeListTile(
                           title: list.title,
+                          emoji: list.emoji,
                           icon: list.icon,
                           iconColor: TodoColors.accentFor(list.themeColor),
                           count: state.activeCountForList(list),
@@ -166,6 +167,7 @@ class HomeViewScreen extends ConsumerWidget {
                   for (final list in ungroupedLists)
                     _HomeListTile(
                       title: list.title,
+                      emoji: list.emoji,
                       icon: list.icon,
                       iconColor: TodoColors.accentFor(list.themeColor),
                       count: state.activeCountForList(list),
@@ -184,14 +186,23 @@ class HomeViewScreen extends ConsumerWidget {
                 children: [
                   Expanded(
                     child: InkWell(
-                      onTap: () => showCreateListDialog(
-                        context: context,
-                        onCreate: (title, color) {
-                          notifier.addList(title, color);
+                      onTap: () async {
+                        final result = await showListEditorDialog(
+                          context: context,
+                          dialogTitle: l10n.newList,
+                          confirmLabel: l10n.create,
+                        );
+                        if (result != null) {
+                          notifier.addList(
+                            result.title,
+                            result.themeColor,
+                            emoji: result.emoji,
+                            themePhoto: result.themePhoto,
+                          );
                           final created = ref.read(todoProvider).selectedList;
                           onSelectList(created);
-                        },
-                      ),
+                        }
+                      },
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Row(
@@ -244,11 +255,13 @@ class _HomeListTile extends StatelessWidget {
     required this.iconColor,
     required this.count,
     required this.onTap,
+    this.emoji,
     this.isSelected = false,
     this.isGrouped = false,
   });
 
   final String title;
+  final String? emoji;
   final IconData icon;
   final Color iconColor;
   final int count;
@@ -285,7 +298,15 @@ class _HomeListTile extends StatelessWidget {
                     color: theme.dividerColor,
                   ),
                 ],
-                Icon(icon, size: 22, color: iconColor),
+                if (emoji != null && emoji!.isNotEmpty)
+                  SizedBox(
+                    width: 22,
+                    child: Center(
+                      child: Text(emoji!, style: const TextStyle(fontSize: 18)),
+                    ),
+                  )
+                else
+                  Icon(icon, size: 22, color: iconColor),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Text(

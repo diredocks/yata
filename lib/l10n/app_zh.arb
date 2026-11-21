@@ -111,5 +111,6 @@
   "plannedThisWeek": "本周",
   "plannedLater": "稍后",
   "themeTabColor": "颜色",
-  "themeTabPhoto": "照片"
+  "themeTabPhoto": "照片",
+  "removeEmoji": "移除表情符号"
 }

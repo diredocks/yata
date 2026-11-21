@@ -152,5 +152,6 @@
   "plannedThisWeek": "This week",
   "plannedLater": "Later",
   "themeTabColor": "Color",
-  "themeTabPhoto": "Photo"
+  "themeTabPhoto": "Photo",
+  "removeEmoji": "Remove emoji"
 }

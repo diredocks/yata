@@ -61,6 +61,7 @@ class TodoList {
     required this.title,
     this.smartType,
     this.groupId,
+    this.emoji,
     this.themeColor = ListThemeColor.blue,
     this.themePhoto,
     this.icon = Icons.format_list_bulleted,
@@ -73,6 +74,7 @@ class TodoList {
   final String title;
   final SmartListType? smartType;
   final String? groupId;
+  final String? emoji;
   final ListThemeColor themeColor;
   final ListThemePhoto? themePhoto;
   final IconData icon;
@@ -88,6 +90,8 @@ class TodoList {
     SmartListType? smartType,
     String? groupId,
     bool clearGroupId = false,
+    String? emoji,
+    bool clearEmoji = false,
     ListThemeColor? themeColor,
     ListThemePhoto? themePhoto,
     bool clearThemePhoto = false,
@@ -101,6 +105,7 @@ class TodoList {
       title: title ?? this.title,
       smartType: smartType ?? this.smartType,
       groupId: clearGroupId ? null : (groupId ?? this.groupId),
+      emoji: clearEmoji ? null : (emoji ?? this.emoji),
       themeColor: themeColor ?? this.themeColor,
       themePhoto: clearThemePhoto ? null : (themePhoto ?? this.themePhoto),
       icon: icon ?? this.icon,
@@ -128,6 +133,7 @@ class TodoList {
       'title': title,
       'smartType': smartType?.name,
       'groupId': groupId,
+      'emoji': emoji,
       'themeColor': themeColor.name,
       'themePhoto': themePhoto?.name,
       'sortOption': sortOption.name,
@@ -161,6 +167,7 @@ class TodoList {
       title: json['title'] as String,
       smartType: smartType,
       groupId: json['groupId'] as String?,
+      emoji: json['emoji'] as String?,
       themeColor: themeColor,
       themePhoto: themePhoto,
       icon: iconForSmartType(smartType),

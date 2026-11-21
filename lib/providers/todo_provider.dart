@@ -412,14 +412,22 @@ class TodoNotifier extends Notifier<TodoState> {
     _storage.saveGroups(updated);
   }
 
-  void addList(String title, ListThemeColor themeColor, {String? groupId}) {
+  void addList(
+    String title,
+    ListThemeColor themeColor, {
+    String? groupId,
+    String? emoji,
+    ListThemePhoto? themePhoto,
+  }) {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return;
     final newList = TodoList(
       id: _nextId('list'),
       title: trimmed,
       groupId: groupId,
+      emoji: emoji,
       themeColor: themeColor,
+      themePhoto: themePhoto,
       icon: Icons.format_list_bulleted,
     );
     final updated = [...state.lists, newList];
@@ -432,18 +440,37 @@ class TodoNotifier extends Notifier<TodoState> {
     _storage.saveSelectedListId(newList.id);
   }
 
-  void renameList(String listId, String newTitle) {
-    final trimmed = newTitle.trim();
+  void updateList(
+    String listId, {
+    required String title,
+    String? emoji,
+    bool clearEmoji = false,
+    ListThemeColor? themeColor,
+    ListThemePhoto? themePhoto,
+    bool clearThemePhoto = false,
+  }) {
+    final trimmed = title.trim();
     if (trimmed.isEmpty) return;
     final updated = [
       for (final list in state.lists)
         if (list.id == listId && !list.isSmartList)
-          list.copyWith(title: trimmed)
+          list.copyWith(
+            title: trimmed,
+            emoji: emoji,
+            clearEmoji: clearEmoji,
+            themeColor: themeColor,
+            themePhoto: themePhoto,
+            clearThemePhoto: clearThemePhoto,
+          )
         else
           list,
     ];
     state = state.copyWith(lists: updated);
     _storage.saveLists(updated);
+  }
+
+  void renameList(String listId, String newTitle) {
+    updateList(listId, title: newTitle);
   }
 
   void changeListTheme(
