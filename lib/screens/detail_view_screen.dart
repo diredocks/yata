@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
+import '../models/todo_list.dart';
 import '../providers/todo_provider.dart';
 import '../theme/todo_theme.dart';
 import '../widgets/task_checkbox.dart';
+import '../widgets/task_pickers.dart';
 
 class DetailViewScreen extends ConsumerStatefulWidget {
   const DetailViewScreen({
@@ -26,14 +28,31 @@ class DetailViewScreen extends ConsumerStatefulWidget {
 class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
   final _titleController = TextEditingController();
   final _stepController = TextEditingController();
+  final _stepEditController = TextEditingController();
   final _noteController = TextEditingController();
+  final _addStepFocusNode = FocusNode();
   String? _syncedTaskId;
+  bool _isEditingTitle = false;
+  String? _editingStepId;
+  bool _isAddStepFocused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _addStepFocusNode.addListener(() {
+      if (mounted) {
+        setState(() => _isAddStepFocused = _addStepFocusNode.hasFocus);
+      }
+    });
+  }
 
   @override
   void dispose() {
     _titleController.dispose();
     _stepController.dispose();
+    _stepEditController.dispose();
     _noteController.dispose();
+    _addStepFocusNode.dispose();
     super.dispose();
   }
 
@@ -43,6 +62,8 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
       _titleController.text = task.title;
       _noteController.text = task.note;
       _stepController.clear();
+      _isEditingTitle = false;
+      _editingStepId = null;
     }
   }
 
@@ -57,78 +78,25 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
     };
   }
 
-  Future<void> _pickDueDate(TaskItem task) async {
-    final l10n = AppLocalizations.of(context);
-    final notifier = ref.read(todoProvider.notifier);
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.today),
-              title: Text(l10n.today),
-              onTap: () => Navigator.pop(ctx, 'today'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.wb_twilight),
-              title: Text(l10n.tomorrow),
-              onTap: () => Navigator.pop(ctx, 'tomorrow'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.next_week),
-              title: Text(l10n.nextWeek),
-              onTap: () => Navigator.pop(ctx, 'next_week'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.calendar_month),
-              title: Text(l10n.pickDate),
-              onTap: () => Navigator.pop(ctx, 'pick'),
-            ),
-          ],
-        ),
-      ),
+  Future<void> _pickDueDate(TaskItem task, WeekStart startOfWeek) async {
+    final result = await showDueDatePickerSheet(
+      context,
+      startOfWeek: startOfWeek,
+      initialDate: task.dueDate,
     );
-
-    if (!mounted || choice == null) return;
-
-    if (choice == 'today') {
-      notifier.setTaskDueDate(task.id, today);
-    } else if (choice == 'tomorrow') {
-      notifier.setTaskDueDate(task.id, today.add(const Duration(days: 1)));
-    } else if (choice == 'next_week') {
-      notifier.setTaskDueDate(task.id, today.add(const Duration(days: 7)));
-    } else if (choice == 'pick') {
-      final picked = await showDatePicker(
-        context: context,
-        initialDate: task.dueDate ?? today,
-        firstDate: today.subtract(const Duration(days: 365)),
-        lastDate: today.add(const Duration(days: 365 * 5)),
-      );
-      if (picked != null) {
-        notifier.setTaskDueDate(task.id, picked);
-      }
+    if (result != null && result.date != null && mounted) {
+      ref.read(todoProvider.notifier).setTaskDueDate(task.id, result.date);
     }
   }
 
-  Future<void> _pickReminder(TaskItem task) async {
-    final notifier = ref.read(todoProvider.notifier);
-    final time = await showTimePicker(
-      context: context,
-      initialTime: task.reminderAt != null
-          ? TimeOfDay.fromDateTime(task.reminderAt!)
-          : TimeOfDay.now(),
+  Future<void> _pickReminder(TaskItem task, WeekStart startOfWeek) async {
+    final picked = await showReminderPickerSheet(
+      context,
+      startOfWeek: startOfWeek,
+      initialReminder: task.reminderAt,
     );
-    if (time != null) {
-      final now = DateTime.now();
-      notifier.setTaskReminder(
-        task.id,
-        DateTime(now.year, now.month, now.day, time.hour, time.minute),
-      );
+    if (picked != null && mounted) {
+      ref.read(todoProvider.notifier).setTaskReminder(task.id, picked);
     }
   }
 
@@ -215,13 +183,9 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
 
     _syncControllers(task);
 
-    final primaryBg = isDark
-        ? TodoColors.primaryBackgroundDark
-        : TodoColors.primaryBackgroundLight;
-    final bodyBg = isDark
-        ? TodoColors.secondaryBackgroundDark
-        : TodoColors.secondaryBackgroundLight;
-    final cardBg = isDark ? TodoColors.cardDark : Colors.white;
+    final primaryBg = TodoColors.detailHeaderBackground(theme.brightness);
+    final bodyBg = TodoColors.detailBodyBackground(theme.brightness);
+    final cardBg = isDark ? TodoColors.secondaryBackgroundDark : Colors.white;
     final secondaryText =
         isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
     final accent =
@@ -230,7 +194,9 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
     final originListTitle = widget.listTitle ??
         state.lists
             .where((l) => l.id == task.listId)
-            .map((l) => l.title)
+            .map(
+              (l) => l.smartType == SmartListType.tasks ? l10n.tasks : l.title,
+            )
             .firstOrNull ??
         l10n.tasks;
 
@@ -281,26 +247,49 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                         ),
                         const SizedBox(width: 6),
                         Expanded(
-                          child: TextField(
-                            controller: _titleController,
-                            maxLines: null,
-                            style: theme.textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.w600,
-                              decoration: task.isCompleted
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                            ),
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
-                              isDense: true,
-                            ),
-                            onSubmitted: (val) =>
-                                notifier.updateTaskTitle(task.id, val),
-                            onTapOutside: (_) => notifier.updateTaskTitle(
-                              task.id,
-                              _titleController.text,
-                            ),
-                          ),
+                          child: _isEditingTitle
+                              ? TextField(
+                                  controller: _titleController,
+                                  autofocus: true,
+                                  maxLines: null,
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    decoration: task.isCompleted
+                                        ? TextDecoration.lineThrough
+                                        : null,
+                                  ),
+                                  decoration: const InputDecoration(
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                  ),
+                                  onSubmitted: (val) {
+                                    notifier.updateTaskTitle(task.id, val);
+                                    setState(() => _isEditingTitle = false);
+                                  },
+                                  onTapOutside: (_) {
+                                    notifier.updateTaskTitle(
+                                      task.id,
+                                      _titleController.text,
+                                    );
+                                    setState(() => _isEditingTitle = false);
+                                  },
+                                )
+                              : GestureDetector(
+                                  onTap: () {
+                                    _titleController.text = task.title;
+                                    setState(() => _isEditingTitle = true);
+                                  },
+                                  child: Text(
+                                    task.title,
+                                    style:
+                                        theme.textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                      decoration: task.isCompleted
+                                          ? TextDecoration.lineThrough
+                                          : null,
+                                    ),
+                                  ),
+                                ),
                         ),
                         IconButton(
                           onPressed: () =>
@@ -317,19 +306,20 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
               ),
             ),
 
+            // Header shadow (default_shadow_horizontal.xml)
+            Container(
+              height: 3,
+              decoration: TodoColors.horizontalShadowDecoration,
+            ),
+
             // Body (detailview_content.xml)
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.all(10),
+                padding: EdgeInsets.zero,
                 children: [
-                  // Steps card (detailview_step.xml + detailview_add_step.xml)
-                  Card(
-                    color: cardBg,
-                    elevation: 0,
-                    margin: const EdgeInsets.only(bottom: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                  // Steps section on @color/detailview_background (detailview_step.xml + detailview_add_step.xml)
+                  Material(
+                    color: primaryBg,
                     child: Column(
                       children: [
                         for (final step in task.steps) ...[
@@ -346,43 +336,131 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                               ),
                               const SizedBox(width: 6),
                               Expanded(
-                                child: Text(
-                                  step.title,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    decoration: step.isCompleted
-                                        ? TextDecoration.lineThrough
-                                        : null,
-                                    color: step.isCompleted
-                                        ? secondaryText
-                                        : null,
-                                  ),
-                                ),
+                                child: _editingStepId == step.id
+                                    ? TextField(
+                                        controller: _stepEditController,
+                                        autofocus: true,
+                                        style: theme.textTheme.bodyMedium,
+                                        decoration: const InputDecoration(
+                                          border: InputBorder.none,
+                                          isDense: true,
+                                        ),
+                                        onSubmitted: (val) {
+                                          notifier.renameStep(
+                                            task.id,
+                                            step.id,
+                                            val,
+                                          );
+                                          setState(() => _editingStepId = null);
+                                        },
+                                        onTapOutside: (_) {
+                                          notifier.renameStep(
+                                            task.id,
+                                            step.id,
+                                            _stepEditController.text,
+                                          );
+                                          setState(() => _editingStepId = null);
+                                        },
+                                      )
+                                    : GestureDetector(
+                                        onTap: () {
+                                          _stepEditController.text = step.title;
+                                          setState(
+                                            () => _editingStepId = step.id,
+                                          );
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 10,
+                                          ),
+                                          child: Text(
+                                            step.title,
+                                            style: theme.textTheme.bodyMedium
+                                                ?.copyWith(
+                                              decoration: step.isCompleted
+                                                  ? TextDecoration.lineThrough
+                                                  : null,
+                                              color: step.isCompleted
+                                                  ? secondaryText
+                                                  : null,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                               ),
-                              IconButton(
-                                onPressed: () =>
-                                    notifier.deleteStep(task.id, step.id),
+                              PopupMenuButton<String>(
                                 icon: Icon(
-                                  Icons.close,
+                                  Icons.more_vert,
                                   size: 18,
                                   color: secondaryText,
                                 ),
+                                onSelected: (action) {
+                                  if (action == 'promote') {
+                                    notifier.promoteStepToTask(
+                                      task.id,
+                                      step.id,
+                                    );
+                                  } else if (action == 'delete') {
+                                    notifier.deleteStep(task.id, step.id);
+                                  }
+                                },
+                                itemBuilder: (_) => [
+                                  PopupMenuItem(
+                                    value: 'promote',
+                                    child: ListTile(
+                                      leading: const Icon(Icons.add),
+                                      title: Text(l10n.promoteStepToTask),
+                                      contentPadding: EdgeInsets.zero,
+                                      dense: true,
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'delete',
+                                    child: ListTile(
+                                      leading: const Icon(Icons.delete_outline),
+                                      title: Text(l10n.deleteStep),
+                                      contentPadding: EdgeInsets.zero,
+                                      dense: true,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                          const Divider(height: 1, indent: 48),
+                          const Divider(height: 1, indent: 66, endIndent: 16),
                         ],
                         Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 4,
-                          ),
+                          padding: const EdgeInsets.fromLTRB(14, 4, 12, 8),
                           child: Row(
                             children: [
-                              Icon(Icons.add, size: 22, color: accent),
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 160),
+                                child: _isAddStepFocused
+                                    ? Container(
+                                        key: const ValueKey('step_circle'),
+                                        width: 18,
+                                        height: 18,
+                                        margin: const EdgeInsets.all(2),
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: secondaryText,
+                                            width: 1.6,
+                                          ),
+                                        ),
+                                      )
+                                    : Icon(
+                                        Icons.add,
+                                        key: const ValueKey('step_plus'),
+                                        size: 22,
+                                        color: accent,
+                                      ),
+                              ),
                               const SizedBox(width: 14),
                               Expanded(
                                 child: TextField(
                                   controller: _stepController,
+                                  focusNode: _addStepFocusNode,
                                   decoration: InputDecoration(
                                     hintText: l10n.addStepPlaceholder,
                                     hintStyle: TextStyle(color: accent),
@@ -400,12 +478,16 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                       ],
                     ),
                   ),
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Column(
+                      children: [
 
                   // My Day card (detailview_my_day.xml)
                   Card(
                     color: cardBg,
-                    elevation: 0,
-                    margin: const EdgeInsets.only(bottom: 10),
+                    elevation: 1,
+                    margin: const EdgeInsets.only(bottom: 8),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -439,8 +521,8 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                   // Date / Reminder / Repeat card (detailview_date.xml)
                   Card(
                     color: cardBg,
-                    elevation: 0,
-                    margin: const EdgeInsets.only(bottom: 10),
+                    elevation: 1,
+                    margin: const EdgeInsets.only(bottom: 8),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -455,7 +537,9 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                           ),
                           title: Text(
                             task.reminderAt != null
-                                ? DateFormat.jm().format(task.reminderAt!)
+                                ? DateFormat.MMMd()
+                                    .add_jm()
+                                    .format(task.reminderAt!)
                                 : l10n.remindMe,
                             style: TextStyle(
                               color: task.reminderAt != null
@@ -471,9 +555,9 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                                       size: 18, color: secondaryText),
                                 )
                               : null,
-                          onTap: () => _pickReminder(task),
+                          onTap: () => _pickReminder(task, state.startOfWeek),
                         ),
-                        const Divider(height: 1, indent: 52),
+                        const Divider(height: 1, indent: 64),
                         ListTile(
                           leading: Icon(
                             Icons.calendar_today_outlined,
@@ -503,9 +587,9 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                                       size: 18, color: secondaryText),
                                 )
                               : null,
-                          onTap: () => _pickDueDate(task),
+                          onTap: () => _pickDueDate(task, state.startOfWeek),
                         ),
-                        const Divider(height: 1, indent: 52),
+                        const Divider(height: 1, indent: 64),
                         ListTile(
                           leading: Icon(
                             Icons.repeat,
@@ -540,23 +624,48 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                   // Note card (detailview_note.xml)
                   Card(
                     color: cardBg,
-                    elevation: 0,
+                    elevation: 1,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: TextField(
-                        controller: _noteController,
-                        minLines: 4,
-                        maxLines: null,
-                        decoration: InputDecoration(
-                          hintText: l10n.addNotePlaceholder,
-                          border: InputBorder.none,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 132),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            TextField(
+                              controller: _noteController,
+                              minLines: 4,
+                              maxLines: null,
+                              decoration: InputDecoration(
+                                hintText: l10n.addNotePlaceholder,
+                                border: InputBorder.none,
+                              ),
+                              onChanged: (val) =>
+                                  notifier.updateTaskNote(task.id, val),
+                            ),
+                            if (task.noteUpdatedAt != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                l10n.updatedOn(
+                                  DateFormat.MMMd()
+                                      .add_jm()
+                                      .format(task.noteUpdatedAt!),
+                                ),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: secondaryText,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                        onChanged: (val) =>
-                            notifier.updateTaskNote(task.id, val),
                       ),
+                    ),
+                  ),
+                      ],
                     ),
                   ),
                 ],
@@ -566,6 +675,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
             // Footer (detailview_footer.xml)
             Material(
               color: primaryBg,
+              elevation: 3,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [

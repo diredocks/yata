@@ -60,10 +60,13 @@ class TaskItem {
     this.isCompleted = false,
     this.isImportant = false,
     this.isInMyDay = false,
+    this.myDayDate,
     this.dueDate,
     this.reminderAt,
     this.recurrence = RecurrenceType.none,
     this.note = '',
+    this.noteUpdatedAt,
+    this.completedAt,
     this.steps = const [],
   });
 
@@ -74,10 +77,13 @@ class TaskItem {
   final bool isCompleted;
   final bool isImportant;
   final bool isInMyDay;
+  final DateTime? myDayDate;
   final DateTime? dueDate;
   final DateTime? reminderAt;
   final RecurrenceType recurrence;
   final String note;
+  final DateTime? noteUpdatedAt;
+  final DateTime? completedAt;
   final List<TaskStep> steps;
 
   int get completedStepsCount =>
@@ -99,12 +105,17 @@ class TaskItem {
     bool? isCompleted,
     bool? isImportant,
     bool? isInMyDay,
+    DateTime? myDayDate,
+    bool clearMyDayDate = false,
     DateTime? dueDate,
     bool clearDueDate = false,
     DateTime? reminderAt,
     bool clearReminderAt = false,
     RecurrenceType? recurrence,
     String? note,
+    DateTime? noteUpdatedAt,
+    DateTime? completedAt,
+    bool clearCompletedAt = false,
     List<TaskStep>? steps,
   }) {
     return TaskItem(
@@ -115,10 +126,13 @@ class TaskItem {
       isCompleted: isCompleted ?? this.isCompleted,
       isImportant: isImportant ?? this.isImportant,
       isInMyDay: isInMyDay ?? this.isInMyDay,
+      myDayDate: clearMyDayDate ? null : (myDayDate ?? this.myDayDate),
       dueDate: clearDueDate ? null : (dueDate ?? this.dueDate),
       reminderAt: clearReminderAt ? null : (reminderAt ?? this.reminderAt),
       recurrence: recurrence ?? this.recurrence,
       note: note ?? this.note,
+      noteUpdatedAt: noteUpdatedAt ?? this.noteUpdatedAt,
+      completedAt: clearCompletedAt ? null : (completedAt ?? this.completedAt),
       steps: steps ?? this.steps,
     );
   }
@@ -132,10 +146,13 @@ class TaskItem {
       'isCompleted': isCompleted,
       'isImportant': isImportant,
       'isInMyDay': isInMyDay,
+      'myDayDate': myDayDate?.toIso8601String(),
       'dueDate': dueDate?.toIso8601String(),
       'reminderAt': reminderAt?.toIso8601String(),
       'recurrence': recurrence.name,
       'note': note,
+      'noteUpdatedAt': noteUpdatedAt?.toIso8601String(),
+      'completedAt': completedAt?.toIso8601String(),
       'steps': steps.map((s) => s.toJson()).toList(),
     };
   }
@@ -156,6 +173,9 @@ class TaskItem {
       isCompleted: json['isCompleted'] as bool? ?? false,
       isImportant: json['isImportant'] as bool? ?? false,
       isInMyDay: json['isInMyDay'] as bool? ?? false,
+      myDayDate: json['myDayDate'] != null
+          ? DateTime.parse(json['myDayDate'] as String)
+          : null,
       dueDate: json['dueDate'] != null
           ? DateTime.parse(json['dueDate'] as String)
           : null,
@@ -164,6 +184,12 @@ class TaskItem {
           : null,
       recurrence: recurrence,
       note: json['note'] as String? ?? '',
+      noteUpdatedAt: json['noteUpdatedAt'] != null
+          ? DateTime.parse(json['noteUpdatedAt'] as String)
+          : null,
+      completedAt: json['completedAt'] != null
+          ? DateTime.parse(json['completedAt'] as String)
+          : null,
       steps: rawSteps
           .map((e) => TaskStep.fromJson(e as Map<String, dynamic>))
           .toList(),

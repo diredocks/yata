@@ -92,5 +92,22 @@
   "hideCompletedTasks": "隐藏已完成的任务",
   "duplicateList": "复制列表",
   "deleteList": "删除列表",
-  "deleteListConfirm": "将永久删除“{title}”及其所有任务。"
+  "deleteListConfirm": "将永久删除“{title}”及其所有任务。",
+  "laterToday": "今天晚些时候",
+  "pickDateTime": "选择日期和时间",
+  "sortByCreationDate": "创建日期",
+  "sortByAddedToMyDay": "已添加到我的一天",
+  "sortedBy": "按{criteria}排序",
+  "promoteStepToTask": "升级为任务",
+  "deleteStep": "删除步骤",
+  "updatedOn": "更新于 {date}",
+  "removeDueDate": "移除截止日期",
+  "copyTasks": "复制",
+  "keepTasksCompletedTitle": "保留已完成的任务",
+  "keepTasksCompletedMessage": "是否在复制的列表中保留任务和步骤的完成状态？",
+  "yes": "是",
+  "no": "否",
+  "plannedEarlier": "先前",
+  "plannedThisWeek": "本周",
+  "plannedLater": "稍后"
 }

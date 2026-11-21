@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../l10n/app_localizations.dart';
 import '../models/todo_list.dart';
 import '../providers/todo_provider.dart';
+import '../theme/todo_theme.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -61,12 +62,6 @@ class SettingsScreen extends ConsumerWidget {
             title: Text(l10n.showDueTodayInMyDay),
             value: state.showDueTodayInMyDay,
             onChanged: notifier.setShowDueTodayInMyDay,
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.check_circle_outline),
-            title: Text(l10n.showCompletedTasks),
-            value: state.showCompleted,
-            onChanged: notifier.toggleShowCompleted,
           ),
           ListTile(
             leading: const Icon(Icons.palette_outlined),
@@ -180,12 +175,15 @@ class _SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: Text(
         title,
         style: theme.textTheme.labelLarge?.copyWith(
-          color: theme.colorScheme.primary,
+          color: isDark
+              ? TodoColors.secondaryTextDark
+              : theme.colorScheme.primary,
           fontWeight: FontWeight.w600,
         ),
       ),

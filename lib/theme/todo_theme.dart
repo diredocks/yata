@@ -12,7 +12,7 @@ class TodoColors {
   static const Color secondaryBackgroundLight = Color(0xFFFAFAFA);
   static const Color primaryBackgroundDark = Color(0xFF080808);
   static const Color secondaryBackgroundDark = Color(0xFF1A1A1A);
-  static const Color cardDark = Color(0xFF222222);
+  static const Color cardDark = Color(0xFF1A1A1A);
   static const Color selectedCardLight = Color(0xFFEFF6FC);
   static const Color selectedCardDark = Color(0xFF34373D);
 
@@ -25,6 +25,45 @@ class TodoColors {
   static const Color dividerDark = Color(0x14FFFFFF);
 
   static const Color overdueRed = Color(0xFFD92C2C);
+
+  /// Matches `@color/homeview_icon_color` (attention in light, secondary_text in dark).
+  static Color homeViewIconColor(Brightness brightness) {
+    return brightness == Brightness.dark ? secondaryTextDark : attentionLight;
+  }
+
+  /// Matches `@color/detailview_background` (white in light, #1A1A1A in dark).
+  static Color detailHeaderBackground(Brightness brightness) {
+    return brightness == Brightness.dark
+        ? secondaryBackgroundDark
+        : primaryBackgroundLight;
+  }
+
+  /// Matches `@color/detailview_rv_background` (#FAFAFA in light, #080808 in dark).
+  static Color detailBodyBackground(Brightness brightness) {
+    return brightness == Brightness.dark
+        ? primaryBackgroundDark
+        : secondaryBackgroundLight;
+  }
+
+  /// Matches `@color/search_background` (#FFFFFF in light, #080808 in dark).
+  static Color searchBackground(Brightness brightness) {
+    return brightness == Brightness.dark
+        ? primaryBackgroundDark
+        : primaryBackgroundLight;
+  }
+
+  /// Matches `res/drawable/default_shadow_horizontal.xml` (3dp top-to-bottom fade).
+  static const BoxDecoration horizontalShadowDecoration = BoxDecoration(
+    gradient: LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Color(0x1A000000),
+        Color(0x0D000000),
+        Color(0x00000000),
+      ],
+    ),
+  );
 
   static bool isLightTheme(ListThemeColor themeColor) {
     return switch (themeColor) {

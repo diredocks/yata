@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../theme/todo_theme.dart';
+import 'task_pickers.dart';
 
 class TaskEntrySheet extends StatefulWidget {
   const TaskEntrySheet({
@@ -11,10 +12,12 @@ class TaskEntrySheet extends StatefulWidget {
     required this.lists,
     required this.currentList,
     required this.onSubmit,
+    this.startOfWeek = WeekStart.system,
   });
 
   final List<TodoList> lists;
   final TodoList currentList;
+  final WeekStart startOfWeek;
   final void Function({
     required String title,
     String? targetListId,
@@ -63,60 +66,36 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
   }
 
   Future<void> _pickDueDate() async {
-    final l10n = AppLocalizations.of(context);
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.today),
-              title: Text(l10n.today),
-              onTap: () => Navigator.pop(ctx, 'today'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.wb_twilight),
-              title: Text(l10n.tomorrow),
-              onTap: () => Navigator.pop(ctx, 'tomorrow'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.next_week),
-              title: Text(l10n.nextWeek),
-              onTap: () => Navigator.pop(ctx, 'next_week'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.calendar_month),
-              title: Text(l10n.pickDate),
-              onTap: () => Navigator.pop(ctx, 'pick'),
-            ),
-          ],
-        ),
-      ),
+    final result = await showDueDatePickerSheet(
+      context,
+      startOfWeek: widget.startOfWeek,
+      initialDate: _dueDate,
     );
-
-    if (!mounted || choice == null) return;
-
-    if (choice == 'today') {
-      setState(() => _dueDate = today);
-    } else if (choice == 'tomorrow') {
-      setState(() => _dueDate = today.add(const Duration(days: 1)));
-    } else if (choice == 'next_week') {
-      setState(() => _dueDate = today.add(const Duration(days: 7)));
-    } else if (choice == 'pick') {
-      final picked = await showDatePicker(
-        context: context,
-        initialDate: _dueDate ?? today,
-        firstDate: today.subtract(const Duration(days: 365)),
-        lastDate: today.add(const Duration(days: 365 * 5)),
-      );
-      if (picked != null && mounted) {
-        setState(() => _dueDate = picked);
-      }
+    if (result != null && result.date != null && mounted) {
+      setState(() => _dueDate = result.date);
     }
+  }
+
+  Future<void> _pickReminder() async {
+    final picked = await showReminderPickerSheet(
+      context,
+      startOfWeek: widget.startOfWeek,
+      initialReminder: _reminderAt,
+    );
+    if (picked != null && mounted) {
+      setState(() => _reminderAt = picked);
+    }
+  }
+
+  String _recurrenceLabel(AppLocalizations l10n, RecurrenceType type) {
+    return switch (type) {
+      RecurrenceType.none => l10n.repeat,
+      RecurrenceType.daily => l10n.repeatDaily,
+      RecurrenceType.weekdays => l10n.repeatWeekdays,
+      RecurrenceType.weekly => l10n.repeatWeekly,
+      RecurrenceType.monthly => l10n.repeatMonthly,
+      RecurrenceType.yearly => l10n.repeatYearly,
+    };
   }
 
   Future<void> _pickRecurrence() async {
@@ -268,7 +247,11 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
                         size: 16,
                         color: TodoColors.accentFor(targetList.themeColor),
                       ),
-                      label: Text(targetList.title),
+                      label: Text(
+                        targetList.smartType == SmartListType.tasks
+                            ? l10n.tasks
+                            : targetList.title,
+                      ),
                       onPressed: _pickList,
                     ),
                     const SizedBox(width: 8),
@@ -292,27 +275,10 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
                     label: Text(
                       _reminderAt == null
                           ? l10n.remindMe
-                          : DateFormat.jm().format(_reminderAt!),
+                          : DateFormat.MMMd().add_jm().format(_reminderAt!),
                     ),
                     selected: _reminderAt != null,
-                    onSelected: (_) async {
-                      final time = await showTimePicker(
-                        context: context,
-                        initialTime: TimeOfDay.now(),
-                      );
-                      if (time != null && mounted) {
-                        final now = DateTime.now();
-                        setState(() {
-                          _reminderAt = DateTime(
-                            now.year,
-                            now.month,
-                            now.day,
-                            time.hour,
-                            time.minute,
-                          );
-                        });
-                      }
-                    },
+                    onSelected: (_) => _pickReminder(),
                     onDeleted: _reminderAt != null
                         ? () => setState(() => _reminderAt = null)
                         : null,
@@ -320,11 +286,7 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
                   const SizedBox(width: 8),
                   InputChip(
                     avatar: const Icon(Icons.repeat, size: 16),
-                    label: Text(
-                      _recurrence == RecurrenceType.none
-                          ? l10n.repeat
-                          : _recurrence.name,
-                    ),
+                    label: Text(_recurrenceLabel(l10n, _recurrence)),
                     selected: _recurrence != RecurrenceType.none,
                     onSelected: (_) => _pickRecurrence(),
                     onDeleted: _recurrence != RecurrenceType.none

@@ -107,7 +107,11 @@ class TaskListTile extends StatelessWidget {
 
     if (task.reminderAt != null) {
       metadataWidgets.add(
-        Icon(Icons.notifications_none, size: 14, color: secondaryColor),
+        _MetaItem(
+          icon: Icons.notifications_none,
+          label: DateFormat.jm().format(task.reminderAt!),
+          color: secondaryColor,
+        ),
       );
     }
 
@@ -115,6 +119,20 @@ class TaskListTile extends StatelessWidget {
       metadataWidgets.add(
         Icon(Icons.sticky_note_2_outlined, size: 13, color: secondaryColor),
       );
+    }
+
+    // Insert TaskMetadataDivider ('•') between metadata items matching task_metadata.xml
+    final separatedMeta = <Widget>[];
+    for (var i = 0; i < metadataWidgets.length; i++) {
+      if (i > 0) {
+        separatedMeta.add(
+          Text(
+            '•',
+            style: TextStyle(fontSize: 11, color: secondaryColor),
+          ),
+        );
+      }
+      separatedMeta.add(metadataWidgets[i]);
     }
 
     return Padding(
@@ -128,7 +146,7 @@ class TaskListTile extends StatelessWidget {
           onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(8),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 54),
+            constraints: const BoxConstraints(minHeight: 52),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
               child: Row(
@@ -159,13 +177,13 @@ class TaskListTile extends StatelessWidget {
                                     : TodoColors.primaryTextLight),
                           ),
                         ),
-                        if (metadataWidgets.isNotEmpty) ...[
+                        if (separatedMeta.isNotEmpty) ...[
                           const SizedBox(height: 3),
                           Wrap(
-                            spacing: 8,
+                            spacing: 6,
                             runSpacing: 2,
                             crossAxisAlignment: WrapCrossAlignment.center,
-                            children: metadataWidgets,
+                            children: separatedMeta,
                           ),
                         ],
                       ],

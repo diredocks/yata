@@ -27,7 +27,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   @override
   void initState() {
     super.initState();
-    _showCompleted = ref.read(todoProvider).showCompleted;
+    _showCompleted = true;
   }
 
   @override
@@ -57,9 +57,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             return matchesTitle || matchesNote || matchesStep;
           }).toList();
 
-    final bodyBg = isDark
-        ? TodoColors.primaryBackgroundDark
-        : TodoColors.secondaryBackgroundLight;
+    final bodyBg = TodoColors.searchBackground(theme.brightness);
     final secondaryText =
         isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
 

@@ -123,5 +123,32 @@
     "placeholders": {
       "title": {"type": "String"}
     }
-  }
+  },
+  "laterToday": "Later today",
+  "pickDateTime": "Pick a date & time",
+  "sortByCreationDate": "Creation date",
+  "sortByAddedToMyDay": "Added to My Day",
+  "sortedBy": "Sorted by {criteria}",
+  "@sortedBy": {
+    "placeholders": {
+      "criteria": {"type": "String"}
+    }
+  },
+  "promoteStepToTask": "Promote to task",
+  "deleteStep": "Delete step",
+  "updatedOn": "Updated {date}",
+  "@updatedOn": {
+    "placeholders": {
+      "date": {"type": "String"}
+    }
+  },
+  "removeDueDate": "Remove due date",
+  "copyTasks": "Copy",
+  "keepTasksCompletedTitle": "Keep tasks completed",
+  "keepTasksCompletedMessage": "Maintain task and step completion state in the duplicate list?",
+  "yes": "Yes",
+  "no": "No",
+  "plannedEarlier": "Earlier",
+  "plannedThisWeek": "This week",
+  "plannedLater": "Later"
 }

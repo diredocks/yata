@@ -1,0 +1,182 @@
+import 'package:material_ui/material_ui.dart';
+import '../l10n/app_localizations.dart';
+import '../models/todo_list.dart';
+
+/// Computes the first day of next week respecting [startOfWeek].
+DateTime computeNextWeekDate(DateTime from, WeekStart startOfWeek) {
+  final today = DateTime(from.year, from.month, from.day);
+  final targetWeekday = switch (startOfWeek) {
+    WeekStart.sunday => DateTime.sunday,
+    WeekStart.monday || WeekStart.system => DateTime.monday,
+    WeekStart.saturday => DateTime.saturday,
+  };
+  var daysAhead = (targetWeekday - today.weekday + 7) % 7;
+  if (daysAhead == 0) daysAhead = 7;
+  return today.add(Duration(days: daysAhead));
+}
+
+class DueDatePickResult {
+  const DueDatePickResult({this.date, this.cleared = false});
+
+  final DateTime? date;
+  final bool cleared;
+}
+
+/// Shared due-date bottom sheet matching `task_due_date_menu.xml`.
+Future<DueDatePickResult?> showDueDatePickerSheet(
+  BuildContext context, {
+  required WeekStart startOfWeek,
+  DateTime? initialDate,
+  bool includeRemoveOption = false,
+}) async {
+  final l10n = AppLocalizations.of(context);
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+
+  final choice = await showModalBottomSheet<String>(
+    context: context,
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (includeRemoveOption)
+            ListTile(
+              leading: const Icon(Icons.event_busy_outlined),
+              title: Text(l10n.removeDueDate),
+              onTap: () => Navigator.pop(ctx, 'remove'),
+            ),
+          ListTile(
+            leading: const Icon(Icons.today),
+            title: Text(l10n.today),
+            onTap: () => Navigator.pop(ctx, 'today'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.wb_twilight),
+            title: Text(l10n.tomorrow),
+            onTap: () => Navigator.pop(ctx, 'tomorrow'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.next_week),
+            title: Text(l10n.nextWeek),
+            onTap: () => Navigator.pop(ctx, 'next_week'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.calendar_month),
+            title: Text(l10n.pickDate),
+            onTap: () => Navigator.pop(ctx, 'pick'),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  if (choice == null || !context.mounted) return null;
+
+  switch (choice) {
+    case 'remove':
+      return const DueDatePickResult(cleared: true);
+    case 'today':
+      return DueDatePickResult(date: today);
+    case 'tomorrow':
+      return DueDatePickResult(date: today.add(const Duration(days: 1)));
+    case 'next_week':
+      return DueDatePickResult(date: computeNextWeekDate(today, startOfWeek));
+    case 'pick':
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: initialDate ?? today,
+        firstDate: today.subtract(const Duration(days: 365)),
+        lastDate: today.add(const Duration(days: 365 * 5)),
+      );
+      if (picked == null) return null;
+      return DueDatePickResult(date: picked);
+    default:
+      return null;
+  }
+}
+
+/// Shared reminder bottom sheet matching `task_reminder_menu.xml`.
+Future<DateTime?> showReminderPickerSheet(
+  BuildContext context, {
+  required WeekStart startOfWeek,
+  DateTime? initialReminder,
+}) async {
+  final l10n = AppLocalizations.of(context);
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+
+  final choice = await showModalBottomSheet<String>(
+    context: context,
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            leading: const Icon(Icons.access_time),
+            title: Text(l10n.laterToday),
+            onTap: () => Navigator.pop(ctx, 'later'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.wb_twilight),
+            title: Text(l10n.tomorrow),
+            onTap: () => Navigator.pop(ctx, 'tomorrow'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.next_week),
+            title: Text(l10n.nextWeek),
+            onTap: () => Navigator.pop(ctx, 'next_week'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.calendar_month),
+            title: Text(l10n.pickDateTime),
+            onTap: () => Navigator.pop(ctx, 'custom'),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  if (choice == null || !context.mounted) return null;
+
+  switch (choice) {
+    case 'later':
+      final candidate = now.add(const Duration(hours: 4));
+      return DateTime(
+        candidate.year,
+        candidate.month,
+        candidate.day,
+        candidate.hour,
+        0,
+      );
+    case 'tomorrow':
+      final tmr = today.add(const Duration(days: 1));
+      return DateTime(tmr.year, tmr.month, tmr.day, 9, 0);
+    case 'next_week':
+      final nextWk = computeNextWeekDate(today, startOfWeek);
+      return DateTime(nextWk.year, nextWk.month, nextWk.day, 9, 0);
+    case 'custom':
+      final pickedDate = await showDatePicker(
+        context: context,
+        initialDate: initialReminder ?? today,
+        firstDate: today.subtract(const Duration(days: 365)),
+        lastDate: today.add(const Duration(days: 365 * 5)),
+      );
+      if (pickedDate == null || !context.mounted) return null;
+      final pickedTime = await showTimePicker(
+        context: context,
+        initialTime: initialReminder != null
+            ? TimeOfDay.fromDateTime(initialReminder)
+            : TimeOfDay.now(),
+      );
+      if (pickedTime == null) return null;
+      return DateTime(
+        pickedDate.year,
+        pickedDate.month,
+        pickedDate.day,
+        pickedTime.hour,
+        pickedTime.minute,
+      );
+    default:
+      return null;
+  }
+}

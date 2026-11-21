@@ -63,7 +63,10 @@ class HomeViewScreen extends ConsumerWidget {
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: Row(
                   children: [
-                    PersonaAvatar(name: l10n.userName, size: 36),
+                    PersonaAvatar(
+                      name: l10n.userName,
+                      size: isSidebar ? 32 : 38,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -100,9 +103,7 @@ class HomeViewScreen extends ConsumerWidget {
                       onPressed: onOpenSearch,
                       icon: Icon(
                         Icons.search,
-                        color: isDark
-                            ? TodoColors.attentionDark
-                            : TodoColors.attentionLight,
+                        color: TodoColors.homeViewIconColor(theme.brightness),
                       ),
                       tooltip: l10n.search,
                     ),
@@ -177,7 +178,6 @@ class HomeViewScreen extends ConsumerWidget {
             ),
 
             // Footer (home_view_footer.xml)
-            const Divider(height: 1),
             SizedBox(
               height: 48,
               child: Row(
@@ -198,17 +198,17 @@ class HomeViewScreen extends ConsumerWidget {
                           children: [
                             Icon(
                               Icons.add,
-                              color: isDark
-                                  ? TodoColors.attentionDark
-                                  : TodoColors.attentionLight,
+                              color: TodoColors.homeViewIconColor(
+                                theme.brightness,
+                              ),
                             ),
                             const SizedBox(width: 16),
                             Text(
                               l10n.newList,
                               style: theme.textTheme.bodyLarge?.copyWith(
-                                color: isDark
-                                    ? TodoColors.attentionDark
-                                    : TodoColors.attentionLight,
+                                color: TodoColors.homeViewIconColor(
+                                  theme.brightness,
+                                ),
                               ),
                             ),
                           ],
@@ -223,9 +223,7 @@ class HomeViewScreen extends ConsumerWidget {
                     ),
                     icon: Icon(
                       Icons.create_new_folder_outlined,
-                      color: isDark
-                          ? TodoColors.attentionDark
-                          : TodoColors.attentionLight,
+                      color: TodoColors.homeViewIconColor(theme.brightness),
                     ),
                     tooltip: l10n.newGroup,
                   ),
@@ -351,7 +349,11 @@ class _GroupHeaderTile extends StatelessWidget {
           padding: const EdgeInsets.only(left: 12, right: 4),
           child: Row(
             children: [
-              Icon(Icons.folder_outlined, size: 22, color: secondaryColor),
+              Icon(
+                Icons.folder_outlined,
+                size: 22,
+                color: TodoColors.homeViewIconColor(theme.brightness),
+              ),
               const SizedBox(width: 16),
               Expanded(
                 child: Text(
@@ -371,15 +373,30 @@ class _GroupHeaderTile extends StatelessWidget {
                 itemBuilder: (_) => [
                   PopupMenuItem(
                     value: 'modify',
-                    child: Text(l10n.modifyGroupLists),
+                    child: ListTile(
+                      leading: const Icon(Icons.format_list_bulleted),
+                      title: Text(l10n.modifyGroupLists),
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                    ),
                   ),
                   PopupMenuItem(
                     value: 'rename',
-                    child: Text(l10n.renameGroup),
+                    child: ListTile(
+                      leading: const Icon(Icons.drive_file_rename_outline),
+                      title: Text(l10n.renameGroup),
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                    ),
                   ),
                   PopupMenuItem(
                     value: 'ungroup',
-                    child: Text(l10n.ungroupLists),
+                    child: ListTile(
+                      leading: const Icon(Icons.folder_off_outlined),
+                      title: Text(l10n.ungroupLists),
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                    ),
                   ),
                 ],
               ),

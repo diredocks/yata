@@ -9,6 +9,7 @@ import '../theme/todo_theme.dart';
 import '../widgets/list_theme_picker.dart';
 import '../widgets/task_entry_sheet.dart';
 import '../widgets/task_list_tile.dart';
+import '../widgets/task_pickers.dart';
 
 enum _ListMenuAction {
   rename,
@@ -37,7 +38,10 @@ class TasksViewScreen extends ConsumerStatefulWidget {
 class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   bool _completedExpanded = true;
   bool _isReordering = false;
+  bool _isScrolled = false;
   final Set<String> _multiSelectedIds = {};
+  final Set<String> _collapsedPlannedBuckets = {};
+  final Set<String> _collapsedCompletedListBuckets = {};
 
   bool get _isMultiSelecting => _multiSelectedIds.isNotEmpty;
 
@@ -72,6 +76,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       builder: (ctx) => TaskEntrySheet(
         lists: state.lists,
         currentList: state.selectedList,
+        startOfWeek: state.startOfWeek,
         onSubmit: ({
           required String title,
           String? targetListId,
@@ -91,11 +96,21 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     );
   }
 
-  Future<void> _showSortSheet(TodoState state) async {
+  String _sortLabel(AppLocalizations l10n, TaskSortOption option) {
+    return switch (option) {
+      TaskSortOption.defaultOrder => l10n.sortByDefault,
+      TaskSortOption.importance => l10n.sortByImportance,
+      TaskSortOption.dueDate => l10n.sortByDueDate,
+      TaskSortOption.addedToMyDay => l10n.sortByAddedToMyDay,
+      TaskSortOption.alphabetical => l10n.sortByAlphabetical,
+      TaskSortOption.creationDate => l10n.sortByCreationDate,
+    };
+  }
+
+  Future<void> _showSortSheet(TodoState state, TodoList currentList) async {
     final l10n = AppLocalizations.of(context);
     final notifier = ref.read(todoProvider.notifier);
     final options = <(TaskSortOption, String, IconData)>[
-      (TaskSortOption.defaultOrder, l10n.sortByDefault, Icons.list),
       (TaskSortOption.importance, l10n.sortByImportance, Icons.star_outline),
       (
         TaskSortOption.dueDate,
@@ -103,10 +118,21 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         Icons.calendar_today_outlined,
       ),
       (
+        TaskSortOption.addedToMyDay,
+        l10n.sortByAddedToMyDay,
+        Icons.wb_sunny_outlined,
+      ),
+      (
         TaskSortOption.alphabetical,
         l10n.sortByAlphabetical,
         Icons.sort_by_alpha,
       ),
+      (
+        TaskSortOption.creationDate,
+        l10n.sortByCreationDate,
+        Icons.access_time,
+      ),
+      (TaskSortOption.defaultOrder, l10n.sortByDefault, Icons.list),
     ];
 
     await showModalBottomSheet<void>(
@@ -126,11 +152,11 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
               ListTile(
                 leading: Icon(icon),
                 title: Text(label),
-                trailing: state.sortOption == option
+                trailing: currentList.sortOption == option
                     ? const Icon(Icons.check)
                     : null,
                 onTap: () {
-                  notifier.setSortOption(option);
+                  notifier.setListSortOption(currentList.id, option);
                   Navigator.pop(ctx);
                 },
               ),
@@ -167,63 +193,107 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     widget.onBackPressed?.call();
   }
 
-  Future<void> _batchPickDueDate() async {
+  Future<void> _batchPickDueDate(WeekStart startOfWeek) async {
+    final notifier = ref.read(todoProvider.notifier);
+    final result = await showDueDatePickerSheet(
+      context,
+      startOfWeek: startOfWeek,
+      includeRemoveOption: true,
+    );
+    if (result == null) return;
+    if (result.cleared) {
+      notifier.batchSetDueDate(_multiSelectedIds, null);
+      setState(() => _multiSelectedIds.clear());
+    } else if (result.date != null) {
+      notifier.batchSetDueDate(_multiSelectedIds, result.date);
+      setState(() => _multiSelectedIds.clear());
+    }
+  }
+
+  Future<void> _batchCopyToList(TodoState state) async {
     final l10n = AppLocalizations.of(context);
     final notifier = ref.read(todoProvider.notifier);
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final selectableLists = state.lists
+        .where((l) => !l.isSmartList || l.smartType == SmartListType.tasks)
+        .toList();
 
-    final choice = await showModalBottomSheet<String>(
+    final picked = await showModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.today),
-              title: Text(l10n.today),
-              onTap: () => Navigator.pop(ctx, 'today'),
+              title: Text(
+                l10n.copyTasks,
+                style: Theme.of(ctx).textTheme.titleMedium,
+              ),
             ),
-            ListTile(
-              leading: const Icon(Icons.wb_twilight),
-              title: Text(l10n.tomorrow),
-              onTap: () => Navigator.pop(ctx, 'tomorrow'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.next_week),
-              title: Text(l10n.nextWeek),
-              onTap: () => Navigator.pop(ctx, 'next_week'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.calendar_month),
-              title: Text(l10n.pickDate),
-              onTap: () => Navigator.pop(ctx, 'pick'),
+            const Divider(height: 1),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final list in selectableLists)
+                    ListTile(
+                      leading: Icon(
+                        list.icon,
+                        color: TodoColors.accentFor(list.themeColor),
+                      ),
+                      title: Text(
+                        list.smartType == SmartListType.tasks
+                            ? l10n.tasks
+                            : list.title,
+                      ),
+                      onTap: () => Navigator.pop(ctx, list.id),
+                    ),
+                ],
+              ),
             ),
           ],
         ),
       ),
     );
 
-    if (!mounted || choice == null) return;
-    DateTime? targetDate;
-    if (choice == 'today') {
-      targetDate = today;
-    } else if (choice == 'tomorrow') {
-      targetDate = today.add(const Duration(days: 1));
-    } else if (choice == 'next_week') {
-      targetDate = today.add(const Duration(days: 7));
-    } else if (choice == 'pick') {
-      targetDate = await showDatePicker(
-        context: context,
-        initialDate: today,
-        firstDate: today.subtract(const Duration(days: 365)),
-        lastDate: today.add(const Duration(days: 365 * 5)),
-      );
+    if (picked != null && mounted) {
+      notifier.batchCopyToList(_multiSelectedIds, picked);
+      setState(() => _multiSelectedIds.clear());
+    }
+  }
+
+  Future<void> _duplicateListWithPrompt(
+    TodoState state,
+    TodoList currentList,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    final notifier = ref.read(todoProvider.notifier);
+    final hasCompleted = state.tasks
+        .any((t) => t.listId == currentList.id && t.isCompleted);
+
+    if (!hasCompleted) {
+      notifier.duplicateList(currentList.id, keepCompleted: true);
+      return;
     }
 
-    if (targetDate != null) {
-      notifier.batchSetDueDate(_multiSelectedIds, targetDate);
-      setState(() => _multiSelectedIds.clear());
+    final keepCompleted = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.keepTasksCompletedTitle),
+        content: Text(l10n.keepTasksCompletedMessage),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.no),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.yes),
+          ),
+        ],
+      ),
+    );
+    if (keepCompleted != null) {
+      notifier.duplicateList(currentList.id, keepCompleted: keepCompleted);
     }
   }
 
@@ -448,7 +518,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           onRename: (title) => notifier.renameList(currentList.id, title),
         );
       case _ListMenuAction.sort:
-        _showSortSheet(state);
+        _showSortSheet(state, currentList);
       case _ListMenuAction.reorder:
         setState(() {
           _isReordering = true;
@@ -462,9 +532,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
               notifier.changeListTheme(currentList.id, color),
         );
       case _ListMenuAction.toggleCompleted:
-        notifier.toggleShowCompleted(!state.showCompleted);
+        notifier.toggleListShowCompleted(currentList.id);
       case _ListMenuAction.duplicate:
-        notifier.duplicateList(currentList.id);
+        _duplicateListWithPrompt(state, currentList);
       case _ListMenuAction.delete:
         _confirmDeleteList(currentList, state.confirmBeforeDeleting);
     }
@@ -478,6 +548,133 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         _multiSelectedIds.add(taskId);
       }
     });
+  }
+
+  List<(String, String, List<TaskItem>)> _groupPlannedTasks(
+    AppLocalizations l10n,
+    List<TaskItem> tasks,
+    WeekStart startOfWeek,
+  ) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final nextWeekStart = computeNextWeekDate(today, startOfWeek);
+
+    final earlier = <TaskItem>[];
+    final todayList = <TaskItem>[];
+    final tomorrowList = <TaskItem>[];
+    final thisWeek = <TaskItem>[];
+    final later = <TaskItem>[];
+
+    for (final task in tasks) {
+      final date = task.dueDate ?? task.reminderAt;
+      if (date == null) {
+        later.add(task);
+        continue;
+      }
+      final day = DateTime(date.year, date.month, date.day);
+      if (day.isBefore(today)) {
+        earlier.add(task);
+      } else if (day == today) {
+        todayList.add(task);
+      } else if (day == tomorrow) {
+        tomorrowList.add(task);
+      } else if (day.isBefore(nextWeekStart)) {
+        thisWeek.add(task);
+      } else {
+        later.add(task);
+      }
+    }
+
+    return [
+      if (earlier.isNotEmpty) ('earlier', l10n.plannedEarlier, earlier),
+      if (todayList.isNotEmpty) ('today', l10n.today, todayList),
+      if (tomorrowList.isNotEmpty) ('tomorrow', l10n.tomorrow, tomorrowList),
+      if (thisWeek.isNotEmpty) ('this_week', l10n.plannedThisWeek, thisWeek),
+      if (later.isNotEmpty) ('later', l10n.plannedLater, later),
+    ];
+  }
+
+  List<(String, String, List<TaskItem>)> _groupCompletedByList(
+    AppLocalizations l10n,
+    List<TaskItem> tasks,
+    List<TodoList> lists,
+  ) {
+    final grouped = <String, List<TaskItem>>{};
+    for (final task in tasks) {
+      grouped.putIfAbsent(task.listId, () => []).add(task);
+    }
+    final result = <(String, String, List<TaskItem>)>[];
+    for (final entry in grouped.entries) {
+      final list = lists.where((l) => l.id == entry.key).firstOrNull;
+      final title = list == null
+          ? l10n.tasks
+          : (list.smartType == SmartListType.tasks ? l10n.tasks : list.title);
+      result.add((entry.key, title, entry.value));
+    }
+    return result;
+  }
+
+  Widget _buildBucketPill({
+    required String label,
+    required int count,
+    required bool isExpanded,
+    required VoidCallback onTap,
+    required TodoList currentList,
+    required Color headerFg,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(4),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 32),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: TodoColors.isLightTheme(currentList.themeColor)
+                    ? Colors.white.withValues(alpha: 0.72)
+                    : Colors.black.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isExpanded
+                        ? Icons.keyboard_arrow_down
+                        : Icons.keyboard_arrow_right,
+                    color: headerFg,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: headerFg,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$count',
+                    style: TextStyle(
+                      color: headerFg,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -500,12 +697,13 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
     final allTasks = state.tasksForList(currentList);
     final isCompletedList = currentList.smartType == SmartListType.completed;
+    final isPlannedList = currentList.smartType == SmartListType.planned;
     final activeTasks = isCompletedList
         ? allTasks
         : allTasks.where((t) => !t.isCompleted).toList();
     final completedTasks = isCompletedList
         ? const <TaskItem>[]
-        : (state.showCompleted
+        : (currentList.showCompleted
             ? allTasks.where((t) => t.isCompleted).toList()
             : const <TaskItem>[]);
 
@@ -531,14 +729,14 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 IconButton(
                   tooltip: l10n.addToMyDay,
                   onPressed: () {
-                    notifier.batchSetMyDay(_multiSelectedIds, true);
+                    notifier.batchToggleMyDay(_multiSelectedIds);
                     setState(() => _multiSelectedIds.clear());
                   },
                   icon: const Icon(Icons.wb_sunny_outlined),
                 ),
                 IconButton(
                   tooltip: l10n.addDueDate,
-                  onPressed: _batchPickDueDate,
+                  onPressed: () => _batchPickDueDate(state.startOfWeek),
                   icon: const Icon(Icons.calendar_today_outlined),
                 ),
                 PopupMenuButton<String>(
@@ -550,10 +748,12 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                         _multiSelectedIds.addAll(allTasks.map((t) => t.id));
                       });
                     } else if (value == 'important') {
-                      notifier.batchSetImportant(_multiSelectedIds, true);
+                      notifier.batchToggleImportant(_multiSelectedIds);
                       setState(() => _multiSelectedIds.clear());
                     } else if (value == 'move') {
                       _batchMoveToList(state);
+                    } else if (value == 'copy') {
+                      _batchCopyToList(state);
                     } else if (value == 'delete') {
                       _batchDelete(state.confirmBeforeDeleting);
                     }
@@ -587,6 +787,15 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                       ),
                     ),
                     PopupMenuItem(
+                      value: 'copy',
+                      child: ListTile(
+                        leading: const Icon(Icons.copy_outlined),
+                        title: Text(l10n.copyTasks),
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                      ),
+                    ),
+                    PopupMenuItem(
                       value: 'delete',
                       child: ListTile(
                         leading: const Icon(Icons.delete_outline),
@@ -604,8 +813,16 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         decoration: BoxDecoration(gradient: gradient),
         child: SafeArea(
           bottom: false,
-          child: CustomScrollView(
-            slivers: [
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              final scrolled = notification.metrics.pixels > 4;
+              if (scrolled != _isScrolled) {
+                setState(() => _isScrolled = scrolled);
+              }
+              return false;
+            },
+            child: CustomScrollView(
+              slivers: [
               if (!_isMultiSelecting)
                 SliverAppBar(
                   backgroundColor: Colors.transparent,
@@ -641,7 +858,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                         itemBuilder: (context) => _buildMenuItems(
                           l10n,
                           currentList,
-                          state.showCompleted,
+                          currentList.showCompleted,
                         ),
                       ),
                   ],
@@ -649,17 +866,26 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                     builder: (context, constraints) {
                       final topPadding = MediaQuery.paddingOf(context).top;
                       final collapsedHeight = kToolbarHeight + topPadding;
-                      final isCollapsed =
-                          constraints.maxHeight <= collapsedHeight + 20;
+                      final expandedHeight =
+                          (subtitle != null ? 144.0 : 116.0) + topPadding;
+                      final denom =
+                          (expandedHeight - collapsedHeight).clamp(1.0, 200.0);
+                      final t = ((expandedHeight - constraints.maxHeight) /
+                              denom)
+                          .clamp(0.0, 1.0);
+                      final startPad = widget.onBackPressed != null
+                          ? 16.0 + 40.0 * t
+                          : 15.0;
+                      final bottomPad = subtitle != null
+                          ? 42.0 - 20.0 * t
+                          : 14.0;
+                      final subtitleSize = 20.0 - 7.0 * t;
 
                       return FlexibleSpaceBar(
                         expandedTitleScale: 1.5,
                         titlePadding: EdgeInsetsDirectional.only(
-                          start: (widget.onBackPressed != null && isCollapsed)
-                              ? 56
-                              : 16,
-                          bottom:
-                              (subtitle != null && !isCollapsed) ? 42 : 14,
+                          start: startPad,
+                          bottom: bottomPad,
                           end: 56,
                         ),
                         title: Text(
@@ -668,7 +894,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: headerFg,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w500,
                             fontSize: 20,
                           ),
                         ),
@@ -676,16 +902,18 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                             ? Align(
                                 alignment: AlignmentDirectional.bottomStart,
                                 child: Padding(
-                                  padding: const EdgeInsetsDirectional.only(
-                                    start: 16,
-                                    bottom: 12,
-                                    end: 16,
+                                  padding: EdgeInsetsDirectional.only(
+                                    start: startPad,
+                                    bottom: 10.0 - 4.0 * t,
+                                    end: 56,
                                   ),
                                   child: Text(
                                     subtitle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      color: headerFg.withValues(alpha: 0.95),
-                                      fontSize: 20,
+                                      color: headerFg.withValues(alpha: 0.92),
+                                      fontSize: subtitleSize,
                                       fontWeight: FontWeight.w400,
                                     ),
                                   ),
@@ -694,6 +922,104 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                             : null,
                       );
                     },
+                  ),
+                ),
+
+              // Header shadow (tasks_list_layout.xml header_shadow)
+              if (_isScrolled && !_isMultiSelecting)
+                SliverToBoxAdapter(
+                  child: Container(
+                    height: 3,
+                    decoration: TodoColors.horizontalShadowDecoration,
+                  ),
+                ),
+
+              // Sort banner (task_list_header.xml)
+              if (currentList.sortOption != TaskSortOption.defaultOrder &&
+                  !_isReordering)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 2, 8, 6),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 32),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: TodoColors.isLightTheme(currentList.themeColor)
+                              ? Colors.white.withValues(alpha: 0.72)
+                              : Colors.black.withValues(alpha: 0.25),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: InkWell(
+                                  onTap: () => notifier
+                                      .toggleListSortDirection(currentList.id),
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 4,
+                                      vertical: 4,
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            l10n.sortedBy(
+                                              _sortLabel(
+                                                l10n,
+                                                currentList.sortOption,
+                                              ),
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: headerFg,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w400,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Icon(
+                                          currentList.sortAscending
+                                              ? Icons.keyboard_arrow_up
+                                              : Icons.keyboard_arrow_down,
+                                          color: headerFg,
+                                          size: 18,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            InkWell(
+                              onTap: () => notifier.setListSortOption(
+                                currentList.id,
+                                TaskSortOption.defaultOrder,
+                              ),
+                              borderRadius: BorderRadius.circular(16),
+                              child: Padding(
+                                padding: const EdgeInsets.all(4),
+                                child: Icon(
+                                  Icons.close,
+                                  size: 20,
+                                  color: headerFg,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
 
@@ -740,6 +1066,131 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                       },
                     ),
                   )
+                else if (isPlannedList &&
+                    currentList.sortOption == TaskSortOption.defaultOrder)
+                  for (final (bucketKey, bucketTitle, bucketTasks)
+                      in _groupPlannedTasks(
+                    l10n,
+                    activeTasks,
+                    state.startOfWeek,
+                  )) ...[
+                    SliverToBoxAdapter(
+                      child: _buildBucketPill(
+                        label: bucketTitle,
+                        count: bucketTasks.length,
+                        isExpanded:
+                            !_collapsedPlannedBuckets.contains(bucketKey),
+                        onTap: () => setState(() {
+                          if (_collapsedPlannedBuckets.contains(bucketKey)) {
+                            _collapsedPlannedBuckets.remove(bucketKey);
+                          } else {
+                            _collapsedPlannedBuckets.add(bucketKey);
+                          }
+                        }),
+                        currentList: currentList,
+                        headerFg: headerFg,
+                      ),
+                    ),
+                    if (!_collapsedPlannedBuckets.contains(bucketKey))
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final task = bucketTasks[index];
+                              final originListName = state.lists
+                                  .where((l) => l.id == task.listId)
+                                  .map(
+                                    (l) => l.smartType == SmartListType.tasks
+                                        ? l10n.tasks
+                                        : l.title,
+                                  )
+                                  .firstOrNull;
+                              return TaskListTile(
+                                task: task,
+                                listName: originListName,
+                                showMyDayBadge: true,
+                                accentColor: accentColor,
+                                isSelected: state.selectedTaskId == task.id,
+                                isMultiSelected:
+                                    _multiSelectedIds.contains(task.id),
+                                onTap: () {
+                                  if (_isMultiSelecting) {
+                                    _toggleSelection(task.id);
+                                  } else {
+                                    widget.onOpenTask(task);
+                                  }
+                                },
+                                onLongPress: () => _toggleSelection(task.id),
+                                onToggleCompleted: () =>
+                                    notifier.toggleTaskCompleted(task.id),
+                                onToggleImportant: () =>
+                                    notifier.toggleTaskImportant(task.id),
+                              );
+                            },
+                            childCount: bucketTasks.length,
+                          ),
+                        ),
+                      ),
+                  ]
+                else if (isCompletedList &&
+                    currentList.sortOption == TaskSortOption.defaultOrder)
+                  for (final (listId, listName, bucketTasks)
+                      in _groupCompletedByList(
+                    l10n,
+                    activeTasks,
+                    state.lists,
+                  )) ...[
+                    SliverToBoxAdapter(
+                      child: _buildBucketPill(
+                        label: listName,
+                        count: bucketTasks.length,
+                        isExpanded:
+                            !_collapsedCompletedListBuckets.contains(listId),
+                        onTap: () => setState(() {
+                          if (_collapsedCompletedListBuckets.contains(listId)) {
+                            _collapsedCompletedListBuckets.remove(listId);
+                          } else {
+                            _collapsedCompletedListBuckets.add(listId);
+                          }
+                        }),
+                        currentList: currentList,
+                        headerFg: headerFg,
+                      ),
+                    ),
+                    if (!_collapsedCompletedListBuckets.contains(listId))
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final task = bucketTasks[index];
+                              return TaskListTile(
+                                task: task,
+                                showMyDayBadge: true,
+                                accentColor: accentColor,
+                                isSelected: state.selectedTaskId == task.id,
+                                isMultiSelected:
+                                    _multiSelectedIds.contains(task.id),
+                                onTap: () {
+                                  if (_isMultiSelecting) {
+                                    _toggleSelection(task.id);
+                                  } else {
+                                    widget.onOpenTask(task);
+                                  }
+                                },
+                                onLongPress: () => _toggleSelection(task.id),
+                                onToggleCompleted: () =>
+                                    notifier.toggleTaskCompleted(task.id),
+                                onToggleImportant: () =>
+                                    notifier.toggleTaskImportant(task.id),
+                              );
+                            },
+                            childCount: bucketTasks.length,
+                          ),
+                        ),
+                      ),
+                  ]
                 else
                   SliverPadding(
                     padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -787,51 +1238,15 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 // Collapsible Completed bucket
                 if (completedTasks.isNotEmpty)
                   SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: InkWell(
-                          onTap: () => setState(
-                            () => _completedExpanded = !_completedExpanded,
-                          ),
-                          borderRadius: BorderRadius.circular(6),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: TodoColors.isLightTheme(
-                                      currentList.themeColor)
-                                  ? Colors.white.withValues(alpha: 0.72)
-                                  : Colors.black.withValues(alpha: 0.22),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  _completedExpanded
-                                      ? Icons.keyboard_arrow_down
-                                      : Icons.keyboard_arrow_right,
-                                  color: headerFg,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '${l10n.completed}  ${completedTasks.length}',
-                                  style: TextStyle(
-                                    color: headerFg,
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                    child: _buildBucketPill(
+                      label: l10n.completed,
+                      count: completedTasks.length,
+                      isExpanded: _completedExpanded,
+                      onTap: () => setState(
+                        () => _completedExpanded = !_completedExpanded,
                       ),
+                      currentList: currentList,
+                      headerFg: headerFg,
                     ),
                   ),
 
@@ -870,6 +1285,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                   const SliverToBoxAdapter(child: SizedBox(height: 84)),
               ],
             ],
+          ),
           ),
         ),
       ),

@@ -93,7 +93,8 @@ class TodoState {
     };
 
     final result = filtered.toList();
-    switch (sortOption) {
+    final dir = list.sortAscending ? 1 : -1;
+    switch (list.sortOption) {
       case TaskSortOption.defaultOrder:
         if (moveStarredTasksToTop &&
             list.smartType != SmartListType.important) {
@@ -104,19 +105,31 @@ class TodoState {
       case TaskSortOption.importance:
         result.sort((a, b) {
           if (a.isImportant == b.isImportant) return 0;
-          return a.isImportant ? -1 : 1;
+          return (a.isImportant ? -1 : 1) * dir;
         });
       case TaskSortOption.dueDate:
         result.sort((a, b) {
           if (a.dueDate == null && b.dueDate == null) return 0;
           if (a.dueDate == null) return 1;
           if (b.dueDate == null) return -1;
-          return a.dueDate!.compareTo(b.dueDate!);
+          return a.dueDate!.compareTo(b.dueDate!) * dir;
+        });
+      case TaskSortOption.addedToMyDay:
+        result.sort((a, b) {
+          if (a.isInMyDay != b.isInMyDay) {
+            return (a.isInMyDay ? -1 : 1) * dir;
+          }
+          final aDate = a.myDayDate ?? a.createdAt;
+          final bDate = b.myDayDate ?? b.createdAt;
+          return bDate.compareTo(aDate) * dir;
         });
       case TaskSortOption.alphabetical:
         result.sort(
-          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+          (a, b) =>
+              a.title.toLowerCase().compareTo(b.title.toLowerCase()) * dir,
         );
+      case TaskSortOption.creationDate:
+        result.sort((a, b) => b.createdAt.compareTo(a.createdAt) * dir);
     }
     return result;
   }
@@ -208,13 +221,45 @@ class TodoNotifier extends Notifier<TodoState> {
 
   TodoLocalStorage get _storage => ref.read(todoLocalStorageProvider);
 
+  String _todayKey(DateTime dt) =>
+      '${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
   @override
   TodoState build() {
     final snapshot = _storage.load();
+    final now = DateTime.now();
+    final todayKey = _todayKey(now);
+    var tasks = snapshot.tasks;
+
+    if (snapshot.lastMyDayResetDate != null &&
+        snapshot.lastMyDayResetDate != todayKey) {
+      var changed = false;
+      tasks = [
+        for (final task in tasks)
+          if (task.isInMyDay &&
+              (task.myDayDate == null || !_isSameDay(task.myDayDate!, now)))
+            () {
+              changed = true;
+              return task.copyWith(isInMyDay: false, clearMyDayDate: true);
+            }()
+          else
+            task,
+      ];
+      if (changed) {
+        _storage.saveTasks(tasks);
+      }
+      _storage.saveLastMyDayResetDate(todayKey);
+    } else if (snapshot.lastMyDayResetDate == null) {
+      _storage.saveLastMyDayResetDate(todayKey);
+    }
+
     return TodoState(
       lists: snapshot.lists,
       groups: snapshot.groups,
-      tasks: snapshot.tasks,
+      tasks: tasks,
       selectedListId: snapshot.selectedListId,
       sortOption: snapshot.sortOption,
       showCompleted: snapshot.showCompleted,
@@ -248,8 +293,51 @@ class TodoNotifier extends Notifier<TodoState> {
   }
 
   void setSortOption(TaskSortOption option) {
-    state = state.copyWith(sortOption: option);
+    setListSortOption(state.selectedListId, option);
+  }
+
+  void setListSortOption(
+    String listId,
+    TaskSortOption option, {
+    bool? ascending,
+  }) {
+    final updated = [
+      for (final list in state.lists)
+        if (list.id == listId)
+          list.copyWith(
+            sortOption: option,
+            sortAscending: ascending ?? true,
+          )
+        else
+          list,
+    ];
+    state = state.copyWith(lists: updated, sortOption: option);
+    _storage.saveLists(updated);
     _storage.saveSortOption(option);
+  }
+
+  void toggleListSortDirection(String listId) {
+    final updated = [
+      for (final list in state.lists)
+        if (list.id == listId)
+          list.copyWith(sortAscending: !list.sortAscending)
+        else
+          list,
+    ];
+    state = state.copyWith(lists: updated);
+    _storage.saveLists(updated);
+  }
+
+  void toggleListShowCompleted(String listId) {
+    final updated = [
+      for (final list in state.lists)
+        if (list.id == listId)
+          list.copyWith(showCompleted: !list.showCompleted)
+        else
+          list,
+    ];
+    state = state.copyWith(lists: updated);
+    _storage.saveLists(updated);
   }
 
   void setThemeMode(ThemeMode mode) {
@@ -396,7 +484,7 @@ class TodoNotifier extends Notifier<TodoState> {
     _storage.saveLists(updated);
   }
 
-  void duplicateList(String listId) {
+  void duplicateList(String listId, {bool keepCompleted = true}) {
     final source = state.lists.where((l) => l.id == listId).firstOrNull;
     if (source == null || source.isSmartList) return;
 
@@ -411,9 +499,14 @@ class TodoNotifier extends Notifier<TodoState> {
           id: _nextId('task'),
           listId: newListId,
           createdAt: DateTime.now(),
+          isCompleted: keepCompleted ? task.isCompleted : false,
+          clearCompletedAt: !keepCompleted,
           steps: [
             for (final step in task.steps)
-              step.copyWith(id: _nextId('step')),
+              step.copyWith(
+                id: _nextId('step'),
+                isCompleted: keepCompleted ? step.isCompleted : false,
+              ),
           ],
         ),
     ];
@@ -506,18 +599,19 @@ class TodoNotifier extends Notifier<TodoState> {
     final resolvedListId = targetListId ??
         (currentList.isSmartList ? 'tasks' : currentList.id);
 
+    final inMyDay = isInMyDay || currentList.smartType == SmartListType.myDay;
+    final now = DateTime.now();
     final newTask = TaskItem(
       id: _nextId('task'),
       listId: resolvedListId,
       title: trimmed,
-      createdAt: DateTime.now(),
-      isInMyDay: isInMyDay || currentList.smartType == SmartListType.myDay,
+      createdAt: now,
+      isInMyDay: inMyDay,
+      myDayDate: inMyDay ? now : null,
       isImportant:
           isImportant || currentList.smartType == SmartListType.important,
       dueDate: dueDate ??
-          (currentList.smartType == SmartListType.planned
-              ? DateTime.now()
-              : null),
+          (currentList.smartType == SmartListType.planned ? now : null),
       reminderAt: reminderAt,
       recurrence: recurrence,
     );
@@ -559,10 +653,19 @@ class TodoNotifier extends Notifier<TodoState> {
           task,
     ];
 
+    final updatedLists = [
+      for (final list in state.lists)
+        if (list.id == state.selectedListId)
+          list.copyWith(sortOption: TaskSortOption.defaultOrder)
+        else
+          list,
+    ];
     state = state.copyWith(
+      lists: updatedLists,
       tasks: updated,
       sortOption: TaskSortOption.defaultOrder,
     );
+    _storage.saveLists(updatedLists);
     _storage.saveTasks(updated);
     _storage.saveSortOption(TaskSortOption.defaultOrder);
   }
@@ -596,19 +699,37 @@ class TodoNotifier extends Notifier<TodoState> {
     for (final task in state.tasks) {
       if (task.id == taskId) {
         final nowCompleted = !task.isCompleted;
-        updated.add(task.copyWith(isCompleted: nowCompleted));
+        final now = DateTime.now();
+        updated.add(
+          task.copyWith(
+            isCompleted: nowCompleted,
+            completedAt: nowCompleted ? now : null,
+            clearCompletedAt: !nowCompleted,
+          ),
+        );
         if (nowCompleted && task.recurrence != RecurrenceType.none) {
-          final now = DateTime.now();
           final baseDate =
               task.dueDate ?? DateTime(now.year, now.month, now.day);
+          final nextDue = _nextDueDate(baseDate, task.recurrence);
+          DateTime? nextReminder;
+          if (task.reminderAt != null) {
+            nextReminder = DateTime(
+              nextDue.year,
+              nextDue.month,
+              nextDue.day,
+              task.reminderAt!.hour,
+              task.reminderAt!.minute,
+            );
+          }
           nextOccurrence = TaskItem(
             id: _nextId('task'),
             listId: task.listId,
             title: task.title,
-            createdAt: DateTime.now(),
+            createdAt: now,
             isImportant: task.isImportant,
             isInMyDay: false,
-            dueDate: _nextDueDate(baseDate, task.recurrence),
+            dueDate: nextDue,
+            reminderAt: nextReminder,
             recurrence: task.recurrence,
             note: task.note,
             steps: [
@@ -647,10 +768,15 @@ class TodoNotifier extends Notifier<TodoState> {
   }
 
   void toggleTaskMyDay(String taskId) {
+    final now = DateTime.now();
     final updated = [
       for (final task in state.tasks)
         if (task.id == taskId)
-          task.copyWith(isInMyDay: !task.isInMyDay)
+          task.copyWith(
+            isInMyDay: !task.isInMyDay,
+            myDayDate: !task.isInMyDay ? now : null,
+            clearMyDayDate: task.isInMyDay,
+          )
         else
           task,
     ];
@@ -670,9 +796,13 @@ class TodoNotifier extends Notifier<TodoState> {
   }
 
   void updateTaskNote(String taskId, String note) {
+    final now = DateTime.now();
     final updated = [
       for (final task in state.tasks)
-        if (task.id == taskId) task.copyWith(note: note) else task,
+        if (task.id == taskId)
+          task.copyWith(note: note, noteUpdatedAt: now)
+        else
+          task,
     ];
     state = state.copyWith(tasks: updated);
     _storage.saveTasks(updated);
@@ -736,15 +866,27 @@ class TodoNotifier extends Notifier<TodoState> {
   }
 
   void batchSetMyDay(Set<String> taskIds, bool value) {
+    final now = DateTime.now();
     final updated = [
       for (final task in state.tasks)
         if (taskIds.contains(task.id))
-          task.copyWith(isInMyDay: value)
+          task.copyWith(
+            isInMyDay: value,
+            myDayDate: value ? now : null,
+            clearMyDayDate: !value,
+          )
         else
           task,
     ];
     state = state.copyWith(tasks: updated);
     _storage.saveTasks(updated);
+  }
+
+  void batchToggleMyDay(Set<String> taskIds) {
+    final selected = state.tasks.where((t) => taskIds.contains(t.id));
+    final allInMyDay =
+        selected.isNotEmpty && selected.every((t) => t.isInMyDay);
+    batchSetMyDay(taskIds, !allInMyDay);
   }
 
   void batchSetImportant(Set<String> taskIds, bool value) {
@@ -755,6 +897,38 @@ class TodoNotifier extends Notifier<TodoState> {
         else
           task,
     ];
+    state = state.copyWith(tasks: updated);
+    _storage.saveTasks(updated);
+  }
+
+  void batchToggleImportant(Set<String> taskIds) {
+    final selected = state.tasks.where((t) => taskIds.contains(t.id));
+    final allImportant =
+        selected.isNotEmpty && selected.every((t) => t.isImportant);
+    batchSetImportant(taskIds, !allImportant);
+  }
+
+  void batchCopyToList(Set<String> taskIds, String targetListId) {
+    final now = DateTime.now();
+    final copies = <TaskItem>[
+      for (final task in state.tasks)
+        if (taskIds.contains(task.id))
+          task.copyWith(
+            id: _nextId('task'),
+            listId: targetListId,
+            createdAt: now,
+            isCompleted: false,
+            clearCompletedAt: true,
+            steps: [
+              for (final step in task.steps)
+                TaskStep(id: _nextId('step'), title: step.title),
+            ],
+          ),
+    ];
+    if (copies.isEmpty) return;
+    final updated = state.addNewTasksOnTop
+        ? [...copies, ...state.tasks]
+        : [...state.tasks, ...copies];
     state = state.copyWith(tasks: updated);
     _storage.saveTasks(updated);
   }
@@ -839,6 +1013,63 @@ class TodoNotifier extends Notifier<TodoState> {
         else
           task,
     ];
+    state = state.copyWith(tasks: updated);
+    _storage.saveTasks(updated);
+  }
+
+  void renameStep(String taskId, String stepId, String newTitle) {
+    final trimmed = newTitle.trim();
+    if (trimmed.isEmpty) return;
+    final updated = [
+      for (final task in state.tasks)
+        if (task.id == taskId)
+          task.copyWith(
+            steps: [
+              for (final step in task.steps)
+                if (step.id == stepId) step.copyWith(title: trimmed) else step,
+            ],
+          )
+        else
+          task,
+    ];
+    state = state.copyWith(tasks: updated);
+    _storage.saveTasks(updated);
+  }
+
+  void promoteStepToTask(String taskId, String stepId) {
+    TaskItem? promoted;
+    final updated = <TaskItem>[];
+    for (final task in state.tasks) {
+      if (task.id == taskId) {
+        final step = task.steps.where((s) => s.id == stepId).firstOrNull;
+        if (step != null) {
+          promoted = TaskItem(
+            id: _nextId('task'),
+            listId: task.listId,
+            title: step.title,
+            createdAt: DateTime.now(),
+            isCompleted: step.isCompleted,
+            completedAt: step.isCompleted ? DateTime.now() : null,
+          );
+          updated.add(
+            task.copyWith(
+              steps: task.steps.where((s) => s.id != stepId).toList(),
+            ),
+          );
+        } else {
+          updated.add(task);
+        }
+      } else {
+        updated.add(task);
+      }
+    }
+    if (promoted != null) {
+      if (state.addNewTasksOnTop) {
+        updated.insert(0, promoted);
+      } else {
+        updated.add(promoted);
+      }
+    }
     state = state.copyWith(tasks: updated);
     _storage.saveTasks(updated);
   }

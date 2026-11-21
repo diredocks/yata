@@ -26,11 +26,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Smart lists appear on HomeView with no mock tasks
+    // Smart lists appear on HomeView with no mock tasks (All is hidden by default like MS To Do)
     expect(find.text('My Day'), findsOneWidget);
     expect(find.text('Important'), findsOneWidget);
     expect(find.text('Planned'), findsOneWidget);
-    expect(find.text('All'), findsOneWidget);
+    expect(find.text('All'), findsNothing);
     expect(find.text('Tasks'), findsOneWidget);
     expect(find.text('Review weekly goals'), findsNothing);
 
@@ -220,5 +220,76 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(container.read(todoProvider).showSmartListCompleted, isTrue);
+  });
+
+  testWidgets(
+      'Supports per-list sort banner, step promotion, and Planned buckets',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+
+    tester.view.physicalSize = const Size(1024, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+        child: const YataApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(YataApp)),
+    );
+    final notifier = container.read(todoProvider.notifier);
+
+    notifier.addTask(title: 'Beta task', dueDate: DateTime.now());
+    notifier.addTask(title: 'Alpha task');
+    await tester.pumpAndSettle();
+
+    // Sort My Day alphabetically -> sort banner appears
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sort by'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Alphabetically'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sorted by Alphabetically'), findsOneWidget);
+
+    // Add a step and promote it to a task
+    final alphaTask = container
+        .read(todoProvider)
+        .tasks
+        .firstWhere((t) => t.title == 'Alpha task');
+    notifier.addStep(alphaTask.id, 'Sub-item');
+    notifier.selectTask(alphaTask.id);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sub-item'), findsOneWidget);
+    final stepId = container
+        .read(todoProvider)
+        .tasks
+        .firstWhere((t) => t.id == alphaTask.id)
+        .steps
+        .first
+        .id;
+    notifier.promoteStepToTask(alphaTask.id, stepId);
+    await tester.pumpAndSettle();
+
+    expect(
+      container
+          .read(todoProvider)
+          .tasks
+          .any((t) => t.title == 'Sub-item'),
+      isTrue,
+    );
+
+    // Switch to Planned -> Today bucket header appears
+    await tester.tap(find.text('Planned'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Today'), findsWidgets);
   });
 }

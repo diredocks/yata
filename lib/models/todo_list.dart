@@ -37,7 +37,9 @@ enum TaskSortOption {
   defaultOrder,
   importance,
   dueDate,
+  addedToMyDay,
   alphabetical,
+  creationDate,
 }
 
 @immutable
@@ -49,6 +51,9 @@ class TodoList {
     this.groupId,
     this.themeColor = ListThemeColor.blue,
     this.icon = Icons.format_list_bulleted,
+    this.sortOption = TaskSortOption.defaultOrder,
+    this.sortAscending = true,
+    this.showCompleted = true,
   });
 
   final String id;
@@ -57,6 +62,9 @@ class TodoList {
   final String? groupId;
   final ListThemeColor themeColor;
   final IconData icon;
+  final TaskSortOption sortOption;
+  final bool sortAscending;
+  final bool showCompleted;
 
   bool get isSmartList => smartType != null;
 
@@ -68,6 +76,9 @@ class TodoList {
     bool clearGroupId = false,
     ListThemeColor? themeColor,
     IconData? icon,
+    TaskSortOption? sortOption,
+    bool? sortAscending,
+    bool? showCompleted,
   }) {
     return TodoList(
       id: id ?? this.id,
@@ -76,6 +87,9 @@ class TodoList {
       groupId: clearGroupId ? null : (groupId ?? this.groupId),
       themeColor: themeColor ?? this.themeColor,
       icon: icon ?? this.icon,
+      sortOption: sortOption ?? this.sortOption,
+      sortAscending: sortAscending ?? this.sortAscending,
+      showCompleted: showCompleted ?? this.showCompleted,
     );
   }
 
@@ -98,6 +112,9 @@ class TodoList {
       'smartType': smartType?.name,
       'groupId': groupId,
       'themeColor': themeColor.name,
+      'sortOption': sortOption.name,
+      'sortAscending': sortAscending,
+      'showCompleted': showCompleted,
     };
   }
 
@@ -111,6 +128,11 @@ class TodoList {
       (e) => e.name == colorName,
       orElse: () => ListThemeColor.blue,
     );
+    final sortName = json['sortOption'] as String? ?? 'defaultOrder';
+    final sortOption = TaskSortOption.values.firstWhere(
+      (e) => e.name == sortName,
+      orElse: () => TaskSortOption.defaultOrder,
+    );
 
     return TodoList(
       id: json['id'] as String,
@@ -119,6 +141,9 @@ class TodoList {
       groupId: json['groupId'] as String?,
       themeColor: themeColor,
       icon: iconForSmartType(smartType),
+      sortOption: sortOption,
+      sortAscending: json['sortAscending'] as bool? ?? true,
+      showCompleted: json['showCompleted'] as bool? ?? true,
     );
   }
 }

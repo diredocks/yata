@@ -23,6 +23,7 @@ class TodoSnapshot {
     required this.showSmartListAll,
     required this.showSmartListCompleted,
     required this.autoHideEmptySmartLists,
+    this.lastMyDayResetDate,
   });
 
   final List<TodoList> lists;
@@ -42,6 +43,7 @@ class TodoSnapshot {
   final bool showSmartListAll;
   final bool showSmartListCompleted;
   final bool autoHideEmptySmartLists;
+  final String? lastMyDayResetDate;
 }
 
 class TodoLocalStorage {
@@ -66,6 +68,7 @@ class TodoLocalStorage {
   static const _showAllKey = 'yata.show_smart_all';
   static const _showCompletedListKey = 'yata.show_smart_completed';
   static const _autoHideSmartListsKey = 'yata.autohide_smart_lists';
+  static const _lastMyDayResetKey = 'yata.last_my_day_reset';
 
   static List<TodoList> defaultSmartLists() {
     return const [
@@ -183,10 +186,11 @@ class TodoLocalStorage {
       startOfWeek: startOfWeek,
       showSmartListImportant: _prefs.getBool(_showImportantKey) ?? true,
       showSmartListPlanned: _prefs.getBool(_showPlannedKey) ?? true,
-      showSmartListAll: _prefs.getBool(_showAllKey) ?? true,
+      showSmartListAll: _prefs.getBool(_showAllKey) ?? false,
       showSmartListCompleted: _prefs.getBool(_showCompletedListKey) ?? false,
       autoHideEmptySmartLists:
           _prefs.getBool(_autoHideSmartListsKey) ?? false,
+      lastMyDayResetDate: _prefs.getString(_lastMyDayResetKey),
     );
   }
 
@@ -255,4 +259,7 @@ class TodoLocalStorage {
 
   Future<void> saveAutoHideEmptySmartLists(bool value) =>
       saveBoolSetting(_autoHideSmartListsKey, value);
+
+  Future<void> saveLastMyDayResetDate(String dateKey) =>
+      _prefs.setString(_lastMyDayResetKey, dateKey);
 }
