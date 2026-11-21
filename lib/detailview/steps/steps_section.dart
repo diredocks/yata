@@ -146,15 +146,16 @@ class _StepsSectionState extends State<StepsSection> {
                       }
                     },
                     itemBuilder: (_) => [
-                      PopupMenuItem(
-                        value: 'promote',
-                        child: ListTile(
-                          leading: const Icon(Icons.add),
-                          title: Text(l10n.promoteStepToTask),
-                          contentPadding: EdgeInsets.zero,
-                          dense: true,
+                      if (!step.isCompleted)
+                        PopupMenuItem(
+                          value: 'promote',
+                          child: ListTile(
+                            leading: const Icon(Icons.add),
+                            title: Text(l10n.promoteStepToTask),
+                            contentPadding: EdgeInsets.zero,
+                            dense: true,
+                          ),
                         ),
-                      ),
                       PopupMenuItem(
                         value: 'delete',
                         child: ListTile(

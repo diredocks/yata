@@ -13,9 +13,6 @@ class DetailViewPresenter {
   TodoNotifier get _store => _ref.read(todoProvider.notifier);
   TodoState get _state => _ref.read(todoProvider);
 
-  static bool _isSameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
-
   void toggleTaskCompleted(String taskId) {
     _ref.read(tasksViewPresenterProvider).toggleTaskCompleted(taskId);
   }
@@ -29,11 +26,21 @@ class DetailViewPresenter {
     final updated = [
       for (final task in _state.tasks)
         if (task.id == taskId)
-          task.copyWith(
-            isInMyDay: !task.isInMyDay,
-            myDayDate: !task.isInMyDay ? now : null,
-            clearMyDayDate: task.isInMyDay,
-          )
+          () {
+            final adding = !task.isInMyDay;
+            final dueToday = task.dueDate != null &&
+                TodoNotifier.isSameDay(task.dueDate!, now);
+            return TodoNotifier.syncMyDayFlag(
+              task.copyWith(
+                myDayDate: adding ? now : null,
+                clearMyDayDate: !adding,
+                postponedDay: !adding && dueToday ? now : task.postponedDay,
+                clearPostponedDay: adding,
+              ),
+              now: now,
+              showDueTodayInMyDay: _state.showDueTodayInMyDay,
+            );
+          }()
         else
           task,
     ];
@@ -54,13 +61,18 @@ class DetailViewPresenter {
 
   void updateTaskNote(String taskId, String note) {
     final now = DateTime.now();
+    var changed = false;
     final updated = [
       for (final task in _state.tasks)
-        if (task.id == taskId)
-          task.copyWith(note: note, noteUpdatedAt: now)
+        if (task.id == taskId && task.note != note)
+          () {
+            changed = true;
+            return task.copyWith(note: note, noteUpdatedAt: now);
+          }()
         else
           task,
     ];
+    if (!changed) return;
     _store.commit(_state.copyWith(tasks: updated));
     _store.storage.saveTasks(updated);
   }
@@ -76,27 +88,24 @@ class DetailViewPresenter {
 
   void setTaskDueDate(String taskId, DateTime? dueDate) {
     final now = DateTime.now();
-    final autoMyDay = dueDate != null &&
-        _state.showDueTodayInMyDay &&
-        _isSameDay(dueDate, now);
     final updated = [
       for (final task in _state.tasks)
         if (task.id == taskId)
           () {
-            final wasDueToday =
-                task.dueDate != null && _isSameDay(task.dueDate!, now);
-            final leavingToday =
-                wasDueToday && (dueDate == null || !_isSameDay(dueDate, now));
-            return task.copyWith(
-              dueDate: dueDate,
-              clearDueDate: dueDate == null,
-              recurrence:
-                  dueDate == null ? RecurrenceType.none : task.recurrence,
-              isInMyDay: autoMyDay
-                  ? true
-                  : (leavingToday ? false : task.isInMyDay),
-              myDayDate: autoMyDay ? now : task.myDayDate,
-              clearMyDayDate: leavingToday && !autoMyDay,
+            final clearPostponed = dueDate != null &&
+                _state.showDueTodayInMyDay &&
+                task.postponedDay != null &&
+                TodoNotifier.isSameDay(dueDate, task.postponedDay!);
+            return TodoNotifier.syncMyDayFlag(
+              task.copyWith(
+                dueDate: dueDate,
+                clearDueDate: dueDate == null,
+                recurrence:
+                    dueDate == null ? RecurrenceType.none : task.recurrence,
+                clearPostponedDay: clearPostponed,
+              ),
+              now: now,
+              showDueTodayInMyDay: _state.showDueTodayInMyDay,
             );
           }()
         else
@@ -134,14 +143,13 @@ class DetailViewPresenter {
                         reminderAt: task.reminderAt,
                       )
                     : task.dueDate;
-            final autoMyDay = nextDue != null &&
-                _state.showDueTodayInMyDay &&
-                _isSameDay(nextDue, now);
-            return task.copyWith(
-              recurrence: recurrence,
-              dueDate: nextDue,
-              isInMyDay: autoMyDay ? true : task.isInMyDay,
-              myDayDate: autoMyDay ? now : task.myDayDate,
+            return TodoNotifier.syncMyDayFlag(
+              task.copyWith(
+                recurrence: recurrence,
+                dueDate: nextDue,
+              ),
+              now: now,
+              showDueTodayInMyDay: _state.showDueTodayInMyDay,
             );
           }()
         else
@@ -213,7 +221,10 @@ class DetailViewPresenter {
 
   void renameStep(String taskId, String stepId, String newTitle) {
     final trimmed = newTitle.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty) {
+      deleteStep(taskId, stepId);
+      return;
+    }
     final updated = [
       for (final task in _state.tasks)
         if (task.id == taskId)
@@ -236,14 +247,13 @@ class DetailViewPresenter {
     for (final task in _state.tasks) {
       if (task.id == taskId) {
         final step = task.steps.where((s) => s.id == stepId).firstOrNull;
-        if (step != null) {
+        if (step != null && !step.isCompleted) {
           promoted = TaskItem(
             id: _store.nextId('task'),
             listId: task.listId,
             title: step.title,
             createdAt: DateTime.now(),
-            isCompleted: step.isCompleted,
-            completedAt: step.isCompleted ? DateTime.now() : null,
+            isCompleted: false,
           );
           updated.add(
             task.copyWith(

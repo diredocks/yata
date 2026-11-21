@@ -9,17 +9,36 @@ class SearchPresenter {
 
   final Ref _ref;
 
-  List<TaskItem> search(String query) {
+  List<TaskItem> search(String query, {bool showCompleted = true}) {
     final trimmed = query.trim().toLowerCase();
     if (trimmed.isEmpty) return const [];
+    final tokens =
+        trimmed.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+    if (tokens.isEmpty) return const [];
+
+    bool matchesAll(String text) {
+      final lower = text.toLowerCase();
+      return tokens.every(lower.contains);
+    }
+
     final tasks = _ref.read(todoProvider).tasks;
-    return tasks
-        .where(
-          (t) =>
-              t.title.toLowerCase().contains(trimmed) ||
-              t.note.toLowerCase().contains(trimmed),
-        )
-        .toList();
+    final matched = <(TaskItem, DateTime)>[];
+    for (final task in tasks) {
+      if (!showCompleted && task.isCompleted) continue;
+      final titleMatch = matchesAll(task.title);
+      final stepMatch = task.steps.any(
+        (s) => (showCompleted || !s.isCompleted) && matchesAll(s.title),
+      );
+      final noteMatch = task.note.isNotEmpty && matchesAll(task.note);
+      if (titleMatch || stepMatch || noteMatch) {
+        final sortTime = (titleMatch || stepMatch)
+            ? task.createdAt
+            : (task.noteUpdatedAt ?? task.createdAt);
+        matched.add((task, sortTime));
+      }
+    }
+    matched.sort((a, b) => b.$2.compareTo(a.$2));
+    return [for (final item in matched) item.$1];
   }
 
   void toggleTaskCompleted(String taskId) {

@@ -12,9 +12,6 @@ class TasksViewPresenter {
   TodoNotifier get _store => _ref.read(todoProvider.notifier);
   TodoState get _state => _ref.read(todoProvider);
 
-  static bool _isSameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
-
   void selectTask(String? taskId) {
     _store.selectTask(taskId);
   }
@@ -33,7 +30,11 @@ class TasksViewPresenter {
         if (list.id == listId)
           list.copyWith(
             sortOption: option,
-            sortAscending: ascending ?? true,
+            sortAscending: ascending ??
+                (list.sortOption == option &&
+                        option != TaskSortOption.defaultOrder
+                    ? !list.sortAscending
+                    : option.defaultAscending),
           )
         else
           list,
@@ -46,7 +47,7 @@ class TasksViewPresenter {
   void toggleListSortDirection(String listId) {
     final updated = [
       for (final list in _state.lists)
-        if (list.id == listId)
+        if (list.id == listId && list.sortOption != TaskSortOption.defaultOrder)
           list.copyWith(sortAscending: !list.sortAscending)
         else
           list,
@@ -58,7 +59,9 @@ class TasksViewPresenter {
   void toggleListShowCompleted(String listId) {
     final updated = [
       for (final list in _state.lists)
-        if (list.id == listId)
+        if (list.id == listId &&
+            list.smartType != SmartListType.all &&
+            list.smartType != SmartListType.completed)
           list.copyWith(showCompleted: !list.showCompleted)
         else
           list,
@@ -127,10 +130,13 @@ class TasksViewPresenter {
     final newListId = _store.nextId('list');
     final duplicatedList = source.copyWith(
       id: newListId,
-      title: '${source.title} (Copy)',
+      title: source.title,
     );
     final copiedTasks = [
-      for (final task in _state.tasks.where((t) => t.listId == listId))
+      for (final task in _state.tasks.where(
+        (t) =>
+            t.listId == listId && (source.showCompleted || !t.isCompleted),
+      ))
         task.copyWith(
           id: _store.nextId('task'),
           listId: newListId,
@@ -163,13 +169,19 @@ class TasksViewPresenter {
   }
 
   void deleteList(String listId) {
-    final target = _state.lists.where((l) => l.id == listId).firstOrNull;
-    if (target == null || target.isSmartList) return;
+    final targetIndex = _state.lists.indexWhere((l) => l.id == listId);
+    if (targetIndex < 0) return;
+    final target = _state.lists[targetIndex];
+    if (target.isSmartList) return;
 
     final updatedLists = _state.lists.where((l) => l.id != listId).toList();
     final updatedTasks = _state.tasks.where((t) => t.listId != listId).toList();
-    final nextSelected =
-        _state.selectedListId == listId ? 'my_day' : _state.selectedListId;
+    var nextSelected = _state.selectedListId;
+    if (_state.selectedListId == listId) {
+      nextSelected = targetIndex > 0
+          ? _state.lists[targetIndex - 1].id
+          : 'my_day';
+    }
 
     _store.commit(
       _state.copyWith(
@@ -203,24 +215,24 @@ class TasksViewPresenter {
     final now = DateTime.now();
     final effectiveDueDate = dueDate ??
         (currentList.smartType == SmartListType.planned ? now : null);
-    final dueTodayAutoMyDay = _state.showDueTodayInMyDay &&
-        effectiveDueDate != null &&
-        _isSameDay(effectiveDueDate, now);
-    final inMyDay = isInMyDay ||
-        currentList.smartType == SmartListType.myDay ||
-        dueTodayAutoMyDay;
-    final newTask = TaskItem(
-      id: _store.nextId('task'),
-      listId: resolvedListId,
-      title: trimmed,
-      createdAt: now,
-      isInMyDay: inMyDay,
-      myDayDate: inMyDay ? now : null,
-      isImportant:
-          isImportant || currentList.smartType == SmartListType.important,
-      dueDate: effectiveDueDate,
-      reminderAt: reminderAt,
-      recurrence: recurrence,
+    final committedToMyDay =
+        isInMyDay || currentList.smartType == SmartListType.myDay;
+    final newTask = TodoNotifier.syncMyDayFlag(
+      TaskItem(
+        id: _store.nextId('task'),
+        listId: resolvedListId,
+        title: trimmed,
+        createdAt: now,
+        isInMyDay: committedToMyDay,
+        myDayDate: committedToMyDay ? now : null,
+        isImportant:
+            isImportant || currentList.smartType == SmartListType.important,
+        dueDate: effectiveDueDate,
+        reminderAt: reminderAt,
+        recurrence: recurrence,
+      ),
+      now: now,
+      showDueTodayInMyDay: _state.showDueTodayInMyDay,
     );
 
     final updated = _state.addNewTasksOnTop
@@ -291,9 +303,23 @@ class TasksViewPresenter {
       case RecurrenceType.weekly:
         return base.add(const Duration(days: 7));
       case RecurrenceType.monthly:
-        return DateTime(base.year, base.month + 1, base.day);
+        final totalMonths = base.year * 12 + (base.month - 1) + 1;
+        final targetYear = totalMonths ~/ 12;
+        final targetMonth = (totalMonths % 12) + 1;
+        final lastDay = DateTime(targetYear, targetMonth + 1, 0).day;
+        return DateTime(
+          targetYear,
+          targetMonth,
+          base.day > lastDay ? lastDay : base.day,
+        );
       case RecurrenceType.yearly:
-        return DateTime(base.year + 1, base.month, base.day);
+        final targetYear = base.year + 1;
+        final lastDay = DateTime(targetYear, base.month + 1, 0).day;
+        return DateTime(
+          targetYear,
+          base.month,
+          base.day > lastDay ? lastDay : base.day,
+        );
     }
   }
 
@@ -326,21 +352,24 @@ class TasksViewPresenter {
               task.reminderAt!.minute,
             );
           }
-          nextOccurrence = TaskItem(
-            id: _store.nextId('task'),
-            listId: task.listId,
-            title: task.title,
-            createdAt: now,
-            isImportant: task.isImportant,
-            isInMyDay: false,
-            dueDate: nextDue,
-            reminderAt: nextReminder,
-            recurrence: task.recurrence,
-            note: task.note,
-            steps: [
-              for (final step in task.steps)
-                TaskStep(id: _store.nextId('step'), title: step.title),
-            ],
+          nextOccurrence = TodoNotifier.syncMyDayFlag(
+            TaskItem(
+              id: _store.nextId('task'),
+              listId: task.listId,
+              title: task.title,
+              createdAt: now,
+              isImportant: task.isImportant,
+              dueDate: nextDue,
+              reminderAt: nextReminder,
+              recurrence: task.recurrence,
+              note: task.note,
+              steps: [
+                for (final step in task.steps)
+                  TaskStep(id: _store.nextId('step'), title: step.title),
+              ],
+            ),
+            now: now,
+            showDueTodayInMyDay: _state.showDueTodayInMyDay,
           );
         }
       } else {
@@ -361,13 +390,24 @@ class TasksViewPresenter {
   }
 
   void toggleTaskImportant(String taskId) {
-    final updated = [
-      for (final task in _state.tasks)
-        if (task.id == taskId)
-          task.copyWith(isImportant: !task.isImportant)
-        else
-          task,
-    ];
+    TaskItem? movedToTop;
+    final updated = <TaskItem>[];
+    for (final task in _state.tasks) {
+      if (task.id == taskId) {
+        final nextImportant = !task.isImportant;
+        final nextTask = task.copyWith(isImportant: nextImportant);
+        if (nextImportant && _state.moveStarredTasksToTop) {
+          movedToTop = nextTask;
+        } else {
+          updated.add(nextTask);
+        }
+      } else {
+        updated.add(task);
+      }
+    }
+    if (movedToTop != null) {
+      updated.insert(0, movedToTop);
+    }
     _store.commit(_state.copyWith(tasks: updated));
     _store.storage.saveTasks(updated);
   }

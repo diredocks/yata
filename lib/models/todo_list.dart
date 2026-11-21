@@ -54,6 +54,19 @@ enum TaskSortOption {
   creationDate,
 }
 
+extension TaskSortOptionDefaults on TaskSortOption {
+  bool get defaultAscending {
+    return switch (this) {
+      TaskSortOption.defaultOrder => false,
+      TaskSortOption.importance => false,
+      TaskSortOption.dueDate => true,
+      TaskSortOption.addedToMyDay => false,
+      TaskSortOption.alphabetical => true,
+      TaskSortOption.creationDate => false,
+    };
+  }
+}
+
 @immutable
 class TodoList {
   const TodoList({

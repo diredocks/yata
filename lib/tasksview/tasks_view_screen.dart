@@ -261,8 +261,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   ) async {
     final l10n = AppLocalizations.of(context);
     final notifier = ref.read(tasksViewPresenterProvider);
-    final hasCompleted = state.tasks
-        .any((t) => t.listId == currentList.id && t.isCompleted);
+    final hasCompleted = currentList.showCompleted &&
+        state.tasks
+            .any((t) => t.listId == currentList.id && t.isCompleted);
 
     if (!hasCompleted) {
       notifier.duplicateList(currentList.id, keepCompleted: true);
@@ -384,7 +385,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final supportsReorder = isCustom ||
         list.smartType == SmartListType.myDay ||
         list.smartType == SmartListType.tasks;
-    final supportsToggleCompleted = list.smartType != SmartListType.planned &&
+    final supportsToggleCompleted = list.smartType != SmartListType.all &&
         list.smartType != SmartListType.completed;
 
     if (isCustom) {
@@ -719,15 +720,37 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
     final allTasks = state.tasksForList(currentList);
     final isCompletedList = currentList.smartType == SmartListType.completed;
+    final isAllList = currentList.smartType == SmartListType.all;
+    final isImportantList = currentList.smartType == SmartListType.important;
     final isPlannedList = currentList.smartType == SmartListType.planned;
-    final activeTasks = isCompletedList
-        ? allTasks
+    final activeTasks = (isCompletedList || isImportantList)
+        ? (isImportantList && !currentList.showCompleted
+            ? allTasks.where((t) => !t.isCompleted).toList()
+            : allTasks)
         : allTasks.where((t) => !t.isCompleted).toList();
-    final completedTasks = isCompletedList
+    final completedTasks = (isCompletedList || isImportantList || isAllList)
         ? const <TaskItem>[]
         : (currentList.showCompleted
-            ? allTasks.where((t) => t.isCompleted).toList()
+            ? () {
+                final list = allTasks.where((t) => t.isCompleted).toList();
+                if (currentList.sortOption == TaskSortOption.defaultOrder) {
+                  list.sort((a, b) {
+                    final aTime = a.completedAt ?? a.createdAt;
+                    final bTime = b.completedAt ?? b.createdAt;
+                    return bTime.compareTo(aTime);
+                  });
+                }
+                return list;
+              }()
             : const <TaskItem>[]);
+    final selectedTasks = _isMultiSelecting
+        ? state.tasks.where((t) => _multiSelectedIds.contains(t.id)).toList()
+        : const <TaskItem>[];
+    final canBatchAddToMyDay = currentList.smartType != SmartListType.myDay &&
+        selectedTasks.any((t) => !t.isInMyDay);
+    final canBatchMarkImportant =
+        currentList.smartType != SmartListType.important &&
+            selectedTasks.any((t) => !t.isImportant);
 
     final isMyDay = currentList.smartType == SmartListType.myDay;
     final subtitle =
@@ -748,14 +771,15 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
               ),
               title: Text(l10n.selectedCount(_multiSelectedIds.length)),
               actions: [
-                IconButton(
-                  tooltip: l10n.addToMyDay,
-                  onPressed: () {
-                    actionPresenter.batchToggleMyDay(_multiSelectedIds);
-                    setState(() => _multiSelectedIds.clear());
-                  },
-                  icon: const Icon(Icons.wb_sunny_outlined),
-                ),
+                if (canBatchAddToMyDay)
+                  IconButton(
+                    tooltip: l10n.addToMyDay,
+                    onPressed: () {
+                      actionPresenter.batchAddToMyDay(_multiSelectedIds);
+                      setState(() => _multiSelectedIds.clear());
+                    },
+                    icon: const Icon(Icons.wb_sunny_outlined),
+                  ),
                 IconButton(
                   tooltip: l10n.addDueDate,
                   onPressed: () => _batchPickDueDate(state.startOfWeek),
@@ -770,7 +794,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                         _multiSelectedIds.addAll(allTasks.map((t) => t.id));
                       });
                     } else if (value == 'important') {
-                      actionPresenter.batchToggleImportant(_multiSelectedIds);
+                      actionPresenter.batchMarkImportant(_multiSelectedIds);
                       setState(() => _multiSelectedIds.clear());
                     } else if (value == 'move') {
                       _batchMoveToList(state);
@@ -790,15 +814,16 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                         dense: true,
                       ),
                     ),
-                    PopupMenuItem(
-                      value: 'important',
-                      child: ListTile(
-                        leading: const Icon(Icons.star_outline),
-                        title: Text(l10n.important),
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
+                    if (canBatchMarkImportant)
+                      PopupMenuItem(
+                        value: 'important',
+                        child: ListTile(
+                          leading: const Icon(Icons.star_outline),
+                          title: Text(l10n.important),
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                        ),
                       ),
-                    ),
                     PopupMenuItem(
                       value: 'move',
                       child: ListTile(
@@ -1183,7 +1208,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                         ),
                       ),
                   ]
-                else if (isCompletedList &&
+                else if ((isCompletedList || isAllList) &&
                     currentList.sortOption == TaskSortOption.defaultOrder)
                   for (final (listId, listName, bucketTasks)
                       in _groupCompletedByList(

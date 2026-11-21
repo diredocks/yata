@@ -12,9 +12,6 @@ class SettingsPresenter {
   TodoNotifier get _store => _ref.read(todoProvider.notifier);
   TodoState get _state => _ref.read(todoProvider);
 
-  static bool _isSameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
-
   void setThemeMode(ThemeMode mode) {
     _store.commit(_state.copyWith(themeMode: mode));
     _store.storage.saveThemeMode(mode);
@@ -41,32 +38,30 @@ class SettingsPresenter {
   }
 
   void setShowDueTodayInMyDay(bool value) {
-    if (value) {
-      final now = DateTime.now();
-      var changed = false;
-      final updatedTasks = [
-        for (final task in _state.tasks)
-          if (!task.isInMyDay &&
-              task.dueDate != null &&
-              _isSameDay(task.dueDate!, now))
-            () {
-              changed = true;
-              return task.copyWith(isInMyDay: true, myDayDate: now);
-            }()
-          else
+    final now = DateTime.now();
+    var changed = false;
+    final updatedTasks = [
+      for (final task in _state.tasks)
+        () {
+          final synced = TodoNotifier.syncMyDayFlag(
             task,
-      ];
-      _store.commit(
-        _state.copyWith(
-          showDueTodayInMyDay: value,
-          tasks: changed ? updatedTasks : _state.tasks,
-        ),
-      );
-      if (changed) {
-        _store.storage.saveTasks(updatedTasks);
-      }
-    } else {
-      _store.commit(_state.copyWith(showDueTodayInMyDay: value));
+            now: now,
+            showDueTodayInMyDay: value,
+          );
+          if (!identical(synced, task)) {
+            changed = true;
+          }
+          return synced;
+        }(),
+    ];
+    _store.commit(
+      _state.copyWith(
+        showDueTodayInMyDay: value,
+        tasks: changed ? updatedTasks : _state.tasks,
+      ),
+    );
+    if (changed) {
+      _store.storage.saveTasks(updatedTasks);
     }
     _store.storage.saveShowDueTodayInMyDay(value);
   }

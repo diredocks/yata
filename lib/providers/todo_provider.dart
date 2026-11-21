@@ -31,7 +31,7 @@ class TodoState {
     this.startOfWeek = WeekStart.system,
     this.showSmartListImportant = true,
     this.showSmartListPlanned = true,
-    this.showSmartListAll = true,
+    this.showSmartListAll = false,
     this.showSmartListCompleted = false,
     this.autoHideEmptySmartLists = false,
   });
@@ -76,7 +76,7 @@ class TodoState {
       SmartListType.important => tasks.where((t) => t.isImportant),
       SmartListType.planned =>
         tasks.where((t) => t.dueDate != null || t.reminderAt != null),
-      SmartListType.all => tasks,
+      SmartListType.all => tasks.where((t) => !t.isCompleted),
       SmartListType.completed => tasks.where((t) => t.isCompleted),
       SmartListType.tasks => tasks.where((t) => t.listId == 'tasks'),
       null => tasks.where((t) => t.listId == list.id),
@@ -86,16 +86,18 @@ class TodoState {
     final dir = list.sortAscending ? 1 : -1;
     switch (list.sortOption) {
       case TaskSortOption.defaultOrder:
-        if (moveStarredTasksToTop &&
-            list.smartType != SmartListType.important) {
-          final starred = result.where((t) => t.isImportant).toList();
-          final unstarred = result.where((t) => !t.isImportant).toList();
-          return [...starred, ...unstarred];
+        if (list.smartType == SmartListType.completed) {
+          result.sort((a, b) {
+            final aTime = a.completedAt ?? a.createdAt;
+            final bTime = b.completedAt ?? b.createdAt;
+            return bTime.compareTo(aTime);
+          });
         }
       case TaskSortOption.importance:
         result.sort((a, b) {
-          if (a.isImportant == b.isImportant) return 0;
-          return (a.isImportant ? -1 : 1) * dir;
+          final aVal = a.isImportant ? 1 : 0;
+          final bVal = b.isImportant ? 1 : 0;
+          return aVal.compareTo(bVal) * dir;
         });
       case TaskSortOption.dueDate:
         result.sort((a, b) {
@@ -107,11 +109,11 @@ class TodoState {
       case TaskSortOption.addedToMyDay:
         result.sort((a, b) {
           if (a.isInMyDay != b.isInMyDay) {
-            return (a.isInMyDay ? -1 : 1) * dir;
+            return a.isInMyDay ? -1 : 1;
           }
           final aDate = a.myDayDate ?? a.createdAt;
           final bDate = b.myDayDate ?? b.createdAt;
-          return bDate.compareTo(aDate) * dir;
+          return aDate.compareTo(bDate) * dir;
         });
       case TaskSortOption.alphabetical:
         result.sort(
@@ -119,14 +121,14 @@ class TodoState {
               a.title.toLowerCase().compareTo(b.title.toLowerCase()) * dir,
         );
       case TaskSortOption.creationDate:
-        result.sort((a, b) => b.createdAt.compareTo(a.createdAt) * dir);
+        result.sort((a, b) => a.createdAt.compareTo(b.createdAt) * dir);
     }
     return result;
   }
 
   int activeCountForList(TodoList list) {
     if (list.smartType == SmartListType.completed) {
-      return tasks.where((t) => t.isCompleted).length;
+      return 0;
     }
     return tasksForList(list).where((t) => !t.isCompleted).length;
   }
@@ -146,7 +148,11 @@ class TodoState {
     if (autoHideEmptySmartLists &&
         list.smartType != SmartListType.myDay &&
         list.smartType != SmartListType.tasks) {
-      return tasksForList(list).isNotEmpty;
+      final matching = tasksForList(list);
+      if (matching.isEmpty) return false;
+      if (list.smartType == SmartListType.completed) return true;
+      final activeCount = matching.where((t) => !t.isCompleted).length;
+      if (activeCount == 0 && !list.showCompleted) return false;
     }
     return true;
   }
@@ -214,55 +220,53 @@ class TodoNotifier extends Notifier<TodoState> {
   String _todayKey(DateTime dt) =>
       '${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
 
-  bool _isSameDay(DateTime a, DateTime b) =>
+  static bool isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
+
+  /// Recomputes [TaskItem.isInMyDay] from [TaskItem.myDayDate],
+  /// [TaskItem.dueDate], and [TaskItem.postponedDay], matching `MyDayContract.kt`.
+  static TaskItem syncMyDayFlag(
+    TaskItem task, {
+    required DateTime now,
+    required bool showDueTodayInMyDay,
+  }) {
+    final committedToday =
+        task.myDayDate != null && isSameDay(task.myDayDate!, now);
+    final postponedToday =
+        task.postponedDay != null && isSameDay(task.postponedDay!, now);
+    final dueToday = showDueTodayInMyDay &&
+        task.dueDate != null &&
+        isSameDay(task.dueDate!, now);
+    final effectiveInMyDay = committedToday || (dueToday && !postponedToday);
+    if (task.isInMyDay == effectiveInMyDay) return task;
+    return task.copyWith(isInMyDay: effectiveInMyDay);
+  }
 
   @override
   TodoState build() {
     final snapshot = storage.load();
     final now = DateTime.now();
     final todayKey = _todayKey(now);
-    var tasks = snapshot.tasks;
-
-    if (snapshot.lastMyDayResetDate != null &&
-        snapshot.lastMyDayResetDate != todayKey) {
-      var changed = false;
-      tasks = [
-        for (final task in tasks)
-          if (task.isInMyDay &&
-              (task.myDayDate == null || !_isSameDay(task.myDayDate!, now)))
-            () {
-              changed = true;
-              return task.copyWith(isInMyDay: false, clearMyDayDate: true);
-            }()
-          else
+    var changed = false;
+    final tasks = [
+      for (final task in snapshot.tasks)
+        () {
+          final synced = syncMyDayFlag(
             task,
-      ];
-      if (changed) {
-        storage.saveTasks(tasks);
-      }
-      storage.saveLastMyDayResetDate(todayKey);
-    } else if (snapshot.lastMyDayResetDate == null) {
-      storage.saveLastMyDayResetDate(todayKey);
+            now: now,
+            showDueTodayInMyDay: snapshot.showDueTodayInMyDay,
+          );
+          if (!identical(synced, task)) {
+            changed = true;
+          }
+          return synced;
+        }(),
+    ];
+    if (changed) {
+      storage.saveTasks(tasks);
     }
-
-    if (snapshot.showDueTodayInMyDay) {
-      var autoAdded = false;
-      tasks = [
-        for (final task in tasks)
-          if (!task.isInMyDay &&
-              task.dueDate != null &&
-              _isSameDay(task.dueDate!, now))
-            () {
-              autoAdded = true;
-              return task.copyWith(isInMyDay: true, myDayDate: now);
-            }()
-          else
-            task,
-      ];
-      if (autoAdded) {
-        storage.saveTasks(tasks);
-      }
+    if (snapshot.lastMyDayResetDate != todayKey) {
+      storage.saveLastMyDayResetDate(todayKey);
     }
 
     return TodoState(

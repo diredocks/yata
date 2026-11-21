@@ -142,7 +142,11 @@ class HomeViewScreen extends ConsumerWidget {
                       onModifyLists: () => showGroupListsDialog(
                         context: context,
                         group: group,
-                        customLists: customLists,
+                        customLists: customLists
+                            .where(
+                              (l) => l.groupId == null || l.groupId == group.id,
+                            )
+                            .toList(),
                         onSave: (ids) => notifier.setGroupLists(group.id, ids),
                       ),
                       onRename: () => showRenameGroupDialog(
@@ -234,7 +238,26 @@ class HomeViewScreen extends ConsumerWidget {
                   IconButton(
                     onPressed: () => showCreateGroupDialog(
                       context: context,
-                      onCreate: notifier.addGroup,
+                      onCreate: (title) async {
+                        final created = notifier.addGroup(title);
+                        if (created == null || !context.mounted) return;
+                        final eligible = ref
+                            .read(todoProvider)
+                            .lists
+                            .where((l) => !l.isSmartList && l.groupId == null)
+                            .toList();
+                        if (eligible.isEmpty) return;
+                        final saved = await showGroupListsDialog(
+                          context: context,
+                          group: created,
+                          customLists: eligible,
+                          onSave: (ids) =>
+                              notifier.setGroupLists(created.id, ids),
+                        );
+                        if (saved != true) {
+                          notifier.deleteGroup(created.id);
+                        }
+                      },
                     ),
                     icon: Icon(
                       Icons.create_new_folder_outlined,

@@ -61,6 +61,7 @@ class TaskItem {
     this.isImportant = false,
     this.isInMyDay = false,
     this.myDayDate,
+    this.postponedDay,
     this.dueDate,
     this.reminderAt,
     this.recurrence = RecurrenceType.none,
@@ -78,6 +79,7 @@ class TaskItem {
   final bool isImportant;
   final bool isInMyDay;
   final DateTime? myDayDate;
+  final DateTime? postponedDay;
   final DateTime? dueDate;
   final DateTime? reminderAt;
   final RecurrenceType recurrence;
@@ -107,6 +109,8 @@ class TaskItem {
     bool? isInMyDay,
     DateTime? myDayDate,
     bool clearMyDayDate = false,
+    DateTime? postponedDay,
+    bool clearPostponedDay = false,
     DateTime? dueDate,
     bool clearDueDate = false,
     DateTime? reminderAt,
@@ -127,6 +131,8 @@ class TaskItem {
       isImportant: isImportant ?? this.isImportant,
       isInMyDay: isInMyDay ?? this.isInMyDay,
       myDayDate: clearMyDayDate ? null : (myDayDate ?? this.myDayDate),
+      postponedDay:
+          clearPostponedDay ? null : (postponedDay ?? this.postponedDay),
       dueDate: clearDueDate ? null : (dueDate ?? this.dueDate),
       reminderAt: clearReminderAt ? null : (reminderAt ?? this.reminderAt),
       recurrence: recurrence ?? this.recurrence,
@@ -147,6 +153,7 @@ class TaskItem {
       'isImportant': isImportant,
       'isInMyDay': isInMyDay,
       'myDayDate': myDayDate?.toIso8601String(),
+      'postponedDay': postponedDay?.toIso8601String(),
       'dueDate': dueDate?.toIso8601String(),
       'reminderAt': reminderAt?.toIso8601String(),
       'recurrence': recurrence.name,
@@ -175,6 +182,9 @@ class TaskItem {
       isInMyDay: json['isInMyDay'] as bool? ?? false,
       myDayDate: json['myDayDate'] != null
           ? DateTime.parse(json['myDayDate'] as String)
+          : null,
+      postponedDay: json['postponedDay'] != null
+          ? DateTime.parse(json['postponedDay'] as String)
           : null,
       dueDate: json['dueDate'] != null
           ? DateTime.parse(json['dueDate'] as String)

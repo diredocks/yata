@@ -48,15 +48,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final trimmed = _query.trim().toLowerCase();
     final results = trimmed.isEmpty
         ? const <TaskItem>[]
-        : state.tasks.where((task) {
-            if (!_showCompleted && task.isCompleted) return false;
-            final matchesTitle = task.title.toLowerCase().contains(trimmed);
-            final matchesNote = task.note.toLowerCase().contains(trimmed);
-            final matchesStep = task.steps.any(
-              (s) => s.title.toLowerCase().contains(trimmed),
-            );
-            return matchesTitle || matchesNote || matchesStep;
-          }).toList();
+        : notifier.search(_query, showCompleted: _showCompleted);
 
     final bodyBg = TodoColors.searchBackground(theme.brightness);
     final secondaryText =

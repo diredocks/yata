@@ -38,13 +38,13 @@ Future<void> showRenameGroupDialog({
   );
 }
 
-Future<void> showGroupListsDialog({
+Future<bool?> showGroupListsDialog({
   required BuildContext context,
   required ListGroup group,
   required List<TodoList> customLists,
   required void Function(Set<String> memberListIds) onSave,
 }) {
-  return showDialog<void>(
+  return showDialog<bool>(
     context: context,
     builder: (_) => _GroupListsDialog(
       group: group,
@@ -117,13 +117,13 @@ class _GroupListsDialogState extends State<_GroupListsDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => Navigator.of(context).pop(false),
           child: Text(l10n.cancel),
         ),
         FilledButton(
           onPressed: () {
             widget.onSave(_selectedIds);
-            Navigator.of(context).pop();
+            Navigator.of(context).pop(true);
           },
           child: Text(l10n.save),
         ),

@@ -85,6 +85,7 @@ class TodoLocalStorage {
         smartType: SmartListType.important,
         themeColor: ListThemeColor.rose,
         icon: Icons.star_outline,
+        showCompleted: false,
       ),
       TodoList(
         id: 'planned',
@@ -99,6 +100,7 @@ class TodoLocalStorage {
         smartType: SmartListType.all,
         themeColor: ListThemeColor.green,
         icon: Icons.all_inclusive,
+        showCompleted: false,
       ),
       TodoList(
         id: 'completed',
@@ -140,6 +142,16 @@ class TodoLocalStorage {
         lists.add(completedList);
       }
     }
+    lists = [
+      for (final list in lists)
+        if (list.smartType == SmartListType.all && list.showCompleted)
+          list.copyWith(showCompleted: false)
+        else if (list.smartType == SmartListType.completed &&
+            !list.showCompleted)
+          list.copyWith(showCompleted: true)
+        else
+          list,
+    ];
 
     final groups = groupsRaw != null
         ? (jsonDecode(groupsRaw) as List<dynamic>)

@@ -58,25 +58,40 @@ class HomeViewPresenter {
     _store.storage.saveGroups(updated);
   }
 
-  void addGroup(String title) {
+  String _deduplicateGroupTitle(String title, {String? excludeGroupId}) {
+    final existing = {
+      for (final g in _state.groups)
+        if (g.id != excludeGroupId) g.title,
+    };
+    if (!existing.contains(title)) return title;
+    var index = 1;
+    while (existing.contains('$title ($index)')) {
+      index += 1;
+    }
+    return '$title ($index)';
+  }
+
+  ListGroup? addGroup(String title) {
     final trimmed = title.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty) return null;
     final newGroup = ListGroup(
       id: _store.nextId('group'),
-      title: trimmed,
+      title: _deduplicateGroupTitle(trimmed),
       isExpanded: true,
     );
     final updated = [..._state.groups, newGroup];
     _store.commit(_state.copyWith(groups: updated));
     _store.storage.saveGroups(updated);
+    return newGroup;
   }
 
   void renameGroup(String groupId, String newTitle) {
     final trimmed = newTitle.trim();
     if (trimmed.isEmpty) return;
+    final deduped = _deduplicateGroupTitle(trimmed, excludeGroupId: groupId);
     final updated = [
       for (final group in _state.groups)
-        if (group.id == groupId) group.copyWith(title: trimmed) else group,
+        if (group.id == groupId) group.copyWith(title: deduped) else group,
     ];
     _store.commit(_state.copyWith(groups: updated));
     _store.storage.saveGroups(updated);

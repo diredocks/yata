@@ -47,9 +47,15 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
       context,
       startOfWeek: startOfWeek,
       initialDate: task.dueDate,
+      includeRemoveOption: task.dueDate != null,
     );
-    if (result != null && result.date != null && mounted) {
-      ref.read(detailViewPresenterProvider).setTaskDueDate(task.id, result.date);
+    if (result == null || !mounted) return;
+    if (result.cleared) {
+      ref.read(detailViewPresenterProvider).setTaskDueDate(task.id, null);
+    } else if (result.date != null) {
+      ref
+          .read(detailViewPresenterProvider)
+          .setTaskDueDate(task.id, result.date);
     }
   }
 
@@ -95,6 +101,40 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
     if (picked != null) {
       notifier.setTaskRecurrence(task.id, picked);
     }
+  }
+
+  Future<void> _confirmDeleteStep(TaskItem task, String stepId) async {
+    final l10n = AppLocalizations.of(context);
+    final notifier = ref.read(detailViewPresenterProvider);
+    final confirmRequired = ref.read(todoProvider).confirmBeforeDeleting;
+
+    if (confirmRequired) {
+      final stepTitle = task.steps
+              .where((s) => s.id == stepId)
+              .map((s) => s.title)
+              .firstOrNull ??
+          '';
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(l10n.deleteStep),
+          content: Text(l10n.deleteTaskConfirm(stepTitle)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(l10n.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(l10n.delete),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+
+    notifier.deleteStep(task.id, stepId);
   }
 
   Future<void> _confirmDelete(TaskItem task) async {
@@ -186,8 +226,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                         notifier.renameStep(task.id, stepId, val),
                     onPromoteStepToTask: (stepId) =>
                         notifier.promoteStepToTask(task.id, stepId),
-                    onDeleteStep: (stepId) =>
-                        notifier.deleteStep(task.id, stepId),
+                    onDeleteStep: (stepId) => _confirmDeleteStep(task, stepId),
                     onAddStep: (val) => notifier.addStep(task.id, val),
                   ),
                   Container(

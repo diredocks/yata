@@ -158,6 +158,9 @@ Future<DateTime?> showReminderPickerSheet(
   final l10n = AppLocalizations.of(context);
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
+  final showLaterToday = now.hour < 20 || (now.hour == 20 && now.minute <= 29);
+  final nextWeekDate = computeNextWeekDate(today, startOfWeek);
+  final showNextWeek = nextWeekDate != today.add(const Duration(days: 1));
 
   final choice = await showModalBottomSheet<String>(
     context: context,
@@ -165,21 +168,23 @@ Future<DateTime?> showReminderPickerSheet(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ListTile(
-            leading: const Icon(Icons.access_time),
-            title: Text(l10n.laterToday),
-            onTap: () => Navigator.pop(ctx, 'later'),
-          ),
+          if (showLaterToday)
+            ListTile(
+              leading: const Icon(Icons.access_time),
+              title: Text(l10n.laterToday),
+              onTap: () => Navigator.pop(ctx, 'later'),
+            ),
           ListTile(
             leading: const Icon(Icons.wb_twilight),
             title: Text(l10n.tomorrow),
             onTap: () => Navigator.pop(ctx, 'tomorrow'),
           ),
-          ListTile(
-            leading: const Icon(Icons.next_week),
-            title: Text(l10n.nextWeek),
-            onTap: () => Navigator.pop(ctx, 'next_week'),
-          ),
+          if (showNextWeek)
+            ListTile(
+              leading: const Icon(Icons.next_week),
+              title: Text(l10n.nextWeek),
+              onTap: () => Navigator.pop(ctx, 'next_week'),
+            ),
           ListTile(
             leading: const Icon(Icons.calendar_month),
             title: Text(l10n.pickDateTime),
@@ -194,20 +199,13 @@ Future<DateTime?> showReminderPickerSheet(
 
   switch (choice) {
     case 'later':
-      final candidate = now.add(const Duration(hours: 4));
-      return DateTime(
-        candidate.year,
-        candidate.month,
-        candidate.day,
-        candidate.hour,
-        0,
-      );
+      final baseHour = now.hour + (now.minute >= 29 ? 1 : 0) + 3;
+      return DateTime(today.year, today.month, today.day, baseHour, 0);
     case 'tomorrow':
       final tmr = today.add(const Duration(days: 1));
       return DateTime(tmr.year, tmr.month, tmr.day, 9, 0);
     case 'next_week':
-      final nextWk = computeNextWeekDate(today, startOfWeek);
-      return DateTime(nextWk.year, nextWk.month, nextWk.day, 9, 0);
+      return DateTime(nextWeekDate.year, nextWeekDate.month, nextWeekDate.day, 9, 0);
     case 'custom':
       final pickedDate = await showDatePicker(
         context: context,
