@@ -1,15 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
+import '../customizations/theme_picker_sheet.dart';
+import '../detailview/recurrence/task_pickers.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../providers/todo_provider.dart';
 import '../theme/todo_theme.dart';
-import '../widgets/list_theme_picker.dart';
-import '../widgets/task_entry_sheet.dart';
-import '../widgets/task_list_tile.dart';
-import '../widgets/task_pickers.dart';
+import 'recyclerview/ruled_lines_painter.dart';
+import 'recyclerview/task_list_tile.dart';
+import 'renamelist/list_editor_dialog.dart';
+import 'richentry/task_entry_sheet.dart';
+import 'tasks_action_presenter.dart';
+import 'tasks_view_presenter.dart';
 
 enum _ListMenuAction {
   rename,
@@ -57,18 +61,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     };
   }
 
-  String _emptyMessage(AppLocalizations l10n, TodoList list) {
-    return switch (list.smartType) {
-      SmartListType.myDay => l10n.emptyMyDaySubtitle,
-      SmartListType.important => l10n.emptyImportantTitle,
-      SmartListType.planned => l10n.emptyPlannedTitle,
-      SmartListType.completed => l10n.emptyCompletedTitle,
-      _ => l10n.emptyListTitle,
-    };
-  }
-
   void _openAddTaskSheet(TodoState state) {
-    final notifier = ref.read(todoProvider.notifier);
+    final notifier = ref.read(tasksViewPresenterProvider);
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -109,7 +103,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
   Future<void> _showSortSheet(TodoState state, TodoList currentList) async {
     final l10n = AppLocalizations.of(context);
-    final notifier = ref.read(todoProvider.notifier);
+    final notifier = ref.read(tasksViewPresenterProvider);
     final options = <(TaskSortOption, String, IconData)>[
       (TaskSortOption.importance, l10n.sortByImportance, Icons.star_outline),
       (
@@ -168,7 +162,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
   Future<void> _confirmDeleteList(TodoList list, bool confirmRequired) async {
     final l10n = AppLocalizations.of(context);
-    final notifier = ref.read(todoProvider.notifier);
+    final notifier = ref.read(tasksViewPresenterProvider);
     if (confirmRequired) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -194,7 +188,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   }
 
   Future<void> _batchPickDueDate(WeekStart startOfWeek) async {
-    final notifier = ref.read(todoProvider.notifier);
+    final notifier = ref.read(tasksActionPresenterProvider);
     final result = await showDueDatePickerSheet(
       context,
       startOfWeek: startOfWeek,
@@ -212,7 +206,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
   Future<void> _batchCopyToList(TodoState state) async {
     final l10n = AppLocalizations.of(context);
-    final notifier = ref.read(todoProvider.notifier);
+    final notifier = ref.read(tasksActionPresenterProvider);
     final selectableLists = state.lists
         .where((l) => !l.isSmartList || l.smartType == SmartListType.tasks)
         .toList();
@@ -266,7 +260,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     TodoList currentList,
   ) async {
     final l10n = AppLocalizations.of(context);
-    final notifier = ref.read(todoProvider.notifier);
+    final notifier = ref.read(tasksViewPresenterProvider);
     final hasCompleted = state.tasks
         .any((t) => t.listId == currentList.id && t.isCompleted);
 
@@ -299,7 +293,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
   Future<void> _batchMoveToList(TodoState state) async {
     final l10n = AppLocalizations.of(context);
-    final notifier = ref.read(todoProvider.notifier);
+    final notifier = ref.read(tasksActionPresenterProvider);
     final selectableLists = state.lists
         .where((l) => !l.isSmartList || l.smartType == SmartListType.tasks)
         .toList();
@@ -350,7 +344,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
   Future<void> _batchDelete(bool confirmRequired) async {
     final l10n = AppLocalizations.of(context);
-    final notifier = ref.read(todoProvider.notifier);
+    final notifier = ref.read(tasksActionPresenterProvider);
     if (confirmRequired) {
       final confirmed = await showDialog<bool>(
         context: context,
@@ -509,7 +503,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     TodoState state,
     TodoList currentList,
   ) async {
-    final notifier = ref.read(todoProvider.notifier);
+    final notifier = ref.read(tasksViewPresenterProvider);
     final l10n = AppLocalizations.of(context);
     switch (action) {
       case _ListMenuAction.rename:
@@ -700,7 +694,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(todoProvider);
-    final notifier = ref.read(todoProvider.notifier);
+    final notifier = ref.read(tasksViewPresenterProvider);
+    final actionPresenter = ref.read(tasksActionPresenterProvider);
     final l10n = AppLocalizations.of(context);
     final brightness = Theme.of(context).brightness;
     final currentList = state.selectedList;
@@ -756,7 +751,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 IconButton(
                   tooltip: l10n.addToMyDay,
                   onPressed: () {
-                    notifier.batchToggleMyDay(_multiSelectedIds);
+                    actionPresenter.batchToggleMyDay(_multiSelectedIds);
                     setState(() => _multiSelectedIds.clear());
                   },
                   icon: const Icon(Icons.wb_sunny_outlined),
@@ -775,7 +770,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                         _multiSelectedIds.addAll(allTasks.map((t) => t.id));
                       });
                     } else if (value == 'important') {
-                      notifier.batchToggleImportant(_multiSelectedIds);
+                      actionPresenter.batchToggleImportant(_multiSelectedIds);
                       setState(() => _multiSelectedIds.clear());
                     } else if (value == 'move') {
                       _batchMoveToList(state);
@@ -1090,7 +1085,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     sliver: SliverReorderableList(
                       itemCount: activeTasks.length,
-                      onReorder: (oldIndex, newIndex) =>
+                      onReorderItem: (oldIndex, newIndex) =>
                           notifier.reorderActiveTasks(
                         activeTasks,
                         oldIndex,
@@ -1345,7 +1340,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(minHeight: 84),
                   child: CustomPaint(
-                    painter: _RuledLinesPainter(
+                    painter: RuledLinesPainter(
                       lineColor: currentList.themePhoto == null &&
                               TodoColors.isLightTheme(currentList.themeColor) &&
                               !isDark
@@ -1401,39 +1396,5 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
               child: const Icon(Icons.add),
             ),
     );
-  }
-}
-
-class _RuledLinesPainter extends CustomPainter {
-  const _RuledLinesPainter({
-    required this.lineColor,
-    required this.rowHeight,
-    required this.horizontalInset,
-  });
-
-  final Color lineColor;
-  final double rowHeight;
-  final double horizontalInset;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = lineColor
-      ..strokeWidth = 1.0;
-
-    for (var y = rowHeight; y < size.height; y += rowHeight) {
-      canvas.drawLine(
-        Offset(horizontalInset, y),
-        Offset(size.width - horizontalInset, y),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _RuledLinesPainter oldDelegate) {
-    return oldDelegate.lineColor != lineColor ||
-        oldDelegate.rowHeight != rowHeight ||
-        oldDelegate.horizontalInset != horizontalInset;
   }
 }

@@ -1,13 +1,13 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
-import '../providers/todo_provider.dart';
-import 'detail_view_screen.dart';
-import 'home_view_screen.dart';
-import 'search_screen.dart';
-import 'settings_screen.dart';
-import 'tasks_view_screen.dart';
+import '../../detailview/detail_view_screen.dart';
+import '../../homeview/home_view_screen.dart';
+import '../../models/task_item.dart';
+import '../../models/todo_list.dart';
+import '../../providers/todo_provider.dart';
+import '../../search/search_screen.dart';
+import '../../settings/settings_screen.dart';
+import '../../tasksview/tasks_view_screen.dart';
 
 class MainShellScreen extends ConsumerStatefulWidget {
   const MainShellScreen({super.key});

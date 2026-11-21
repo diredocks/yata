@@ -3,7 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'l10n/app_localizations.dart';
 import 'providers/todo_provider.dart';
-import 'screens/main_shell_screen.dart';
+import 'ui/controller/main_shell_screen.dart';
 import 'theme/todo_theme.dart';
 
 Future<void> main() async {

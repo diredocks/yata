@@ -3,9 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../l10n/app_localizations.dart';
 import '../models/todo_list.dart';
 import '../providers/todo_provider.dart';
+import '../tasksview/renamelist/list_editor_dialog.dart';
 import '../theme/todo_theme.dart';
-import '../widgets/list_theme_picker.dart';
-import '../widgets/persona_avatar.dart';
+import '../view/persona_avatar.dart';
+import 'groups/group_dialogs.dart';
+import 'groups/group_header_tile.dart';
+import 'home_list_tile.dart';
+import 'home_view_presenter.dart';
 
 class HomeViewScreen extends ConsumerWidget {
   const HomeViewScreen({
@@ -36,7 +40,7 @@ class HomeViewScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(todoProvider);
-    final notifier = ref.read(todoProvider.notifier);
+    final notifier = ref.read(homeViewPresenterProvider);
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -118,7 +122,7 @@ class HomeViewScreen extends ConsumerWidget {
                 padding: const EdgeInsets.only(bottom: 8),
                 children: [
                   for (final list in smartLists)
-                    _HomeListTile(
+                    HomeListTile(
                       title: _localizedListTitle(l10n, list),
                       icon: list.icon,
                       iconColor: TodoColors.accentFor(list.themeColor),
@@ -132,7 +136,7 @@ class HomeViewScreen extends ConsumerWidget {
                     child: Divider(height: 1),
                   ),
                   for (final group in state.groups) ...[
-                    _GroupHeaderTile(
+                    GroupHeaderTile(
                       group: group,
                       onTap: () => notifier.toggleGroupExpanded(group.id),
                       onModifyLists: () => showGroupListsDialog(
@@ -152,7 +156,7 @@ class HomeViewScreen extends ConsumerWidget {
                     if (group.isExpanded)
                       for (final list in state.lists
                           .where((l) => l.groupId == group.id))
-                        _HomeListTile(
+                        HomeListTile(
                           title: list.title,
                           emoji: list.emoji,
                           icon: list.icon,
@@ -165,7 +169,7 @@ class HomeViewScreen extends ConsumerWidget {
                         ),
                   ],
                   for (final list in ungroupedLists)
-                    _HomeListTile(
+                    HomeListTile(
                       title: list.title,
                       emoji: list.emoji,
                       icon: list.icon,
@@ -242,195 +246,6 @@ class HomeViewScreen extends ConsumerWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HomeListTile extends StatelessWidget {
-  const _HomeListTile({
-    required this.title,
-    required this.icon,
-    required this.iconColor,
-    required this.count,
-    required this.onTap,
-    this.emoji,
-    this.isSelected = false,
-    this.isGrouped = false,
-  });
-
-  final String title;
-  final String? emoji;
-  final IconData icon;
-  final Color iconColor;
-  final int count;
-  final VoidCallback onTap;
-  final bool isSelected;
-  final bool isGrouped;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final selectedBg = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : TodoColors.blue100.withValues(alpha: 0.08);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      child: Material(
-        color: isSelected ? selectedBg : Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(6),
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 46),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                if (isGrouped) ...[
-                  Container(
-                    width: 2,
-                    height: 20,
-                    margin: const EdgeInsets.only(left: 4, right: 12),
-                    color: theme.dividerColor,
-                  ),
-                ],
-                if (emoji != null && emoji!.isNotEmpty)
-                  SizedBox(
-                    width: 22,
-                    child: Center(
-                      child: Text(emoji!, style: const TextStyle(fontSize: 18)),
-                    ),
-                  )
-                else
-                  Icon(icon, size: 22, color: iconColor),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      fontSize: 15,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.normal,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (count > 0)
-                  Text(
-                    '$count',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: isDark
-                          ? TodoColors.secondaryTextDark
-                          : TodoColors.secondaryTextLight,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _GroupHeaderTile extends StatelessWidget {
-  const _GroupHeaderTile({
-    required this.group,
-    required this.onTap,
-    required this.onModifyLists,
-    required this.onRename,
-    required this.onUngroup,
-  });
-
-  final ListGroup group;
-  final VoidCallback onTap;
-  final VoidCallback onModifyLists;
-  final VoidCallback onRename;
-  final VoidCallback onUngroup;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final l10n = AppLocalizations.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final secondaryColor =
-        isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
-        child: Container(
-          constraints: const BoxConstraints(minHeight: 46),
-          padding: const EdgeInsets.only(left: 12, right: 4),
-          child: Row(
-            children: [
-              Icon(
-                Icons.folder_outlined,
-                size: 22,
-                color: TodoColors.homeViewIconColor(theme.brightness),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  group.title,
-                  style: theme.textTheme.bodyLarge?.copyWith(fontSize: 15),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              PopupMenuButton<String>(
-                icon: Icon(Icons.more_horiz, size: 18, color: secondaryColor),
-                padding: EdgeInsets.zero,
-                onSelected: (value) {
-                  if (value == 'modify') onModifyLists();
-                  if (value == 'rename') onRename();
-                  if (value == 'ungroup') onUngroup();
-                },
-                itemBuilder: (_) => [
-                  PopupMenuItem(
-                    value: 'modify',
-                    child: ListTile(
-                      leading: const Icon(Icons.format_list_bulleted),
-                      title: Text(l10n.modifyGroupLists),
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'rename',
-                    child: ListTile(
-                      leading: const Icon(Icons.drive_file_rename_outline),
-                      title: Text(l10n.renameGroup),
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'ungroup',
-                    child: ListTile(
-                      leading: const Icon(Icons.folder_off_outlined),
-                      title: Text(l10n.ungroupLists),
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                    ),
-                  ),
-                ],
-              ),
-              Icon(
-                group.isExpanded
-                    ? Icons.keyboard_arrow_up
-                    : Icons.keyboard_arrow_down,
-                size: 20,
-                color: secondaryColor,
-              ),
-              const SizedBox(width: 6),
-            ],
-          ),
         ),
       ),
     );

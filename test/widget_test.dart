@@ -3,9 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/main.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/providers/todo_provider.dart';
+import 'package:yata/tasksview/tasks_view_presenter.dart';
 
 void main() {
   testWidgets(
@@ -121,7 +123,7 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byType(YataApp)),
     );
-    container.read(todoProvider.notifier).addTask(
+    container.read(tasksViewPresenterProvider).addTask(
           title: 'Daily standup',
           recurrence: RecurrenceType.daily,
           dueDate: DateTime(2026, 11, 22),
@@ -136,7 +138,7 @@ void main() {
     expect(find.text('Add to My Day'), findsNothing);
 
     final taskId = container.read(todoProvider).tasks.first.id;
-    container.read(todoProvider.notifier).toggleTaskCompleted(taskId);
+    container.read(tasksViewPresenterProvider).toggleTaskCompleted(taskId);
     await tester.pumpAndSettle();
 
     final tasks = container.read(todoProvider).tasks;
@@ -166,7 +168,7 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byType(YataApp)),
     );
-    final notifier = container.read(todoProvider.notifier);
+    final notifier = container.read(tasksViewPresenterProvider);
 
     // Add two tasks in My Day and verify reorder mode UI + reorderActiveTasks
     notifier.addTask(title: 'First task');
@@ -184,7 +186,7 @@ void main() {
     final active = container
         .read(todoProvider)
         .tasksForList(container.read(todoProvider).selectedList);
-    notifier.reorderActiveTasks(active, 0, 2);
+    notifier.reorderActiveTasks(active, 0, 1);
     await tester.pumpAndSettle();
 
     final reordered = container
@@ -245,7 +247,7 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byType(YataApp)),
     );
-    final notifier = container.read(todoProvider.notifier);
+    final notifier = container.read(tasksViewPresenterProvider);
 
     notifier.addTask(title: 'Beta task', dueDate: DateTime.now());
     notifier.addTask(title: 'Alpha task');
@@ -266,7 +268,8 @@ void main() {
         .read(todoProvider)
         .tasks
         .firstWhere((t) => t.title == 'Alpha task');
-    notifier.addStep(alphaTask.id, 'Sub-item');
+    final detailPresenter = container.read(detailViewPresenterProvider);
+    detailPresenter.addStep(alphaTask.id, 'Sub-item');
     notifier.selectTask(alphaTask.id);
     await tester.pumpAndSettle();
 
@@ -278,7 +281,7 @@ void main() {
         .steps
         .first
         .id;
-    notifier.promoteStepToTask(alphaTask.id, stepId);
+    detailPresenter.promoteStepToTask(alphaTask.id, stepId);
     await tester.pumpAndSettle();
 
     expect(

@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../models/todo_list.dart';
 import '../providers/todo_provider.dart';
 import '../theme/todo_theme.dart';
+import 'settings_presenter.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -28,7 +29,7 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(todoProvider);
-    final notifier = ref.read(todoProvider.notifier);
+    final notifier = ref.read(settingsPresenterProvider);
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
 

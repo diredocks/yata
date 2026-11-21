@@ -5,7 +5,8 @@ import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../providers/todo_provider.dart';
 import '../theme/todo_theme.dart';
-import '../widgets/task_list_tile.dart';
+import '../tasksview/recyclerview/task_list_tile.dart';
+import 'search_presenter.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({
@@ -39,7 +40,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(todoProvider);
-    final notifier = ref.read(todoProvider.notifier);
+    final notifier = ref.read(searchPresenterProvider);
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;

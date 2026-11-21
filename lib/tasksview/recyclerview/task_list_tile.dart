@@ -1,10 +1,10 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:intl/intl.dart';
-import '../l10n/app_localizations.dart';
-import '../models/task_item.dart';
-import '../theme/todo_theme.dart';
-import 'task_checkbox.dart';
-import 'task_pickers.dart';
+import '../../detailview/recurrence/task_pickers.dart';
+import '../../l10n/app_localizations.dart';
+import '../../models/task_item.dart';
+import '../../theme/todo_theme.dart';
+import '../../view/task_checkbox.dart';
 
 class TaskListTile extends StatelessWidget {
   const TaskListTile({
