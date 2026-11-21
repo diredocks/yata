@@ -300,7 +300,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                         Expanded(
                           child: Text(
                             formatCreatedDateLabel(context, task.createdAt),
-                            style: theme.textTheme.bodySmall?.copyWith(
+                            style: theme.textTheme.bodyMedium?.copyWith(
                               color: secondaryText,
                             ),
                           ),

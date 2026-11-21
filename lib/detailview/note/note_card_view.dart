@@ -63,8 +63,12 @@ class _NoteCardViewState extends State<NoteCardView> {
                 controller: _noteController,
                 minLines: 4,
                 maxLines: null,
+                style: theme.textTheme.bodyLarge,
                 decoration: InputDecoration(
                   hintText: l10n.addNotePlaceholder,
+                  hintStyle: theme.textTheme.bodyLarge?.copyWith(
+                    color: secondaryText,
+                  ),
                   border: InputBorder.none,
                 ),
                 onChanged: widget.onNoteChanged,
@@ -77,7 +81,7 @@ class _NoteCardViewState extends State<NoteCardView> {
                         .add_jm()
                         .format(widget.task.noteUpdatedAt!),
                   ),
-                  style: theme.textTheme.bodySmall?.copyWith(
+                  style: theme.textTheme.bodyMedium?.copyWith(
                     color: secondaryText,
                   ),
                 ),
