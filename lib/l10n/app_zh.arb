@@ -96,6 +96,7 @@
   "changeTheme": "更改主题",
   "hideCompletedTasks": "隐藏已完成的任务",
   "duplicateList": "复制列表",
+  "duplicateListSuccess": "列表已成功复制！",
   "deleteList": "删除列表",
   "deleteListConfirm": "将永久删除“{title}”及其所有任务。",
   "laterToday": "今天晚些时候",

@@ -137,6 +137,7 @@
   "changeTheme": "Change theme",
   "hideCompletedTasks": "Hide completed tasks",
   "duplicateList": "Duplicate list",
+  "duplicateListSuccess": "List copied successfully!",
   "deleteList": "Delete list",
   "deleteListConfirm": "\"{title}\" and all its tasks will be permanently deleted.",
   "@deleteListConfirm": {

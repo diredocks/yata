@@ -164,14 +164,20 @@ void main() {
     expect(g2?.title, 'Work (1)');
     expect(g3?.title, 'Work (2)');
 
-    // Custom list creation, duplicate keeps original title, delete falls back to previous list
+    // Custom list creation, duplicate appends (1)/(2), delete falls back to previous list
     homePresenter.addList('Shopping', ListThemeColor.blue);
     final shoppingId = container.read(todoProvider).selectedListId;
     tasksPresenter.addTask(title: 'Eggs');
     tasksPresenter.duplicateList(shoppingId);
     final dupList = container.read(todoProvider).selectedList;
     expect(dupList.id, isNot(shoppingId));
-    expect(dupList.title, 'Shopping');
+    expect(dupList.title, 'Shopping (1)');
+
+    tasksPresenter.duplicateList(shoppingId);
+    final dupList2 = container.read(todoProvider).selectedList;
+    expect(dupList2.title, 'Shopping (2)');
+    tasksPresenter.deleteList(dupList2.id);
+    expect(container.read(todoProvider).selectedListId, dupList.id);
 
     tasksPresenter.deleteList(dupList.id);
     expect(container.read(todoProvider).selectedListId, shoppingId);

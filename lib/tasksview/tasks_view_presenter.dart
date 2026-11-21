@@ -123,14 +123,30 @@ class TasksViewPresenter {
     _store.storage.saveLists(updated);
   }
 
+  String _deduplicateListTitle(String title) {
+    final existing = {
+      for (final l in _state.lists)
+        if (!l.isSmartList) l.title,
+    };
+    var candidate = title;
+    var index = 1;
+    while (existing.contains(candidate)) {
+      candidate = '$title ($index)';
+      index += 1;
+    }
+    return candidate;
+  }
+
   void duplicateList(String listId, {bool keepCompleted = true}) {
     final source = _state.lists.where((l) => l.id == listId).firstOrNull;
     if (source == null || source.isSmartList) return;
 
     final newListId = _store.nextId('list');
-    final duplicatedList = source.copyWith(
+    final duplicatedList = TodoList(
       id: newListId,
-      title: source.title,
+      title: _deduplicateListTitle(source.title),
+      groupId: source.groupId,
+      emoji: source.emoji,
     );
     final copiedTasks = [
       for (final task in _state.tasks.where(

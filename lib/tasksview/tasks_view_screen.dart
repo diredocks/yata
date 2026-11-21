@@ -266,7 +266,12 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
             .any((t) => t.listId == currentList.id && t.isCompleted);
 
     if (!hasCompleted) {
-      notifier.duplicateList(currentList.id, keepCompleted: true);
+      notifier.duplicateList(currentList.id, keepCompleted: false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.duplicateListSuccess)),
+        );
+      }
       return;
     }
 
@@ -289,6 +294,11 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     );
     if (keepCompleted != null) {
       notifier.duplicateList(currentList.id, keepCompleted: keepCompleted);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.duplicateListSuccess)),
+        );
+      }
     }
   }
 
