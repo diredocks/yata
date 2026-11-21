@@ -130,99 +130,113 @@ class _ThemePickerViewState extends State<ThemePickerView> {
         const SizedBox(height: 10),
         SizedBox(
           height: 52,
-          child: !_showPhotos
-              ? ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: ListThemeColor.values.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 10),
-                  itemBuilder: (context, index) {
-                    final color = ListThemeColor.values[index];
-                    final isSelected = widget.selectedPhoto == null &&
-                        widget.selectedColor == color;
-                    return Center(
-                      child: GestureDetector(
-                        onTap: () => widget.onSelectTheme(color, null),
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: TodoColors.swatchColorFor(
-                              color,
-                              brightness: theme.brightness,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: !_showPhotos
+                ? ListView.separated(
+                    key: const ValueKey('theme_colors_list'),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: ListThemeColor.values.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 10),
+                    itemBuilder: (context, index) {
+                      final color = ListThemeColor.values[index];
+                      final isSelected = widget.selectedPhoto == null &&
+                          widget.selectedColor == color;
+                      return Center(
+                        child: GestureDetector(
+                          onTap: () => widget.onSelectTheme(color, null),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: TodoColors.swatchColorFor(
+                                color,
+                                brightness: theme.brightness,
+                              ),
+                              shape: BoxShape.circle,
+                              border: isSelected
+                                  ? Border.all(
+                                      color: theme.colorScheme.onSurface,
+                                      width: 2.5,
+                                    )
+                                  : (TodoColors.isLightTheme(color) &&
+                                          theme.brightness == Brightness.light
+                                      ? Border.all(
+                                          color: TodoColors.accentFor(color)
+                                              .withValues(alpha: 0.45),
+                                          width: 1,
+                                        )
+                                      : null),
                             ),
-                            shape: BoxShape.circle,
-                            border: isSelected
-                                ? Border.all(
-                                    color: theme.colorScheme.onSurface,
-                                    width: 2.5,
-                                  )
-                                : (TodoColors.isLightTheme(color) &&
-                                        theme.brightness == Brightness.light
-                                    ? Border.all(
-                                        color: TodoColors.accentFor(color)
-                                            .withValues(alpha: 0.45),
-                                        width: 1,
-                                      )
-                                    : null),
+                            child: AnimatedScale(
+                              scale: isSelected ? 1.0 : 0.0,
+                              duration: const Duration(milliseconds: 160),
+                              curve: Curves.easeOutBack,
+                              child: Icon(
+                                Icons.check,
+                                size: 18,
+                                color: theme.brightness == Brightness.dark
+                                    ? Colors.black
+                                    : (TodoColors.isLightTheme(color)
+                                        ? TodoColors.accentFor(color)
+                                        : Colors.white),
+                              ),
+                            ),
                           ),
-                          child: isSelected
-                              ? Icon(
+                        ),
+                      );
+                    },
+                  )
+                : ListView.separated(
+                    key: const ValueKey('theme_photos_list'),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: ListThemePhoto.values.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 10),
+                    itemBuilder: (context, index) {
+                      final photo = ListThemePhoto.values[index];
+                      final isSelected = widget.selectedPhoto == photo;
+                      return Center(
+                        child: GestureDetector(
+                          key: ValueKey('photo_theme_${photo.name}'),
+                          onTap: () =>
+                              widget.onSelectTheme(widget.selectedColor, photo),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: isSelected
+                                  ? Border.all(
+                                      color: theme.colorScheme.primary,
+                                      width: 2.5,
+                                    )
+                                  : null,
+                              image: DecorationImage(
+                                image:
+                                    AssetImage(TodoColors.photoAssetFor(photo)),
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                            child: Center(
+                              child: AnimatedScale(
+                                scale: isSelected ? 1.0 : 0.0,
+                                duration: const Duration(milliseconds: 160),
+                                curve: Curves.easeOutBack,
+                                child: const Icon(
                                   Icons.check,
-                                  size: 18,
-                                  color: theme.brightness == Brightness.dark
-                                      ? Colors.black
-                                      : (TodoColors.isLightTheme(color)
-                                          ? TodoColors.accentFor(color)
-                                          : Colors.white),
-                                )
-                              : null,
-                        ),
-                      ),
-                    );
-                  },
-                )
-              : ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: ListThemePhoto.values.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 10),
-                  itemBuilder: (context, index) {
-                    final photo = ListThemePhoto.values[index];
-                    final isSelected = widget.selectedPhoto == photo;
-                    return Center(
-                      child: GestureDetector(
-                        key: ValueKey('photo_theme_${photo.name}'),
-                        onTap: () =>
-                            widget.onSelectTheme(widget.selectedColor, photo),
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: isSelected
-                                ? Border.all(
-                                    color: theme.colorScheme.primary,
-                                    width: 2.5,
-                                  )
-                                : null,
-                            image: DecorationImage(
-                              image: AssetImage(TodoColors.photoAssetFor(photo)),
-                              fit: BoxFit.cover,
+                                  size: 20,
+                                  color: Colors.white,
+                                ),
+                              ),
                             ),
                           ),
-                          child: isSelected
-                              ? const Center(
-                                  child: Icon(
-                                    Icons.check,
-                                    size: 20,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : null,
                         ),
-                      ),
-                    );
-                  },
-                ),
+                      );
+                    },
+                  ),
+          ),
         ),
       ],
     );

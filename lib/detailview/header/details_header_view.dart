@@ -141,9 +141,19 @@ class _DetailsHeaderViewState extends State<DetailsHeaderView> {
                 ),
                 IconButton(
                   onPressed: widget.onToggleImportant,
-                  icon: Icon(
-                    widget.task.isImportant ? Icons.star : Icons.star_outline,
-                    color: widget.task.isImportant ? accent : secondaryText,
+                  icon: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    switchInCurve: Curves.easeOutBack,
+                    switchOutCurve: Curves.easeIn,
+                    transitionBuilder: (child, anim) => ScaleTransition(
+                      scale: anim,
+                      child: FadeTransition(opacity: anim, child: child),
+                    ),
+                    child: Icon(
+                      widget.task.isImportant ? Icons.star : Icons.star_outline,
+                      key: ValueKey('header_star_${widget.task.isImportant}'),
+                      color: widget.task.isImportant ? accent : secondaryText,
+                    ),
                   ),
                 ),
               ],

@@ -17,9 +17,6 @@ class MainShellScreen extends ConsumerStatefulWidget {
 }
 
 class _MainShellScreenState extends ConsumerState<MainShellScreen> {
-  // On mobile (< 600px), toggle between HomeView (lists) and TasksView.
-  bool _showingTasksOnMobile = false;
-
   void _openSearch() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -47,7 +44,14 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
   void _handleSelectList(TodoList list, bool isWide) {
     ref.read(todoProvider.notifier).selectList(list.id);
     if (!isWide) {
-      setState(() => _showingTasksOnMobile = true);
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (routeCtx) => TasksViewScreen(
+            onBackPressed: () => Navigator.of(routeCtx).pop(),
+            onOpenTask: (task) => _handleOpenTask(task, false),
+          ),
+        ),
+      );
     }
   }
 
@@ -71,27 +75,14 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     final isExtraWide = width >= 960;
 
     if (!isWide) {
-      if (_showingTasksOnMobile) {
-        return PopScope(
-          canPop: false,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && _showingTasksOnMobile) {
-              setState(() => _showingTasksOnMobile = false);
-            }
-          },
-          child: TasksViewScreen(
-            onBackPressed: () => setState(() => _showingTasksOnMobile = false),
-            onOpenTask: (task) => _handleOpenTask(task, false),
-          ),
-        );
-      }
-
       return HomeViewScreen(
         onSelectList: (list) => _handleSelectList(list, false),
         onOpenSearch: _openSearch,
         onOpenSettings: _openSettings,
       );
     }
+
+    final showDetail = isExtraWide && state.selectedTaskId != null;
 
     // Wide layout (tablet / desktop, inspired by activity_main_duo.xml)
     return Scaffold(
@@ -112,17 +103,44 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
               onOpenTask: (task) => _handleOpenTask(task, isExtraWide),
             ),
           ),
-          if (isExtraWide && state.selectedTaskId != null) ...[
-            const VerticalDivider(width: 1),
-            SizedBox(
-              width: 360,
-              child: DetailViewScreen(
-                taskId: state.selectedTaskId!,
-                onClose: () =>
-                    ref.read(todoProvider.notifier).selectTask(null),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            layoutBuilder: (currentChild, previousChildren) => Stack(
+              alignment: AlignmentDirectional.centerStart,
+              children: [
+                ...previousChildren,
+                ?currentChild,
+              ],
+            ),
+            transitionBuilder: (child, animation) => SizeTransition(
+              axis: Axis.horizontal,
+              alignment: AlignmentDirectional.centerStart,
+              sizeFactor: animation,
+              child: FadeTransition(
+                opacity: animation,
+                child: child,
               ),
             ),
-          ],
+            child: showDetail
+                ? Row(
+                    key: ValueKey('detail_${state.selectedTaskId}'),
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const VerticalDivider(width: 1),
+                      SizedBox(
+                        width: 360,
+                        child: DetailViewScreen(
+                          taskId: state.selectedTaskId!,
+                          onClose: () =>
+                              ref.read(todoProvider.notifier).selectTask(null),
+                        ),
+                      ),
+                    ],
+                  )
+                : const SizedBox.shrink(key: ValueKey('detail_empty')),
+          ),
         ],
       ),
     );

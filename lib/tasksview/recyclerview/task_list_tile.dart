@@ -131,6 +131,7 @@ class TaskListTile extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 2),
       child: Material(
         color: cardColor,
+        animationDuration: const Duration(milliseconds: 180),
         borderRadius: BorderRadius.circular(4),
         elevation: 1,
         child: InkWell(
@@ -146,7 +147,8 @@ class TaskListTile extends StatelessWidget {
                 children: [
                   IgnorePointer(
                     ignoring: isReordering,
-                    child: Opacity(
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 180),
                       opacity: isReordering ? 0.45 : 1.0,
                       child: TaskCheckbox(
                         isChecked: task.isCompleted,
@@ -161,9 +163,10 @@ class TaskListTile extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          task.title,
-                          style: theme.textTheme.bodyLarge?.copyWith(
+                        AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 180),
+                          style: (theme.textTheme.bodyLarge ?? const TextStyle())
+                              .copyWith(
                             fontSize: 15.5,
                             decoration: task.isCompleted
                                 ? TextDecoration.lineThrough
@@ -174,6 +177,7 @@ class TaskListTile extends StatelessWidget {
                                     ? TodoColors.primaryTextDark
                                     : TodoColors.primaryTextLight),
                           ),
+                          child: Text(task.title),
                         ),
                         if (separatedMeta.isNotEmpty) ...[
                           const SizedBox(height: 3),
@@ -187,28 +191,44 @@ class TaskListTile extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (trailingHandle != null)
-                    trailingHandle!
-                  else if (isMultiSelected)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Icon(
-                        Icons.check_circle,
-                        color: starActiveColor,
-                        size: 22,
-                      ),
-                    )
-                  else
-                    IconButton(
-                      onPressed: onToggleImportant,
-                      icon: Icon(
-                        task.isImportant ? Icons.star : Icons.star_outline,
-                        color:
-                            task.isImportant ? starActiveColor : secondaryColor,
-                        size: 22,
-                      ),
-                      visualDensity: VisualDensity.compact,
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    switchInCurve: Curves.easeOutBack,
+                    switchOutCurve: Curves.easeIn,
+                    transitionBuilder: (child, anim) => ScaleTransition(
+                      scale: anim,
+                      child: FadeTransition(opacity: anim, child: child),
                     ),
+                    child: trailingHandle != null
+                        ? KeyedSubtree(
+                            key: const ValueKey('trailing_handle'),
+                            child: trailingHandle!,
+                          )
+                        : isMultiSelected
+                            ? Padding(
+                                key: const ValueKey('trailing_selected'),
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Icon(
+                                  Icons.check_circle,
+                                  color: starActiveColor,
+                                  size: 22,
+                                ),
+                              )
+                            : IconButton(
+                                key: ValueKey('trailing_star_${task.isImportant}'),
+                                onPressed: onToggleImportant,
+                                icon: Icon(
+                                  task.isImportant
+                                      ? Icons.star
+                                      : Icons.star_outline,
+                                  color: task.isImportant
+                                      ? starActiveColor
+                                      : secondaryColor,
+                                  size: 22,
+                                ),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                  ),
                 ],
               ),
             ),

@@ -101,13 +101,21 @@ class _TaskCheckboxState extends State<TaskCheckbox>
                 color: widget.isChecked ? activeColor : Colors.transparent,
                 border: Border.all(color: borderColor, width: 1.8),
               ),
-              child: widget.isChecked
-                  ? Icon(
-                      Icons.check,
-                      size: widget.size * 0.65,
-                      color: Colors.white,
-                    )
-                  : null,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 160),
+                switchInCurve: Curves.easeOutBack,
+                switchOutCurve: Curves.easeIn,
+                transitionBuilder: (child, anim) =>
+                    ScaleTransition(scale: anim, child: child),
+                child: widget.isChecked
+                    ? Icon(
+                        Icons.check,
+                        key: const ValueKey('checked'),
+                        size: widget.size * 0.65,
+                        color: Colors.white,
+                      )
+                    : const SizedBox.shrink(key: ValueKey('unchecked')),
+              ),
             ),
           ],
         ),

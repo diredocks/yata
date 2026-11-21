@@ -316,4 +316,65 @@ void main() {
     await tester.pumpAndSettle();
     expect(container.read(todoProvider).selectedList.themePhoto, isNotNull);
   });
+
+  testWidgets(
+      'Mobile navigation uses Navigator route with predictive back support',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+        child: const YataApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Verify PredictiveBackPageTransitionsBuilder is configured for Android.
+    final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(
+      app.theme?.pageTransitionsTheme.builders[TargetPlatform.android],
+      isA<PredictiveBackPageTransitionsBuilder>(),
+    );
+    expect(
+      app.darkTheme?.pageTransitionsTheme.builders[TargetPlatform.android],
+      isA<PredictiveBackPageTransitionsBuilder>(),
+    );
+
+    // Tap My Day -> pushes TasksViewScreen onto Navigator stack
+    await tester.tap(find.text('My Day'));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+
+    // Add a task, enter multi-select via long press, then back clears selection
+    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Back test task');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('Back test task'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 selected'), findsOneWidget);
+
+    // System back in multi-select mode clears selection without popping route
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('1 selected'), findsNothing);
+    expect(find.text('Back test task'), findsOneWidget);
+
+    // System back in normal mode pops back to HomeViewScreen
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Important'), findsOneWidget);
+    expect(find.text('Planned'), findsOneWidget);
+  });
 }

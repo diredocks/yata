@@ -75,14 +75,23 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           child: Divider(height: 1),
         ),
         actions: [
-          if (_query.isNotEmpty)
-            IconButton(
-              onPressed: () {
-                _controller.clear();
-                setState(() => _query = '');
-              },
-              icon: const Icon(Icons.close),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 150),
+            transitionBuilder: (child, anim) => ScaleTransition(
+              scale: anim,
+              child: FadeTransition(opacity: anim, child: child),
             ),
+            child: _query.isNotEmpty
+                ? IconButton(
+                    key: const ValueKey('search_clear_visible'),
+                    onPressed: () {
+                      _controller.clear();
+                      setState(() => _query = '');
+                    },
+                    icon: const Icon(Icons.close),
+                  )
+                : const SizedBox.shrink(key: ValueKey('search_clear_hidden')),
+          ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             tooltip: l10n.moreOptions,
@@ -113,68 +122,74 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           ),
         ],
       ),
-      body: trimmed.isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.search,
-                      size: 64,
-                      color: theme.disabledColor,
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      l10n.searchEmptyPrompt,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color: secondaryText,
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        child: trimmed.isEmpty
+            ? Center(
+                key: const ValueKey('search_empty'),
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.search,
+                        size: 64,
+                        color: theme.disabledColor,
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : results.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Text(
-                      l10n.searchNoResults,
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color: secondaryText,
+                      const SizedBox(height: 12),
+                      Text(
+                        l10n.searchEmptyPrompt,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: secondaryText,
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(8),
-                  itemCount: results.length,
-                  itemBuilder: (context, index) {
-                    final task = results[index];
-                    final listName = state.lists
-                        .where((l) => l.id == task.listId)
-                        .map(
-                          (l) => l.smartType == SmartListType.tasks
-                              ? l10n.tasks
-                              : l.title,
-                        )
-                        .firstOrNull;
-                    return TaskListTile(
-                      task: task,
-                      listName: listName,
-                      showMyDayBadge: true,
-                      onTap: () => widget.onOpenTask(task),
-                      onToggleCompleted: () =>
-                          notifier.toggleTaskCompleted(task.id),
-                      onToggleImportant: () =>
-                          notifier.toggleTaskImportant(task.id),
-                    );
-                  },
                 ),
+              )
+            : results.isEmpty
+                ? Center(
+                    key: const ValueKey('search_no_results'),
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Text(
+                        l10n.searchNoResults,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: secondaryText,
+                        ),
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    key: const ValueKey('search_results'),
+                    padding: const EdgeInsets.all(8),
+                    itemCount: results.length,
+                    itemBuilder: (context, index) {
+                      final task = results[index];
+                      final listName = state.lists
+                          .where((l) => l.id == task.listId)
+                          .map(
+                            (l) => l.smartType == SmartListType.tasks
+                                ? l10n.tasks
+                                : l.title,
+                          )
+                          .firstOrNull;
+                      return TaskListTile(
+                        task: task,
+                        listName: listName,
+                        showMyDayBadge: true,
+                        onTap: () => widget.onOpenTask(task),
+                        onToggleCompleted: () =>
+                            notifier.toggleTaskCompleted(task.id),
+                        onToggleImportant: () =>
+                            notifier.toggleTaskImportant(task.id),
+                      );
+                    },
+                  ),
+      ),
     );
   }
 }

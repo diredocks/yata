@@ -681,12 +681,15 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    isExpanded
-                        ? Icons.keyboard_arrow_down
-                        : Icons.keyboard_arrow_right,
-                    color: headerFg,
-                    size: 18,
+                  AnimatedRotation(
+                    turns: isExpanded ? 0.25 : 0.0,
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    child: Icon(
+                      Icons.keyboard_arrow_right,
+                      color: headerFg,
+                      size: 18,
+                    ),
                   ),
                   const SizedBox(width: 6),
                   Text(
@@ -784,7 +787,17 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
+    return PopScope(
+      canPop: !_isReordering && !_isMultiSelecting,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_isReordering) {
+          setState(() => _isReordering = false);
+        } else if (_isMultiSelecting) {
+          setState(() => _multiSelectedIds.clear());
+        }
+      },
+      child: Scaffold(
       appBar: _isReordering
           ? AppBar(
               backgroundColor: isDark
@@ -904,13 +917,23 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          if (currentList.themePhoto != null)
-            Image.asset(
-              TodoColors.photoAssetFor(currentList.themePhoto!),
-              fit: BoxFit.cover,
-            )
-          else
-            DecoratedBox(decoration: BoxDecoration(gradient: gradient)),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 260),
+            child: currentList.themePhoto != null
+                ? SizedBox.expand(
+                    key: ValueKey('bg_photo_${currentList.themePhoto!.name}'),
+                    child: Image.asset(
+                      TodoColors.photoAssetFor(currentList.themePhoto!),
+                      fit: BoxFit.cover,
+                    ),
+                  )
+                : AnimatedContainer(
+                    key: const ValueKey('bg_gradient'),
+                    duration: const Duration(milliseconds: 260),
+                    curve: Curves.easeOutCubic,
+                    decoration: BoxDecoration(gradient: gradient),
+                  ),
+          ),
           SafeArea(
             bottom: false,
             child: Stack(
@@ -970,19 +993,36 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        if (currentList.themePhoto != null) ...[
-                          Image.asset(
-                            TodoColors.photoAssetFor(currentList.themePhoto!),
-                            fit: BoxFit.cover,
-                            alignment: Alignment.topCenter,
-                          ),
-                          Container(
-                            color: Colors.black.withValues(
-                              alpha: isDark ? 0.35 : 0.12,
-                            ),
-                          ),
-                        ] else
-                          ColoredBox(color: gradient.colors.first),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 260),
+                          child: currentList.themePhoto != null
+                              ? Stack(
+                                  key: ValueKey(
+                                    'header_photo_${currentList.themePhoto!.name}',
+                                  ),
+                                  fit: StackFit.expand,
+                                  children: [
+                                    Image.asset(
+                                      TodoColors.photoAssetFor(
+                                        currentList.themePhoto!,
+                                      ),
+                                      fit: BoxFit.cover,
+                                      alignment: Alignment.topCenter,
+                                    ),
+                                    Container(
+                                      color: Colors.black.withValues(
+                                        alpha: isDark ? 0.35 : 0.12,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : AnimatedContainer(
+                                  key: const ValueKey('header_color'),
+                                  duration: const Duration(milliseconds: 260),
+                                  curve: Curves.easeOutCubic,
+                                  color: gradient.colors.first,
+                                ),
+                        ),
                         LayoutBuilder(
                           builder: (context, constraints) {
                             final topPadding = MediaQuery.paddingOf(context).top;
@@ -1107,12 +1147,18 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                           ),
                                         ),
                                         const SizedBox(width: 6),
-                                        Icon(
-                                          currentList.sortAscending
-                                              ? Icons.keyboard_arrow_up
-                                              : Icons.keyboard_arrow_down,
-                                          color: headerFg,
-                                          size: 18,
+                                        AnimatedRotation(
+                                          turns: currentList.sortAscending
+                                              ? 0.5
+                                              : 0.0,
+                                          duration:
+                                              const Duration(milliseconds: 180),
+                                          curve: Curves.easeInOut,
+                                          child: Icon(
+                                            Icons.keyboard_arrow_down,
+                                            color: headerFg,
+                                            size: 18,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -1447,46 +1493,62 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
             ],
           ),
           ),
-                if (_scrollOffset > 4 && !_isMultiSelecting)
-                  Positioned(
-                    top: ((subtitle != null ? 144.0 : 116.0) - _scrollOffset)
-                        .clamp(
-                      kToolbarHeight,
-                      subtitle != null ? 144.0 : 116.0,
-                    ),
-                    left: 0,
-                    right: 0,
-                    child: IgnorePointer(
+                Positioned(
+                  top: ((subtitle != null ? 144.0 : 116.0) - _scrollOffset)
+                      .clamp(
+                    kToolbarHeight,
+                    subtitle != null ? 144.0 : 116.0,
+                  ),
+                  left: 0,
+                  right: 0,
+                  child: IgnorePointer(
+                    child: AnimatedOpacity(
+                      opacity: (_scrollOffset > 4 && !_isMultiSelecting)
+                          ? 1.0
+                          : 0.0,
+                      duration: const Duration(milliseconds: 150),
                       child: Container(
                         height: 3,
                         decoration: TodoColors.horizontalShadowDecoration,
                       ),
                     ),
                   ),
+                ),
               ],
             ),
         ),
         ],
       ),
-      floatingActionButton: (_isReordering || _isMultiSelecting || isCompletedList)
-          ? null
-          : FloatingActionButton(
-              onPressed: () => _openAddTaskSheet(state),
-              backgroundColor: currentList.themePhoto != null
-                  ? TodoColors.photoFabBackgroundFor(currentList.themePhoto!)
-                  : TodoColors.fabBackgroundFor(
-                      currentList.themeColor,
-                      brightness: brightness,
-                    ),
-              foregroundColor: currentList.themePhoto != null
-                  ? (isDark ? Colors.black : Colors.white)
-                  : TodoColors.fabForegroundFor(
-                      currentList.themeColor,
-                      brightness: brightness,
-                    ),
-              tooltip: l10n.addTaskPlaceholder,
-              child: const Icon(Icons.add),
-            ),
+      floatingActionButton: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        switchInCurve: Curves.easeOutBack,
+        switchOutCurve: Curves.easeIn,
+        transitionBuilder: (child, anim) => ScaleTransition(
+          scale: anim,
+          child: FadeTransition(opacity: anim, child: child),
+        ),
+        child: (_isReordering || _isMultiSelecting || isCompletedList)
+            ? const SizedBox.shrink(key: ValueKey('fab_hidden'))
+            : FloatingActionButton(
+                key: const ValueKey('fab_visible'),
+                onPressed: () => _openAddTaskSheet(state),
+                backgroundColor: currentList.themePhoto != null
+                    ? TodoColors.photoFabBackgroundFor(currentList.themePhoto!)
+                    : TodoColors.fabBackgroundFor(
+                        currentList.themeColor,
+                        brightness: brightness,
+                      ),
+                foregroundColor: currentList.themePhoto != null
+                    ? (isDark ? Colors.black : Colors.white)
+                    : TodoColors.fabForegroundFor(
+                        currentList.themeColor,
+                        brightness: brightness,
+                      ),
+                tooltip: l10n.addTaskPlaceholder,
+                child: const Icon(Icons.add),
+              ),
+      ),
+      ),
     );
   }
 }

@@ -157,20 +157,34 @@ class HomeViewScreen extends ConsumerWidget {
                       ),
                       onUngroup: () => notifier.deleteGroup(group.id),
                     ),
-                    if (group.isExpanded)
-                      for (final list in state.lists
-                          .where((l) => l.groupId == group.id))
-                        HomeListTile(
-                          title: list.title,
-                          emoji: list.emoji,
-                          icon: list.icon,
-                          iconColor: TodoColors.accentFor(list.themeColor),
-                          count: state.activeCountForList(list),
-                          isSelected:
-                              isSidebar && state.selectedListId == list.id,
-                          isGrouped: true,
-                          onTap: () => onSelectList(list),
-                        ),
+                    ClipRect(
+                      child: AnimatedSize(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.topCenter,
+                        child: group.isExpanded
+                            ? Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (final list in state.lists
+                                      .where((l) => l.groupId == group.id))
+                                    HomeListTile(
+                                      title: list.title,
+                                      emoji: list.emoji,
+                                      icon: list.icon,
+                                      iconColor:
+                                          TodoColors.accentFor(list.themeColor),
+                                      count: state.activeCountForList(list),
+                                      isSelected: isSidebar &&
+                                          state.selectedListId == list.id,
+                                      isGrouped: true,
+                                      onTap: () => onSelectList(list),
+                                    ),
+                                ],
+                              )
+                            : const SizedBox(width: double.infinity),
+                      ),
+                    ),
                   ],
                   for (final list in ungroupedLists)
                     HomeListTile(

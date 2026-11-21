@@ -343,10 +343,20 @@ class TodoColors {
 class TodoTheme {
   TodoTheme._();
 
+  static const PageTransitionsTheme _pageTransitionsTheme =
+      PageTransitionsTheme(
+    builders: {
+      TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+      TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
+      TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
+    },
+  );
+
   static ThemeData light() {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
+      pageTransitionsTheme: _pageTransitionsTheme,
       colorScheme: ColorScheme.fromSeed(
         seedColor: TodoColors.attentionLight,
         brightness: Brightness.light,
@@ -374,6 +384,7 @@ class TodoTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
+      pageTransitionsTheme: _pageTransitionsTheme,
       colorScheme: ColorScheme.fromSeed(
         seedColor: TodoColors.attentionDark,
         brightness: Brightness.dark,

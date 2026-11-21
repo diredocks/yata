@@ -89,12 +89,15 @@ class GroupHeaderTile extends StatelessWidget {
                   ),
                 ],
               ),
-              Icon(
-                group.isExpanded
-                    ? Icons.keyboard_arrow_up
-                    : Icons.keyboard_arrow_down,
-                size: 20,
-                color: secondaryColor,
+              AnimatedRotation(
+                turns: group.isExpanded ? 0.5 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                child: Icon(
+                  Icons.keyboard_arrow_down,
+                  size: 20,
+                  color: secondaryColor,
+                ),
               ),
               const SizedBox(width: 6),
             ],

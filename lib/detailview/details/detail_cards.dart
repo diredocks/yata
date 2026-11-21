@@ -171,30 +171,43 @@ class DetailActionRow extends StatelessWidget {
             Icon(icon, size: 24, color: iconColor),
             const SizedBox(width: 24),
             Expanded(
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      fontSize: 15,
-                      color: labelColor,
-                    ),
+              child: AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 160),
+                style: (Theme.of(context).textTheme.bodyLarge ??
+                        const TextStyle())
+                    .copyWith(
+                  fontSize: 15,
+                  color: labelColor,
+                ),
+                child: Text(label),
               ),
             ),
-            if (onRemove != null)
-              InkWell(
-                onTap: onRemove,
-                borderRadius: BorderRadius.circular(24),
-                child: Padding(
-                  padding: const EdgeInsetsDirectional.only(
-                    start: 16,
-                    end: 14,
-                    top: 13,
-                    bottom: 13,
-                  ),
-                  child: Icon(Icons.close, size: 22, color: removeColor),
-                ),
-              )
-            else
-              const SizedBox(width: 16),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 160),
+              transitionBuilder: (child, anim) => ScaleTransition(
+                scale: anim,
+                child: FadeTransition(opacity: anim, child: child),
+              ),
+              child: onRemove != null
+                  ? InkWell(
+                      key: const ValueKey('detail_remove_visible'),
+                      onTap: onRemove,
+                      borderRadius: BorderRadius.circular(24),
+                      child: Padding(
+                        padding: const EdgeInsetsDirectional.only(
+                          start: 16,
+                          end: 14,
+                          top: 13,
+                          bottom: 13,
+                        ),
+                        child: Icon(Icons.close, size: 22, color: removeColor),
+                      ),
+                    )
+                  : const SizedBox(
+                      key: ValueKey('detail_remove_hidden'),
+                      width: 16,
+                    ),
+            ),
           ],
         ),
       ),

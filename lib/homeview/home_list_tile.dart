@@ -34,56 +34,69 @@ class HomeListTile extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      child: Material(
-        color: isSelected ? selectedBg : Colors.transparent,
-        borderRadius: BorderRadius.circular(6),
-        child: InkWell(
-          onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        decoration: BoxDecoration(
+          color: isSelected ? selectedBg : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
-          child: Container(
-            constraints: const BoxConstraints(minHeight: 46),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                if (isGrouped) ...[
-                  Container(
-                    width: 2,
-                    height: 20,
-                    margin: const EdgeInsets.only(left: 4, right: 12),
-                    color: theme.dividerColor,
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          borderRadius: BorderRadius.circular(6),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 46),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  if (isGrouped) ...[
+                    Container(
+                      width: 2,
+                      height: 20,
+                      margin: const EdgeInsets.only(left: 4, right: 12),
+                      color: theme.dividerColor,
+                    ),
+                  ],
+                  if (emoji != null && emoji!.isNotEmpty)
+                    SizedBox(
+                      width: 22,
+                      child: Center(
+                        child:
+                            Text(emoji!, style: const TextStyle(fontSize: 18)),
+                      ),
+                    )
+                  else
+                    Icon(icon, size: 22, color: iconColor),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: AnimatedDefaultTextStyle(
+                      duration: const Duration(milliseconds: 180),
+                      style: (theme.textTheme.bodyLarge ?? const TextStyle())
+                          .copyWith(
+                        fontSize: 15,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                      child: Text(
+                        title,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
+                  if (count > 0)
+                    Text(
+                      '$count',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: isDark
+                            ? TodoColors.secondaryTextDark
+                            : TodoColors.secondaryTextLight,
+                      ),
+                    ),
                 ],
-                if (emoji != null && emoji!.isNotEmpty)
-                  SizedBox(
-                    width: 22,
-                    child: Center(
-                      child: Text(emoji!, style: const TextStyle(fontSize: 18)),
-                    ),
-                  )
-                else
-                  Icon(icon, size: 22, color: iconColor),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      fontSize: 15,
-                      fontWeight:
-                          isSelected ? FontWeight.w600 : FontWeight.normal,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (count > 0)
-                  Text(
-                    '$count',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: isDark
-                          ? TodoColors.secondaryTextDark
-                          : TodoColors.secondaryTextLight,
-                    ),
-                  ),
-              ],
+              ),
             ),
           ),
         ),
