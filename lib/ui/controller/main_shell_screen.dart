@@ -6,6 +6,7 @@ import '../../detailview/detail_view_presenter.dart';
 import '../../detailview/detail_view_screen.dart';
 import '../../homeview/home_view_screen.dart';
 import '../../l10n/app_localizations.dart';
+import '../../models/account.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
 import '../../data/todo_provider.dart';
@@ -13,6 +14,7 @@ import '../../notifications/notification_service.dart';
 import '../../notifications/snooze_reminder_sheet.dart';
 import '../../search/search_screen.dart';
 import '../../settings/settings_screen.dart';
+import '../../sync/sync_provider.dart';
 import '../../tasksview/richentry/task_entry_sheet.dart';
 import '../../tasksview/tasks_view_presenter.dart';
 import '../../tasksview/tasks_view_screen.dart';
@@ -40,7 +42,15 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
           NotificationStrings.fromLocalizations(AppLocalizations.of(context));
       unawaited(notificationService.syncWithState(state, strings: strings));
       _restoreLastEnteredListIfNeeded();
+      _startSyncForActiveAccount();
     });
+  }
+
+  void _startSyncForActiveAccount({bool accountChanged = false}) {
+    final account = ref.read(accountProvider).activeAccount;
+    if (account is! MicrosoftAccount) return;
+    if (!accountChanged && account.lastSyncedAt != null) return;
+    unawaited(ref.read(syncProvider.notifier).syncNow());
   }
 
   @override
@@ -211,6 +221,9 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       (previous, next) {
         if (previous != null && next != null && previous != next) {
           ref.read(todoProvider.notifier).setLastEnteredListId(null);
+        }
+        if (previous != next) {
+          _startSyncForActiveAccount(accountChanged: true);
         }
       },
     );

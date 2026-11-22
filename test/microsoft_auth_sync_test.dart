@@ -463,6 +463,27 @@ class _FakeSubstrateApi implements MicrosoftTodoApi {
   }
 }
 
+class _BlockingFoldersApi extends _FakeSubstrateApi {
+  _BlockingFoldersApi(this.started, this.release);
+
+  final Completer<void> started;
+  final Completer<void> release;
+  int folderFetchCount = 0;
+
+  @override
+  Future<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta(
+    SubstrateRequestContext ctx, {
+    String? deltaLink,
+  }) async {
+    folderFetchCount += 1;
+    if (!started.isCompleted) {
+      started.complete();
+      await release.future;
+    }
+    return super.fetchFoldersDelta(ctx, deltaLink: deltaLink);
+  }
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -2271,6 +2292,7 @@ void main() {
         email: 'alice@outlook.com',
         createdAt: DateTime(2026, 11, 22),
         microsoftUserId: 'cid1',
+        lastSyncedAt: DateTime(2026, 11, 22, 8),
       );
       await AccountLocalStorage(prefs).saveAccounts([account]);
       await AccountLocalStorage(prefs)
@@ -2824,6 +2846,119 @@ void main() {
         patchedPayloads['rt-w2']!.single['Subject'],
         'Wide Bottom Renamed',
       );
+    });
+
+    test('concurrent syncNow calls share the in-flight sync future', () async {
+      final prefs = await SharedPreferences.getInstance();
+      await AuthTokenStorage(prefs).saveTokens(
+        'acct_shared_sync',
+        MicrosoftAuthTokens(
+          accessToken: 'tok-1',
+          refreshToken: 'rt-1',
+          expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+          userId: 'cid1',
+        ),
+      );
+      final account = MicrosoftAccount(
+        id: 'acct_shared_sync',
+        displayName: 'Alice',
+        email: 'alice@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        microsoftUserId: 'cid1',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId(account.id);
+
+      final started = Completer<void>();
+      final release = Completer<void>();
+      final fakeApi = _BlockingFoldersApi(started, release);
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(_FakeAuthClient()),
+          microsoftTodoApiProvider.overrideWithValue(fakeApi),
+          realtimeSyncEnabledProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final first = container.read(syncProvider.notifier).syncNow();
+      await started.future;
+      expect(container.read(syncProvider).isSyncing, isTrue);
+
+      var secondCompleted = false;
+      unawaited(
+        container.read(syncProvider.notifier).syncNow().whenComplete(() {
+          secondCompleted = true;
+        }),
+      );
+      await pumpEventQueue();
+
+      expect(secondCompleted, isFalse);
+      expect(container.read(syncProvider).isSyncing, isTrue);
+
+      release.complete();
+      await first;
+      await pumpEventQueue();
+
+      expect(secondCompleted, isTrue);
+      expect(container.read(syncProvider).status, SyncStatus.success);
+      expect(fakeApi.folderFetchCount, greaterThanOrEqualTo(2));
+    });
+
+    testWidgets(
+        'auto-syncs once when the shell mounts for a never-synced account',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      await AuthTokenStorage(prefs).saveTokens(
+        'acct_auto_sync',
+        MicrosoftAuthTokens(
+          accessToken: 'tok-1',
+          refreshToken: 'rt-1',
+          expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+          userId: 'cid1',
+        ),
+      );
+      final account = MicrosoftAccount(
+        id: 'acct_auto_sync',
+        displayName: 'Alice',
+        email: 'alice@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        microsoftUserId: 'cid1',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId(account.id);
+
+      final fakeApi = _FakeSubstrateApi();
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(_FakeAuthClient()),
+          microsoftTodoApiProvider.overrideWithValue(fakeApi),
+          realtimeSyncEnabledProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const YataApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(container.read(syncProvider).status, SyncStatus.success);
+      final active = container.read(accountProvider).activeAccount;
+      expect(active, isA<MicrosoftAccount>());
+      expect((active! as MicrosoftAccount).lastSyncedAt, isNotNull);
+      expect(
+        fakeApi.callLog.where((c) => c.startsWith('GET foldergroups')).length,
+        1,
+      );
+      expect(container.read(todoProvider).lists, isNotEmpty);
     });
   });
 }

@@ -66,7 +66,7 @@ class SyncNotifier extends Notifier<SyncState> {
   StreamSubscription<RealtimeEvent>? _realtimeSub;
 
   bool _disposed = false;
-  bool _syncInFlight = false;
+  Future<void>? _activeSync;
   bool _syncQueued = false;
   Duration _realtimeBackoff = _realtimeInitialBackoff;
   String? _realtimeAccountId;
@@ -133,18 +133,45 @@ class SyncNotifier extends Notifier<SyncState> {
     });
   }
 
-  Future<void> syncNow() async {
-    if (_disposed) return;
+  Future<void> syncNow() {
+    if (_disposed) return Future<void>.value();
     final active = ref.read(accountProvider).activeAccount;
-    if (active is! MicrosoftAccount) return;
+    if (active is! MicrosoftAccount) return Future<void>.value();
 
-    if (_syncInFlight) {
+    final inFlight = _activeSync;
+    if (inFlight != null) {
       _syncQueued = true;
-      return;
+      return inFlight;
     }
 
-    _syncInFlight = true;
+    final completer = Completer<void>();
+    _activeSync = completer.future;
+    unawaited(() async {
+      try {
+        await _runSyncLoop();
+      } finally {
+        if (!completer.isCompleted) completer.complete();
+      }
+    }());
+    return completer.future;
+  }
+
+  Future<void> _runSyncLoop() async {
     state = state.copyWith(status: SyncStatus.syncing, clearError: true);
+    try {
+      do {
+        _syncQueued = false;
+        await _syncOnce();
+      } while (_syncQueued && !_disposed);
+    } finally {
+      _syncQueued = false;
+      _activeSync = null;
+    }
+  }
+
+  Future<void> _syncOnce() async {
+    final active = ref.read(accountProvider).activeAccount;
+    if (_disposed || active is! MicrosoftAccount) return;
 
     try {
       final service = ref.read(cloudSyncServiceProvider);
@@ -231,12 +258,6 @@ class SyncNotifier extends Notifier<SyncState> {
           status: SyncStatus.error,
           error: e.toString(),
         );
-      }
-    } finally {
-      _syncInFlight = false;
-      if (_syncQueued && !_disposed) {
-        _syncQueued = false;
-        unawaited(syncNow());
       }
     }
   }
