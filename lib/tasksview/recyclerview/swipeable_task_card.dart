@@ -29,25 +29,49 @@ class SwipeableTaskCard extends StatefulWidget {
   State<SwipeableTaskCard> createState() => _SwipeableTaskCardState();
 }
 
+enum _SwipeAnimPhase {
+  idle,
+  flingRight,
+  flingLeft,
+  snapBack,
+}
+
 class _SwipeableTaskCardState extends State<SwipeableTaskCard>
     with SingleTickerProviderStateMixin {
   static const double _swipeThreshold = 0.4;
   static const double _circleGrowthFactor = 3.0;
   static const Color _itemSwipedColor = Color(0x29000000);
+  static const Duration _flingDuration = Duration(milliseconds: 180);
+  static const Duration _snapBackDuration = Duration(milliseconds: 220);
 
   late final AnimationController _snapController;
   Animation<double>? _snapAnimation;
   double _dragOffset = 0.0;
+  _SwipeAnimPhase _phase = _SwipeAnimPhase.idle;
 
   @override
   void initState() {
     super.initState();
     _snapController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 220),
-    )..addListener(() {
+      duration: _snapBackDuration,
+    )
+      ..addListener(() {
         if (_snapAnimation != null && mounted) {
           setState(() => _dragOffset = _snapAnimation!.value);
+        }
+      })
+      ..addStatusListener((status) {
+        if (status != AnimationStatus.completed || !mounted) return;
+        final completedPhase = _phase;
+        _phase = _SwipeAnimPhase.idle;
+        if (completedPhase == _SwipeAnimPhase.flingRight) {
+          widget.onSwipeRight();
+          if (mounted) {
+            _animateBack();
+          }
+        } else if (completedPhase == _SwipeAnimPhase.flingLeft) {
+          widget.onSwipeLeft();
         }
       });
   }
@@ -55,7 +79,9 @@ class _SwipeableTaskCardState extends State<SwipeableTaskCard>
   @override
   void didUpdateWidget(covariant SwipeableTaskCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!widget.enabled && _dragOffset != 0.0) {
+    if (!widget.enabled &&
+        (_dragOffset != 0.0 || _phase != _SwipeAnimPhase.idle)) {
+      _phase = _SwipeAnimPhase.idle;
       _snapController.stop();
       _dragOffset = 0.0;
     }
@@ -67,15 +93,30 @@ class _SwipeableTaskCardState extends State<SwipeableTaskCard>
     super.dispose();
   }
 
-  void _animateBack() {
-    _snapAnimation = Tween<double>(begin: _dragOffset, end: 0.0).animate(
+  void _animateTo(
+    double target, {
+    required _SwipeAnimPhase phase,
+    required Duration duration,
+  }) {
+    _phase = phase;
+    _snapController.duration = duration;
+    _snapAnimation = Tween<double>(begin: _dragOffset, end: target).animate(
       CurvedAnimation(parent: _snapController, curve: Curves.easeOutCubic),
     );
     _snapController.forward(from: 0);
   }
 
+  void _animateBack() {
+    _animateTo(
+      0.0,
+      phase: _SwipeAnimPhase.snapBack,
+      duration: _snapBackDuration,
+    );
+  }
+
   void _handleDragStart(DragStartDetails details) {
     if (!widget.enabled) return;
+    _phase = _SwipeAnimPhase.idle;
     _snapController.stop();
   }
 
@@ -96,12 +137,11 @@ class _SwipeableTaskCardState extends State<SwipeableTaskCard>
 
     if (triggered) {
       final isRight = _dragOffset > 0;
-      _animateBack();
-      if (isRight) {
-        widget.onSwipeRight();
-      } else {
-        widget.onSwipeLeft();
-      }
+      _animateTo(
+        isRight ? width : -width,
+        phase: isRight ? _SwipeAnimPhase.flingRight : _SwipeAnimPhase.flingLeft,
+        duration: _flingDuration,
+      );
     } else {
       _animateBack();
     }

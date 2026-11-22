@@ -42,14 +42,18 @@ void main() {
     expect(rightCount, 0);
     expect(leftCount, 0);
 
-    // Right swipe past 40% -> triggers onSwipeRight
+    // Right swipe past 40% -> waits for snap-back animation before triggering
     await tester.drag(find.text('Swipe target'), const Offset(220, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(rightCount, 0);
     await tester.pumpAndSettle();
     expect(rightCount, 1);
     expect(leftCount, 0);
 
-    // Left swipe past 40% -> triggers onSwipeLeft
+    // Left swipe past 40% -> waits for snap-back animation before triggering
     await tester.drag(find.text('Swipe target'), const Offset(-220, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(leftCount, 0);
     await tester.pumpAndSettle();
     expect(rightCount, 1);
     expect(leftCount, 1);
