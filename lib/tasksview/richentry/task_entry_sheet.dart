@@ -37,12 +37,25 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
   DateTime? _reminderAt;
   RecurrenceType _recurrence = RecurrenceType.none;
 
+  bool get _showListPicker =>
+      widget.currentList.isSmartList &&
+      widget.currentList.smartType != SmartListType.tasks;
+
+  DateTime? _defaultDueDate() {
+    if (widget.currentList.smartType == SmartListType.planned) {
+      final now = DateTime.now();
+      return DateTime(now.year, now.month, now.day);
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
     _targetListId = widget.currentList.isSmartList
         ? 'tasks'
         : widget.currentList.id;
+    _dueDate = _defaultDueDate();
     _controller.addListener(() => setState(() {}));
   }
 
@@ -65,7 +78,7 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
     );
     _controller.clear();
     setState(() {
-      _dueDate = null;
+      _dueDate = _defaultDueDate();
       _reminderAt = null;
       _recurrence = RecurrenceType.none;
     });
@@ -254,7 +267,7 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Row(
                 children: [
-                  if (widget.currentList.isSmartList) ...[
+                  if (_showListPicker) ...[
                     ActionChip(
                       avatar: Icon(
                         targetList.icon,
