@@ -701,8 +701,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 children: [
                   AnimatedRotation(
                     turns: isExpanded ? 0.25 : 0.0,
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeInOut,
+                    duration: const Duration(milliseconds: 150),
+                    curve: Curves.fastOutSlowIn,
                     child: Icon(
                       Icons.keyboard_arrow_right,
                       color: headerFg,
@@ -1155,15 +1155,14 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           activeTasks: activeTasks,
           accentColor: accentColor,
         ),
-      if (completedTasks.isNotEmpty)
-        ..._buildCompletedBucketSlivers(
-          l10n: l10n,
-          state: state,
-          currentList: currentList,
-          completedTasks: completedTasks,
-          accentColor: accentColor,
-          headerFg: headerFg,
-        ),
+      ..._buildCompletedBucketSlivers(
+        l10n: l10n,
+        state: state,
+        currentList: currentList,
+        completedTasks: completedTasks,
+        accentColor: accentColor,
+        headerFg: headerFg,
+      ),
     ];
   }
 
@@ -1254,25 +1253,23 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
             headerFg: headerFg,
           ),
         ),
-        if (!_collapsedPlannedBuckets.contains(group.bucket.name))
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            sliver: AnimatedTaskSliverList(
-              key: ValueKey('planned_${group.bucket.name}'),
-              tasks: group.tasks,
-              itemBuilder: (context, task) => _buildTaskTile(
-                task: task,
-                state: state,
-                accentColor: accentColor,
-                showMyDayBadge: true,
-                originListName: resolveOriginListName(
-                  l10n,
-                  state.lists,
-                  task.listId,
-                ),
-              ),
+        CollapsibleTaskBucketSliver(
+          key: ValueKey('planned_${group.bucket.name}'),
+          isExpanded: !_collapsedPlannedBuckets.contains(group.bucket.name),
+          tasks: group.tasks,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          itemBuilder: (context, task) => _buildTaskTile(
+            task: task,
+            state: state,
+            accentColor: accentColor,
+            showMyDayBadge: true,
+            originListName: resolveOriginListName(
+              l10n,
+              state.lists,
+              task.listId,
             ),
           ),
+        ),
       ],
     ];
   }
@@ -1299,20 +1296,18 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
             headerFg: headerFg,
           ),
         ),
-        if (!_collapsedCompletedListBuckets.contains(group.listId))
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            sliver: AnimatedTaskSliverList(
-              key: ValueKey('bucket_${currentList.id}_${group.listId}'),
-              tasks: group.tasks,
-              itemBuilder: (context, task) => _buildTaskTile(
-                task: task,
-                state: state,
-                accentColor: accentColor,
-                showMyDayBadge: true,
-              ),
-            ),
+        CollapsibleTaskBucketSliver(
+          key: ValueKey('bucket_${currentList.id}_${group.listId}'),
+          isExpanded: !_collapsedCompletedListBuckets.contains(group.listId),
+          tasks: group.tasks,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          itemBuilder: (context, task) => _buildTaskTile(
+            task: task,
+            state: state,
+            accentColor: accentColor,
+            showMyDayBadge: true,
           ),
+        ),
       ],
     ];
   }
@@ -1353,38 +1348,51 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     required Color accentColor,
     required Color headerFg,
   }) {
+    final hasCompleted = completedTasks.isNotEmpty;
+    final showItems = hasCompleted && _completedExpanded;
     return [
       SliverToBoxAdapter(
-        child: _buildBucketPill(
-          label: l10n.completed,
-          count: completedTasks.length,
-          isExpanded: _completedExpanded,
-          onTap: () => setState(() => _completedExpanded = !_completedExpanded),
-          currentList: currentList,
-          headerFg: headerFg,
-        ),
-      ),
-      if (_completedExpanded)
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(8, 2, 8, 16),
-          sliver: AnimatedTaskSliverList(
-            key: ValueKey('completed_${currentList.id}'),
-            tasks: completedTasks,
-            itemBuilder: (context, task) {
-              final showOriginList = currentList.isSmartList &&
-                  currentList.smartType != SmartListType.tasks;
-              return _buildTaskTile(
-                task: task,
-                state: state,
-                accentColor: accentColor,
-                showMyDayBadge: currentList.smartType != SmartListType.myDay,
-                originListName: showOriginList
-                    ? resolveOriginListName(l10n, state.lists, task.listId)
-                    : null,
-              );
-            },
+        child: AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: AnimatedOpacity(
+            opacity: hasCompleted ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+            child: hasCompleted
+                ? _buildBucketPill(
+                    label: l10n.completed,
+                    count: completedTasks.length,
+                    isExpanded: _completedExpanded,
+                    onTap: () =>
+                        setState(() => _completedExpanded = !_completedExpanded),
+                    currentList: currentList,
+                    headerFg: headerFg,
+                  )
+                : const SizedBox.shrink(),
           ),
         ),
+      ),
+      CollapsibleTaskBucketSliver(
+        key: ValueKey('completed_${currentList.id}'),
+        isExpanded: showItems,
+        tasks: completedTasks,
+        padding: const EdgeInsets.fromLTRB(8, 2, 8, 16),
+        itemBuilder: (context, task) {
+          final showOriginList = currentList.isSmartList &&
+              currentList.smartType != SmartListType.tasks;
+          return _buildTaskTile(
+            task: task,
+            state: state,
+            accentColor: accentColor,
+            showMyDayBadge: currentList.smartType != SmartListType.myDay,
+            originListName: showOriginList
+                ? resolveOriginListName(l10n, state.lists, task.listId)
+                : null,
+          );
+        },
+      ),
     ];
   }
 
