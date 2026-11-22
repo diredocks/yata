@@ -3,9 +3,11 @@ import 'package:material_ui/material_ui.dart';
 import '../l10n/app_localizations.dart';
 import '../models/account.dart';
 import '../onboarding/landing_screen.dart';
-import '../providers/account_provider.dart';
+import 'account_provider.dart';
+import '../sync/sync_provider.dart';
 import '../theme/todo_theme.dart';
 import '../view/persona_avatar.dart';
+import '../view/sync_status_label.dart';
 
 class ManageAccountsScreen extends ConsumerWidget {
   const ManageAccountsScreen({super.key});
@@ -56,6 +58,7 @@ class ManageAccountsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final accountState = ref.watch(accountProvider);
+    final syncState = ref.watch(syncProvider);
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -134,21 +137,65 @@ class ManageAccountsScreen extends ConsumerWidget {
                 ],
               ],
             ),
-            subtitle: Text(
-              account.email,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: isDark
-                    ? TodoColors.secondaryTextDark
-                    : TodoColors.secondaryTextLight,
-              ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  account.email,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: isDark
+                        ? TodoColors.secondaryTextDark
+                        : TodoColors.secondaryTextLight,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  formatAccountSyncStatus(
+                    l10n: l10n,
+                    account: account,
+                    syncState: syncState,
+                    isActive: isActive,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: (account is MicrosoftAccount &&
+                            (account.syncError != null ||
+                                (isActive && syncState.error != null)))
+                        ? theme.colorScheme.error
+                        : (isDark
+                            ? TodoColors.secondaryTextDark
+                            : TodoColors.secondaryTextLight),
+                  ),
+                ),
+              ],
             ),
-            trailing: TextButton(
-              onPressed: () => _confirmSignOut(context, ref, account),
-              style: TextButton.styleFrom(
-                foregroundColor: theme.colorScheme.error,
-              ),
-              child: Text(l10n.signOut),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (account.isMicrosoft && isActive)
+                  IconButton(
+                    icon: syncState.isSyncing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.sync, size: 20),
+                    tooltip: l10n.syncNow,
+                    onPressed: syncState.isSyncing
+                        ? null
+                        : () => ref.read(syncProvider.notifier).syncNow(),
+                  ),
+                TextButton(
+                  onPressed: () => _confirmSignOut(context, ref, account),
+                  style: TextButton.styleFrom(
+                    foregroundColor: theme.colorScheme.error,
+                  ),
+                  child: Text(l10n.signOut),
+                ),
+              ],
             ),
             onTap: isActive
                 ? null

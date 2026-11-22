@@ -209,5 +209,33 @@
   "signOutWarning": "When you sign out we'll forget your account on this device until you sign in again.",
   "localAccount": "Local account",
   "accountSection": "Account",
-  "activeAccount": "Active"
+  "activeAccount": "Active",
+  "useLocalAccount": "Use a local account",
+  "microsoftAccount": "Microsoft account",
+  "signingIn": "Signing you in...",
+  "syncNow": "Sync",
+  "syncing": "Syncing...",
+  "syncedJustNow": "Synced less than a minute ago",
+  "lastSyncedAt": "Synced {time}",
+  "@lastSyncedAt": {
+    "placeholders": {
+      "time": {"type": "String"}
+    }
+  },
+  "notYetSynced": "Not yet synced",
+  "unableToSync": "Unable to sync",
+  "reloginRequired": "Session expired. Please sign in again.",
+  "deviceCodeTitle": "Sign in with Microsoft",
+  "deviceCodeInstructions": "Open the link below in your browser and enter this code to sign in:",
+  "copyCode": "Copy code",
+  "codeCopied": "Code copied",
+  "openBrowser": "Open browser",
+  "waitingForSignIn": "Waiting for you to complete sign-in...",
+  "signInFailed": "Sign-in failed: {error}",
+  "@signInFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  },
+  "clientIdLabel": "App Client ID (optional)"
 }

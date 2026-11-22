@@ -15,21 +15,25 @@ class TaskStep {
     required this.id,
     required this.title,
     this.isCompleted = false,
+    this.remoteId,
   });
 
   final String id;
   final String title;
   final bool isCompleted;
+  final String? remoteId;
 
   TaskStep copyWith({
     String? id,
     String? title,
     bool? isCompleted,
+    String? remoteId,
   }) {
     return TaskStep(
       id: id ?? this.id,
       title: title ?? this.title,
       isCompleted: isCompleted ?? this.isCompleted,
+      remoteId: remoteId ?? this.remoteId,
     );
   }
 
@@ -38,6 +42,7 @@ class TaskStep {
       'id': id,
       'title': title,
       'isCompleted': isCompleted,
+      'remoteId': remoteId,
     };
   }
 
@@ -46,6 +51,7 @@ class TaskStep {
       id: json['id'] as String,
       title: json['title'] as String,
       isCompleted: json['isCompleted'] as bool? ?? false,
+      remoteId: json['remoteId'] as String?,
     );
   }
 }
@@ -69,6 +75,8 @@ class TaskItem {
     this.noteUpdatedAt,
     this.completedAt,
     this.steps = const [],
+    this.remoteId,
+    this.updatedAt,
   });
 
   final String id;
@@ -87,6 +95,8 @@ class TaskItem {
   final DateTime? noteUpdatedAt;
   final DateTime? completedAt;
   final List<TaskStep> steps;
+  final String? remoteId;
+  final DateTime? updatedAt;
 
   int get completedStepsCount =>
       steps.where((step) => step.isCompleted).length;
@@ -121,6 +131,8 @@ class TaskItem {
     DateTime? completedAt,
     bool clearCompletedAt = false,
     List<TaskStep>? steps,
+    String? remoteId,
+    DateTime? updatedAt,
   }) {
     return TaskItem(
       id: id ?? this.id,
@@ -140,6 +152,8 @@ class TaskItem {
       noteUpdatedAt: noteUpdatedAt ?? this.noteUpdatedAt,
       completedAt: clearCompletedAt ? null : (completedAt ?? this.completedAt),
       steps: steps ?? this.steps,
+      remoteId: remoteId ?? this.remoteId,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -161,6 +175,8 @@ class TaskItem {
       'noteUpdatedAt': noteUpdatedAt?.toIso8601String(),
       'completedAt': completedAt?.toIso8601String(),
       'steps': steps.map((s) => s.toJson()).toList(),
+      'remoteId': remoteId,
+      'updatedAt': updatedAt?.toIso8601String(),
     };
   }
 
@@ -203,6 +219,10 @@ class TaskItem {
       steps: rawSteps
           .map((e) => TaskStep.fromJson(e as Map<String, dynamic>))
           .toList(),
+      remoteId: json['remoteId'] as String?,
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'] as String)
+          : null,
     );
   }
 }

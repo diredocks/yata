@@ -6,8 +6,10 @@ import '../detailview/recurrence/task_pickers.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
-import '../providers/todo_provider.dart';
-import '../services/completion_sound_service.dart';
+import '../account/account_provider.dart';
+import '../sync/sync_provider.dart';
+import '../data/todo_provider.dart';
+import 'completion_sound_service.dart';
 import '../theme/todo_theme.dart';
 import '../view/delayed_task_completion.dart';
 import 'recyclerview/animated_task_sliver_list.dart';
@@ -1543,75 +1545,96 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                       }
                       return false;
                     },
-                    child: CustomScrollView(
-                      slivers: [
-                        if (_mode == _TasksViewMode.browsing)
-                          _buildSliverAppBar(
-                            l10n: l10n,
-                            state: state,
-                            currentList: currentList,
-                            listTitle: listTitle,
-                            subtitle: subtitle,
-                            headerFg: headerFg,
-                            gradient: gradient,
-                            activeTasksCount: active.length,
-                            isDark: isDark,
-                          )
-                        else if (_mode == _TasksViewMode.multiSelecting ||
-                            _mode == _TasksViewMode.reordering)
-                          SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    listTitle,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: headerFg,
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 30,
-                                    ),
-                                  ),
-                                  if (subtitle != null) ...[
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      subtitle,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: headerFg.withValues(alpha: 0.92),
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w400,
+                    child: Builder(
+                      builder: (context) {
+                        final isMicrosoft = ref.watch(
+                          accountProvider.select(
+                            (s) => s.activeAccount?.isMicrosoft ?? false,
+                          ),
+                        );
+                        final scrollView = CustomScrollView(
+                          physics: isMicrosoft
+                              ? const AlwaysScrollableScrollPhysics()
+                              : null,
+                          slivers: [
+                            if (_mode == _TasksViewMode.browsing)
+                              _buildSliverAppBar(
+                                l10n: l10n,
+                                state: state,
+                                currentList: currentList,
+                                listTitle: listTitle,
+                                subtitle: subtitle,
+                                headerFg: headerFg,
+                                gradient: gradient,
+                                activeTasksCount: active.length,
+                                isDark: isDark,
+                              )
+                            else if (_mode == _TasksViewMode.multiSelecting ||
+                                _mode == _TasksViewMode.reordering)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        listTitle,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: headerFg,
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 30,
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                ],
+                                      if (subtitle != null) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          subtitle,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color:
+                                                headerFg.withValues(alpha: 0.92),
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.w400,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
                               ),
+                            if (currentList.sortOption !=
+                                    TaskSortOption.defaultOrder &&
+                                _mode != _TasksViewMode.reordering)
+                              _buildSortBanner(
+                                l10n: l10n,
+                                currentList: currentList,
+                                headerFg: headerFg,
+                              ),
+                            ..._buildTaskSlivers(
+                              l10n: l10n,
+                              state: state,
+                              currentList: currentList,
+                              activeTasks: active,
+                              completedTasks: completed,
+                              accentColor: accentColor,
+                              headerFg: headerFg,
                             ),
-                          ),
-                        if (currentList.sortOption !=
-                                TaskSortOption.defaultOrder &&
-                            _mode != _TasksViewMode.reordering)
-                          _buildSortBanner(
-                            l10n: l10n,
-                            currentList: currentList,
-                            headerFg: headerFg,
-                          ),
-                        ..._buildTaskSlivers(
-                          l10n: l10n,
-                          state: state,
-                          currentList: currentList,
-                          activeTasks: active,
-                          completedTasks: completed,
-                          accentColor: accentColor,
-                          headerFg: headerFg,
-                        ),
-                        _buildRuledLinesSliver(currentList, isDark),
-                      ],
+                            _buildRuledLinesSliver(currentList, isDark),
+                          ],
+                        );
+                        if (!isMicrosoft) return scrollView;
+                        return RefreshIndicator(
+                          onRefresh: () =>
+                              ref.read(syncProvider.notifier).syncNow(),
+                          child: scrollView,
+                        );
+                      },
                     ),
                   ),
                   _buildScrollShadow(subtitle),

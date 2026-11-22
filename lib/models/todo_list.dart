@@ -81,6 +81,8 @@ class TodoList {
     this.sortOption = TaskSortOption.defaultOrder,
     this.sortAscending = true,
     this.showCompleted = true,
+    this.remoteId,
+    this.updatedAt,
   });
 
   final String id;
@@ -94,6 +96,8 @@ class TodoList {
   final TaskSortOption sortOption;
   final bool sortAscending;
   final bool showCompleted;
+  final String? remoteId;
+  final DateTime? updatedAt;
 
   bool get isSmartList => smartType != null;
 
@@ -112,6 +116,8 @@ class TodoList {
     TaskSortOption? sortOption,
     bool? sortAscending,
     bool? showCompleted,
+    String? remoteId,
+    DateTime? updatedAt,
   }) {
     return TodoList(
       id: id ?? this.id,
@@ -125,6 +131,8 @@ class TodoList {
       sortOption: sortOption ?? this.sortOption,
       sortAscending: sortAscending ?? this.sortAscending,
       showCompleted: showCompleted ?? this.showCompleted,
+      remoteId: remoteId ?? this.remoteId,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -152,6 +160,8 @@ class TodoList {
       'sortOption': sortOption.name,
       'sortAscending': sortAscending,
       'showCompleted': showCompleted,
+      'remoteId': remoteId,
+      'updatedAt': updatedAt?.toIso8601String(),
     };
   }
 
@@ -187,6 +197,10 @@ class TodoList {
       sortOption: sortOption,
       sortAscending: json['sortAscending'] as bool? ?? true,
       showCompleted: json['showCompleted'] as bool? ?? true,
+      remoteId: json['remoteId'] as String?,
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'] as String)
+          : null,
     );
   }
 }

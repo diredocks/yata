@@ -1,8 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../data/local/account_local_storage.dart';
+import 'account_local_storage.dart';
 import '../models/account.dart';
+import '../auth/microsoft_auth_service.dart';
+import '../sync/microsoft_todo_api.dart';
 
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   throw UnimplementedError('sharedPreferencesProvider must be overridden');
@@ -10,6 +12,18 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
 
 final accountLocalStorageProvider = Provider<AccountLocalStorage>((ref) {
   return AccountLocalStorage(ref.watch(sharedPreferencesProvider));
+});
+
+final authTokenStorageProvider = Provider<AuthTokenStorage>((ref) {
+  return AuthTokenStorage(ref.watch(sharedPreferencesProvider));
+});
+
+final microsoftAuthClientProvider = Provider<MicrosoftAuthClient>((ref) {
+  return HttpMicrosoftAuthClient();
+});
+
+final microsoftTodoApiProvider = Provider<MicrosoftTodoApi>((ref) {
+  return HttpMicrosoftTodoApi();
 });
 
 @immutable
@@ -64,7 +78,7 @@ class AccountNotifier extends Notifier<AccountState> {
   }
 
   /// Creates a new local account with isolated storage and makes it active.
-  Future<Account> signInLocal(
+  Future<LocalAccount> signInLocal(
     String rawInput, {
     required String fallbackName,
     required String fallbackEmail,
@@ -74,7 +88,7 @@ class AccountNotifier extends Notifier<AccountState> {
       fallbackName: fallbackName,
       fallbackEmail: fallbackEmail,
     );
-    final account = Account(
+    final account = LocalAccount(
       id: _nextAccountId(),
       displayName: parsed.displayName,
       email: parsed.email,
@@ -89,6 +103,73 @@ class AccountNotifier extends Notifier<AccountState> {
     await _storage.saveAccounts(nextAccounts);
     await _storage.saveActiveAccountId(account.id);
     return account;
+  }
+
+  /// Signs into a Microsoft account (reusing existing account if same Microsoft user ID).
+  Future<MicrosoftAccount> signInMicrosoft(MicrosoftSignInResult result) async {
+    final tokenStorage = ref.read(authTokenStorageProvider);
+    final existingIndex = state.accounts.indexWhere(
+      (a) =>
+          a is MicrosoftAccount && a.microsoftUserId == result.profile.id,
+    );
+
+    late final MicrosoftAccount account;
+    late final List<Account> nextAccounts;
+
+    if (existingIndex >= 0) {
+      final existing = state.accounts[existingIndex] as MicrosoftAccount;
+      account = existing.copyWith(
+        displayName: result.profile.displayName,
+        email: result.profile.email,
+        clearSyncError: true,
+      );
+      nextAccounts = [
+        for (var i = 0; i < state.accounts.length; i++)
+          if (i == existingIndex) account else state.accounts[i],
+      ];
+    } else {
+      account = MicrosoftAccount(
+        id: _nextAccountId(),
+        displayName: result.profile.displayName,
+        email: result.profile.email,
+        createdAt: DateTime.now(),
+        microsoftUserId: result.profile.id,
+      );
+      nextAccounts = [...state.accounts, account];
+    }
+
+    await tokenStorage.save(account.id, result.tokens);
+    state = AccountState(
+      accounts: nextAccounts,
+      activeAccountId: account.id,
+    );
+    await _storage.saveAccounts(nextAccounts);
+    await _storage.saveActiveAccountId(account.id);
+    return account;
+  }
+
+  Future<void> updateSyncStatus(
+    String accountId, {
+    DateTime? lastSyncedAt,
+    String? syncError,
+    bool clearSyncError = false,
+  }) async {
+    final idx = state.accounts.indexWhere((a) => a.id == accountId);
+    if (idx < 0) return;
+    final target = state.accounts[idx];
+    if (target is! MicrosoftAccount) return;
+
+    final updated = target.copyWith(
+      lastSyncedAt: lastSyncedAt,
+      syncError: syncError,
+      clearSyncError: clearSyncError,
+    );
+    final nextAccounts = [
+      for (var i = 0; i < state.accounts.length; i++)
+        if (i == idx) updated else state.accounts[i],
+    ];
+    state = state.copyWith(accounts: nextAccounts);
+    await _storage.saveAccounts(nextAccounts);
   }
 
   Future<void> switchAccount(String accountId) async {

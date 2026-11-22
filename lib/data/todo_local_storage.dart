@@ -3,7 +3,29 @@ import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
-import 'account_local_storage.dart';
+import '../account/account_local_storage.dart';
+
+class PendingTaskDeletion {
+  const PendingTaskDeletion({
+    required this.listRemoteId,
+    required this.taskRemoteId,
+  });
+
+  final String listRemoteId;
+  final String taskRemoteId;
+
+  Map<String, dynamic> toJson() => {
+        'listRemoteId': listRemoteId,
+        'taskRemoteId': taskRemoteId,
+      };
+
+  factory PendingTaskDeletion.fromJson(Map<String, dynamic> json) {
+    return PendingTaskDeletion(
+      listRemoteId: json['listRemoteId'] as String,
+      taskRemoteId: json['taskRemoteId'] as String,
+    );
+  }
+}
 
 class TodoSnapshot {
   const TodoSnapshot({
@@ -82,6 +104,8 @@ class TodoLocalStorage {
   String get _showCompletedListKey => _k('show_smart_completed');
   String get _autoHideSmartListsKey => _k('autohide_smart_lists');
   String get _lastMyDayResetKey => _k('last_my_day_reset');
+  String get _pendingDeletedListsKey => _k('pending_deleted_lists');
+  String get _pendingDeletedTasksKey => _k('pending_deleted_tasks');
 
   static List<TodoList> defaultSmartLists() {
     return const [
@@ -291,4 +315,40 @@ class TodoLocalStorage {
 
   Future<void> saveLastMyDayResetDate(String dateKey) =>
       _prefs.setString(_lastMyDayResetKey, dateKey);
+
+  List<String> loadPendingDeletedListRemoteIds() {
+    return _prefs.getStringList(_pendingDeletedListsKey) ?? const [];
+  }
+
+  Future<void> savePendingDeletedListRemoteIds(List<String> ids) async {
+    if (ids.isEmpty) {
+      await _prefs.remove(_pendingDeletedListsKey);
+    } else {
+      await _prefs.setStringList(_pendingDeletedListsKey, ids);
+    }
+  }
+
+  List<PendingTaskDeletion> loadPendingDeletedTasks() {
+    final raw = _prefs.getString(_pendingDeletedTasksKey);
+    if (raw == null) return const [];
+    try {
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      return decoded
+          .map((e) => PendingTaskDeletion.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> savePendingDeletedTasks(List<PendingTaskDeletion> items) async {
+    if (items.isEmpty) {
+      await _prefs.remove(_pendingDeletedTasksKey);
+    } else {
+      await _prefs.setString(
+        _pendingDeletedTasksKey,
+        jsonEncode(items.map((e) => e.toJson()).toList()),
+      );
+    }
+  }
 }

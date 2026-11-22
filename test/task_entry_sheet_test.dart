@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:yata/data/local/todo_local_storage.dart';
+import 'package:yata/data/todo_local_storage.dart';
 import 'package:yata/l10n/app_localizations.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';

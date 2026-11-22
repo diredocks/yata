@@ -1,12 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
-import '../accounts/manage_accounts_screen.dart';
+import '../account/manage_accounts_screen.dart';
 import '../l10n/app_localizations.dart';
+import '../models/account.dart';
 import '../models/todo_list.dart';
-import '../providers/account_provider.dart';
-import '../providers/todo_provider.dart';
+import '../account/account_provider.dart';
+import '../sync/sync_provider.dart';
+import '../data/todo_provider.dart';
 import '../theme/todo_theme.dart';
 import '../view/persona_avatar.dart';
+import '../view/sync_status_label.dart';
 import 'settings_presenter.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -67,6 +70,7 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(todoProvider);
+    final syncState = ref.watch(syncProvider);
     final activeAccount = ref.watch(
       accountProvider.select((s) => s.activeAccount),
     );
@@ -128,6 +132,76 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                       ),
                       const SizedBox(height: 16),
+                      if (activeAccount is MicrosoftAccount) ...[
+                        const Padding(
+                          padding: EdgeInsets.only(right: 16),
+                          child: Divider(height: 1),
+                        ),
+                        InkWell(
+                          onTap: syncState.isSyncing
+                              ? null
+                              : () => ref.read(syncProvider.notifier).syncNow(),
+                          child: Container(
+                            width: double.infinity,
+                            constraints: const BoxConstraints(minHeight: 48),
+                            padding: const EdgeInsets.only(right: 16),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        l10n.syncNow,
+                                        style: theme.textTheme.labelLarge
+                                            ?.copyWith(
+                                          color: theme.colorScheme.primary,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Text(
+                                        formatAccountSyncStatus(
+                                          l10n: l10n,
+                                          account: activeAccount,
+                                          syncState: syncState,
+                                          isActive: true,
+                                        ),
+                                        style:
+                                            theme.textTheme.bodySmall?.copyWith(
+                                          color: (syncState.error != null ||
+                                                  activeAccount.syncError !=
+                                                      null)
+                                              ? theme.colorScheme.error
+                                              : (isDark
+                                                  ? TodoColors.secondaryTextDark
+                                                  : TodoColors
+                                                      .secondaryTextLight),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (syncState.isSyncing)
+                                  const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                else
+                                  Icon(
+                                    Icons.sync,
+                                    size: 20,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                       const Padding(
                         padding: EdgeInsets.only(right: 16),
                         child: Divider(height: 1),

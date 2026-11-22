@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 @immutable
-class Account {
+sealed class Account {
   const Account({
     required this.id,
     required this.displayName,
@@ -14,38 +14,17 @@ class Account {
   final String email;
   final DateTime createdAt;
 
-  Account copyWith({
-    String? id,
-    String? displayName,
-    String? email,
-    DateTime? createdAt,
-  }) {
-    return Account(
-      id: id ?? this.id,
-      displayName: displayName ?? this.displayName,
-      email: email ?? this.email,
-      createdAt: createdAt ?? this.createdAt,
-    );
-  }
+  bool get isMicrosoft => this is MicrosoftAccount;
+  bool get isLocal => this is LocalAccount;
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'displayName': displayName,
-      'email': email,
-      'createdAt': createdAt.toIso8601String(),
-    };
-  }
+  Map<String, dynamic> toJson();
 
   factory Account.fromJson(Map<String, dynamic> json) {
-    return Account(
-      id: json['id'] as String,
-      displayName: json['displayName'] as String,
-      email: json['email'] as String? ?? '',
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'] as String)
-          : DateTime.now(),
-    );
+    final typeName = json['accountType'] as String? ?? 'local';
+    if (typeName == 'microsoft') {
+      return MicrosoftAccount.fromJson(json);
+    }
+    return LocalAccount.fromJson(json);
   }
 
   /// Derives a display name and subtitle/email from user login input.
@@ -66,5 +45,119 @@ class Account {
       return (displayName: displayName, email: trimmed);
     }
     return (displayName: trimmed, email: fallbackEmail);
+  }
+}
+
+@immutable
+final class LocalAccount extends Account {
+  const LocalAccount({
+    required super.id,
+    required super.displayName,
+    required super.email,
+    required super.createdAt,
+  });
+
+  LocalAccount copyWith({
+    String? id,
+    String? displayName,
+    String? email,
+    DateTime? createdAt,
+  }) {
+    return LocalAccount(
+      id: id ?? this.id,
+      displayName: displayName ?? this.displayName,
+      email: email ?? this.email,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'displayName': displayName,
+      'email': email,
+      'createdAt': createdAt.toIso8601String(),
+      'accountType': 'local',
+    };
+  }
+
+  factory LocalAccount.fromJson(Map<String, dynamic> json) {
+    return LocalAccount(
+      id: json['id'] as String,
+      displayName: json['displayName'] as String,
+      email: json['email'] as String? ?? '',
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'] as String)
+          : DateTime.now(),
+    );
+  }
+}
+
+@immutable
+final class MicrosoftAccount extends Account {
+  const MicrosoftAccount({
+    required super.id,
+    required super.displayName,
+    required super.email,
+    required super.createdAt,
+    required this.microsoftUserId,
+    this.lastSyncedAt,
+    this.syncError,
+  });
+
+  final String microsoftUserId;
+  final DateTime? lastSyncedAt;
+  final String? syncError;
+
+  MicrosoftAccount copyWith({
+    String? id,
+    String? displayName,
+    String? email,
+    DateTime? createdAt,
+    String? microsoftUserId,
+    DateTime? lastSyncedAt,
+    String? syncError,
+    bool clearSyncError = false,
+  }) {
+    return MicrosoftAccount(
+      id: id ?? this.id,
+      displayName: displayName ?? this.displayName,
+      email: email ?? this.email,
+      createdAt: createdAt ?? this.createdAt,
+      microsoftUserId: microsoftUserId ?? this.microsoftUserId,
+      lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+      syncError: clearSyncError ? null : (syncError ?? this.syncError),
+    );
+  }
+
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'displayName': displayName,
+      'email': email,
+      'createdAt': createdAt.toIso8601String(),
+      'accountType': 'microsoft',
+      'microsoftUserId': microsoftUserId,
+      'lastSyncedAt': lastSyncedAt?.toIso8601String(),
+      'syncError': syncError,
+    };
+  }
+
+  factory MicrosoftAccount.fromJson(Map<String, dynamic> json) {
+    return MicrosoftAccount(
+      id: json['id'] as String,
+      displayName: json['displayName'] as String,
+      email: json['email'] as String? ?? '',
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'] as String)
+          : DateTime.now(),
+      microsoftUserId: json['microsoftUserId'] as String? ?? '',
+      lastSyncedAt: json['lastSyncedAt'] != null
+          ? DateTime.parse(json['lastSyncedAt'] as String)
+          : null,
+      syncError: json['syncError'] as String?,
+    );
   }
 }

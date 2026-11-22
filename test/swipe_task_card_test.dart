@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/main.dart';
-import 'package:yata/providers/todo_provider.dart';
+import 'package:yata/data/todo_provider.dart';
 import 'package:yata/tasksview/recyclerview/swipeable_task_card.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 

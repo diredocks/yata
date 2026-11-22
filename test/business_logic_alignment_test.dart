@@ -6,7 +6,7 @@ import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/homeview/home_view_presenter.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
-import 'package:yata/providers/todo_provider.dart';
+import 'package:yata/data/todo_provider.dart';
 import 'package:yata/search/search_presenter.dart';
 import 'package:yata/settings/settings_presenter.dart';
 import 'package:yata/tasksview/tasks_action_presenter.dart';

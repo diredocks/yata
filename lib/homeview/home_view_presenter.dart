@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import '../models/todo_list.dart';
-import '../providers/todo_provider.dart';
+import '../data/todo_provider.dart';
 
 /// Presenter for `homeview/HomeViewFragment`, matching `homeview/HomeViewPresenter`.
 class HomeViewPresenter {

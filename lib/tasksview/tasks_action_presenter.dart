@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/task_item.dart';
-import '../providers/todo_provider.dart';
+import '../data/todo_provider.dart';
 
 /// Batch action presenter matching `tasksview/TasksActionPresenter`.
 class TasksActionPresenter {

@@ -3,8 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/main.dart';
-import 'package:yata/providers/account_provider.dart';
-import 'package:yata/providers/todo_provider.dart';
+import 'package:yata/account/account_provider.dart';
+import 'package:yata/data/todo_provider.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 
 void main() {
@@ -29,11 +29,11 @@ void main() {
     // 1. Fresh install shows LandingScreen
     expect(find.text('Welcome to YATA'), findsOneWidget);
     expect(find.text('Sign in'), findsOneWidget);
-    expect(find.text('Create a new account'), findsOneWidget);
+    expect(find.text('Use a local account'), findsOneWidget);
 
-    // 2. Sign in as Alice -> creates local account & enters MainShellScreen
+    // 2. Sign in as Alice via "Use a local account" -> creates local account & enters MainShellScreen
     await tester.enterText(find.byType(TextField), 'alice@example.com');
-    await tester.tap(find.text('Sign in'));
+    await tester.tap(find.text('Use a local account'));
     await tester.pumpAndSettle();
 
     expect(find.text('Alice'), findsOneWidget);
@@ -61,7 +61,7 @@ void main() {
 
     expect(find.text('Welcome to YATA'), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'bob@example.com');
-    await tester.tap(find.text('Sign in'));
+    await tester.tap(find.text('Use a local account'));
     await tester.pumpAndSettle();
 
     // Bob has his own empty local storage (Alice's task is isolated)

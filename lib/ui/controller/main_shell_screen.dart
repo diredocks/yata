@@ -4,7 +4,7 @@ import '../../detailview/detail_view_screen.dart';
 import '../../homeview/home_view_screen.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
-import '../../providers/todo_provider.dart';
+import '../../data/todo_provider.dart';
 import '../../search/search_screen.dart';
 import '../../settings/settings_screen.dart';
 import '../../tasksview/tasks_view_screen.dart';

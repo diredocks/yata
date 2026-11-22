@@ -1,11 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
-import '../data/local/todo_local_storage.dart';
+import 'todo_local_storage.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
-import 'account_provider.dart';
+import '../account/account_provider.dart';
 
-export 'account_provider.dart' show sharedPreferencesProvider;
+export '../account/account_provider.dart' show sharedPreferencesProvider;
 
 final todoLocalStorageProvider = Provider<TodoLocalStorage>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
@@ -37,6 +37,7 @@ class TodoState {
     this.showSmartListAll = false,
     this.showSmartListCompleted = false,
     this.autoHideEmptySmartLists = false,
+    this.mutationVersion = 0,
   });
 
   final List<TodoList> lists;
@@ -58,6 +59,7 @@ class TodoState {
   final bool showSmartListAll;
   final bool showSmartListCompleted;
   final bool autoHideEmptySmartLists;
+  final int mutationVersion;
 
   TodoList get selectedList {
     return lists.firstWhere(
@@ -185,6 +187,7 @@ class TodoState {
     bool? showSmartListAll,
     bool? showSmartListCompleted,
     bool? autoHideEmptySmartLists,
+    int? mutationVersion,
   }) {
     return TodoState(
       lists: lists ?? this.lists,
@@ -212,6 +215,7 @@ class TodoState {
           showSmartListCompleted ?? this.showSmartListCompleted,
       autoHideEmptySmartLists:
           autoHideEmptySmartLists ?? this.autoHideEmptySmartLists,
+      mutationVersion: mutationVersion ?? this.mutationVersion,
     );
   }
 }
@@ -300,7 +304,131 @@ class TodoNotifier extends Notifier<TodoState> {
   }
 
   void commit(TodoState nextState) {
-    state = nextState;
+    final prevLists = state.lists;
+    final prevTasks = state.tasks;
+    final nowUtc = DateTime.now().toUtc();
+
+    final listsChanged = !identical(prevLists, nextState.lists);
+    final tasksChanged = !identical(prevTasks, nextState.tasks);
+
+    var stampedLists = nextState.lists;
+    if (listsChanged) {
+      final prevListById = {for (final l in prevLists) l.id: l};
+      final nextListIds = {for (final l in nextState.lists) l.id};
+
+      final deletedListRemoteIds = [
+        ...storage.loadPendingDeletedListRemoteIds(),
+      ];
+      for (final prev in prevLists) {
+        if (!nextListIds.contains(prev.id) &&
+            prev.remoteId != null &&
+            !deletedListRemoteIds.contains(prev.remoteId)) {
+          deletedListRemoteIds.add(prev.remoteId!);
+        }
+      }
+      storage.savePendingDeletedListRemoteIds(deletedListRemoteIds);
+
+      stampedLists = [
+        for (final list in nextState.lists)
+          if (!list.isSmartList &&
+              (prevListById[list.id] == null ||
+                  prevListById[list.id]!.title != list.title))
+            list.copyWith(updatedAt: nowUtc)
+          else
+            list,
+      ];
+    }
+
+    var stampedTasks = nextState.tasks;
+    if (tasksChanged) {
+      final prevTaskById = {for (final t in prevTasks) t.id: t};
+      final nextTaskIds = {for (final t in nextState.tasks) t.id};
+      final listById = {for (final l in prevLists) l.id: l};
+
+      final deletedTasks = [...storage.loadPendingDeletedTasks()];
+      for (final prev in prevTasks) {
+        if (!nextTaskIds.contains(prev.id) && prev.remoteId != null) {
+          final listRemoteId = listById[prev.listId]?.remoteId;
+          if (listRemoteId != null &&
+              !deletedTasks.any((d) => d.taskRemoteId == prev.remoteId)) {
+            deletedTasks.add(
+              PendingTaskDeletion(
+                listRemoteId: listRemoteId,
+                taskRemoteId: prev.remoteId!,
+              ),
+            );
+          }
+        }
+      }
+      storage.savePendingDeletedTasks(deletedTasks);
+
+      stampedTasks = [
+        for (final task in nextState.tasks)
+          if (_taskNeedsSyncStamp(prevTaskById[task.id], task))
+            task.copyWith(updatedAt: nowUtc)
+          else
+            task,
+      ];
+    }
+
+    state = nextState.copyWith(
+      lists: stampedLists,
+      tasks: stampedTasks,
+      mutationVersion: (listsChanged || tasksChanged)
+          ? state.mutationVersion + 1
+          : state.mutationVersion,
+    );
+  }
+
+  static bool _taskNeedsSyncStamp(TaskItem? prev, TaskItem next) {
+    if (prev == null) return true;
+    if (prev.title != next.title ||
+        prev.listId != next.listId ||
+        prev.isCompleted != next.isCompleted ||
+        prev.isImportant != next.isImportant ||
+        prev.dueDate != next.dueDate ||
+        prev.reminderAt != next.reminderAt ||
+        prev.recurrence != next.recurrence ||
+        prev.note != next.note ||
+        prev.steps.length != next.steps.length) {
+      return true;
+    }
+    for (var i = 0; i < prev.steps.length; i++) {
+      if (prev.steps[i].title != next.steps[i].title ||
+          prev.steps[i].isCompleted != next.steps[i].isCompleted) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<void> applySyncResult({
+    required List<TodoList> lists,
+    required List<TaskItem> tasks,
+  }) async {
+    final now = DateTime.now();
+    final syncedTasks = [
+      for (final task in tasks)
+        syncMyDayFlag(
+          task,
+          now: now,
+          showDueTodayInMyDay: state.showDueTodayInMyDay,
+        ),
+    ];
+    await storage.saveLists(lists);
+    await storage.saveTasks(syncedTasks);
+    await storage.savePendingDeletedListRemoteIds(const []);
+    await storage.savePendingDeletedTasks(const []);
+
+    final validSelectedListId = lists.any((l) => l.id == state.selectedListId)
+        ? state.selectedListId
+        : 'my_day';
+
+    state = state.copyWith(
+      lists: lists,
+      tasks: syncedTasks,
+      selectedListId: validSelectedListId,
+    );
   }
 
   void selectList(String listId) {

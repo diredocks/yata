@@ -2,15 +2,18 @@ import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../accounts/manage_accounts_screen.dart';
+import '../account/manage_accounts_screen.dart';
 import '../l10n/app_localizations.dart';
+import '../models/account.dart';
 import '../models/todo_list.dart';
 import '../onboarding/landing_screen.dart';
-import '../providers/account_provider.dart';
-import '../providers/todo_provider.dart';
+import '../account/account_provider.dart';
+import '../sync/sync_provider.dart';
+import '../data/todo_provider.dart';
 import '../tasksview/renamelist/list_editor_dialog.dart';
 import '../theme/todo_theme.dart';
 import '../view/persona_avatar.dart';
+import '../view/sync_status_label.dart';
 import 'groups/group_dialogs.dart';
 import 'groups/group_header_tile.dart';
 import 'home_list_tile.dart';
@@ -76,6 +79,7 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(todoProvider);
     final accountState = ref.watch(accountProvider);
+    final syncState = ref.watch(syncProvider);
     final activeAccount = accountState.activeAccount;
     final notifier = ref.read(homeViewPresenterProvider);
     final l10n = AppLocalizations.of(context);
@@ -291,10 +295,33 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
                                 ),
                               ),
                               trailing: account.id == activeAccount?.id
-                                  ? Icon(
-                                      Icons.check,
-                                      size: 18,
-                                      color: theme.colorScheme.primary,
+                                  ? Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (account.isMicrosoft &&
+                                            syncState.isSyncing)
+                                          const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        else if (account is MicrosoftAccount &&
+                                            (syncState.error != null ||
+                                                account.syncError != null))
+                                          Icon(
+                                            Icons.sync_problem_outlined,
+                                            size: 18,
+                                            color: theme.colorScheme.error,
+                                          )
+                                        else
+                                          Icon(
+                                            Icons.check,
+                                            size: 18,
+                                            color: theme.colorScheme.primary,
+                                          ),
+                                      ],
                                     )
                                   : null,
                               onTap: () async {
@@ -303,6 +330,45 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
                                     .read(accountProvider.notifier)
                                     .switchAccount(account.id);
                               },
+                            ),
+                          if (activeAccount is MicrosoftAccount)
+                            ListTile(
+                              leading: SizedBox(
+                                width: 38,
+                                child: syncState.isSyncing
+                                    ? const Center(
+                                        child: SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        ),
+                                      )
+                                    : const Icon(Icons.sync, size: 22),
+                              ),
+                              title: Text(l10n.syncNow),
+                              subtitle: Text(
+                                formatAccountSyncStatus(
+                                  l10n: l10n,
+                                  account: activeAccount,
+                                  syncState: syncState,
+                                  isActive: true,
+                                ),
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: (syncState.error != null ||
+                                          activeAccount.syncError != null)
+                                      ? theme.colorScheme.error
+                                      : (isDark
+                                          ? TodoColors.secondaryTextDark
+                                          : TodoColors.secondaryTextLight),
+                                ),
+                              ),
+                              onTap: syncState.isSyncing
+                                  ? null
+                                  : () {
+                                      ref.read(syncProvider.notifier).syncNow();
+                                    },
                             ),
                           ListTile(
                             leading: const SizedBox(
