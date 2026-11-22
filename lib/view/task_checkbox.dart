@@ -1,12 +1,10 @@
 import 'package:lottie/lottie.dart';
 import 'package:material_ui/material_ui.dart';
+
 import '../theme/todo_theme.dart';
 
 /// Mode matching `AnimatableCheckBox.b` (`COMPLETE` vs `SELECT`).
-enum CheckboxMode {
-  complete,
-  select,
-}
+enum CheckboxMode { complete, select }
 
 /// Task/step completion checkbox matching `AnimatableCheckBox.java`:
 /// - Unchecked: hollow circle (`emptyCircle`), checkmark hidden at 1.8x scale.
@@ -57,14 +55,13 @@ class _TaskCheckboxState extends State<TaskCheckbox>
       reverseDuration: _uncheckDuration,
       value: widget.isChecked ? 1.0 : 0.0,
     );
-    _confettiController = AnimationController(
-      vsync: this,
-      duration: _confettiDefaultDuration,
-    )..addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          setState(() => _showConfetti = false);
-        }
-      });
+    _confettiController =
+        AnimationController(vsync: this, duration: _confettiDefaultDuration)
+          ..addStatusListener((status) {
+            if (status == AnimationStatus.completed) {
+              setState(() => _showConfetti = false);
+            }
+          });
   }
 
   @override
@@ -95,13 +92,14 @@ class _TaskCheckboxState extends State<TaskCheckbox>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final activeColor = widget.accentColor ??
+    final activeColor =
+        widget.accentColor ??
         (isDark ? TodoColors.attentionDark : TodoColors.attentionLight);
     final uncheckedBorderColor = widget.mode == CheckboxMode.select
         ? activeColor
         : (isDark
-            ? TodoColors.secondaryTextDark
-            : TodoColors.secondaryTextLight);
+              ? TodoColors.secondaryTextDark
+              : TodoColors.secondaryTextLight);
 
     return InkResponse(
       onTap: widget.onTap,
@@ -149,10 +147,14 @@ class _TaskCheckboxState extends State<TaskCheckbox>
                   final double emptyProgress;
                   if (isForward) {
                     emptyProgress =
-                        1.0 - Curves.decelerate.transform((t / (200 / 350)).clamp(0.0, 1.0));
+                        1.0 -
+                        Curves.decelerate.transform(
+                          (t / (200 / 350)).clamp(0.0, 1.0),
+                        );
                   } else {
                     emptyProgress =
-                        1.0 - Curves.decelerate.transform((t / 0.1).clamp(0.0, 1.0));
+                        1.0 -
+                        Curves.decelerate.transform((t / 0.1).clamp(0.0, 1.0));
                   }
 
                   // Filled circle: 50..350ms in when checking, 0..100ms out when unchecking

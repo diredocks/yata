@@ -1,5 +1,6 @@
 import 'package:flutter/rendering.dart';
 import 'package:material_ui/material_ui.dart';
+
 import '../../models/task_item.dart';
 
 /// Animated sliver list for task items that smoothly animates insertions,
@@ -74,7 +75,8 @@ class _AnimatedTaskSliverListState extends State<AnimatedTaskSliverList>
         _flipCoordinator.cancelAnimation(existing.id);
         listState.removeItem(
           i,
-          (context, animation) => _buildExitingItem(context, existing, animation),
+          (context, animation) =>
+              _buildExitingItem(context, existing, animation),
           duration: _removeDuration,
         );
       }
@@ -151,10 +153,7 @@ class _AnimatedTaskSliverListState extends State<AnimatedTaskSliverList>
       child = SizeTransition(
         sizeFactor: sizeCurve,
         alignment: Alignment.topCenter,
-        child: FadeTransition(
-          opacity: fadeCurve,
-          child: child,
-        ),
+        child: FadeTransition(opacity: fadeCurve, child: child),
       );
     }
 
@@ -213,12 +212,8 @@ class _CollapsibleTaskBucketSliverState
       duration: _fadeDuration,
       value: _shouldShow ? 1.0 : 0.0,
     );
-    _opacity = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOut,
-    );
-    _renderedTasks =
-        _shouldShow ? List<TaskItem>.of(widget.tasks) : const [];
+    _opacity = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    _renderedTasks = _shouldShow ? List<TaskItem>.of(widget.tasks) : const [];
     _controller.addStatusListener((status) {
       if (status == AnimationStatus.dismissed && mounted && !_shouldShow) {
         setState(() {
@@ -285,7 +280,8 @@ class AnimatedReorderableTaskSliver extends StatefulWidget {
     int index,
     TaskItem task,
     void Function(int oldIndex, int newIndex) onAnimatedStep,
-  ) itemBuilder;
+  )
+  itemBuilder;
 
   @override
   State<AnimatedReorderableTaskSliver> createState() =>
@@ -293,7 +289,8 @@ class AnimatedReorderableTaskSliver extends StatefulWidget {
 }
 
 class _AnimatedReorderableTaskSliverState
-    extends State<AnimatedReorderableTaskSliver> with TickerProviderStateMixin {
+    extends State<AnimatedReorderableTaskSliver>
+    with TickerProviderStateMixin {
   late final _FlipCoordinator _flipCoordinator;
 
   @override
@@ -343,12 +340,7 @@ class _AnimatedReorderableTaskSliverState
           key: ValueKey(task.id),
           id: task.id,
           coordinator: _flipCoordinator,
-          child: widget.itemBuilder(
-            context,
-            index,
-            task,
-            _handleAnimatedStep,
-          ),
+          child: widget.itemBuilder(context, index, task, _handleAnimatedStep),
         );
       },
     );
@@ -365,10 +357,7 @@ bool _haveSameIdsInOrder(List<TaskItem> a, List<TaskItem> b) {
 }
 
 class _CapturedPosition {
-  const _CapturedPosition({
-    required this.laidOutY,
-    required this.visualY,
-  });
+  const _CapturedPosition({required this.laidOutY, required this.visualY});
 
   final double laidOutY;
   final double visualY;
@@ -377,10 +366,7 @@ class _CapturedPosition {
 /// Coordinates pixel-exact FLIP (First-Last-Invert-Play) vertical move
 /// animations across items in a sliver list without widget-tree rebuilds.
 class _FlipCoordinator {
-  _FlipCoordinator({
-    required this.vsync,
-    required this.ancestorProvider,
-  });
+  _FlipCoordinator({required this.vsync, required this.ancestorProvider});
 
   static const _moveDuration = Duration(milliseconds: 250);
   static const _maxAnimateDelta = 2000.0;
@@ -408,8 +394,9 @@ class _FlipCoordinator {
     for (final entry in _renderItems.entries) {
       final renderItem = entry.value;
       if (!renderItem.attached || !renderItem.hasSize) continue;
-      final laidOutY =
-          renderItem.localToGlobal(Offset.zero, ancestor: ancestor).dy;
+      final laidOutY = renderItem
+          .localToGlobal(Offset.zero, ancestor: ancestor)
+          .dy;
       _pendingPositions[entry.key] = _CapturedPosition(
         laidOutY: laidOutY,
         visualY: laidOutY + renderItem.currentOffsetY,
@@ -523,19 +510,13 @@ class _FlipItem extends SingleChildRenderObjectWidget {
 }
 
 class _RenderFlipItem extends RenderProxyBox {
-  _RenderFlipItem({
-    required this._id,
-    required this._coordinator,
-  });
+  _RenderFlipItem({required this._id, required this._coordinator});
 
   String _id;
   _FlipCoordinator _coordinator;
   double currentOffsetY = 0.0;
 
-  void update({
-    required String id,
-    required _FlipCoordinator coordinator,
-  }) {
+  void update({required String id, required _FlipCoordinator coordinator}) {
     if (_id != id || _coordinator != coordinator) {
       _coordinator.unregister(_id, this);
       _id = id;

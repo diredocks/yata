@@ -75,44 +75,50 @@ void main() {
       expect(decodeThemeColor('green').themeColor, ListThemeColor.green);
       expect(decodeThemeColor('gray').themeColor, ListThemeColor.grey);
       expect(decodeThemeColor('dark_gray').themeColor, ListThemeColor.grey);
-      expect(decodeThemeColor('light_gray').themeColor, ListThemeColor.lightGrey);
+      expect(
+        decodeThemeColor('light_gray').themeColor,
+        ListThemeColor.lightGrey,
+      );
     });
   });
 
   group('Folder emoji split & compose codecs', () {
-    test('encodes and decodes leading emojis including ZWJ, flag, skin tone', () {
-      expect(encodeFolderName('Shopping', '🛒'), '🛒 Shopping');
-      expect(encodeFolderName('Shopping', null), 'Shopping');
-      expect(encodeFolderName('Shopping', '  '), 'Shopping');
+    test(
+      'encodes and decodes leading emojis including ZWJ, flag, skin tone',
+      () {
+        expect(encodeFolderName('Shopping', '🛒'), '🛒 Shopping');
+        expect(encodeFolderName('Shopping', null), 'Shopping');
+        expect(encodeFolderName('Shopping', '  '), 'Shopping');
 
-      final standard = decodeFolderName('🛒 Shopping');
-      expect(standard.emoji, '🛒');
-      expect(standard.title, 'Shopping');
+        final standard = decodeFolderName('🛒 Shopping');
+        expect(standard.emoji, '🛒');
+        expect(standard.title, 'Shopping');
 
-      final noSpace = decodeFolderName('🛒Shopping');
-      expect(noSpace.emoji, '🛒');
-      expect(noSpace.title, 'Shopping');
+        final noSpace = decodeFolderName('🛒Shopping');
+        expect(noSpace.emoji, '🛒');
+        expect(noSpace.title, 'Shopping');
 
-      final zwj = decodeFolderName('👨‍💻 Engineering');
-      expect(zwj.emoji, '👨‍💻');
-      expect(zwj.title, 'Engineering');
+        final zwj = decodeFolderName('👨‍💻 Engineering');
+        expect(zwj.emoji, '👨‍💻');
+        expect(zwj.title, 'Engineering');
 
-      final flag = decodeFolderName('🇯🇵 Tokyo Trip');
-      expect(flag.emoji, '🇯🇵');
-      expect(flag.title, 'Tokyo Trip');
+        final flag = decodeFolderName('🇯🇵 Tokyo Trip');
+        expect(flag.emoji, '🇯🇵');
+        expect(flag.title, 'Tokyo Trip');
 
-      final skinTone = decodeFolderName('👋🏽 Greet');
-      expect(skinTone.emoji, '👋🏽');
-      expect(skinTone.title, 'Greet');
+        final skinTone = decodeFolderName('👋🏽 Greet');
+        expect(skinTone.emoji, '👋🏽');
+        expect(skinTone.title, 'Greet');
 
-      final emojiOnly = decodeFolderName('🛒');
-      expect(emojiOnly.emoji, isNull);
-      expect(emojiOnly.title, '🛒');
+        final emojiOnly = decodeFolderName('🛒');
+        expect(emojiOnly.emoji, isNull);
+        expect(emojiOnly.title, '🛒');
 
-      final plain = decodeFolderName('Work Tasks');
-      expect(plain.emoji, isNull);
-      expect(plain.title, 'Work Tasks');
-    });
+        final plain = decodeFolderName('Work Tasks');
+        expect(plain.emoji, isNull);
+        expect(plain.title, 'Work Tasks');
+      },
+    );
   });
 
   group('Sort, Filter, Group, WeekStart, and Setting codecs', () {
@@ -189,7 +195,10 @@ void main() {
 
       const routineTime = TimeOfDay(hour: 8, minute: 30);
       final wireRoutine = encodeRoutineConfig(routineTime);
-      expect(wireRoutine, contains(';Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday'));
+      expect(
+        wireRoutine,
+        contains(';Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday'),
+      );
       expect(decodeRoutineConfigTime(wireRoutine), routineTime);
     });
   });
@@ -208,7 +217,9 @@ void main() {
     });
 
     test('parses legacy negative-subsecond UTC and timezone-less Substrate timestamps', () {
-      final legacyZeroDash = parseSubstrateTimestamp('2020-05-01T10:00:00.000-1234Z');
+      final legacyZeroDash = parseSubstrateTimestamp(
+        '2020-05-01T10:00:00.000-1234Z',
+      );
       expect(legacyZeroDash, isNotNull);
       expect(legacyZeroDash!.isUtc, isTrue);
       expect(legacyZeroDash.year, 2020);
@@ -216,7 +227,9 @@ void main() {
       expect(legacyZeroDash.day, 1);
       expect(legacyZeroDash.hour, 10);
 
-      final legacyDashOnly = parseSubstrateTimestamp('2020-05-01T10:00:00.-1234Z');
+      final legacyDashOnly = parseSubstrateTimestamp(
+        '2020-05-01T10:00:00.-1234Z',
+      );
       expect(legacyDashOnly, isNotNull);
       expect(legacyDashOnly!.isUtc, isTrue);
       expect(legacyDashOnly.millisecond, 123);
@@ -227,7 +240,9 @@ void main() {
       expect(tzLess!.isUtc, isTrue);
       expect(tzLess, DateTime.utc(2024, 5, 1, 10, 0, 0, 123, 456));
 
-      final explicitOffset = parseSubstrateTimestamp('2024-05-01T18:00:00+08:00');
+      final explicitOffset = parseSubstrateTimestamp(
+        '2024-05-01T18:00:00+08:00',
+      );
       expect(explicitOffset, isNotNull);
       expect(explicitOffset!.isUtc, isTrue);
       expect(explicitOffset, DateTime.utc(2024, 5, 1, 10, 0, 0));
@@ -241,7 +256,10 @@ void main() {
       expect(parseSubstrateDay('0001-01-01T00:00:00Z'), isNull);
       expect(parseSubstrateDay('2026-11-22'), DateTime(2026, 11, 22));
       expect(
-        parseSubstrateDay({'DateTime': '2026-11-22T00:00:00.0000000', 'TimeZone': 'UTC'}),
+        parseSubstrateDay({
+          'DateTime': '2026-11-22T00:00:00.0000000',
+          'TimeZone': 'UTC',
+        }),
         DateTime(2026, 11, 22),
       );
       // UTC timestamp representing local midnight in UTC+8 (16:00Z previous day)
@@ -291,7 +309,8 @@ void main() {
     });
 
     test('strips HTML body content when ContentType is HTML', () {
-      const html = '<html><head><style>p{margin:0}</style></head>'
+      const html =
+          '<html><head><style>p{margin:0}</style></head>'
           '<body><p>Hello &amp; welcome&nbsp;</p><p>Line&nbsp;2<br/>Line 3&#39;s &quot;end&quot;</p></body></html>';
       expect(
         stripHtmlToPlainText(html, contentType: 'HTML'),
@@ -303,33 +322,36 @@ void main() {
       );
     });
 
-    test('computes OrderDateTime midpoint, top, and bottom with 4096s spacing', () {
-      final t1 = DateTime.utc(2026, 11, 22, 12, 0, 0);
-      final t2 = DateTime.utc(2026, 11, 22, 10, 0, 0);
+    test(
+      'computes OrderDateTime midpoint, top, and bottom with 4096s spacing',
+      () {
+        final t1 = DateTime.utc(2026, 11, 22, 12, 0, 0);
+        final t2 = DateTime.utc(2026, 11, 22, 10, 0, 0);
 
-      final mid = computeInsertedOrderDateTime(prev: t1, next: t2);
-      expect(mid, DateTime.utc(2026, 11, 22, 11, 0, 0));
+        final mid = computeInsertedOrderDateTime(prev: t1, next: t2);
+        expect(mid, DateTime.utc(2026, 11, 22, 11, 0, 0));
 
-      final top = computeInsertedOrderDateTime(prev: null, next: t1);
-      expect(top, t1.add(kOrderDateTimeStep));
+        final top = computeInsertedOrderDateTime(prev: null, next: t1);
+        expect(top, t1.add(kOrderDateTimeStep));
 
-      final bottom = computeInsertedOrderDateTime(prev: t2, next: null);
-      expect(bottom, t2.subtract(kOrderDateTimeStep));
+        final bottom = computeInsertedOrderDateTime(prev: t2, next: null);
+        expect(bottom, t2.subtract(kOrderDateTimeStep));
 
-      final bumpedTop = computeNewOrderDateTime(
-        existingOrders: [t1],
-        addToTop: true,
-        fallbackNow: t1,
-      );
-      expect(bumpedTop.isAfter(t1), isTrue);
-      expect(bumpedTop.difference(t1) >= kOrderDateTimeStep, isTrue);
+        final bumpedTop = computeNewOrderDateTime(
+          existingOrders: [t1],
+          addToTop: true,
+          fallbackNow: t1,
+        );
+        expect(bumpedTop.isAfter(t1), isTrue);
+        expect(bumpedTop.difference(t1) >= kOrderDateTimeStep, isTrue);
 
-      final bumpedBottom = computeNewOrderDateTime(
-        existingOrders: [t2],
-        addToTop: false,
-      );
-      expect(bumpedBottom, t2.subtract(kOrderDateTimeStep));
-    });
+        final bumpedBottom = computeNewOrderDateTime(
+          existingOrders: [t2],
+          addToTop: false,
+        );
+        expect(bumpedBottom, t2.subtract(kOrderDateTimeStep));
+      },
+    );
 
     test('computeReorderedOrderDateTimes handles wide-gap single moves, <=16s/equal/inverted re-spacing, and null boundaries', () {
       final t1 = DateTime.utc(2026, 11, 22, 14, 0, 0);

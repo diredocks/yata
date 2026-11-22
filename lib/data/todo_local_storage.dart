@@ -1,8 +1,10 @@
 import 'dart:convert';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../models/task_item.dart';
-import '../../models/todo_list.dart';
+
+import '../models/task_item.dart';
+import '../models/todo_list.dart';
 import '../account/account_local_storage.dart';
 
 class PendingStepDeletion {
@@ -15,9 +17,9 @@ class PendingStepDeletion {
   final String stepRemoteId;
 
   Map<String, dynamic> toJson() => {
-        'taskRemoteId': taskRemoteId,
-        'stepRemoteId': stepRemoteId,
-      };
+    'taskRemoteId': taskRemoteId,
+    'stepRemoteId': stepRemoteId,
+  };
 
   factory PendingStepDeletion.fromJson(Map<String, dynamic> json) {
     return PendingStepDeletion(
@@ -33,8 +35,6 @@ class TodoSnapshot {
     required this.groups,
     required this.tasks,
     required this.selectedListId,
-    required this.sortOption,
-    required this.showCompleted,
     required this.themeMode,
     required this.addNewTasksOnTop,
     required this.moveStarredTasksToTop,
@@ -66,8 +66,6 @@ class TodoSnapshot {
   final List<ListGroup> groups;
   final List<TaskItem> tasks;
   final String selectedListId;
-  final TaskSortOption sortOption;
-  final bool showCompleted;
   final ThemeMode themeMode;
   final bool addNewTasksOnTop;
   final bool moveStarredTasksToTop;
@@ -115,8 +113,6 @@ class TodoLocalStorage {
   String get _selectedListIdKey => _k('selected_list_id');
   String get _lastEnteredListIdKey => _k('last_entered_list_id');
   String get _completedExpandedByListKey => _k('completed_expanded_by_list');
-  String get _sortOptionKey => _k('sort_option');
-  String get _showCompletedKey => _k('show_completed');
   String get _themeModeKey => _k('theme_mode');
   String get _addNewTasksOnTopKey => _k('add_new_tasks_on_top');
   String get _moveStarredToTopKey => _k('move_starred_to_top');
@@ -138,8 +134,7 @@ class TodoLocalStorage {
       _k('due_date_notification_minute');
   String get _routineNotificationKey => _k('routine_notification_enabled');
   String get _routineNotificationHourKey => _k('routine_notification_hour');
-  String get _routineNotificationMinuteKey =>
-      _k('routine_notification_minute');
+  String get _routineNotificationMinuteKey => _k('routine_notification_minute');
   String get _quickAddNotificationKey => _k('quick_add_notification_enabled');
   String get _lastMyDayResetKey => _k('last_my_day_reset');
   String get _plannedDueDateFilterKey => _k('planned_due_date_filter');
@@ -214,16 +209,17 @@ class TodoLocalStorage {
 
     var lists = listsRaw != null
         ? (jsonDecode(listsRaw) as List<dynamic>)
-            .map((e) => TodoList.fromJson(e as Map<String, dynamic>))
-            .toList()
+              .map((e) => TodoList.fromJson(e as Map<String, dynamic>))
+              .toList()
         : defaultSmartLists();
 
     if (lists.isEmpty) {
       lists = defaultSmartLists();
     } else if (!lists.any((l) => l.smartType == SmartListType.completed)) {
       final idx = lists.indexWhere((l) => l.smartType == SmartListType.tasks);
-      final completedList = defaultSmartLists()
-          .firstWhere((l) => l.smartType == SmartListType.completed);
+      final completedList = defaultSmartLists().firstWhere(
+        (l) => l.smartType == SmartListType.completed,
+      );
       if (idx >= 0) {
         lists.insert(idx, completedList);
       } else {
@@ -243,22 +239,17 @@ class TodoLocalStorage {
 
     final groups = groupsRaw != null
         ? (jsonDecode(groupsRaw) as List<dynamic>)
-            .map((e) => ListGroup.fromJson(e as Map<String, dynamic>))
-            .toList()
+              .map((e) => ListGroup.fromJson(e as Map<String, dynamic>))
+              .toList()
         : <ListGroup>[];
 
     final tasks = tasksRaw != null
         ? (jsonDecode(tasksRaw) as List<dynamic>)
-            .map((e) => TaskItem.fromJson(e as Map<String, dynamic>))
-            .toList()
+              .map((e) => TaskItem.fromJson(e as Map<String, dynamic>))
+              .toList()
         : <TaskItem>[];
 
     final selectedListId = _prefs.getString(_selectedListIdKey) ?? 'my_day';
-    final sortName = _prefs.getString(_sortOptionKey);
-    final sortOption = TaskSortOption.values.firstWhere(
-      (e) => e.name == sortName,
-      orElse: () => TaskSortOption.defaultOrder,
-    );
     final themeName = _prefs.getString(_themeModeKey);
     final themeMode = ThemeMode.values.firstWhere(
       (e) => e.name == themeName,
@@ -285,22 +276,18 @@ class TodoLocalStorage {
       groups: groups,
       tasks: tasks,
       selectedListId: selectedListId,
-      sortOption: sortOption,
-      showCompleted: _prefs.getBool(_showCompletedKey) ?? true,
       themeMode: themeMode,
       addNewTasksOnTop: _prefs.getBool(_addNewTasksOnTopKey) ?? true,
       moveStarredTasksToTop: _prefs.getBool(_moveStarredToTopKey) ?? true,
       playCompletionSound: _prefs.getBool(_playCompletionSoundKey) ?? true,
-      confirmBeforeDeleting:
-          _prefs.getBool(_confirmBeforeDeletingKey) ?? true,
+      confirmBeforeDeleting: _prefs.getBool(_confirmBeforeDeletingKey) ?? true,
       showDueTodayInMyDay: _prefs.getBool(_showDueTodayInMyDayKey) ?? true,
       startOfWeek: startOfWeek,
       showSmartListImportant: _prefs.getBool(_showImportantKey) ?? true,
       showSmartListPlanned: _prefs.getBool(_showPlannedKey) ?? true,
       showSmartListAll: _prefs.getBool(_showAllKey) ?? false,
       showSmartListCompleted: _prefs.getBool(_showCompletedListKey) ?? false,
-      autoHideEmptySmartLists:
-          _prefs.getBool(_autoHideSmartListsKey) ?? false,
+      autoHideEmptySmartLists: _prefs.getBool(_autoHideSmartListsKey) ?? false,
       plannedDueDateFilter: plannedDueDateFilter,
       plannedGroupOption: plannedGroupOption,
       useDynamicColor: _prefs.getBool(_useDynamicColorKey) ?? true,
@@ -314,8 +301,7 @@ class TodoLocalStorage {
           _prefs.getInt(_dueTodayNotificationMinuteKey) ?? 0,
       routineNotificationEnabled:
           _prefs.getBool(_routineNotificationKey) ?? false,
-      routineNotificationHour:
-          _prefs.getInt(_routineNotificationHourKey) ?? 8,
+      routineNotificationHour: _prefs.getInt(_routineNotificationHourKey) ?? 8,
       routineNotificationMinute:
           _prefs.getInt(_routineNotificationMinuteKey) ?? 30,
       quickAddNotificationEnabled:
@@ -375,12 +361,6 @@ class TodoLocalStorage {
       await _prefs.setString(_completedExpandedByListKey, jsonEncode(value));
     }
   }
-
-  Future<void> saveSortOption(TaskSortOption option) =>
-      _prefs.setString(_sortOptionKey, option.name);
-
-  Future<void> saveShowCompleted(bool value) =>
-      _prefs.setBool(_showCompletedKey, value);
 
   Future<void> saveThemeMode(ThemeMode mode) =>
       _prefs.setString(_themeModeKey, mode.name);
@@ -589,15 +569,7 @@ class TodoLocalStorage {
     }
   }
 
-  Future<void> clearAllDeltaLinks() async {
-    await _prefs.remove(_groupsDeltaLinkKey);
-    await _prefs.remove(_foldersDeltaLinkKey);
-    await _prefs.remove(_taskDeltaLinksKey);
-  }
-
-  String? loadCachedEndpointUrl({
-    Duration maxAge = const Duration(hours: 12),
-  }) {
+  String? loadCachedEndpointUrl({Duration maxAge = const Duration(hours: 12)}) {
     final url = _prefs.getString(_cachedEndpointUrlKey);
     final fetchedRaw = _prefs.getString(_cachedEndpointFetchedAtKey);
     if (url == null || url.isEmpty || fetchedRaw == null) return null;
@@ -615,10 +587,5 @@ class TodoLocalStorage {
       _cachedEndpointFetchedAtKey,
       DateTime.now().toUtc().toIso8601String(),
     );
-  }
-
-  Future<void> clearCachedEndpointUrl() async {
-    await _prefs.remove(_cachedEndpointUrlKey);
-    await _prefs.remove(_cachedEndpointFetchedAtKey);
   }
 }

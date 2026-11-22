@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+
 import '../../l10n/app_localizations.dart';
 import '../../models/todo_list.dart';
 import '../../theme/todo_theme.dart';
@@ -25,8 +26,9 @@ class GroupHeaderTile extends StatelessWidget {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final secondaryColor =
-        isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
+    final secondaryColor = isDark
+        ? TodoColors.secondaryTextDark
+        : TodoColors.secondaryTextLight;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),

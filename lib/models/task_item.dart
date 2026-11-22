@@ -1,13 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-enum RecurrenceType {
-  none,
-  daily,
-  weekdays,
-  weekly,
-  monthly,
-  yearly,
-}
+enum RecurrenceType { none, daily, weekdays, weekly, monthly, yearly }
 
 @immutable
 class TaskStep {
@@ -39,8 +32,9 @@ class TaskStep {
       title: title ?? this.title,
       isCompleted: isCompleted ?? this.isCompleted,
       remoteId: clearRemoteId ? null : (remoteId ?? this.remoteId),
-      orderDateTime:
-          clearOrderDateTime ? null : (orderDateTime ?? this.orderDateTime),
+      orderDateTime: clearOrderDateTime
+          ? null
+          : (orderDateTime ?? this.orderDateTime),
     );
   }
 
@@ -117,8 +111,7 @@ class TaskItem {
   final String? changeKey;
   final DateTime? updatedAt;
 
-  int get completedStepsCount =>
-      steps.where((step) => step.isCompleted).length;
+  int get completedStepsCount => steps.where((step) => step.isCompleted).length;
 
   bool get isOverdue {
     if (dueDate == null || isCompleted) return false;
@@ -171,8 +164,9 @@ class TaskItem {
       isImportant: isImportant ?? this.isImportant,
       isInMyDay: isInMyDay ?? this.isInMyDay,
       myDayDate: clearMyDayDate ? null : (myDayDate ?? this.myDayDate),
-      postponedDay:
-          clearPostponedDay ? null : (postponedDay ?? this.postponedDay),
+      postponedDay: clearPostponedDay
+          ? null
+          : (postponedDay ?? this.postponedDay),
       dueDate: clearDueDate ? null : (dueDate ?? this.dueDate),
       reminderAt: clearReminderAt ? null : (reminderAt ?? this.reminderAt),
       recurrence: recurrence ?? this.recurrence,
@@ -184,10 +178,12 @@ class TaskItem {
       remoteParentFolderId: clearRemoteParentFolderId
           ? null
           : (remoteParentFolderId ?? this.remoteParentFolderId),
-      orderDateTime:
-          clearOrderDateTime ? null : (orderDateTime ?? this.orderDateTime),
-      committedOrder:
-          clearCommittedOrder ? null : (committedOrder ?? this.committedOrder),
+      orderDateTime: clearOrderDateTime
+          ? null
+          : (orderDateTime ?? this.orderDateTime),
+      committedOrder: clearCommittedOrder
+          ? null
+          : (committedOrder ?? this.committedOrder),
       changeKey: clearChangeKey ? null : (changeKey ?? this.changeKey),
       updatedAt: updatedAt ?? this.updatedAt,
     );

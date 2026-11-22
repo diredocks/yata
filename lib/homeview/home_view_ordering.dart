@@ -10,10 +10,7 @@ sealed class HomeSidebarEntry {
 
 /// Collapsible folder group and its ordered member custom lists.
 final class HomeGroupEntry extends HomeSidebarEntry {
-  const HomeGroupEntry({
-    required this.group,
-    required this.lists,
-  });
+  const HomeGroupEntry({required this.group, required this.lists});
 
   final ListGroup group;
   final List<TodoList> lists;
@@ -40,12 +37,7 @@ final class HomeListEntry extends HomeSidebarEntry {
 
 /// Compares two optional timestamps in descending `OrderDateTime` order
 /// (higher timestamp = closer to top), falling back to original index order.
-int compareOrderDateTimeDesc(
-  DateTime? a,
-  DateTime? b,
-  int indexA,
-  int indexB,
-) {
+int compareOrderDateTimeDesc(DateTime? a, DateTime? b, int indexA, int indexB) {
   if (a != null && b != null) {
     final cmp = b.toUtc().compareTo(a.toUtc());
     if (cmp != 0) return cmp;
@@ -89,10 +81,14 @@ List<TodoList> sortCustomListsByOrder(List<TodoList> lists) =>
 /// Keeps smart lists in canonical order followed by custom lists sorted
 /// descending by [TodoList.orderDateTime].
 List<TodoList> sortListsPreservingSmartLists(List<TodoList> lists) {
-  final smart = [for (final l in lists) if (l.isSmartList) l];
-  final custom = sortCustomListsByOrder(
-    [for (final l in lists) if (!l.isSmartList) l],
-  );
+  final smart = [
+    for (final l in lists)
+      if (l.isSmartList) l,
+  ];
+  final custom = sortCustomListsByOrder([
+    for (final l in lists)
+      if (!l.isSmartList) l,
+  ]);
   return [...smart, ...custom];
 }
 
@@ -103,16 +99,20 @@ List<HomeSidebarEntry> buildOrderedHomeSidebarEntries({
   required List<ListGroup> groups,
   required List<TodoList> lists,
 }) {
-  final customLists = [for (final l in lists) if (!l.isSmartList) l];
+  final customLists = [
+    for (final l in lists)
+      if (!l.isSmartList) l,
+  ];
   final validGroupIds = {for (final g in groups) g.id};
 
   final entries = <HomeSidebarEntry>[
     for (final group in groups)
       HomeGroupEntry(
         group: group,
-        lists: sortCustomListsByOrder(
-          [for (final l in customLists) if (l.groupId == group.id) l],
-        ),
+        lists: sortCustomListsByOrder([
+          for (final l in customLists)
+            if (l.groupId == group.id) l,
+        ]),
       ),
     for (final list in customLists)
       if (list.groupId == null || !validGroupIds.contains(list.groupId))

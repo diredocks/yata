@@ -1,23 +1,25 @@
 import 'dart:async';
-import 'package:material_ui/material_ui.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../account/account_provider.dart';
-import '../../detailview/detail_view_presenter.dart';
-import '../../detailview/detail_view_screen.dart';
-import '../../homeview/home_view_screen.dart';
-import '../../l10n/app_localizations.dart';
-import '../../models/account.dart';
-import '../../models/task_item.dart';
-import '../../models/todo_list.dart';
-import '../../data/todo_provider.dart';
-import '../../notifications/notification_service.dart';
-import '../../notifications/snooze_reminder_sheet.dart';
-import '../../search/search_screen.dart';
-import '../../settings/settings_screen.dart';
-import '../../sync/sync_provider.dart';
-import '../../tasksview/richentry/task_entry_sheet.dart';
-import '../../tasksview/tasks_view_presenter.dart';
-import '../../tasksview/tasks_view_screen.dart';
+import 'package:material_ui/material_ui.dart';
+
+import '../account/account_provider.dart';
+import '../data/todo_provider.dart';
+import '../detailview/detail_view_presenter.dart';
+import '../detailview/detail_view_screen.dart';
+import '../homeview/home_view_screen.dart';
+import '../l10n/app_localizations.dart';
+import '../models/account.dart';
+import '../models/task_item.dart';
+import '../models/todo_list.dart';
+import '../notifications/notification_service.dart';
+import '../notifications/snooze_reminder_sheet.dart';
+import '../search/search_screen.dart';
+import '../settings/settings_screen.dart';
+import '../sync/sync_provider.dart';
+import '../tasksview/richentry/task_entry_sheet.dart';
+import '../tasksview/tasks_view_presenter.dart';
+import '../tasksview/tasks_view_screen.dart';
 
 class MainShellScreen extends ConsumerStatefulWidget {
   const MainShellScreen({super.key});
@@ -33,13 +35,15 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
   void initState() {
     super.initState();
     final notificationService = ref.read(notificationServiceProvider);
-    _notificationSub =
-        notificationService.events.listen(_handleNotificationAction);
+    _notificationSub = notificationService.events.listen(
+      _handleNotificationAction,
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final state = ref.read(todoProvider);
-      final strings =
-          NotificationStrings.fromLocalizations(AppLocalizations.of(context));
+      final strings = NotificationStrings.fromLocalizations(
+        AppLocalizations.of(context),
+      );
       unawaited(notificationService.syncWithState(state, strings: strings));
       _restoreLastEnteredListIfNeeded();
       _startSyncForActiveAccount();
@@ -88,10 +92,9 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
           taskTitle: matchedTask?.title,
         );
         if (duration != null && mounted) {
-          ref.read(detailViewPresenterProvider).setTaskReminder(
-                taskId,
-                DateTime.now().add(duration),
-              );
+          ref
+              .read(detailViewPresenterProvider)
+              .setTaskReminder(taskId, DateTime.now().add(duration));
         }
       case NotificationActionType.openTask:
         final taskId = event.taskId;
@@ -117,25 +120,29 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
             lists: state.lists,
             currentList: state.selectedList,
             startOfWeek: state.startOfWeek,
-            onSubmit: ({
-              required String title,
-              String? targetListId,
-              DateTime? dueDate,
-              DateTime? reminderAt,
-              RecurrenceType recurrence = RecurrenceType.none,
-            }) {
-              ref.read(tasksViewPresenterProvider).addTask(
-                    title: title,
-                    targetListId: targetListId,
-                    dueDate: dueDate,
-                    reminderAt: reminderAt,
-                    recurrence: recurrence,
-                  );
-            },
+            onSubmit:
+                ({
+                  required String title,
+                  String? targetListId,
+                  DateTime? dueDate,
+                  DateTime? reminderAt,
+                  RecurrenceType recurrence = RecurrenceType.none,
+                }) {
+                  ref
+                      .read(tasksViewPresenterProvider)
+                      .addTask(
+                        title: title,
+                        targetListId: targetListId,
+                        dueDate: dueDate,
+                        reminderAt: reminderAt,
+                        recurrence: recurrence,
+                      );
+                },
           ),
         );
     }
   }
+
   void _openSearch() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -149,19 +156,17 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
   }
 
   void _openSettings() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const SettingsScreen(),
-      ),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
   }
 
   void _restoreLastEnteredListIfNeeded() {
     if (!mounted) return;
     final isWide = MediaQuery.sizeOf(context).width >= 600;
     if (isWide) return;
-    final lastListId =
-        ref.read(todoLocalStorageProvider).loadLastEnteredListId();
+    final lastListId = ref
+        .read(todoLocalStorageProvider)
+        .loadLastEnteredListId();
     if (lastListId == null) return;
     final lists = ref.read(todoProvider).lists;
     TodoList? targetList;
@@ -191,10 +196,10 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
           ),
         )
         .then((_) {
-      if (mounted) {
-        ref.read(todoProvider.notifier).setLastEnteredListId(null);
-      }
-    });
+          if (mounted) {
+            ref.read(todoProvider.notifier).setLastEnteredListId(null);
+          }
+        });
   }
 
   void _handleSelectList(TodoList list, bool isWide) {
@@ -216,20 +221,22 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    ref.listen<String?>(
-      accountProvider.select((s) => s.activeAccountId),
-      (previous, next) {
-        if (previous != null && next != null && previous != next) {
-          ref.read(todoProvider.notifier).setLastEnteredListId(null);
-        }
-        if (previous != next) {
-          _startSyncForActiveAccount(accountChanged: true);
-        }
-      },
-    );
+    ref.listen<String?>(accountProvider.select((s) => s.activeAccountId), (
+      previous,
+      next,
+    ) {
+      if (previous != null && next != null && previous != next) {
+        ref.read(todoProvider.notifier).setLastEnteredListId(null);
+      }
+      if (previous != next) {
+        _startSyncForActiveAccount(accountChanged: true);
+      }
+    });
     ref.listen<TodoState>(todoProvider, (_, next) {
       unawaited(
-        ref.read(notificationServiceProvider).syncWithState(
+        ref
+            .read(notificationServiceProvider)
+            .syncWithState(
               next,
               strings: NotificationStrings.fromLocalizations(l10n),
             ),
@@ -275,19 +282,13 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
             switchOutCurve: Curves.easeInCubic,
             layoutBuilder: (currentChild, previousChildren) => Stack(
               alignment: AlignmentDirectional.centerStart,
-              children: [
-                ...previousChildren,
-                ?currentChild,
-              ],
+              children: [...previousChildren, ?currentChild],
             ),
             transitionBuilder: (child, animation) => SizeTransition(
               axis: Axis.horizontal,
               alignment: AlignmentDirectional.centerStart,
               sizeFactor: animation,
-              child: FadeTransition(
-                opacity: animation,
-                child: child,
-              ),
+              child: FadeTransition(opacity: animation, child: child),
             ),
             child: showDetail
                 ? Row(

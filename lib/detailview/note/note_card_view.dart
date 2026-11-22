@@ -1,5 +1,6 @@
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
+
 import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../theme/todo_theme.dart';
@@ -44,8 +45,9 @@ class _NoteCardViewState extends State<NoteCardView> {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final secondaryText =
-        isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
+    final secondaryText = isDark
+        ? TodoColors.secondaryTextDark
+        : TodoColors.secondaryTextLight;
 
     return Card(
       color: widget.cardColor,
@@ -78,9 +80,9 @@ class _NoteCardViewState extends State<NoteCardView> {
                 const SizedBox(height: 8),
                 Text(
                   l10n.updatedOn(
-                    DateFormat.MMMd()
-                        .add_jm()
-                        .format(widget.task.noteUpdatedAt!),
+                    DateFormat.MMMd().add_jm().format(
+                      widget.task.noteUpdatedAt!,
+                    ),
                   ),
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: secondaryText,

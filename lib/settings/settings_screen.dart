@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+
 import '../account/manage_accounts_screen.dart';
 import '../l10n/app_localizations.dart';
 import '../models/account.dart';
@@ -72,12 +73,15 @@ class SettingsScreen extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
   ) async {
-    final granted =
-        await ref.read(notificationServiceProvider).requestPermissions();
+    final granted = await ref
+        .read(notificationServiceProvider)
+        .requestPermissions();
     if (!granted && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(AppLocalizations.of(context).notificationPermissionDenied),
+          content: Text(
+            AppLocalizations.of(context).notificationPermissionDenied,
+          ),
         ),
       );
     }
@@ -183,9 +187,9 @@ class SettingsScreen extends ConsumerWidget {
                                         l10n.syncNow,
                                         style: theme.textTheme.labelLarge
                                             ?.copyWith(
-                                          color: theme.colorScheme.primary,
-                                          fontWeight: FontWeight.w500,
-                                        ),
+                                              color: theme.colorScheme.primary,
+                                              fontWeight: FontWeight.w500,
+                                            ),
                                       ),
                                       Text(
                                         formatAccountSyncStatus(
@@ -194,16 +198,17 @@ class SettingsScreen extends ConsumerWidget {
                                           syncState: syncState,
                                           isActive: true,
                                         ),
-                                        style:
-                                            theme.textTheme.bodySmall?.copyWith(
-                                          color: (syncState.error != null ||
+                                        style: theme.textTheme.bodySmall?.copyWith(
+                                          color:
+                                              (syncState.error != null ||
                                                   activeAccount.syncError !=
                                                       null)
                                               ? theme.colorScheme.error
                                               : (isDark
-                                                  ? TodoColors.secondaryTextDark
-                                                  : TodoColors
-                                                      .secondaryTextLight),
+                                                    ? TodoColors
+                                                          .secondaryTextDark
+                                                    : TodoColors
+                                                          .secondaryTextLight),
                                         ),
                                       ),
                                     ],
@@ -259,11 +264,8 @@ class SettingsScreen extends ConsumerWidget {
                         child: Divider(height: 1),
                       ),
                       InkWell(
-                        onTap: () => _confirmSignOut(
-                          context,
-                          ref,
-                          activeAccount.id,
-                        ),
+                        onTap: () =>
+                            _confirmSignOut(context, ref, activeAccount.id),
                         child: Container(
                           width: double.infinity,
                           constraints: const BoxConstraints(minHeight: 48),
@@ -552,7 +554,9 @@ class SettingsScreen extends ConsumerWidget {
             leading: const Icon(Icons.info_outline),
             title: Text(l10n.appVersion),
             subtitle: Text(
-              ref.watch(appPackageInfoProvider).when(
+              ref
+                  .watch(appPackageInfoProvider)
+                  .when(
                     data: (info) => info.buildNumber.isNotEmpty
                         ? '${info.version}+${info.buildNumber}'
                         : info.version,

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
+
 import '../l10n/app_localizations.dart';
 import '../models/account.dart';
 import '../onboarding/landing_screen.dart';
@@ -102,8 +103,9 @@ class ManageAccountsScreen extends ConsumerWidget {
             leading: PersonaAvatar(
               name: account.displayName,
               size: 40,
-              avatarBase64:
-                  account is MicrosoftAccount ? account.avatarBase64 : null,
+              avatarBase64: account is MicrosoftAccount
+                  ? account.avatarBase64
+                  : null,
             ),
             title: Row(
               children: [
@@ -124,9 +126,7 @@ class ManageAccountsScreen extends ConsumerWidget {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withValues(
-                        alpha: 0.12,
-                      ),
+                      color: theme.colorScheme.primary.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -163,13 +163,14 @@ class ManageAccountsScreen extends ConsumerWidget {
                   ),
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: (account is MicrosoftAccount &&
+                    color:
+                        (account is MicrosoftAccount &&
                             (account.syncError != null ||
                                 (isActive && syncState.error != null)))
                         ? theme.colorScheme.error
                         : (isDark
-                            ? TodoColors.secondaryTextDark
-                            : TodoColors.secondaryTextLight),
+                              ? TodoColors.secondaryTextDark
+                              : TodoColors.secondaryTextLight),
                   ),
                 ),
               ],

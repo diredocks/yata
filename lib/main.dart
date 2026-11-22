@@ -2,11 +2,12 @@ import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'l10n/app_localizations.dart';
 import 'onboarding/landing_screen.dart';
 import 'account/account_provider.dart';
 import 'data/todo_provider.dart';
-import 'ui/controller/main_shell_screen.dart';
+import 'view/main_shell_screen.dart';
 import 'theme/todo_theme.dart';
 
 Future<void> main() async {
@@ -15,9 +16,7 @@ Future<void> main() async {
 
   runApp(
     ProviderScope(
-      overrides: [
-        sharedPreferencesProvider.overrideWithValue(prefs),
-      ],
+      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
       child: const YataApp(),
     ),
   );

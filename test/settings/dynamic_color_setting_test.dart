@@ -40,8 +40,9 @@ void main() {
     );
   });
 
-  testWidgets('SettingsScreen toggles and persists useDynamicColor',
-      (WidgetTester tester) async {
+  testWidgets('SettingsScreen toggles and persists useDynamicColor', (
+    WidgetTester tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
 
@@ -57,10 +58,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(
-      find.text('Use system dynamic color'),
-      200,
-    );
+    await tester.scrollUntilVisible(find.text('Use system dynamic color'), 200);
     await tester.pumpAndSettle();
 
     final switchTile = tester.widget<SwitchListTile>(
@@ -75,47 +73,48 @@ void main() {
     expect(reloaded.useDynamicColor, isFalse);
   });
 
-  testWidgets('DetailViewScreen follows dynamic background and NoteCardView matches card width',
-      (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
-    final prefs = await SharedPreferences.getInstance();
-    final storage = TodoLocalStorage(prefs);
-    final task = TaskItem(
-      id: 't_detail',
-      listId: 'tasks',
-      title: 'Check detail layout',
-      createdAt: DateTime(2026, 11, 22),
-    );
-    await storage.saveTasks([task]);
+  testWidgets(
+    'DetailViewScreen follows dynamic background and NoteCardView matches card width',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final storage = TodoLocalStorage(prefs);
+      final task = TaskItem(
+        id: 't_detail',
+        listId: 'tasks',
+        title: 'Check detail layout',
+        createdAt: DateTime(2026, 11, 22),
+      );
+      await storage.saveTasks([task]);
 
-    final dynamicLight = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF00897B),
-      brightness: Brightness.light,
-    );
+      final dynamicLight = ColorScheme.fromSeed(
+        seedColor: const Color(0xFF00897B),
+        brightness: Brightness.light,
+      );
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
-        child: MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          theme: TodoTheme.light(dynamicColorScheme: dynamicLight),
-          home: DetailViewScreen(taskId: task.id),
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+          child: MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            theme: TodoTheme.light(dynamicColorScheme: dynamicLight),
+            home: DetailViewScreen(taskId: task.id),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).last);
-    expect(scaffold.backgroundColor, dynamicLight.surface);
+      final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).last);
+      expect(scaffold.backgroundColor, dynamicLight.surface);
 
-    final myDayWidth =
-        tester.getSize(find.byType(MyDayCardView)).width;
-    final scheduleWidth =
-        tester.getSize(find.byType(TaskSchedulingCardView)).width;
-    final noteWidth =
-        tester.getSize(find.byType(NoteCardView)).width;
-    expect(noteWidth, myDayWidth);
-    expect(noteWidth, scheduleWidth);
-  });
+      final myDayWidth = tester.getSize(find.byType(MyDayCardView)).width;
+      final scheduleWidth = tester
+          .getSize(find.byType(TaskSchedulingCardView))
+          .width;
+      final noteWidth = tester.getSize(find.byType(NoteCardView)).width;
+      expect(noteWidth, myDayWidth);
+      expect(noteWidth, scheduleWidth);
+    },
+  );
 }

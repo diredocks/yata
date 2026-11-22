@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
+
 import '../models/todo_list.dart';
 import '../data/todo_provider.dart';
 import '../sync/todo_wire_codecs.dart';
@@ -27,8 +28,8 @@ class HomeViewPresenter {
   }) {
     final existingOrders = groupId != null
         ? _state.lists
-            .where((l) => !l.isSmartList && l.groupId == groupId)
-            .map((l) => l.orderDateTime)
+              .where((l) => !l.isSmartList && l.groupId == groupId)
+              .map((l) => l.orderDateTime)
         : [
             ..._state.lists
                 .where((l) => !l.isSmartList && l.groupId == null)
@@ -121,8 +122,7 @@ class HomeViewPresenter {
   }
 
   void deleteGroup(String groupId) {
-    final updatedGroups =
-        _state.groups.where((g) => g.id != groupId).toList();
+    final updatedGroups = _state.groups.where((g) => g.id != groupId).toList();
     final updatedLists = [
       for (final list in _state.lists)
         if (list.groupId == groupId)
@@ -133,18 +133,6 @@ class HomeViewPresenter {
     _store.commit(_state.copyWith(groups: updatedGroups, lists: updatedLists));
     _store.storage.saveGroups(updatedGroups);
     _store.storage.saveLists(updatedLists);
-  }
-
-  void moveListToGroup(String listId, String? groupId) {
-    final updated = [
-      for (final list in _state.lists)
-        if (list.id == listId && !list.isSmartList)
-          list.copyWith(groupId: groupId, clearGroupId: groupId == null)
-        else
-          list,
-    ];
-    _store.commit(_state.copyWith(lists: updated));
-    _store.storage.saveLists(updated);
   }
 
   void setGroupLists(String groupId, Set<String> memberListIds) {
@@ -175,10 +163,9 @@ class HomeViewPresenter {
     final moved = reordered.removeAt(oldIndex);
     reordered.insert(newIndex, moved);
 
-    final newPositions = computeReorderedOrderDateTimes(
-      [for (final e in reordered) e.orderDateTime],
-      newIndex,
-    );
+    final newPositions = computeReorderedOrderDateTimes([
+      for (final e in reordered) e.orderDateTime,
+    ], newIndex);
     final groupOrderUpdates = <String, DateTime>{};
     final listOrderUpdates = <String, DateTime>{};
     for (final entry in newPositions.entries) {
@@ -235,10 +222,9 @@ class HomeViewPresenter {
     final moved = reordered.removeAt(oldIndex);
     reordered.insert(newIndex, moved);
 
-    final newPositions = computeReorderedOrderDateTimes(
-      [for (final l in reordered) l.orderDateTime],
-      newIndex,
-    );
+    final newPositions = computeReorderedOrderDateTimes([
+      for (final l in reordered) l.orderDateTime,
+    ], newIndex);
     final listOrderUpdates = <String, DateTime>{
       for (final entry in newPositions.entries)
         reordered[entry.key].id: entry.value,

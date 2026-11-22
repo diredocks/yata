@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+
 import '../../theme/todo_theme.dart';
 
 /// Swipe-to-action wrapper matching `ep/a2.java` (`TouchHelperTaskViewItemCallback`)
@@ -29,12 +30,7 @@ class SwipeableTaskCard extends StatefulWidget {
   State<SwipeableTaskCard> createState() => _SwipeableTaskCardState();
 }
 
-enum _SwipeAnimPhase {
-  idle,
-  flingRight,
-  flingLeft,
-  snapBack,
-}
+enum _SwipeAnimPhase { idle, flingRight, flingLeft, snapBack }
 
 class _SwipeableTaskCardState extends State<SwipeableTaskCard>
     with SingleTickerProviderStateMixin {
@@ -52,28 +48,26 @@ class _SwipeableTaskCardState extends State<SwipeableTaskCard>
   @override
   void initState() {
     super.initState();
-    _snapController = AnimationController(
-      vsync: this,
-      duration: _snapBackDuration,
-    )
-      ..addListener(() {
-        if (_snapAnimation != null && mounted) {
-          setState(() => _dragOffset = _snapAnimation!.value);
-        }
-      })
-      ..addStatusListener((status) {
-        if (status != AnimationStatus.completed || !mounted) return;
-        final completedPhase = _phase;
-        _phase = _SwipeAnimPhase.idle;
-        if (completedPhase == _SwipeAnimPhase.flingRight) {
-          widget.onSwipeRight();
-          if (mounted) {
-            _animateBack();
-          }
-        } else if (completedPhase == _SwipeAnimPhase.flingLeft) {
-          widget.onSwipeLeft();
-        }
-      });
+    _snapController =
+        AnimationController(vsync: this, duration: _snapBackDuration)
+          ..addListener(() {
+            if (_snapAnimation != null && mounted) {
+              setState(() => _dragOffset = _snapAnimation!.value);
+            }
+          })
+          ..addStatusListener((status) {
+            if (status != AnimationStatus.completed || !mounted) return;
+            final completedPhase = _phase;
+            _phase = _SwipeAnimPhase.idle;
+            if (completedPhase == _SwipeAnimPhase.flingRight) {
+              widget.onSwipeRight();
+              if (mounted) {
+                _animateBack();
+              }
+            } else if (completedPhase == _SwipeAnimPhase.flingLeft) {
+              widget.onSwipeLeft();
+            }
+          });
   }
 
   @override
@@ -132,8 +126,8 @@ class _SwipeableTaskCardState extends State<SwipeableTaskCard>
     final width = context.size?.width ?? 1.0;
     final ratio = (_dragOffset / width).abs();
     final velocity = details.primaryVelocity ?? 0.0;
-    final triggered = ratio >= _swipeThreshold ||
-        (velocity.abs() > 700 && ratio > 0.15);
+    final triggered =
+        ratio >= _swipeThreshold || (velocity.abs() > 700 && ratio > 0.15);
 
     if (triggered) {
       final isRight = _dragOffset > 0;
@@ -172,14 +166,17 @@ class _SwipeableTaskCardState extends State<SwipeableTaskCard>
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final width = constraints.maxWidth;
-                    final progress = (_dragOffset.abs() / width).clamp(0.0, 1.0);
+                    final progress = (_dragOffset.abs() / width).clamp(
+                      0.0,
+                      1.0,
+                    );
                     final revealColor = isSwipingRight
                         ? widget.accentColor
                         : TodoColors.overdueRed;
                     final icon = isSwipingRight
                         ? (widget.isInMyDay
-                            ? Icons.wb_sunny
-                            : Icons.wb_sunny_outlined)
+                              ? Icons.wb_sunny
+                              : Icons.wb_sunny_outlined)
                         : Icons.delete_outline;
 
                     return CustomPaint(
@@ -197,11 +194,7 @@ class _SwipeableTaskCardState extends State<SwipeableTaskCard>
                             : Alignment.centerRight,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 20),
-                          child: Icon(
-                            icon,
-                            color: Colors.white,
-                            size: 22,
-                          ),
+                          child: Icon(icon, color: Colors.white, size: 22),
                         ),
                       ),
                     );
@@ -240,7 +233,12 @@ class _SwipeBackgroundPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final isRight = dragOffset > 0;
     final rect = isRight
-        ? Rect.fromLTWH(0, 0, (dragOffset + 8).clamp(0.0, size.width), size.height)
+        ? Rect.fromLTWH(
+            0,
+            0,
+            (dragOffset + 8).clamp(0.0, size.width),
+            size.height,
+          )
         : Rect.fromLTWH(
             (size.width + dragOffset - 8).clamp(0.0, size.width),
             0,

@@ -117,10 +117,7 @@ abstract final class TodoSettingKeys {
 
 /// Decoded folder/smart-list theme pair from Substrate `ThemeColor`.
 class DecodedTheme {
-  const DecodedTheme({
-    required this.themeColor,
-    this.themePhoto,
-  });
+  const DecodedTheme({required this.themeColor, this.themePhoto});
 
   final ListThemeColor themeColor;
   final ListThemePhoto? themePhoto;
@@ -128,10 +125,7 @@ class DecodedTheme {
 
 /// Decoded folder title + optional leading emoji from Substrate `Name`.
 class DecodedFolderName {
-  const DecodedFolderName({
-    this.emoji,
-    required this.title,
-  });
+  const DecodedFolderName({this.emoji, required this.title});
 
   final String? emoji;
   final String title;
@@ -324,10 +318,12 @@ TaskSortOption decodeSortType(dynamic raw) {
     return switch (normalized) {
       'alphabetical' || 'subject' => TaskSortOption.alphabetical,
       'duedate' || 'due_date' => TaskSortOption.dueDate,
-      'creationdate' || 'created' || 'creation_date' =>
-        TaskSortOption.creationDate,
-      'addedtomyday' || 'committed' || 'added_to_my_day' =>
-        TaskSortOption.addedToMyDay,
+      'creationdate' ||
+      'created' ||
+      'creation_date' => TaskSortOption.creationDate,
+      'addedtomyday' ||
+      'committed' ||
+      'added_to_my_day' => TaskSortOption.addedToMyDay,
       'importance' || 'priority' => TaskSortOption.importance,
       _ => TaskSortOption.defaultOrder,
     };
@@ -426,8 +422,7 @@ PlannedGroupOption decodePlannedGroupOption(
     final normalized = raw.trim().toLowerCase();
     return switch (normalized) {
       'ungroup' || 'none' => PlannedGroupOption.ungroup,
-      'byduedate' || 'by_due_date' || 'duedate' =>
-        PlannedGroupOption.byDueDate,
+      'byduedate' || 'by_due_date' || 'duedate' => PlannedGroupOption.byDueDate,
       'bylist' || 'by_list' || 'list' => PlannedGroupOption.byList,
       _ => fallback,
     };
@@ -507,10 +502,12 @@ DateTime? parseSubstrateTimestamp(String? raw) {
   }
   final tIndex = trimmed.indexOf('T');
   if (tIndex >= 0 && (trimmed.endsWith('Z') || trimmed.endsWith('z'))) {
-    trimmed = trimmed.substring(0, tIndex) +
+    trimmed =
+        trimmed.substring(0, tIndex) +
         trimmed.substring(tIndex).replaceAll('-', '');
   }
-  final hasExplicitOffset = trimmed.endsWith('Z') ||
+  final hasExplicitOffset =
+      trimmed.endsWith('Z') ||
       trimmed.endsWith('z') ||
       RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(trimmed);
   if (tIndex >= 0 && !hasExplicitOffset) {
@@ -523,10 +520,7 @@ DateTime? parseSubstrateTimestamp(String? raw) {
 
 /// Formats [dt] into Substrate `DateTimeTimeZone` (`UTC`).
 Map<String, dynamic> formatDateTimeTimeZoneUtc(DateTime dt) {
-  return {
-    'DateTime': formatSubstrateUtcTimestamp(dt),
-    'TimeZone': 'UTC',
-  };
+  return {'DateTime': formatSubstrateUtcTimestamp(dt), 'TimeZone': 'UTC'};
 }
 
 /// Formats calendar [date] into Substrate `DateTimeTimeZone` at midnight UTC.
@@ -548,10 +542,11 @@ DateTime? parseSubstrateDateTimeTimeZone(Map<String, dynamic>? map) {
     return null;
   }
   final tz = (map['TimeZone'] as String?)?.trim().toLowerCase();
-  final hasExplicitOffset = trimmed.endsWith('Z') ||
-      RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(trimmed);
-  final candidate =
-      (!hasExplicitOffset && tz == 'utc') ? '${trimmed}Z' : trimmed;
+  final hasExplicitOffset =
+      trimmed.endsWith('Z') || RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(trimmed);
+  final candidate = (!hasExplicitOffset && tz == 'utc')
+      ? '${trimmed}Z'
+      : trimmed;
   final parsed = DateTime.tryParse(candidate);
   if (parsed == null || parsed.year <= 1) return null;
   return parsed.toLocal();
@@ -577,7 +572,10 @@ DateTime? parseSubstrateDay(dynamic raw) {
     return null;
   }
   if (trimmed.length <= 10 || trimmed.contains('T00:')) {
-    final datePart = trimmed.substring(0, trimmed.length >= 10 ? 10 : trimmed.length);
+    final datePart = trimmed.substring(
+      0,
+      trimmed.length >= 10 ? 10 : trimmed.length,
+    );
     final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(datePart);
     if (match != null) {
       final y = int.parse(match.group(1)!);
@@ -587,10 +585,11 @@ DateTime? parseSubstrateDay(dynamic raw) {
       return DateTime(y, m, d);
     }
   }
-  final hasExplicitOffset = trimmed.endsWith('Z') ||
-      RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(trimmed);
-  final candidate =
-      (!hasExplicitOffset && tz == 'utc') ? '${trimmed}Z' : trimmed;
+  final hasExplicitOffset =
+      trimmed.endsWith('Z') || RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(trimmed);
+  final candidate = (!hasExplicitOffset && tz == 'utc')
+      ? '${trimmed}Z'
+      : trimmed;
   final parsed = DateTime.tryParse(candidate);
   if (parsed == null || parsed.year <= 1) return null;
   final local = parsed.toLocal();
@@ -605,7 +604,13 @@ DateTime? parseSubstrateDay(dynamic raw) {
 /// `DuedateNotification_Time`.
 String encodeTimeOfDaySetting(TimeOfDay time) {
   final now = DateTime.now();
-  final localRef = DateTime(now.year, now.month, now.day, time.hour, time.minute);
+  final localRef = DateTime(
+    now.year,
+    now.month,
+    now.day,
+    time.hour,
+    time.minute,
+  );
   final utcRef = localRef.toUtc();
   final normalized = DateTime.utc(1970, 1, 1, utcRef.hour, utcRef.minute);
   return formatSubstrateUtcTimestamp(normalized);
@@ -684,44 +689,43 @@ Map<String, dynamic>? encodeSubstrateRecurrence(
   return switch (type) {
     RecurrenceType.none => null,
     RecurrenceType.daily => {
-        'RecurrenceType': 'Daily',
-        'IntervalType': 'Days',
-        'Interval': 1,
-        'FirstDayOfWeek': firstDay,
-      },
+      'RecurrenceType': 'Daily',
+      'IntervalType': 'Days',
+      'Interval': 1,
+      'FirstDayOfWeek': firstDay,
+    },
     RecurrenceType.weekdays => {
-        'RecurrenceType': 'WeekDays',
-        'IntervalType': 'Weeks',
-        'Interval': 1,
-        'FirstDayOfWeek': firstDay,
-        'WeekDays': const [
-          'Monday',
-          'Tuesday',
-          'Wednesday',
-          'Thursday',
-          'Friday',
-        ],
-      },
+      'RecurrenceType': 'WeekDays',
+      'IntervalType': 'Weeks',
+      'Interval': 1,
+      'FirstDayOfWeek': firstDay,
+      'WeekDays': const [
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+      ],
+    },
     RecurrenceType.weekly => {
-        'RecurrenceType': 'Weekly',
-        'IntervalType': 'Weeks',
-        'Interval': 1,
-        'FirstDayOfWeek': firstDay,
-        if (dueDate != null)
-          'WeekDays': [_isoWeekdayNames[dueDate.weekday - 1]],
-      },
+      'RecurrenceType': 'Weekly',
+      'IntervalType': 'Weeks',
+      'Interval': 1,
+      'FirstDayOfWeek': firstDay,
+      if (dueDate != null) 'WeekDays': [_isoWeekdayNames[dueDate.weekday - 1]],
+    },
     RecurrenceType.monthly => {
-        'RecurrenceType': 'Monthly',
-        'IntervalType': 'Months',
-        'Interval': 1,
-        'FirstDayOfWeek': firstDay,
-      },
+      'RecurrenceType': 'Monthly',
+      'IntervalType': 'Months',
+      'Interval': 1,
+      'FirstDayOfWeek': firstDay,
+    },
     RecurrenceType.yearly => {
-        'RecurrenceType': 'Yearly',
-        'IntervalType': 'Years',
-        'Interval': 1,
-        'FirstDayOfWeek': firstDay,
-      },
+      'RecurrenceType': 'Yearly',
+      'IntervalType': 'Years',
+      'Interval': 1,
+      'FirstDayOfWeek': firstDay,
+    },
   };
 }
 
@@ -731,9 +735,8 @@ RecurrenceType decodeSubstrateRecurrence(Map<String, dynamic>? map) {
   final type = (map['RecurrenceType'] as String?)?.trim().toLowerCase();
   final intervalType = (map['IntervalType'] as String?)?.trim().toLowerCase();
   final weekDaysRaw = map['WeekDays'] as List<dynamic>?;
-  final weekDays = weekDaysRaw
-          ?.map((e) => e.toString().trim().toLowerCase())
-          .toSet() ??
+  final weekDays =
+      weekDaysRaw?.map((e) => e.toString().trim().toLowerCase()).toSet() ??
       const <String>{};
   const monToFri = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday'};
 
@@ -754,9 +757,10 @@ RecurrenceType decodeSubstrateRecurrence(Map<String, dynamic>? map) {
     case 'custom':
       return switch (intervalType) {
         'days' => RecurrenceType.daily,
-        'weeks' => weekDays.length == 5 && weekDays.containsAll(monToFri)
-            ? RecurrenceType.weekdays
-            : RecurrenceType.weekly,
+        'weeks' =>
+          weekDays.length == 5 && weekDays.containsAll(monToFri)
+              ? RecurrenceType.weekdays
+              : RecurrenceType.weekly,
         'months' => RecurrenceType.monthly,
         'years' => RecurrenceType.yearly,
         _ => RecurrenceType.weekly,
@@ -786,10 +790,7 @@ String stripHtmlToPlainText(String raw, {String? contentType}) {
     RegExp(r'<script\b[^>]*>[\s\S]*?</script>', caseSensitive: false),
     '',
   );
-  text = text.replaceAll(
-    RegExp(r'<br\s*/?>', caseSensitive: false),
-    '\n',
-  );
+  text = text.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
   text = text.replaceAll(
     RegExp(r'</(?:p|div|li|tr|h[1-6])>', caseSensitive: false),
     '\n',
@@ -847,8 +848,9 @@ Map<int, DateTime> computeReorderedOrderDateTimes(
   }
 
   final prev = movedIndex > 0 ? reorderedOrders[movedIndex - 1]?.toUtc() : null;
-  final next =
-      movedIndex + 1 < n ? reorderedOrders[movedIndex + 1]?.toUtc() : null;
+  final next = movedIndex + 1 < n
+      ? reorderedOrders[movedIndex + 1]?.toUtc()
+      : null;
 
   var beforeAllOrdered = true;
   DateTime? prevCursor;
@@ -896,7 +898,8 @@ Map<int, DateTime> computeReorderedOrderDateTimes(
     }
   }
 
-  final canUpdateMovedOnly = (prev == null &&
+  final canUpdateMovedOnly =
+      (prev == null &&
           beforeAllOrdered &&
           next != null &&
           afterAllAtMostNext) ||
@@ -933,9 +936,7 @@ Map<int, DateTime> computeReorderedOrderDateTimes(
   }
   return {
     for (var i = 0; i < n; i++)
-      i: anchor.subtract(
-        Duration(seconds: kOrderDateTimeStep.inSeconds * i),
-      ),
+      i: anchor.subtract(Duration(seconds: kOrderDateTimeStep.inSeconds * i)),
   };
 }
 
@@ -952,7 +953,7 @@ DateTime computeInsertedOrderDateTime({
     if (prevUtc.isAfter(nextUtc)) {
       final midMicros =
           (prevUtc.microsecondsSinceEpoch + nextUtc.microsecondsSinceEpoch) ~/
-              2;
+          2;
       return DateTime.fromMicrosecondsSinceEpoch(midMicros, isUtc: true);
     }
     return nextUtc.add(const Duration(milliseconds: 1));
@@ -973,7 +974,10 @@ DateTime computeNewOrderDateTime({
   required bool addToTop,
   DateTime? fallbackNow,
 }) {
-  final nonNull = existingOrders.whereType<DateTime>().map((d) => d.toUtc()).toList();
+  final nonNull = existingOrders
+      .whereType<DateTime>()
+      .map((d) => d.toUtc())
+      .toList();
   if (nonNull.isEmpty) {
     return (fallbackNow ?? DateTime.now()).toUtc();
   }

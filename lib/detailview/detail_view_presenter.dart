@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../models/task_item.dart';
 import '../data/todo_provider.dart';
 import '../sync/todo_wire_codecs.dart';
@@ -14,12 +15,12 @@ class DetailViewPresenter {
   TodoNotifier get _store => _ref.read(todoProvider.notifier);
   TodoState get _state => _ref.read(todoProvider);
 
-  void _commitTasks(List<TaskItem> updated, {bool clearSelectedTaskId = false}) {
+  void _commitTasks(
+    List<TaskItem> updated, {
+    bool clearSelectedTaskId = false,
+  }) {
     _store.commit(
-      _state.copyWith(
-        tasks: updated,
-        clearSelectedTaskId: clearSelectedTaskId,
-      ),
+      _state.copyWith(tasks: updated, clearSelectedTaskId: clearSelectedTaskId),
     );
     _store.storage.saveTasks(updated);
   }
@@ -102,7 +103,8 @@ class DetailViewPresenter {
   void setTaskDueDate(String taskId, DateTime? dueDate) {
     final now = DateTime.now();
     _updateTaskById(taskId, (task) {
-      final clearPostponed = dueDate != null &&
+      final clearPostponed =
+          dueDate != null &&
           _state.showDueTodayInMyDay &&
           task.postponedDay != null &&
           TodoNotifier.isSameDay(dueDate, task.postponedDay!);
@@ -134,11 +136,8 @@ class DetailViewPresenter {
     _updateTaskById(taskId, (task) {
       final nextDue =
           (recurrence != RecurrenceType.none && task.dueDate == null)
-              ? defaultDueDateForRecurrence(
-                  recurrence,
-                  reminderAt: task.reminderAt,
-                )
-              : task.dueDate;
+          ? defaultDueDateForRecurrence(recurrence, reminderAt: task.reminderAt)
+          : task.dueDate;
       return TodoNotifier.syncMyDayFlag(
         task.copyWith(recurrence: recurrence, dueDate: nextDue),
         now: now,
@@ -149,10 +148,7 @@ class DetailViewPresenter {
 
   void deleteTask(String taskId) {
     final updated = _state.tasks.where((t) => t.id != taskId).toList();
-    _commitTasks(
-      updated,
-      clearSelectedTaskId: _state.selectedTaskId == taskId,
-    );
+    _commitTasks(updated, clearSelectedTaskId: _state.selectedTaskId == taskId);
   }
 
   void addStep(String taskId, String title) {
@@ -246,9 +242,7 @@ class DetailViewPresenter {
         isCompleted: false,
       );
       updated.add(
-        task.copyWith(
-          steps: task.steps.where((s) => s.id != stepId).toList(),
-        ),
+        task.copyWith(steps: task.steps.where((s) => s.id != stepId).toList()),
       );
     }
     if (promoted == null) return;

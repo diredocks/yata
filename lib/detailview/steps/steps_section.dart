@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+
 import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../theme/todo_theme.dart';
@@ -72,9 +73,11 @@ class _StepsSectionState extends State<StepsSection> {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final secondaryText =
-        isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
-    final accent = widget.accentColor ??
+    final secondaryText = isDark
+        ? TodoColors.secondaryTextDark
+        : TodoColors.secondaryTextLight;
+    final accent =
+        widget.accentColor ??
         (isDark ? TodoColors.attentionDark : TodoColors.attentionLight);
 
     return Material(
@@ -137,11 +140,7 @@ class _StepsSectionState extends State<StepsSection> {
                 Padding(
                   padding: const EdgeInsets.only(right: 2),
                   child: PopupMenuButton<String>(
-                    icon: Icon(
-                      Icons.more_vert,
-                      size: 20,
-                      color: secondaryText,
-                    ),
+                    icon: Icon(Icons.more_vert, size: 20, color: secondaryText),
                     onSelected: (action) {
                       if (action == 'promote') {
                         widget.onPromoteStepToTask(step.id);

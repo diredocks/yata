@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+
 import '../../detailview/recurrence/task_pickers.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
@@ -23,7 +24,8 @@ class TaskEntrySheet extends StatefulWidget {
     DateTime? dueDate,
     DateTime? reminderAt,
     RecurrenceType recurrence,
-  }) onSubmit;
+  })
+  onSubmit;
 
   @override
   State<TaskEntrySheet> createState() => _TaskEntrySheetState();
@@ -253,8 +255,8 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
                       Icons.arrow_upward_rounded,
                       color: hasText
                           ? (isDark
-                              ? TodoColors.attentionDark
-                              : TodoColors.attentionLight)
+                                ? TodoColors.attentionDark
+                                : TodoColors.attentionLight)
                           : theme.disabledColor,
                     ),
                   ),
@@ -295,9 +297,9 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
                     onSelected: (_) => _pickDueDate(),
                     onDeleted: _dueDate != null
                         ? () => setState(() {
-                              _dueDate = null;
-                              _recurrence = RecurrenceType.none;
-                            })
+                            _dueDate = null;
+                            _recurrence = RecurrenceType.none;
+                          })
                         : null,
                   ),
                   const SizedBox(width: 8),
@@ -323,7 +325,8 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
                     showCheckmark: false,
                     onSelected: (_) => _pickRecurrence(),
                     onDeleted: _recurrence != RecurrenceType.none
-                        ? () => setState(() => _recurrence = RecurrenceType.none)
+                        ? () =>
+                              setState(() => _recurrence = RecurrenceType.none)
                         : null,
                   ),
                 ],

@@ -108,44 +108,47 @@ void main() {
     expect(nextYearly.dueDate, DateTime(2025, 2, 28));
   });
 
-  test('Sort defaults, toggle direction, and physical moveStarredTasksToTop', () async {
-    final container = await _createContainer();
-    addTearDown(container.dispose);
+  test(
+    'Sort defaults, toggle direction, and physical moveStarredTasksToTop',
+    () async {
+      final container = await _createContainer();
+      addTearDown(container.dispose);
 
-    final tasksPresenter = container.read(tasksViewPresenterProvider);
-    container.read(todoProvider.notifier).selectList('tasks');
+      final tasksPresenter = container.read(tasksViewPresenterProvider);
+      container.read(todoProvider.notifier).selectList('tasks');
 
-    tasksPresenter.addTask(title: 'Alpha');
-    tasksPresenter.addTask(title: 'Beta');
-    final alpha = container
-        .read(todoProvider)
-        .tasks
-        .firstWhere((t) => t.title == 'Alpha');
+      tasksPresenter.addTask(title: 'Alpha');
+      tasksPresenter.addTask(title: 'Beta');
+      final alpha = container
+          .read(todoProvider)
+          .tasks
+          .firstWhere((t) => t.title == 'Alpha');
 
-    // Starring Alpha moves it to top physically when moveStarredTasksToTop is true
-    tasksPresenter.toggleTaskImportant(alpha.id);
-    final tasksList = container.read(todoProvider).selectedList;
-    var ordered = container.read(todoProvider).tasksForList(tasksList);
-    expect(ordered.first.title, 'Alpha');
+      // Starring Alpha moves it to top physically when moveStarredTasksToTop is true
+      tasksPresenter.toggleTaskImportant(alpha.id);
+      final tasksList = container.read(todoProvider).selectedList;
+      var ordered = container.read(todoProvider).tasksForList(tasksList);
+      expect(ordered.first.title, 'Alpha');
 
-    // Manual reorder can still move Alpha below Beta
-    tasksPresenter.reorderActiveTasks(ordered, 0, 1);
-    ordered = container.read(todoProvider).tasksForList(
-          container.read(todoProvider).selectedList,
-        );
-    expect(ordered.first.title, 'Beta');
+      // Manual reorder can still move Alpha below Beta
+      tasksPresenter.reorderActiveTasks(ordered, 0, 1);
+      ordered = container
+          .read(todoProvider)
+          .tasksForList(container.read(todoProvider).selectedList);
+      expect(ordered.first.title, 'Beta');
 
-    // Selecting importance defaults to descending (important first), clicking again flips
-    tasksPresenter.setListSortOption('tasks', TaskSortOption.importance);
-    expect(container.read(todoProvider).selectedList.sortAscending, isFalse);
-    ordered = container
-        .read(todoProvider)
-        .tasksForList(container.read(todoProvider).selectedList);
-    expect(ordered.first.title, 'Alpha');
+      // Selecting importance defaults to descending (important first), clicking again flips
+      tasksPresenter.setListSortOption('tasks', TaskSortOption.importance);
+      expect(container.read(todoProvider).selectedList.sortAscending, isFalse);
+      ordered = container
+          .read(todoProvider)
+          .tasksForList(container.read(todoProvider).selectedList);
+      expect(ordered.first.title, 'Alpha');
 
-    tasksPresenter.setListSortOption('tasks', TaskSortOption.importance);
-    expect(container.read(todoProvider).selectedList.sortAscending, isTrue);
-  });
+      tasksPresenter.setListSortOption('tasks', TaskSortOption.importance);
+      expect(container.read(todoProvider).selectedList.sortAscending, isTrue);
+    },
+  );
 
   test('Smart lists filtering, Completed badge count, groups dedup, duplicate & delete list', () async {
     final container = await _createContainer();
@@ -184,56 +187,74 @@ void main() {
     final eggId = container.read(todoProvider).tasks.first.id;
     tasksPresenter.toggleTaskCompleted(eggId);
     final state = container.read(todoProvider);
-    final allList = state.lists.firstWhere((l) => l.smartType == SmartListType.all);
-    final completedList =
-        state.lists.firstWhere((l) => l.smartType == SmartListType.completed);
+    final allList = state.lists.firstWhere(
+      (l) => l.smartType == SmartListType.all,
+    );
+    final completedList = state.lists.firstWhere(
+      (l) => l.smartType == SmartListType.completed,
+    );
     expect(state.tasksForList(allList), isEmpty);
     expect(state.activeCountForList(completedList), 0);
   });
 
-  test('Steps promote/empty-rename, noteUpdatedAt guard, batchCopy & Search', () async {
-    final container = await _createContainer();
-    addTearDown(container.dispose);
+  test(
+    'Steps promote/empty-rename, noteUpdatedAt guard, batchCopy & Search',
+    () async {
+      final container = await _createContainer();
+      addTearDown(container.dispose);
 
-    final tasksPresenter = container.read(tasksViewPresenterProvider);
-    final actionPresenter = container.read(tasksActionPresenterProvider);
-    final detailPresenter = container.read(detailViewPresenterProvider);
-    final searchPresenter = container.read(searchPresenterProvider);
+      final tasksPresenter = container.read(tasksViewPresenterProvider);
+      final actionPresenter = container.read(tasksActionPresenterProvider);
+      final detailPresenter = container.read(detailViewPresenterProvider);
+      final searchPresenter = container.read(searchPresenterProvider);
 
-    container.read(todoProvider.notifier).selectList('tasks');
-    tasksPresenter.addTask(title: 'Parent task');
-    final parent = container.read(todoProvider).tasks.first;
+      container.read(todoProvider.notifier).selectList('tasks');
+      tasksPresenter.addTask(title: 'Parent task');
+      final parent = container.read(todoProvider).tasks.first;
 
-    // Empty rename deletes step
-    detailPresenter.addStep(parent.id, 'Step 1');
-    final step1Id = container.read(todoProvider).tasks.first.steps.first.id;
-    detailPresenter.renameStep(parent.id, step1Id, '   ');
-    expect(container.read(todoProvider).tasks.first.steps, isEmpty);
+      // Empty rename deletes step
+      detailPresenter.addStep(parent.id, 'Step 1');
+      final step1Id = container.read(todoProvider).tasks.first.steps.first.id;
+      detailPresenter.renameStep(parent.id, step1Id, '   ');
+      expect(container.read(todoProvider).tasks.first.steps, isEmpty);
 
-    // Completed step cannot be promoted
-    detailPresenter.addStep(parent.id, 'Done step');
-    final doneStepId = container.read(todoProvider).tasks.first.steps.first.id;
-    detailPresenter.toggleStepCompleted(parent.id, doneStepId);
-    detailPresenter.promoteStepToTask(parent.id, doneStepId);
-    expect(container.read(todoProvider).tasks.length, 1);
+      // Completed step cannot be promoted
+      detailPresenter.addStep(parent.id, 'Done step');
+      final doneStepId = container
+          .read(todoProvider)
+          .tasks
+          .first
+          .steps
+          .first
+          .id;
+      detailPresenter.toggleStepCompleted(parent.id, doneStepId);
+      detailPresenter.promoteStepToTask(parent.id, doneStepId);
+      expect(container.read(todoProvider).tasks.length, 1);
 
-    // Note update with same text does not change noteUpdatedAt
-    detailPresenter.updateTaskNote(parent.id, 'Hello world');
-    final firstTime = container.read(todoProvider).tasks.first.noteUpdatedAt;
-    detailPresenter.updateTaskNote(parent.id, 'Hello world');
-    final secondTime = container.read(todoProvider).tasks.first.noteUpdatedAt;
-    expect(secondTime, firstTime);
+      // Note update with same text does not change noteUpdatedAt
+      detailPresenter.updateTaskNote(parent.id, 'Hello world');
+      final firstTime = container.read(todoProvider).tasks.first.noteUpdatedAt;
+      detailPresenter.updateTaskNote(parent.id, 'Hello world');
+      final secondTime = container.read(todoProvider).tasks.first.noteUpdatedAt;
+      expect(secondTime, firstTime);
 
-    // Batch copy preserves completed state
-    tasksPresenter.toggleTaskCompleted(parent.id);
-    actionPresenter.batchCopyToList({parent.id}, 'tasks');
-    expect(
-      container.read(todoProvider).tasks.where((t) => t.isCompleted).length,
-      2,
-    );
+      // Batch copy preserves completed state
+      tasksPresenter.toggleTaskCompleted(parent.id);
+      actionPresenter.batchCopyToList({parent.id}, 'tasks');
+      expect(
+        container.read(todoProvider).tasks.where((t) => t.isCompleted).length,
+        2,
+      );
 
-    // Search matches multi-word tokens across title/note/steps and respects showCompleted
-    expect(searchPresenter.search('parent task', showCompleted: true).length, 2);
-    expect(searchPresenter.search('parent task', showCompleted: false), isEmpty);
-  });
+      // Search matches multi-word tokens across title/note/steps and respects showCompleted
+      expect(
+        searchPresenter.search('parent task', showCompleted: true).length,
+        2,
+      );
+      expect(
+        searchPresenter.search('parent task', showCompleted: false),
+        isEmpty,
+      );
+    },
+  );
 }

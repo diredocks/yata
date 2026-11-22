@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
+
 import '../data/todo_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
@@ -21,10 +23,7 @@ enum NotificationActionType {
 
 @immutable
 class NotificationActionEvent {
-  const NotificationActionEvent({
-    required this.type,
-    this.taskId,
-  });
+  const NotificationActionEvent({required this.type, this.taskId});
 
   final NotificationActionType type;
   final String? taskId;
@@ -124,7 +123,7 @@ abstract class NotificationTransport {
 
 class FlutterLocalNotificationTransport implements NotificationTransport {
   FlutterLocalNotificationTransport([FlutterLocalNotificationsPlugin? plugin])
-      : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+    : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
   final FlutterLocalNotificationsPlugin _plugin;
   bool _initialized = false;
@@ -150,8 +149,9 @@ class FlutterLocalNotificationTransport implements NotificationTransport {
     if (_initialized || kIsWeb) return;
     _initialized = true;
 
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const linuxSettings = LinuxInitializationSettings(
       defaultActionName: 'Open Yata',
     );
@@ -175,15 +175,19 @@ class FlutterLocalNotificationTransport implements NotificationTransport {
     if (kIsWeb) return false;
     final result = await _guardPlatform<bool>(() async {
       if (defaultTargetPlatform == TargetPlatform.android) {
-        final android = _plugin.resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+        final android = _plugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
         final granted = await android?.requestNotificationsPermission();
         await android?.requestExactAlarmsPermission();
         return granted ?? true;
       }
       if (defaultTargetPlatform == TargetPlatform.iOS) {
-        final ios = _plugin.resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin>();
+        final ios = _plugin
+            .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin
+            >();
         return await ios?.requestPermissions(
               alert: true,
               badge: true,
@@ -321,8 +325,8 @@ class NotificationService {
   NotificationService({
     NotificationTransport? transport,
     DateTime Function()? clock,
-  })  : _transport = transport ?? FlutterLocalNotificationTransport(),
-        _clock = clock ?? DateTime.now;
+  }) : _transport = transport ?? FlutterLocalNotificationTransport(),
+       _clock = clock ?? DateTime.now;
 
   static const dueTodayNotificationId = 1001;
   static const routineNotificationId = 1002;
@@ -482,7 +486,9 @@ class NotificationService {
     if (state.remindersEnabled) {
       for (final task in state.tasks) {
         final reminderAt = task.reminderAt;
-        if (task.isCompleted || reminderAt == null || !reminderAt.isAfter(now)) {
+        if (task.isCompleted ||
+            reminderAt == null ||
+            !reminderAt.isAfter(now)) {
           continue;
         }
         final id = notificationIdForTask(task.id);
@@ -552,11 +558,13 @@ class NotificationService {
       ..addAll(nextTaskIds);
 
     // 2. Due Today daily summary notification.
-    final dueTodayTasks = state.tasks.where((t) {
-      return !t.isCompleted &&
-          t.dueDate != null &&
-          TodoNotifier.isSameDay(t.dueDate!, now);
-    }).toList(growable: false);
+    final dueTodayTasks = state.tasks
+        .where((t) {
+          return !t.isCompleted &&
+              t.dueDate != null &&
+              TodoNotifier.isSameDay(t.dueDate!, now);
+        })
+        .toList(growable: false);
 
     if (state.dueTodayNotificationsEnabled && dueTodayTasks.isNotEmpty) {
       final target = _nextDailyOccurrence(

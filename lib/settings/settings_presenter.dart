@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
+
 import '../models/todo_list.dart';
 import '../data/todo_provider.dart';
 
@@ -20,11 +21,6 @@ class SettingsPresenter {
   void setUseDynamicColor(bool value) {
     _store.commit(_state.copyWith(useDynamicColor: value));
     _store.storage.saveUseDynamicColor(value);
-  }
-
-  void toggleShowCompleted(bool value) {
-    _store.commit(_state.copyWith(showCompleted: value));
-    _store.storage.saveShowCompleted(value);
   }
 
   void setAddNewTasksOnTop(bool value) {

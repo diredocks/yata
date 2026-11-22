@@ -15,19 +15,19 @@ class MsaInteractiveSignInResult {
   const MsaInteractiveSignInResult.success({
     required String this.code,
     this.redirectUrl,
-  })  : cancelled = false,
-        error = null;
+  }) : cancelled = false,
+       error = null;
 
   const MsaInteractiveSignInResult.cancelled()
-      : code = null,
-        redirectUrl = null,
-        cancelled = true,
-        error = null;
+    : code = null,
+      redirectUrl = null,
+      cancelled = true,
+      error = null;
 
   const MsaInteractiveSignInResult.failure(String this.error)
-      : code = null,
-        redirectUrl = null,
-        cancelled = false;
+    : code = null,
+      redirectUrl = null,
+      cancelled = false;
 
   final String? code;
   final String? redirectUrl;
@@ -60,14 +60,11 @@ class PlatformMsaInteractiveSignInClient implements MsaInteractiveSignInClient {
       return null;
     }
     try {
-      final result = await _channel.invokeMapMethod<String, dynamic>(
-        'signIn',
-        {
-          'authorizeUrl': authorizeUrl,
-          'redirectUri': redirectUri,
-          'clearCookies': clearCookies,
-        },
-      );
+      final result = await _channel.invokeMapMethod<String, dynamic>('signIn', {
+        'authorizeUrl': authorizeUrl,
+        'redirectUri': redirectUri,
+        'clearCookies': clearCookies,
+      });
       if (result == null) {
         return const MsaInteractiveSignInResult.cancelled();
       }
@@ -98,9 +95,7 @@ class PlatformMsaInteractiveSignInClient implements MsaInteractiveSignInClient {
       if (e.code == 'CANCELLED') {
         return const MsaInteractiveSignInResult.cancelled();
       }
-      return MsaInteractiveSignInResult.failure(
-        e.message ?? e.code,
-      );
+      return MsaInteractiveSignInResult.failure(e.message ?? e.code);
     }
   }
 }

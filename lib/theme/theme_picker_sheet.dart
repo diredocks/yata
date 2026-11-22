@@ -1,7 +1,8 @@
 import 'package:material_ui/material_ui.dart';
+
 import '../l10n/app_localizations.dart';
 import '../models/todo_list.dart';
-import '../theme/todo_theme.dart';
+import 'todo_theme.dart';
 
 /// Bottom sheet matching `theme_picker_bottom_sheet.xml` (`customizations/ThemePickerBottomSheet`).
 Future<void> showThemePickerBottomSheet({
@@ -9,7 +10,7 @@ Future<void> showThemePickerBottomSheet({
   required ListThemeColor currentColor,
   ListThemePhoto? currentPhoto,
   required void Function(ListThemeColor color, ListThemePhoto? photo)
-      onSelectTheme,
+  onSelectTheme,
 }) async {
   final l10n = AppLocalizations.of(context);
   var selectedColor = currentColor;
@@ -35,10 +36,12 @@ Future<void> showThemePickerBottomSheet({
                       height: 4,
                       decoration: BoxDecoration(
                         color: isDark
-                            ? TodoColors.secondaryTextDark
-                                .withValues(alpha: 0.4)
-                            : TodoColors.secondaryTextLight
-                                .withValues(alpha: 0.35),
+                            ? TodoColors.secondaryTextDark.withValues(
+                                alpha: 0.4,
+                              )
+                            : TodoColors.secondaryTextLight.withValues(
+                                alpha: 0.35,
+                              ),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -88,7 +91,7 @@ class ThemePickerView extends StatefulWidget {
   final ListThemeColor selectedColor;
   final ListThemePhoto? selectedPhoto;
   final void Function(ListThemeColor color, ListThemePhoto? photo)
-      onSelectTheme;
+  onSelectTheme;
 
   @override
   State<ThemePickerView> createState() => _ThemePickerViewState();
@@ -140,13 +143,14 @@ class _ThemePickerViewState extends State<ThemePickerView> {
                     separatorBuilder: (_, _) => const SizedBox(width: 10),
                     itemBuilder: (context, index) {
                       final color = ListThemeColor.values[index];
-                      final isSelected = widget.selectedPhoto == null &&
+                      final isSelected =
+                          widget.selectedPhoto == null &&
                           widget.selectedColor == color;
                       final dotColor = theme.brightness == Brightness.dark
                           ? Colors.black
                           : (TodoColors.isLightTheme(color)
-                              ? TodoColors.accentFor(color)
-                              : Colors.white);
+                                ? TodoColors.accentFor(color)
+                                : Colors.white);
                       return Center(
                         child: GestureDetector(
                           key: ValueKey('color_theme_${color.name}'),
@@ -161,7 +165,8 @@ class _ThemePickerViewState extends State<ThemePickerView> {
                                 brightness: theme.brightness,
                               ),
                               shape: BoxShape.circle,
-                              border: TodoColors.isLightTheme(color) &&
+                              border:
+                                  TodoColors.isLightTheme(color) &&
                                       theme.brightness == Brightness.light
                                   ? Border.all(
                                       color: TodoColors.accentFor(color)
@@ -199,8 +204,9 @@ class _ThemePickerViewState extends State<ThemePickerView> {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               image: DecorationImage(
-                                image:
-                                    AssetImage(TodoColors.photoAssetFor(photo)),
+                                image: AssetImage(
+                                  TodoColors.photoAssetFor(photo),
+                                ),
                                 fit: BoxFit.cover,
                               ),
                             ),
@@ -246,12 +252,7 @@ class _SelectionDot extends StatelessWidget {
             shape: BoxShape.circle,
             color: color,
             boxShadow: withShadow
-                ? const [
-                    BoxShadow(
-                      color: Color(0x40000000),
-                      blurRadius: 2,
-                    ),
-                  ]
+                ? const [BoxShadow(color: Color(0x40000000), blurRadius: 2)]
                 : null,
           ),
         ),

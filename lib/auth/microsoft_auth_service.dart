@@ -82,8 +82,8 @@ class MicrosoftAuthTokens {
 
   bool get isExpired {
     return DateTime.now().toUtc().isAfter(
-          expiresAt.toUtc().subtract(const Duration(minutes: 5)),
-        );
+      expiresAt.toUtc().subtract(const Duration(minutes: 5)),
+    );
   }
 
   MicrosoftAuthTokens copyWith({
@@ -137,10 +137,7 @@ class MicrosoftUserProfile {
 
 /// Complete personal MSA sign-in payload passed to [AccountNotifier.signInMicrosoft].
 class MicrosoftSignInResult {
-  const MicrosoftSignInResult({
-    required this.profile,
-    required this.tokens,
-  });
+  const MicrosoftSignInResult({required this.profile, required this.tokens});
 
   final MicrosoftUserProfile profile;
   final MicrosoftAuthTokens tokens;
@@ -214,7 +211,7 @@ abstract class MicrosoftAuthClient {
 
 class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
   HttpMicrosoftAuthClient({http.Client? httpClient})
-      : _http = httpClient ?? http.Client();
+    : _http = httpClient ?? http.Client();
 
   final http.Client _http;
 
@@ -267,9 +264,7 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
           );
         }
         final state = params['state'];
-        if (state != null &&
-            state.isNotEmpty &&
-            state != MsaAuthConfig.state) {
+        if (state != null && state.isNotEmpty && state != MsaAuthConfig.state) {
           throw const MicrosoftAuthException(
             'OAuth state mismatch in redirect URL.',
             code: 'invalid_state',
@@ -338,9 +333,7 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
     final response = await _http
         .post(
           Uri.parse(MsaAuthConfig.tokenEndpoint),
-          headers: const {
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
+          headers: const {'Content-Type': 'application/x-www-form-urlencoded'},
           body: body,
         )
         .timeout(const Duration(seconds: 20));
@@ -349,7 +342,8 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final error = decoded['error'] as String?;
       final desc = decoded['error_description'] as String?;
-      final requiresReauth = error == 'invalid_grant' ||
+      final requiresReauth =
+          error == 'invalid_grant' ||
           error == 'interaction_required' ||
           error == 'bad_refresh_token' ||
           response.statusCode == 401;
@@ -363,8 +357,7 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
     final accessToken = decoded['access_token'] as String?;
     final refreshToken =
         (decoded['refresh_token'] as String?) ?? fallbackRefreshToken ?? '';
-    final rawUserId =
-        (decoded['user_id'] as String?) ?? fallbackUserId ?? '';
+    final rawUserId = (decoded['user_id'] as String?) ?? fallbackUserId ?? '';
     final expiresIn = (decoded['expires_in'] as num?)?.toInt() ?? 3600;
 
     if (accessToken == null || accessToken.isEmpty) {
@@ -408,10 +401,7 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
         resolved.latestRefreshToken!.isNotEmpty) {
       tokens = tokens.copyWith(refreshToken: resolved.latestRefreshToken);
     }
-    return MicrosoftSignInResult(
-      profile: resolved.profile,
-      tokens: tokens,
-    );
+    return MicrosoftSignInResult(profile: resolved.profile, tokens: tokens);
   }
 
   @override
@@ -430,7 +420,7 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
   }
 
   Future<({MicrosoftUserProfile profile, String? latestRefreshToken})>
-      _resolveProfileAndAvatar({
+  _resolveProfileAndAvatar({
     required String cid,
     required String refreshToken,
     String? fallbackEmail,
@@ -534,7 +524,8 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
     );
 
     final effectiveEmail = resolvedEmail ?? '';
-    final effectiveDisplayName = resolvedName ??
+    final effectiveDisplayName =
+        resolvedName ??
         (effectiveEmail.isNotEmpty ? effectiveEmail : 'Microsoft Account');
 
     return (
@@ -565,8 +556,7 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
   }
 
   String? _extractProfileDisplayName(Map<String, dynamic> json) {
-    final direct =
-        (json['displayName'] ?? json['DisplayName']) as String?;
+    final direct = (json['displayName'] ?? json['DisplayName']) as String?;
     if (direct != null &&
         direct.trim().isNotEmpty &&
         direct.trim().toLowerCase() != 'null') {
@@ -577,8 +567,8 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
         ((json['givenName'] ?? json['GivenName']) as String?)?.trim() ?? '';
     final topFamily =
         ((json['surname'] ?? json['Surname'] ?? json['lastName']) as String?)
-                ?.trim() ??
-            '';
+            ?.trim() ??
+        '';
     final topJoined = '$topGiven $topFamily'.trim();
     if (topJoined.isNotEmpty) return topJoined;
 
@@ -592,9 +582,10 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
           formatted.trim().toLowerCase() != 'null') {
         return formatted.trim();
       }
-      final given = ((first['givenName'] ?? first['First']) as String?)?.trim() ?? '';
-      final family = ((first['lastName'] ?? first['surname'] ?? first['Last'])
-                  as String?)
+      final given =
+          ((first['givenName'] ?? first['First']) as String?)?.trim() ?? '';
+      final family =
+          ((first['lastName'] ?? first['surname'] ?? first['Last']) as String?)
               ?.trim() ??
           '';
       final joined = '$given $family'.trim();
@@ -720,14 +711,12 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
   @override
   Future<String> discoverTodoEndpoint(String cid) async {
     final normalizedCid = MsaAuthConfig.normalizeCid(cid);
-    final url = '${MsaAuthConfig.autodiscoverEndpoint}/'
+    final url =
+        '${MsaAuthConfig.autodiscoverEndpoint}/'
         'CID:${Uri.encodeComponent(normalizedCid)}?Protocol=todo';
     try {
       final response = await _http
-          .get(
-            Uri.parse(url),
-            headers: const {'Accept': 'application/json'},
-          )
+          .get(Uri.parse(url), headers: const {'Accept': 'application/json'})
           .timeout(const Duration(seconds: 10));
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final json = _decodeJsonMap(response.body);
@@ -779,8 +768,7 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
     }
     final refreshed = await refreshTokens(
       refreshToken: stored.refreshToken,
-      fallbackUserId:
-          stored.userId.isNotEmpty ? stored.userId : fallbackCid,
+      fallbackUserId: stored.userId.isNotEmpty ? stored.userId : fallbackCid,
     );
     await storage.saveTokens(accountId, refreshed);
     return refreshed;
@@ -805,10 +793,7 @@ class AuthTokenStorage {
 
   static String _keyFor(String accountId) => 'yata.msa.tokens.$accountId';
 
-  Future<void> saveTokens(
-    String accountId,
-    MicrosoftAuthTokens tokens,
-  ) async {
+  Future<void> saveTokens(String accountId, MicrosoftAuthTokens tokens) async {
     await _prefs.setString(_keyFor(accountId), jsonEncode(tokens.toJson()));
   }
 

@@ -1,6 +1,7 @@
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
+
 import '../models/todo_list.dart';
 
 class TodoColors {
@@ -61,11 +62,7 @@ class TodoColors {
     gradient: LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [
-        Color(0x1A000000),
-        Color(0x0D000000),
-        Color(0x00000000),
-      ],
+      colors: [Color(0x1A000000), Color(0x0D000000), Color(0x00000000)],
     ),
   );
 
@@ -77,8 +74,7 @@ class TodoColors {
       ListThemeColor.lightGreen ||
       ListThemeColor.lightPurple ||
       ListThemeColor.lightRed ||
-      ListThemeColor.lightGrey =>
-        true,
+      ListThemeColor.lightGrey => true,
       _ => false,
     };
   }
@@ -166,65 +162,73 @@ class TodoColors {
 
   static Color _darkBottomFor(ListThemeColor themeColor) {
     return switch (themeColor) {
-      ListThemeColor.blue || ListThemeColor.lightBlue => const Color(0xFF788CDE),
-      ListThemeColor.rose || ListThemeColor.lightRose => const Color(0xFFE46C8C),
-      ListThemeColor.teal || ListThemeColor.lightTeal => const Color(0xFF479E98),
+      ListThemeColor.blue ||
+      ListThemeColor.lightBlue => const Color(0xFF788CDE),
+      ListThemeColor.rose ||
+      ListThemeColor.lightRose => const Color(0xFFE46C8C),
+      ListThemeColor.teal ||
+      ListThemeColor.lightTeal => const Color(0xFF479E98),
       ListThemeColor.green ||
-      ListThemeColor.lightGreen =>
-        const Color(0xFF4AA079),
+      ListThemeColor.lightGreen => const Color(0xFF4AA079),
       ListThemeColor.purple ||
-      ListThemeColor.lightPurple =>
-        const Color(0xFFBC7ABC),
+      ListThemeColor.lightPurple => const Color(0xFFBC7ABC),
       ListThemeColor.red || ListThemeColor.lightRed => const Color(0xFFE46B67),
-      ListThemeColor.grey || ListThemeColor.lightGrey => const Color(0xFF8795A0),
+      ListThemeColor.grey ||
+      ListThemeColor.lightGrey => const Color(0xFF8795A0),
     };
   }
 
   static Color _lightBottomFor(ListThemeColor themeColor) {
     return switch (themeColor) {
-      ListThemeColor.blue || ListThemeColor.lightBlue => const Color(0xFFDFEDF9),
-      ListThemeColor.rose || ListThemeColor.lightRose => const Color(0xFFFFE4E9),
-      ListThemeColor.teal || ListThemeColor.lightTeal => const Color(0xFFD4F1EF),
+      ListThemeColor.blue ||
+      ListThemeColor.lightBlue => const Color(0xFFDFEDF9),
+      ListThemeColor.rose ||
+      ListThemeColor.lightRose => const Color(0xFFFFE4E9),
+      ListThemeColor.teal ||
+      ListThemeColor.lightTeal => const Color(0xFFD4F1EF),
       ListThemeColor.green ||
-      ListThemeColor.lightGreen =>
-        const Color(0xFFD5F1E5),
+      ListThemeColor.lightGreen => const Color(0xFFD5F1E5),
       ListThemeColor.purple ||
-      ListThemeColor.lightPurple =>
-        const Color(0xFFF2E7F9),
+      ListThemeColor.lightPurple => const Color(0xFFF2E7F9),
       ListThemeColor.red || ListThemeColor.lightRed => const Color(0xFFF9E8DE),
-      ListThemeColor.grey || ListThemeColor.lightGrey => const Color(0xFFE7ECF0),
+      ListThemeColor.grey ||
+      ListThemeColor.lightGrey => const Color(0xFFE7ECF0),
     };
   }
 
   static Color _lightTopFor(ListThemeColor themeColor) {
     return switch (themeColor) {
-      ListThemeColor.blue || ListThemeColor.lightBlue => const Color(0xFF3063AB),
-      ListThemeColor.rose || ListThemeColor.lightRose => const Color(0xFFAC395D),
-      ListThemeColor.teal || ListThemeColor.lightTeal => const Color(0xFF166F6B),
+      ListThemeColor.blue ||
+      ListThemeColor.lightBlue => const Color(0xFF3063AB),
+      ListThemeColor.rose ||
+      ListThemeColor.lightRose => const Color(0xFFAC395D),
+      ListThemeColor.teal ||
+      ListThemeColor.lightTeal => const Color(0xFF166F6B),
       ListThemeColor.green ||
-      ListThemeColor.lightGreen =>
-        const Color(0xFF1E704D),
+      ListThemeColor.lightGreen => const Color(0xFF1E704D),
       ListThemeColor.purple ||
-      ListThemeColor.lightPurple =>
-        const Color(0xFF7D5294),
+      ListThemeColor.lightPurple => const Color(0xFF7D5294),
       ListThemeColor.red || ListThemeColor.lightRed => const Color(0xFFA84329),
-      ListThemeColor.grey || ListThemeColor.lightGrey => const Color(0xFF586570),
+      ListThemeColor.grey ||
+      ListThemeColor.lightGrey => const Color(0xFF586570),
     };
   }
 
   static Color _lightNightFor(ListThemeColor themeColor) {
     return switch (themeColor) {
-      ListThemeColor.blue || ListThemeColor.lightBlue => const Color(0xFFA0CBF1),
-      ListThemeColor.rose || ListThemeColor.lightRose => const Color(0xFFF5B6C2),
-      ListThemeColor.teal || ListThemeColor.lightTeal => const Color(0xFF8BD3CE),
+      ListThemeColor.blue ||
+      ListThemeColor.lightBlue => const Color(0xFFA0CBF1),
+      ListThemeColor.rose ||
+      ListThemeColor.lightRose => const Color(0xFFF5B6C2),
+      ListThemeColor.teal ||
+      ListThemeColor.lightTeal => const Color(0xFF8BD3CE),
       ListThemeColor.green ||
-      ListThemeColor.lightGreen =>
-        const Color(0xFF9AD2BA),
+      ListThemeColor.lightGreen => const Color(0xFF9AD2BA),
       ListThemeColor.purple ||
-      ListThemeColor.lightPurple =>
-        const Color(0xFFD6BDE7),
+      ListThemeColor.lightPurple => const Color(0xFFD6BDE7),
       ListThemeColor.red || ListThemeColor.lightRed => const Color(0xFFECBDA2),
-      ListThemeColor.grey || ListThemeColor.lightGrey => const Color(0xFFBAC8D4),
+      ListThemeColor.grey ||
+      ListThemeColor.lightGrey => const Color(0xFFBAC8D4),
     };
   }
 
@@ -251,9 +255,7 @@ class TodoColors {
     if (brightness == Brightness.dark) {
       return Colors.black;
     }
-    return isLightTheme(themeColor)
-        ? Colors.white
-        : _lightTopFor(themeColor);
+    return isLightTheme(themeColor) ? Colors.white : _lightTopFor(themeColor);
   }
 
   static String photoAssetFor(ListThemePhoto photo) {
@@ -313,12 +315,12 @@ class TodoTheme {
 
   static const PageTransitionsTheme _pageTransitionsTheme =
       PageTransitionsTheme(
-    builders: {
-      TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
-      TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
-      TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
-    },
-  );
+        builders: {
+          TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+          TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
+        },
+      );
 
   static ThemeData light({ColorScheme? dynamicColorScheme}) {
     if (dynamicColorScheme != null) {

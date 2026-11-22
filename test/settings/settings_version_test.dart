@@ -8,11 +8,11 @@ import 'package:yata/l10n/app_localizations.dart';
 import 'package:yata/settings/settings_screen.dart';
 
 void main() {
-  testWidgets('SettingsScreen displays version from PackageInfo',
-      (WidgetTester tester) async {
+  testWidgets('SettingsScreen displays version from PackageInfo', (
+    WidgetTester tester,
+  ) async {
     SharedPreferences.setMockInitialValues({
-      'yata.accounts':
-          '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.accounts': '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
       'yata.active_account_id': 'test',
     });
     final prefs = await SharedPreferences.getInstance();

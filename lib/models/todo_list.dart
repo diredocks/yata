@@ -1,20 +1,8 @@
 import 'package:material_ui/material_ui.dart';
 
-enum SmartListType {
-  myDay,
-  important,
-  planned,
-  all,
-  completed,
-  tasks,
-}
+enum SmartListType { myDay, important, planned, all, completed, tasks }
 
-enum WeekStart {
-  system,
-  sunday,
-  monday,
-  saturday,
-}
+enum WeekStart { system, sunday, monday, saturday }
 
 enum ListThemeColor {
   blue,
@@ -67,20 +55,9 @@ extension TaskSortOptionDefaults on TaskSortOption {
   }
 }
 
-enum PlannedDueDateFilter {
-  overdue,
-  today,
-  tomorrow,
-  thisWeek,
-  later,
-  all,
-}
+enum PlannedDueDateFilter { overdue, today, tomorrow, thisWeek, later, all }
 
-enum PlannedGroupOption {
-  ungroup,
-  byDueDate,
-  byList,
-}
+enum PlannedGroupOption { ungroup, byDueDate, byList }
 
 @immutable
 class TodoList {
@@ -152,8 +129,9 @@ class TodoList {
       sortAscending: sortAscending ?? this.sortAscending,
       showCompleted: showCompleted ?? this.showCompleted,
       remoteId: clearRemoteId ? null : (remoteId ?? this.remoteId),
-      orderDateTime:
-          clearOrderDateTime ? null : (orderDateTime ?? this.orderDateTime),
+      orderDateTime: clearOrderDateTime
+          ? null
+          : (orderDateTime ?? this.orderDateTime),
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
@@ -264,8 +242,9 @@ class ListGroup {
       title: title ?? this.title,
       isExpanded: isExpanded ?? this.isExpanded,
       remoteId: clearRemoteId ? null : (remoteId ?? this.remoteId),
-      orderDateTime:
-          clearOrderDateTime ? null : (orderDateTime ?? this.orderDateTime),
+      orderDateTime: clearOrderDateTime
+          ? null
+          : (orderDateTime ?? this.orderDateTime),
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }

@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+
 import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../theme/todo_theme.dart';
@@ -23,9 +24,11 @@ class MyDayCardView extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final secondaryText =
-        isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
-    final accent = accentColor ??
+    final secondaryText = isDark
+        ? TodoColors.secondaryTextDark
+        : TodoColors.secondaryTextLight;
+    final accent =
+        accentColor ??
         (isDark ? TodoColors.attentionDark : TodoColors.attentionLight);
 
     return Card(
@@ -78,9 +81,11 @@ class TaskSchedulingCardView extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final secondaryText =
-        isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
-    final accent = accentColor ??
+    final secondaryText = isDark
+        ? TodoColors.secondaryTextDark
+        : TodoColors.secondaryTextLight;
+    final accent =
+        accentColor ??
         (isDark ? TodoColors.attentionDark : TodoColors.attentionLight);
 
     return Card(
@@ -129,8 +134,9 @@ class TaskSchedulingCardView extends StatelessWidget {
                 : secondaryText,
             removeColor: secondaryText,
             onTap: onPickRecurrence,
-            onRemove:
-                task.recurrence != RecurrenceType.none ? onClearRecurrence : null,
+            onRemove: task.recurrence != RecurrenceType.none
+                ? onClearRecurrence
+                : null,
           ),
         ],
       ),
@@ -173,12 +179,9 @@ class DetailActionRow extends StatelessWidget {
             Expanded(
               child: AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 160),
-                style: (Theme.of(context).textTheme.bodyLarge ??
-                        const TextStyle())
-                    .copyWith(
-                  fontSize: 15,
-                  color: labelColor,
-                ),
+                style:
+                    (Theme.of(context).textTheme.bodyLarge ?? const TextStyle())
+                        .copyWith(fontSize: 15, color: labelColor),
                 child: Text(label),
               ),
             ),

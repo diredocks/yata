@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -11,10 +12,9 @@ Future<bool> launchExternalUrl(String url) async {
   }
   try {
     if (Platform.isAndroid) {
-      final result = await _browserChannel.invokeMethod<bool>(
-        'openUrl',
-        {'url': url},
-      );
+      final result = await _browserChannel.invokeMethod<bool>('openUrl', {
+        'url': url,
+      });
       return result ?? false;
     }
     if (Platform.isLinux) {
@@ -26,11 +26,12 @@ Future<bool> launchExternalUrl(String url) async {
       return true;
     }
     if (Platform.isWindows) {
-      await Process.start(
-        'cmd',
-        ['/c', 'start', '', url],
-        mode: ProcessStartMode.detached,
-      );
+      await Process.start('cmd', [
+        '/c',
+        'start',
+        '',
+        url,
+      ], mode: ProcessStartMode.detached);
       return true;
     }
   } catch (_) {

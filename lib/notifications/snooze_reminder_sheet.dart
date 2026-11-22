@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+
 import '../l10n/app_localizations.dart';
 
 /// Bottom sheet for snoozing a task reminder, aligned with
@@ -26,42 +27,42 @@ Future<Duration?> showSnoozeReminderSheet(
       return SafeArea(
         child: SingleChildScrollView(
           child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    l10n.snoozeReminderTitle,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  if (taskTitle != null && taskTitle.isNotEmpty) ...[
-                    const SizedBox(height: 2),
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      taskTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall,
+                      l10n.snoozeReminderTitle,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
+                    if (taskTitle != null && taskTitle.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        taskTitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            const Divider(height: 1),
-            for (final (label, duration) in options)
-              ListTile(
-                leading: const Icon(Icons.snooze_outlined),
-                title: Text(label),
-                onTap: () => Navigator.of(ctx).pop(duration),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
+              const Divider(height: 1),
+              for (final (label, duration) in options)
+                ListTile(
+                  leading: const Icon(Icons.snooze_outlined),
+                  title: Text(label),
+                  onTap: () => Navigator.of(ctx).pop(duration),
+                ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       );
     },

@@ -155,68 +155,65 @@ TodoState _makeState({
 }
 
 void main() {
-  test('NotificationService schedules, pins, and cancels task reminders', () async {
-    final now = DateTime(2026, 11, 22, 8, 0);
-    final transport = _FakeTransport();
-    final service = NotificationService(
-      transport: transport,
-      clock: () => now,
-    );
+  test(
+    'NotificationService schedules, pins, and cancels task reminders',
+    () async {
+      final now = DateTime(2026, 11, 22, 8, 0);
+      final transport = _FakeTransport();
+      final service = NotificationService(
+        transport: transport,
+        clock: () => now,
+      );
 
-    final activeTask = TaskItem(
-      id: 'task_1',
-      listId: 'tasks',
-      title: 'Buy milk',
-      reminderAt: DateTime(2026, 11, 22, 10, 0),
-      createdAt: now,
-    );
-    final completedTask = TaskItem(
-      id: 'task_2',
-      listId: 'tasks',
-      title: 'Already done',
-      isCompleted: true,
-      reminderAt: DateTime(2026, 11, 22, 11, 0),
-      createdAt: now,
-    );
-    final pastTask = TaskItem(
-      id: 'task_3',
-      listId: 'tasks',
-      title: 'Past reminder',
-      reminderAt: DateTime(2026, 11, 22, 7, 0),
-      createdAt: now,
-    );
+      final activeTask = TaskItem(
+        id: 'task_1',
+        listId: 'tasks',
+        title: 'Buy milk',
+        reminderAt: DateTime(2026, 11, 22, 10, 0),
+        createdAt: now,
+      );
+      final completedTask = TaskItem(
+        id: 'task_2',
+        listId: 'tasks',
+        title: 'Already done',
+        isCompleted: true,
+        reminderAt: DateTime(2026, 11, 22, 11, 0),
+        createdAt: now,
+      );
+      final pastTask = TaskItem(
+        id: 'task_3',
+        listId: 'tasks',
+        title: 'Past reminder',
+        reminderAt: DateTime(2026, 11, 22, 7, 0),
+        createdAt: now,
+      );
 
-    await service.syncWithState(
-      _makeState(
-        tasks: [activeTask, completedTask, pastTask],
-        pinReminders: true,
-      ),
-    );
+      await service.syncWithState(
+        _makeState(
+          tasks: [activeTask, completedTask, pastTask],
+          pinReminders: true,
+        ),
+      );
 
-    final task1Id = NotificationService.notificationIdForTask('task_1');
-    expect(transport.scheduled.keys, [task1Id]);
-    expect(transport.scheduled[task1Id]!.title, 'Buy milk');
-    expect(transport.scheduled[task1Id]!.ongoing, isTrue);
-    expect(transport.scheduled[task1Id]!.actions.length, 2);
+      final task1Id = NotificationService.notificationIdForTask('task_1');
+      expect(transport.scheduled.keys, [task1Id]);
+      expect(transport.scheduled[task1Id]!.title, 'Buy milk');
+      expect(transport.scheduled[task1Id]!.ongoing, isTrue);
+      expect(transport.scheduled[task1Id]!.actions.length, 2);
 
-    // Disabling reminders cancels the scheduled notification.
-    await service.syncWithState(
-      _makeState(
-        tasks: [activeTask],
-        remindersEnabled: false,
-      ),
-    );
-    expect(transport.scheduled, isEmpty);
-    expect(transport.cancelled, contains(task1Id));
-  });
+      // Disabling reminders cancels the scheduled notification.
+      await service.syncWithState(
+        _makeState(tasks: [activeTask], remindersEnabled: false),
+      );
+      expect(transport.scheduled, isEmpty);
+      expect(transport.cancelled, contains(task1Id));
+    },
+  );
 
   test('NotificationService manages Due Today, Routine, and Quick Add notifications', () async {
     final now = DateTime(2026, 11, 22, 8, 0);
     final transport = _FakeTransport();
-    final service = NotificationService(
-      transport: transport,
-      clock: () => now,
-    );
+    final service = NotificationService(transport: transport, clock: () => now);
 
     final dueTodayTask = TaskItem(
       id: 't_due',
@@ -240,7 +237,9 @@ void main() {
     );
 
     expect(
-      transport.scheduled[NotificationService.dueTodayNotificationId]!.repeatDaily,
+      transport
+          .scheduled[NotificationService.dueTodayNotificationId]!
+          .repeatDaily,
       isTrue,
     );
     expect(
@@ -248,7 +247,9 @@ void main() {
       'Submit report',
     );
     expect(
-      transport.scheduled[NotificationService.routineNotificationId]!.repeatDaily,
+      transport
+          .scheduled[NotificationService.routineNotificationId]!
+          .repeatDaily,
       isTrue,
     );
     expect(
@@ -325,8 +326,9 @@ void main() {
     await sub.cancel();
   });
 
-  testWidgets('SettingsScreen toggles and persists notification preferences',
-      (WidgetTester tester) async {
+  testWidgets('SettingsScreen toggles and persists notification preferences', (
+    WidgetTester tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final transport = _FakeTransport();
@@ -347,10 +349,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(
-      find.text('Quick add notification'),
-      300,
-    );
+    await tester.scrollUntilVisible(find.text('Quick add notification'), 300);
     await tester.pumpAndSettle();
 
     expect(find.text('Notifications'), findsOneWidget);
@@ -370,46 +369,48 @@ void main() {
     expect(reloaded.dueTodayNotificationsEnabled, isTrue);
   });
 
-  testWidgets('showSnoozeReminderSheet shows all 5 options and returns chosen duration',
-      (WidgetTester tester) async {
-    Duration? chosen;
+  testWidgets(
+    'showSnoozeReminderSheet shows all 5 options and returns chosen duration',
+    (WidgetTester tester) async {
+      Duration? chosen;
 
-    await tester.pumpWidget(
-      MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => Center(
-              child: ElevatedButton(
-                onPressed: () async {
-                  chosen = await showSnoozeReminderSheet(
-                    context,
-                    taskTitle: 'Call doctor',
-                  );
-                },
-                child: const Text('Open Snooze'),
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => Center(
+                child: ElevatedButton(
+                  onPressed: () async {
+                    chosen = await showSnoozeReminderSheet(
+                      context,
+                      taskTitle: 'Call doctor',
+                    );
+                  },
+                  child: const Text('Open Snooze'),
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    await tester.tap(find.text('Open Snooze'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Open Snooze'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Snooze reminder'), findsOneWidget);
-    expect(find.text('Call doctor'), findsOneWidget);
-    expect(find.text('5 minutes'), findsOneWidget);
-    expect(find.text('10 minutes'), findsOneWidget);
-    expect(find.text('15 minutes'), findsOneWidget);
-    expect(find.text('30 minutes'), findsOneWidget);
-    expect(find.text('1 hour'), findsOneWidget);
+      expect(find.text('Snooze reminder'), findsOneWidget);
+      expect(find.text('Call doctor'), findsOneWidget);
+      expect(find.text('5 minutes'), findsOneWidget);
+      expect(find.text('10 minutes'), findsOneWidget);
+      expect(find.text('15 minutes'), findsOneWidget);
+      expect(find.text('30 minutes'), findsOneWidget);
+      expect(find.text('1 hour'), findsOneWidget);
 
-    await tester.tap(find.text('30 minutes'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('30 minutes'));
+      await tester.pumpAndSettle();
 
-    expect(chosen, const Duration(minutes: 30));
-  });
+      expect(chosen, const Duration(minutes: 30));
+    },
+  );
 }

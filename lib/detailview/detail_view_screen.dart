@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
+
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
@@ -130,7 +131,8 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
     final confirmRequired = ref.read(todoProvider).confirmBeforeDeleting;
 
     if (confirmRequired) {
-      final stepTitle = task.steps
+      final stepTitle =
+          task.steps
               .where((s) => s.id == stepId)
               .map((s) => s.title)
               .firstOrNull ??
@@ -205,7 +207,8 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
       return const SizedBox.shrink();
     }
 
-    final useDynamicColors = state.useDynamicColor &&
+    final useDynamicColors =
+        state.useDynamicColor &&
         theme.scaffoldBackgroundColor != TodoColors.primaryBackgroundLight &&
         theme.scaffoldBackgroundColor != TodoColors.primaryBackgroundDark;
     final primaryBg = useDynamicColors
@@ -217,53 +220,57 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
     final cardBg = useDynamicColors
         ? theme.colorScheme.surfaceContainerLow
         : (isDark ? TodoColors.secondaryBackgroundDark : Colors.white);
-    final secondaryText =
-        isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
+    final secondaryText = isDark
+        ? TodoColors.secondaryTextDark
+        : TodoColors.secondaryTextLight;
 
-    final originList =
-        state.lists.where((l) => l.id == task.listId).firstOrNull;
+    final originList = state.lists
+        .where((l) => l.id == task.listId)
+        .firstOrNull;
     final listAccent = originList == null
         ? (isDark ? TodoColors.attentionDark : TodoColors.attentionLight)
         : (originList.themePhoto != null
-            ? TodoColors.photoFabBackgroundFor(originList.themePhoto!)
-            : TodoColors.accentFor(
-                originList.themeColor,
-                brightness: theme.brightness,
-              ));
-    final originListTitle = widget.listTitle ??
+              ? TodoColors.photoFabBackgroundFor(originList.themePhoto!)
+              : TodoColors.accentFor(
+                  originList.themeColor,
+                  brightness: theme.brightness,
+                ));
+    final originListTitle =
+        widget.listTitle ??
         (originList == null
             ? l10n.tasks
             : (originList.smartType == SmartListType.tasks
-                ? l10n.tasks
-                : originList.title));
+                  ? l10n.tasks
+                  : originList.title));
 
     final detailContent = HeroMode(
       enabled: widget.onClose == null,
       child: Hero(
         tag: 'task_card_${widget.taskId}',
-        flightShuttleBuilder: (
-          flightContext,
-          animation,
-          flightDirection,
-          fromHeroContext,
-          toHeroContext,
-        ) {
-          final curved = CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutCubic,
-          );
-          return AnimatedBuilder(
-            animation: curved,
-            builder: (context, _) {
-              final radius = 4.0 * (1.0 - curved.value);
-              return Material(
-                color: Color.lerp(cardBg, bodyBg, curved.value),
-                borderRadius: BorderRadius.circular(radius),
-                elevation: 1.0 * (1.0 - curved.value),
+        flightShuttleBuilder:
+            (
+              flightContext,
+              animation,
+              flightDirection,
+              fromHeroContext,
+              toHeroContext,
+            ) {
+              final curved = CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              );
+              return AnimatedBuilder(
+                animation: curved,
+                builder: (context, _) {
+                  final radius = 4.0 * (1.0 - curved.value);
+                  return Material(
+                    color: Color.lerp(cardBg, bodyBg, curved.value),
+                    borderRadius: BorderRadius.circular(radius),
+                    elevation: 1.0 * (1.0 - curved.value),
+                  );
+                },
               );
             },
-          );
-        },
         child: Scaffold(
           backgroundColor: bodyBg,
           body: Column(
@@ -279,7 +286,9 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                     accentColor: listAccent,
                     onToggleCompleted: () {
                       if (!task.isCompleted) {
-                        ref.read(completionSoundServiceProvider).playIfEnabled();
+                        ref
+                            .read(completionSoundServiceProvider)
+                            .playIfEnabled();
                       }
                       notifier.toggleTaskCompleted(task.id);
                     },
@@ -298,101 +307,109 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                     children: [
                       Expanded(
                         child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  StepsSection(
-                    task: task,
-                    backgroundColor: primaryBg,
-                    accentColor: listAccent,
-                    onToggleStepCompleted: (stepId) =>
-                        notifier.toggleStepCompleted(task.id, stepId),
-                    onRenameStep: (stepId, val) =>
-                        notifier.renameStep(task.id, stepId, val),
-                    onPromoteStepToTask: (stepId) =>
-                        notifier.promoteStepToTask(task.id, stepId),
-                    onDeleteStep: (stepId) => _confirmDeleteStep(task, stepId),
-                    onAddStep: (val) => notifier.addStep(task.id, val),
-                  ),
-                  Container(
-                    height: 3,
-                    decoration: TodoColors.horizontalShadowDecoration,
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Column(
-                      children: [
-                        MyDayCardView(
-                          task: task,
-                          cardColor: cardBg,
-                          accentColor: listAccent,
-                          onToggleMyDay: () =>
-                              notifier.toggleTaskMyDay(task.id),
-                        ),
-                        TaskSchedulingCardView(
-                          task: task,
-                          cardColor: cardBg,
-                          accentColor: listAccent,
-                          recurrenceLabel:
-                              _recurrenceLabel(l10n, task.recurrence),
-                          onPickReminder: () =>
-                              _pickReminder(task, state.startOfWeek),
-                          onClearReminder: () =>
-                              notifier.setTaskReminder(task.id, null),
-                          onPickDueDate: () =>
-                              _pickDueDate(task, state.startOfWeek),
-                          onClearDueDate: () =>
-                              notifier.setTaskDueDate(task.id, null),
-                          onPickRecurrence: () => _pickRecurrence(task),
-                          onClearRecurrence: () => notifier.setTaskRecurrence(
-                            task.id,
-                            RecurrenceType.none,
-                          ),
-                        ),
-                        NoteCardView(
-                          task: task,
-                          cardColor: cardBg,
-                          onNoteChanged: (val) =>
-                              notifier.updateTaskNote(task.id, val),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Material(
-              color: primaryBg,
-              elevation: 3,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Divider(height: 1),
-                  SizedBox(
-                    height: 48,
-                    child: Row(
-                      children: [
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Text(
-                            formatCreatedDateLabel(context, task.createdAt),
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: secondaryText,
+                          padding: EdgeInsets.zero,
+                          children: [
+                            StepsSection(
+                              task: task,
+                              backgroundColor: primaryBg,
+                              accentColor: listAccent,
+                              onToggleStepCompleted: (stepId) =>
+                                  notifier.toggleStepCompleted(task.id, stepId),
+                              onRenameStep: (stepId, val) =>
+                                  notifier.renameStep(task.id, stepId, val),
+                              onPromoteStepToTask: (stepId) =>
+                                  notifier.promoteStepToTask(task.id, stepId),
+                              onDeleteStep: (stepId) =>
+                                  _confirmDeleteStep(task, stepId),
+                              onAddStep: (val) =>
+                                  notifier.addStep(task.id, val),
                             ),
-                          ),
+                            Container(
+                              height: 3,
+                              decoration: TodoColors.horizontalShadowDecoration,
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Column(
+                                children: [
+                                  MyDayCardView(
+                                    task: task,
+                                    cardColor: cardBg,
+                                    accentColor: listAccent,
+                                    onToggleMyDay: () =>
+                                        notifier.toggleTaskMyDay(task.id),
+                                  ),
+                                  TaskSchedulingCardView(
+                                    task: task,
+                                    cardColor: cardBg,
+                                    accentColor: listAccent,
+                                    recurrenceLabel: _recurrenceLabel(
+                                      l10n,
+                                      task.recurrence,
+                                    ),
+                                    onPickReminder: () =>
+                                        _pickReminder(task, state.startOfWeek),
+                                    onClearReminder: () =>
+                                        notifier.setTaskReminder(task.id, null),
+                                    onPickDueDate: () =>
+                                        _pickDueDate(task, state.startOfWeek),
+                                    onClearDueDate: () =>
+                                        notifier.setTaskDueDate(task.id, null),
+                                    onPickRecurrence: () =>
+                                        _pickRecurrence(task),
+                                    onClearRecurrence: () =>
+                                        notifier.setTaskRecurrence(
+                                          task.id,
+                                          RecurrenceType.none,
+                                        ),
+                                  ),
+                                  NoteCardView(
+                                    task: task,
+                                    cardColor: cardBg,
+                                    onNoteChanged: (val) =>
+                                        notifier.updateTaskNote(task.id, val),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                        IconButton(
-                          onPressed: () => _confirmDelete(task),
-                          icon: Icon(
-                            Icons.delete_outline,
-                            color: secondaryText,
-                          ),
-                          tooltip: l10n.delete,
+                      ),
+                      Material(
+                        color: primaryBg,
+                        elevation: 3,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Divider(height: 1),
+                            SizedBox(
+                              height: 48,
+                              child: Row(
+                                children: [
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Text(
+                                      formatCreatedDateLabel(
+                                        context,
+                                        task.createdAt,
+                                      ),
+                                      style: theme.textTheme.bodyMedium
+                                          ?.copyWith(color: secondaryText),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    onPressed: () => _confirmDelete(task),
+                                    icon: Icon(
+                                      Icons.delete_outline,
+                                      color: secondaryText,
+                                    ),
+                                    tooltip: l10n.delete,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
                       ),
                     ],
                   ),

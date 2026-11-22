@@ -242,7 +242,9 @@ class CloudSyncService {
           final patched = await todoApi.patchFolderGroup(ctx, group.remoteId!, {
             'Name': group.title,
             if (group.orderDateTime != null)
-              'OrderDateTime': formatSubstrateUtcTimestamp(group.orderDateTime!),
+              'OrderDateTime': formatSubstrateUtcTimestamp(
+                group.orderDateTime!,
+              ),
           });
           workingGroups[i] = group.copyWith(
             title: patched.name.isNotEmpty ? patched.name : group.title,
@@ -279,14 +281,16 @@ class CloudSyncService {
           !list.isSmartList || list.smartType == SmartListType.tasks;
       if (!isSyncableFolder) continue;
 
-      final parentGroupRemoteId =
-          list.groupId != null ? groupRemoteByLocalId[list.groupId!] : null;
+      final parentGroupRemoteId = list.groupId != null
+          ? groupRemoteByLocalId[list.groupId!]
+          : null;
 
       if (!list.isSmartList && list.remoteId == null) {
         final payload = <String, dynamic>{
           'Name': encodeFolderName(list.title, list.emoji),
-          'OrderDateTime':
-              formatSubstrateUtcTimestamp(list.orderDateTime ?? nowUtc),
+          'OrderDateTime': formatSubstrateUtcTimestamp(
+            list.orderDateTime ?? nowUtc,
+          ),
           'ThemeColor': encodeFolderThemeColor(list.themeColor),
           'ThemeBackground': ?encodeFolderThemeBackground(list.themePhoto),
           'ShowCompletedTasks': list.showCompleted,
@@ -325,8 +329,9 @@ class CloudSyncService {
           if (!e.isNotFound || list.isSmartList) rethrow;
           final recreated = await todoApi.createFolder(ctx, {
             'Name': encodeFolderName(list.title, list.emoji),
-            'OrderDateTime':
-                formatSubstrateUtcTimestamp(list.orderDateTime ?? nowUtc),
+            'OrderDateTime': formatSubstrateUtcTimestamp(
+              list.orderDateTime ?? nowUtc,
+            ),
             'ThemeColor': encodeFolderThemeColor(list.themeColor),
             'ThemeBackground': ?encodeFolderThemeBackground(list.themePhoto),
             'ShowCompletedTasks': list.showCompleted,
@@ -360,8 +365,9 @@ class CloudSyncService {
     }
 
     // Phase 7: Pull remote settings (skip keys still dirty locally).
-    final remainingDirtySettings =
-        dirtySettingKeys.difference(syncedSettingKeys);
+    final remainingDirtySettings = dirtySettingKeys.difference(
+      syncedSettingKeys,
+    );
     final remoteSettings = await todoApi.getSettings(ctx);
     final settingsPatch = buildSyncedSettingsPatchFromWire(
       remoteSettings,
@@ -409,8 +415,9 @@ class CloudSyncService {
 
     // Remove tasks orphaned by a deleted remote folder.
     final validListIds = {for (final l in workingLists) l.id};
-    workingTasks =
-        workingTasks.where((t) => validListIds.contains(t.listId)).toList();
+    workingTasks = workingTasks
+        .where((t) => validListIds.contains(t.listId))
+        .toList();
 
     // Phase 10a: Push dirty / new tasks & steps.
     final folderRemoteByLocalId = {
@@ -475,7 +482,9 @@ class CloudSyncService {
     }
 
     // Phase 10b: Pull per-folder tasks delta (with 410 recovery + move safety).
-    final taskDeltaLinks = Map<String, String>.from(storage.loadTaskDeltaLinks());
+    final taskDeltaLinks = Map<String, String>.from(
+      storage.loadTaskDeltaLinks(),
+    );
     final remainingDirtyTasks = dirtyTaskIds.difference(syncedTaskIds);
     final localListIdByFolderRemoteId = {
       for (final l in workingLists)
@@ -522,7 +531,8 @@ class CloudSyncService {
         }
         seenActiveRemoteTaskIds.add(remote.id);
 
-        final resolvedListId = (remote.parentFolderId != null
+        final resolvedListId =
+            (remote.parentFolderId != null
                 ? localListIdByFolderRemoteId[remote.parentFolderId!]
                 : null) ??
             localListId;
@@ -673,7 +683,9 @@ class CloudSyncService {
       }
 
       if (remote.isDefaultFolder) {
-        final idx = result.indexWhere((l) => l.smartType == SmartListType.tasks);
+        final idx = result.indexWhere(
+          (l) => l.smartType == SmartListType.tasks,
+        );
         if (idx >= 0) {
           final existing = result[idx];
           if (dirtyListIds.contains(existing.id)) {
@@ -781,7 +793,8 @@ class CloudSyncService {
       firstDayOfWeek: firstDayOfWeek,
     );
 
-    final movedFolder = !isCreate &&
+    final movedFolder =
+        !isCreate &&
         task.remoteParentFolderId != null &&
         task.remoteParentFolderId != parentFolderRemoteId;
 
@@ -792,13 +805,11 @@ class CloudSyncService {
         task.orderDateTime ?? task.createdAt,
       ),
       if (isCreate) 'CreatedWithLocalId': task.id,
-      'Body': {
-        'Content': task.note,
-        'ContentType': 'Text',
-      },
+      'Body': {'Content': task.note, 'ContentType': 'Text'},
       if (task.noteUpdatedAt != null)
-        'BodyLastModifiedTime':
-            formatSubstrateUtcTimestamp(task.noteUpdatedAt!),
+        'BodyLastModifiedTime': formatSubstrateUtcTimestamp(
+          task.noteUpdatedAt!,
+        ),
       'Status': task.isCompleted ? 'Completed' : 'NotStarted',
       'Importance': task.isImportant ? 'High' : 'Normal',
       'IsReminderOn': task.reminderAt != null,
@@ -831,8 +842,9 @@ class CloudSyncService {
     }
 
     if (task.committedOrder != null) {
-      payload['CommittedOrder'] =
-          formatSubstrateUtcTimestamp(task.committedOrder!);
+      payload['CommittedOrder'] = formatSubstrateUtcTimestamp(
+        task.committedOrder!,
+      );
     } else if (!isCreate && !task.isInMyDay) {
       payload['CommittedOrder'] = null;
     }
@@ -886,7 +898,8 @@ class CloudSyncService {
     for (var i = 0; i < localSteps.length; i++) {
       final step = localSteps[i];
       if (step.remoteId == null) {
-        final stepOrder = step.orderDateTime ??
+        final stepOrder =
+            step.orderDateTime ??
             nowUtc.subtract(
               Duration(seconds: i * kOrderDateTimeStep.inSeconds),
             );
@@ -897,12 +910,9 @@ class CloudSyncService {
           orderDateTime: stepOrder,
         );
         if (step.isCompleted) {
-          await todoApi.patchStep(
-            ctx,
-            taskRemoteId,
-            created.id,
-            const {'IsCompleted': true},
-          );
+          await todoApi.patchStep(ctx, taskRemoteId, created.id, const {
+            'IsCompleted': true,
+          });
         }
         syncedSteps.add(
           step.copyWith(
@@ -948,7 +958,8 @@ class CloudSyncService {
         (
           index: i,
           step: TaskStep(
-            id: existingStepIdByRemoteId[remote.subtasks[i].id] ??
+            id:
+                existingStepIdByRemoteId[remote.subtasks[i].id] ??
                 idGenerator('step'),
             title: remote.subtasks[i].subject,
             isCompleted: remote.subtasks[i].isCompleted,

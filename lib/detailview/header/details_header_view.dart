@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+
 import '../../models/task_item.dart';
 import '../../theme/todo_theme.dart';
 import '../../view/task_checkbox.dart';
@@ -59,9 +60,11 @@ class _DetailsHeaderViewState extends State<DetailsHeaderView> {
     _syncController();
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final secondaryText =
-        isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
-    final accent = widget.accentColor ??
+    final secondaryText = isDark
+        ? TodoColors.secondaryTextDark
+        : TodoColors.secondaryTextLight;
+    final accent =
+        widget.accentColor ??
         (isDark ? TodoColors.attentionDark : TodoColors.attentionLight);
 
     return Material(

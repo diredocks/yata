@@ -3,17 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../customizations/theme_picker_sheet.dart';
+import '../account/account_provider.dart';
+import '../data/todo_provider.dart';
 import '../detailview/recurrence/task_pickers.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
-import '../account/account_provider.dart';
 import '../sync/sync_provider.dart';
-import '../data/todo_provider.dart';
-import 'completion_sound_service.dart';
+import '../theme/theme_picker_sheet.dart';
 import '../theme/todo_theme.dart';
 import '../view/delayed_task_completion.dart';
+import 'completion_sound_service.dart';
 import 'recyclerview/animated_task_sliver_list.dart';
 import 'recyclerview/ruled_lines_painter.dart';
 import 'recyclerview/swipeable_task_card.dart';
@@ -21,22 +21,10 @@ import 'recyclerview/task_list_tile.dart';
 import 'renamelist/list_editor_dialog.dart';
 import 'richentry/task_entry_sheet.dart';
 import 'tasks_action_presenter.dart';
+import 'tasks_view_bars.dart';
+import 'tasks_view_dialogs.dart';
 import 'tasks_view_grouping.dart';
 import 'tasks_view_presenter.dart';
-
-enum _TasksViewMode { browsing, reordering, multiSelecting }
-
-enum _ListMenuAction {
-  rename,
-  sort,
-  groupBy,
-  reorder,
-  changeTheme,
-  duplicate,
-  delete,
-}
-
-enum _MultiSelectAction { selectOrClearAll, important, move, copy, delete }
 
 class TasksViewScreen extends ConsumerStatefulWidget {
   const TasksViewScreen({
@@ -53,7 +41,7 @@ class TasksViewScreen extends ConsumerStatefulWidget {
 }
 
 class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
-  _TasksViewMode _mode = _TasksViewMode.browsing;
+  TasksViewMode _mode = TasksViewMode.browsing;
   double _scrollOffset = 0.0;
   bool _isSnappingHeader = false;
   final ScrollController _scrollController = ScrollController();
@@ -78,7 +66,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   }
 
   void _snapHeaderIfNeeded(double collapseDelta) {
-    if (_mode != _TasksViewMode.browsing ||
+    if (_mode != TasksViewMode.browsing ||
         _isSnappingHeader ||
         collapseDelta <= 0 ||
         !_scrollController.hasClients) {
@@ -125,13 +113,13 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
   void _enterReordering() {
     setState(() {
-      _mode = _TasksViewMode.reordering;
+      _mode = TasksViewMode.reordering;
       _multiSelectedIds.clear();
     });
   }
 
   void _exitReordering() {
-    setState(() => _mode = _TasksViewMode.browsing);
+    setState(() => _mode = TasksViewMode.browsing);
   }
 
   void _toggleSelection(String taskId) {
@@ -140,15 +128,15 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         _multiSelectedIds.add(taskId);
       }
       _mode = _multiSelectedIds.isEmpty
-          ? _TasksViewMode.browsing
-          : _TasksViewMode.multiSelecting;
+          ? TasksViewMode.browsing
+          : TasksViewMode.multiSelecting;
     });
   }
 
   void _clearSelection() {
     setState(() {
       _multiSelectedIds.clear();
-      _mode = _TasksViewMode.browsing;
+      _mode = TasksViewMode.browsing;
     });
   }
 
@@ -156,8 +144,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     setState(() {
       _multiSelectedIds.addAll(tasks.map((t) => t.id));
       _mode = _multiSelectedIds.isEmpty
-          ? _TasksViewMode.browsing
-          : _TasksViewMode.multiSelecting;
+          ? TasksViewMode.browsing
+          : TasksViewMode.multiSelecting;
     });
   }
 
@@ -199,207 +187,11 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     );
   }
 
-  String _sortLabel(AppLocalizations l10n, TaskSortOption option) {
-    return switch (option) {
-      TaskSortOption.defaultOrder => l10n.sortByDefault,
-      TaskSortOption.importance => l10n.sortByImportance,
-      TaskSortOption.dueDate => l10n.sortByDueDate,
-      TaskSortOption.addedToMyDay => l10n.sortByAddedToMyDay,
-      TaskSortOption.alphabetical => l10n.sortByAlphabetical,
-      TaskSortOption.creationDate => l10n.sortByCreationDate,
-    };
-  }
-
-  String _plannedBucketLabel(AppLocalizations l10n, PlannedBucket bucket) {
-    return switch (bucket) {
-      PlannedBucket.earlier => l10n.plannedEarlier,
-      PlannedBucket.today => l10n.today,
-      PlannedBucket.tomorrow => l10n.tomorrow,
-      PlannedBucket.thisWeek => l10n.plannedThisWeek,
-      PlannedBucket.later => l10n.plannedLater,
-    };
-  }
-
-  Future<void> _showSortSheet(TodoList currentList) async {
-    final l10n = AppLocalizations.of(context);
-    final notifier = ref.read(tasksViewPresenterProvider);
-    final options = <(TaskSortOption, String, IconData)>[
-      (TaskSortOption.importance, l10n.sortByImportance, Icons.star_outline),
-      (
-        TaskSortOption.dueDate,
-        l10n.sortByDueDate,
-        Icons.calendar_today_outlined,
-      ),
-      (
-        TaskSortOption.addedToMyDay,
-        l10n.sortByAddedToMyDay,
-        Icons.wb_sunny_outlined,
-      ),
-      (
-        TaskSortOption.alphabetical,
-        l10n.sortByAlphabetical,
-        Icons.sort_by_alpha,
-      ),
-      (TaskSortOption.creationDate, l10n.sortByCreationDate, Icons.access_time),
-    ];
-
-    await showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(
-                l10n.sortBy,
-                style: Theme.of(ctx).textTheme.titleMedium,
-              ),
-            ),
-            const Divider(height: 1),
-            for (final (option, label, icon) in options)
-              ListTile(
-                leading: Icon(icon),
-                title: Text(label),
-                trailing: currentList.sortOption == option
-                    ? const Icon(Icons.check)
-                    : null,
-                onTap: () {
-                  notifier.setListSortOption(currentList.id, option);
-                  Navigator.pop(ctx);
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _plannedFilterLabel(
-    AppLocalizations l10n,
-    PlannedDueDateFilter filter,
-  ) {
-    return switch (filter) {
-      PlannedDueDateFilter.all => l10n.filterAllPlanned,
-      PlannedDueDateFilter.overdue => l10n.filterOverdue,
-      PlannedDueDateFilter.today => l10n.filterToday,
-      PlannedDueDateFilter.tomorrow => l10n.filterTomorrow,
-      PlannedDueDateFilter.thisWeek => l10n.filterThisWeek,
-      PlannedDueDateFilter.later => l10n.filterLater,
-    };
-  }
-
-  Future<void> _showPlannedGroupSheet(PlannedGroupOption currentOption) async {
-    final l10n = AppLocalizations.of(context);
-    final notifier = ref.read(tasksViewPresenterProvider);
-    final options = <(PlannedGroupOption, String, IconData)>[
-      (PlannedGroupOption.byDueDate, l10n.groupByDueDate, Icons.calendar_today_outlined),
-      (PlannedGroupOption.byList, l10n.groupByList, Icons.format_list_bulleted),
-      (PlannedGroupOption.ungroup, l10n.groupByUngroup, Icons.view_stream_outlined),
-    ];
-
-    await showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(
-                l10n.groupBy,
-                style: Theme.of(ctx).textTheme.titleMedium,
-              ),
-            ),
-            const Divider(height: 1),
-            for (final (option, label, icon) in options)
-              ListTile(
-                leading: Icon(icon),
-                title: Text(label),
-                trailing: currentOption == option ? const Icon(Icons.check) : null,
-                onTap: () {
-                  notifier.setPlannedGroupOption(option);
-                  Navigator.pop(ctx);
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showPlannedFilterSheet(
-    PlannedDueDateFilter currentFilter,
-  ) async {
-    final l10n = AppLocalizations.of(context);
-    final notifier = ref.read(tasksViewPresenterProvider);
-    final options = <(PlannedDueDateFilter, String, IconData)>[
-      (PlannedDueDateFilter.all, l10n.filterAllPlanned, Icons.all_inclusive),
-      (PlannedDueDateFilter.overdue, l10n.filterOverdue, Icons.warning_amber_outlined),
-      (PlannedDueDateFilter.today, l10n.filterToday, Icons.today_outlined),
-      (PlannedDueDateFilter.tomorrow, l10n.filterTomorrow, Icons.wb_twilight_outlined),
-      (PlannedDueDateFilter.thisWeek, l10n.filterThisWeek, Icons.date_range_outlined),
-      (PlannedDueDateFilter.later, l10n.filterLater, Icons.event_outlined),
-    ];
-
-    await showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(
-                l10n.filterDueDate,
-                style: Theme.of(ctx).textTheme.titleMedium,
-              ),
-            ),
-            const Divider(height: 1),
-            for (final (filter, label, icon) in options)
-              ListTile(
-                leading: Icon(icon),
-                title: Text(label),
-                trailing:
-                    currentFilter == filter ? const Icon(Icons.check) : null,
-                onTap: () {
-                  notifier.setPlannedDueDateFilter(filter);
-                  Navigator.pop(ctx);
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<bool> _confirmDialog({
-    required String title,
-    required String content,
-    required String confirmLabel,
-    required String cancelLabel,
-  }) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(content),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(cancelLabel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(confirmLabel),
-          ),
-        ],
-      ),
-    );
-    return confirmed == true;
-  }
-
   Future<void> _confirmDeleteList(TodoList list, bool confirmRequired) async {
     final l10n = AppLocalizations.of(context);
     if (confirmRequired) {
-      final confirmed = await _confirmDialog(
+      final confirmed = await showTasksConfirmDialog(
+        context: context,
         title: l10n.deleteList,
         content: l10n.deleteListConfirm(list.title),
         confirmLabel: l10n.delete,
@@ -430,57 +222,13 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     }
   }
 
-  Future<String?> _pickTargetListSheet(
-    TodoState state,
-    String sheetTitle,
-  ) async {
-    final l10n = AppLocalizations.of(context);
-    final selectableLists = state.lists
-        .where((l) => !l.isSmartList || l.smartType == SmartListType.tasks)
-        .toList();
-
-    return showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(
-                sheetTitle,
-                style: Theme.of(ctx).textTheme.titleMedium,
-              ),
-            ),
-            const Divider(height: 1),
-            Flexible(
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  for (final list in selectableLists)
-                    ListTile(
-                      leading: Icon(
-                        list.icon,
-                        color: TodoColors.accentFor(list.themeColor),
-                      ),
-                      title: Text(
-                        list.smartType == SmartListType.tasks
-                            ? l10n.tasks
-                            : list.title,
-                      ),
-                      onTap: () => Navigator.pop(ctx, list.id),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _batchCopyToList(TodoState state) async {
     final l10n = AppLocalizations.of(context);
-    final picked = await _pickTargetListSheet(state, l10n.copyTasks);
+    final picked = await pickTargetListSheet(
+      context: context,
+      state: state,
+      sheetTitle: l10n.copyTasks,
+    );
     if (picked == null || !mounted) return;
     ref
         .read(tasksActionPresenterProvider)
@@ -490,7 +238,11 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
   Future<void> _batchMoveToList(TodoState state) async {
     final l10n = AppLocalizations.of(context);
-    final picked = await _pickTargetListSheet(state, l10n.moveToList);
+    final picked = await pickTargetListSheet(
+      context: context,
+      state: state,
+      sheetTitle: l10n.moveToList,
+    );
     if (picked == null || !mounted) return;
     ref
         .read(tasksActionPresenterProvider)
@@ -510,23 +262,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
     var keepCompleted = false;
     if (hasCompleted) {
-      final choice = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text(l10n.keepTasksCompletedTitle),
-          content: Text(l10n.keepTasksCompletedMessage),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(l10n.no),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(l10n.yes),
-            ),
-          ],
-        ),
-      );
+      final choice = await promptKeepCompletedOnDuplicate(context);
       if (choice == null) return;
       keepCompleted = choice;
     }
@@ -541,7 +277,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   Future<void> _batchDelete(bool confirmRequired) async {
     final l10n = AppLocalizations.of(context);
     if (confirmRequired) {
-      final confirmed = await _confirmDialog(
+      final confirmed = await showTasksConfirmDialog(
+        context: context,
         title: l10n.deleteTaskTitle,
         content: l10n.deleteSelectedConfirm(_multiSelectedIds.length),
         confirmLabel: l10n.delete,
@@ -553,102 +290,15 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     _clearSelection();
   }
 
-  PopupMenuItem<T> _buildPopupMenuItem<T>({
-    required T value,
-    required IconData icon,
-    required String label,
-    Color? color,
-  }) {
-    return PopupMenuItem<T>(
-      value: value,
-      child: ListTile(
-        leading: Icon(icon, color: color),
-        title: Text(
-          label,
-          style: color != null ? TextStyle(color: color) : null,
-        ),
-        contentPadding: EdgeInsets.zero,
-        dense: true,
-      ),
-    );
-  }
-
-  List<PopupMenuEntry<_ListMenuAction>> _buildMenuItems(
-    AppLocalizations l10n,
-    TodoList list,
-    int activeTasksCount,
-  ) {
-    final isCustom = !list.isSmartList;
-    final supportsSort =
-        isCustom ||
-        list.smartType == SmartListType.myDay ||
-        list.smartType == SmartListType.important ||
-        list.smartType == SmartListType.all ||
-        list.smartType == SmartListType.completed ||
-        list.smartType == SmartListType.tasks;
-    final supportsReorder =
-        (isCustom ||
-            list.smartType == SmartListType.myDay ||
-            list.smartType == SmartListType.tasks) &&
-        list.sortOption == TaskSortOption.defaultOrder &&
-        activeTasksCount >= 2;
-
-    return [
-      if (isCustom)
-        _buildPopupMenuItem(
-          value: _ListMenuAction.rename,
-          icon: Icons.edit_outlined,
-          label: l10n.renameList,
-        ),
-      if (supportsSort)
-        _buildPopupMenuItem(
-          value: _ListMenuAction.sort,
-          icon: Icons.sort,
-          label: l10n.sortBy,
-        ),
-      if (list.smartType == SmartListType.planned)
-        _buildPopupMenuItem(
-          value: _ListMenuAction.groupBy,
-          icon: Icons.view_agenda_outlined,
-          label: l10n.groupBy,
-        ),
-      if (supportsReorder)
-        _buildPopupMenuItem(
-          value: _ListMenuAction.reorder,
-          icon: Icons.reorder,
-          label: l10n.reorderTasks,
-        ),
-      _buildPopupMenuItem(
-        value: _ListMenuAction.changeTheme,
-        icon: Icons.palette_outlined,
-        label: l10n.changeTheme,
-      ),
-      if (isCustom) ...[
-        _buildPopupMenuItem(
-          value: _ListMenuAction.duplicate,
-          icon: Icons.copy_outlined,
-          label: l10n.duplicateList,
-        ),
-        const PopupMenuDivider(),
-        _buildPopupMenuItem(
-          value: _ListMenuAction.delete,
-          icon: Icons.delete_outline,
-          label: l10n.deleteList,
-          color: TodoColors.overdueRed,
-        ),
-      ],
-    ];
-  }
-
   Future<void> _handleMenuAction(
-    _ListMenuAction action,
+    ListMenuAction action,
     TodoState state,
     TodoList currentList,
   ) async {
     final notifier = ref.read(tasksViewPresenterProvider);
     final l10n = AppLocalizations.of(context);
     switch (action) {
-      case _ListMenuAction.rename:
+      case ListMenuAction.rename:
         final result = await showListEditorDialog(
           context: context,
           dialogTitle: l10n.renameList,
@@ -668,11 +318,20 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           themePhoto: result.themePhoto,
           clearThemePhoto: result.themePhoto == null,
         );
-      case _ListMenuAction.sort:
-        await _showSortSheet(currentList);
-      case _ListMenuAction.groupBy:
-        await _showPlannedGroupSheet(state.plannedGroupOption);
-      case _ListMenuAction.reorder:
+      case ListMenuAction.sort:
+        await showTasksSortSheet(
+          context: context,
+          currentList: currentList,
+          onSelectSortOption: (option) =>
+              notifier.setListSortOption(currentList.id, option),
+        );
+      case ListMenuAction.groupBy:
+        await showPlannedGroupSheet(
+          context: context,
+          currentOption: state.plannedGroupOption,
+          onSelectGroupOption: notifier.setPlannedGroupOption,
+        );
+      case ListMenuAction.reorder:
         if (currentList.sortOption != TaskSortOption.defaultOrder) {
           notifier.setListSortOption(
             currentList.id,
@@ -680,7 +339,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           );
         }
         _enterReordering();
-      case _ListMenuAction.changeTheme:
+      case ListMenuAction.changeTheme:
         await showThemePickerBottomSheet(
           context: context,
           currentColor: currentList.themeColor,
@@ -691,21 +350,21 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
             themePhoto: photo,
           ),
         );
-      case _ListMenuAction.duplicate:
+      case ListMenuAction.duplicate:
         await _duplicateListWithPrompt(state, currentList);
-      case _ListMenuAction.delete:
+      case ListMenuAction.delete:
         await _confirmDeleteList(currentList, state.confirmBeforeDeleting);
     }
   }
 
   void _handleMultiSelectAction(
-    _MultiSelectAction action,
+    MultiSelectAction action,
     TodoState state,
     List<TaskItem> allTasks,
   ) {
     final actionPresenter = ref.read(tasksActionPresenterProvider);
     switch (action) {
-      case _MultiSelectAction.selectOrClearAll:
+      case MultiSelectAction.selectOrClearAll:
         final allSelected =
             allTasks.isNotEmpty &&
             allTasks.every((t) => _multiSelectedIds.contains(t.id));
@@ -714,14 +373,14 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         } else {
           _selectAll(allTasks);
         }
-      case _MultiSelectAction.important:
+      case MultiSelectAction.important:
         actionPresenter.batchMarkImportant(_multiSelectedIds);
         _clearSelection();
-      case _MultiSelectAction.move:
+      case MultiSelectAction.move:
         _batchMoveToList(state);
-      case _MultiSelectAction.copy:
+      case MultiSelectAction.copy:
         _batchCopyToList(state);
-      case _MultiSelectAction.delete:
+      case MultiSelectAction.delete:
         _batchDelete(state.confirmBeforeDeleting);
     }
   }
@@ -760,7 +419,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         state.selectedList.smartType == SmartListType.completed;
     return SwipeableTaskCard(
       key: ValueKey('task_${task.id}'),
-      enabled: _mode == _TasksViewMode.browsing,
+      enabled: _mode == TasksViewMode.browsing,
       isInMyDay: task.isInMyDay,
       accentColor: accentColor,
       onSwipeRight: () =>
@@ -772,10 +431,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         showMyDayBadge: showMyDayBadge,
         accentColor: accentColor,
         isSelected: state.selectedTaskId == task.id,
-        isMultiSelecting: _mode == _TasksViewMode.multiSelecting,
+        isMultiSelecting: _mode == TasksViewMode.multiSelecting,
         isMultiSelected: _multiSelectedIds.contains(task.id),
         onTap: () {
-          if (_mode == _TasksViewMode.multiSelecting) {
+          if (_mode == TasksViewMode.multiSelecting) {
             _toggleSelection(task.id);
           } else {
             widget.onOpenTask(task);
@@ -800,75 +459,6 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     );
   }
 
-  Widget _buildBucketPill({
-    required String label,
-    required int count,
-    required bool isExpanded,
-    required VoidCallback onTap,
-    required TodoList currentList,
-    required Color headerFg,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(4),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 32),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: BoxDecoration(
-                color: currentList.themePhoto != null
-                    ? Colors.black.withValues(alpha: 0.35)
-                    : (Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white.withValues(alpha: 0.10)
-                          : (TodoColors.isLightTheme(currentList.themeColor)
-                                ? Colors.white.withValues(alpha: 0.72)
-                                : Colors.black.withValues(alpha: 0.25))),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedRotation(
-                    turns: isExpanded ? 0.25 : 0.0,
-                    duration: const Duration(milliseconds: 150),
-                    curve: Curves.fastOutSlowIn,
-                    child: Icon(
-                      Icons.keyboard_arrow_right,
-                      color: headerFg,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color: headerFg,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '$count',
-                    style: TextStyle(
-                      color: headerFg,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   PreferredSizeWidget? _buildAppBar({
     required AppLocalizations l10n,
     required TodoState state,
@@ -878,133 +468,33 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     required SystemUiOverlayStyle overlayStyle,
   }) {
     return switch (_mode) {
-      _TasksViewMode.browsing => null,
-      _TasksViewMode.reordering => _buildReorderingAppBar(
-        l10n,
-        isDark,
-        overlayStyle,
+      TasksViewMode.browsing => null,
+      TasksViewMode.reordering => buildReorderingAppBar(
+        l10n: l10n,
+        isDark: isDark,
+        overlayStyle: overlayStyle,
+        onExitReordering: _exitReordering,
       ),
-      _TasksViewMode.multiSelecting => _buildMultiSelectAppBar(
+      TasksViewMode.multiSelecting => buildMultiSelectAppBar(
         l10n: l10n,
         state: state,
         currentList: currentList,
         allTasks: allTasks,
+        multiSelectedIds: _multiSelectedIds,
         isDark: isDark,
         overlayStyle: overlayStyle,
+        onClearSelection: _clearSelection,
+        onBatchAddToMyDay: () {
+          ref
+              .read(tasksActionPresenterProvider)
+              .batchAddToMyDay(_multiSelectedIds);
+          _clearSelection();
+        },
+        onBatchPickDueDate: () => _batchPickDueDate(state.startOfWeek),
+        onSelectAction: (action) =>
+            _handleMultiSelectAction(action, state, allTasks),
       ),
     };
-  }
-
-  PreferredSizeWidget _buildReorderingAppBar(
-    AppLocalizations l10n,
-    bool isDark,
-    SystemUiOverlayStyle overlayStyle,
-  ) {
-    return AppBar(
-      systemOverlayStyle: overlayStyle,
-      backgroundColor: isDark
-          ? TodoColors.primaryBackgroundDark
-          : TodoColors.secondaryTextLight,
-      foregroundColor: Colors.white,
-      leading: IconButton(
-        onPressed: _exitReordering,
-        icon: const Icon(Icons.arrow_back),
-      ),
-      title: Text(l10n.reorderTasks),
-      actions: [
-        IconButton(
-          tooltip: l10n.done,
-          onPressed: _exitReordering,
-          icon: const Icon(Icons.check),
-        ),
-      ],
-    );
-  }
-
-  PreferredSizeWidget _buildMultiSelectAppBar({
-    required AppLocalizations l10n,
-    required TodoState state,
-    required TodoList currentList,
-    required List<TaskItem> allTasks,
-    required bool isDark,
-    required SystemUiOverlayStyle overlayStyle,
-  }) {
-    final actionPresenter = ref.read(tasksActionPresenterProvider);
-    final selectedTasks = state.tasks
-        .where((t) => _multiSelectedIds.contains(t.id))
-        .toList();
-    final canBatchAddToMyDay =
-        currentList.smartType != SmartListType.myDay &&
-        selectedTasks.any((t) => !t.isInMyDay);
-    final canBatchMarkImportant =
-        currentList.smartType != SmartListType.important &&
-        selectedTasks.any((t) => !t.isImportant);
-    final allSelected =
-        allTasks.isNotEmpty &&
-        allTasks.every((t) => _multiSelectedIds.contains(t.id));
-
-    return AppBar(
-      systemOverlayStyle: overlayStyle,
-      backgroundColor: isDark
-          ? TodoColors.primaryBackgroundDark
-          : TodoColors.secondaryTextLight,
-      foregroundColor: Colors.white,
-      leading: IconButton(
-        onPressed: _clearSelection,
-        icon: const Icon(Icons.close),
-      ),
-      title: Text('${_multiSelectedIds.length}'),
-      actions: [
-        if (canBatchAddToMyDay)
-          IconButton(
-            tooltip: l10n.addToMyDay,
-            onPressed: () {
-              actionPresenter.batchAddToMyDay(_multiSelectedIds);
-              _clearSelection();
-            },
-            icon: const Icon(Icons.wb_sunny_outlined),
-          ),
-        IconButton(
-          tooltip: l10n.addDueDate,
-          onPressed: () => _batchPickDueDate(state.startOfWeek),
-          icon: const Icon(Icons.calendar_today_outlined),
-        ),
-        PopupMenuButton<_MultiSelectAction>(
-          icon: const Icon(Icons.more_vert),
-          tooltip: l10n.moreOptions,
-          onSelected: (action) =>
-              _handleMultiSelectAction(action, state, allTasks),
-          itemBuilder: (_) => [
-            _buildPopupMenuItem(
-              value: _MultiSelectAction.selectOrClearAll,
-              icon: allSelected ? Icons.deselect_outlined : Icons.select_all,
-              label: allSelected ? l10n.clearAll : l10n.selectAll,
-            ),
-            if (canBatchMarkImportant)
-              _buildPopupMenuItem(
-                value: _MultiSelectAction.important,
-                icon: Icons.star_outline,
-                label: l10n.important,
-              ),
-            _buildPopupMenuItem(
-              value: _MultiSelectAction.move,
-              icon: Icons.drive_file_move_outlined,
-              label: l10n.moveToList,
-            ),
-            _buildPopupMenuItem(
-              value: _MultiSelectAction.copy,
-              icon: Icons.copy_outlined,
-              label: l10n.copyTasks,
-            ),
-            _buildPopupMenuItem(
-              value: _MultiSelectAction.delete,
-              icon: Icons.delete_outline,
-              label: l10n.delete,
-            ),
-          ],
-        ),
-      ],
-    );
   }
 
   Widget _buildBackground(TodoList currentList, Color backgroundColor) {
@@ -1029,279 +519,6 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     );
   }
 
-  Widget _buildSliverAppBar({
-    required AppLocalizations l10n,
-    required TodoState state,
-    required TodoList currentList,
-    required String listTitle,
-    required String? subtitle,
-    required Color headerFg,
-    required Color backgroundColor,
-    required int activeTasksCount,
-    required bool isDark,
-    required SystemUiOverlayStyle overlayStyle,
-  }) {
-    return SliverAppBar(
-      systemOverlayStyle: overlayStyle,
-      backgroundColor: Colors.transparent,
-      foregroundColor: headerFg,
-      expandedHeight: subtitle != null ? 144 : 116,
-      pinned: true,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      leading: widget.onBackPressed != null
-          ? IconButton(
-              onPressed: widget.onBackPressed,
-              icon: Icon(Icons.arrow_back, color: headerFg),
-            )
-          : null,
-      automaticallyImplyLeading: widget.onBackPressed != null,
-      actions: [
-        PopupMenuButton<_ListMenuAction>(
-          icon: Icon(Icons.more_vert, color: headerFg),
-          tooltip: l10n.moreOptions,
-          onSelected: (action) => _handleMenuAction(action, state, currentList),
-          itemBuilder: (context) =>
-              _buildMenuItems(l10n, currentList, activeTasksCount),
-        ),
-      ],
-      flexibleSpace: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onDoubleTap: _scrollToTop,
-        child: ClipRect(
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 260),
-                child: currentList.themePhoto != null
-                    ? Stack(
-                        key: ValueKey(
-                          'header_photo_${currentList.themePhoto!.name}',
-                        ),
-                        fit: StackFit.expand,
-                        children: [
-                          Image.asset(
-                            TodoColors.photoAssetFor(currentList.themePhoto!),
-                            fit: BoxFit.cover,
-                            alignment: Alignment.topCenter,
-                          ),
-                          Container(
-                            color: Colors.black.withValues(
-                              alpha: isDark ? 0.35 : 0.12,
-                            ),
-                          ),
-                        ],
-                      )
-                    : SizedBox.expand(
-                        key: const ValueKey('header_color'),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 260),
-                          curve: Curves.easeOutCubic,
-                          color: backgroundColor,
-                        ),
-                      ),
-              ),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final topPadding = MediaQuery.paddingOf(context).top;
-                  final collapsedHeight = kToolbarHeight + topPadding;
-                  final expandedHeight =
-                      (subtitle != null ? 144.0 : 116.0) + topPadding;
-                  final denom = expandedHeight - collapsedHeight;
-                  final t = ((expandedHeight - constraints.maxHeight) / denom)
-                      .clamp(0.0, 1.0);
-                  final startPad = widget.onBackPressed != null
-                      ? 16.0 + 40.0 * t
-                      : 15.0;
-                  final bottomPad = subtitle != null ? 42.0 - 26.0 * t : 16.0;
-                  final subtitleSize = 20.0 - 7.0 * t;
-
-                  return FlexibleSpaceBar(
-                    expandedTitleScale: 1.5,
-                    titlePadding: EdgeInsetsDirectional.only(
-                      start: startPad,
-                      bottom: bottomPad,
-                      end: 56,
-                    ),
-                    title: Text(
-                      listTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: headerFg,
-                        fontWeight: FontWeight.w500,
-                        fontSize: 20,
-                      ),
-                    ),
-                    background: subtitle != null
-                        ? Align(
-                            alignment: AlignmentDirectional.bottomStart,
-                            child: Padding(
-                              padding: EdgeInsetsDirectional.only(
-                                start: startPad,
-                                bottom: 10.0 - 4.0 * t,
-                                end: 56,
-                              ),
-                              child: Text(
-                                subtitle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: headerFg.withValues(alpha: 0.92),
-                                  fontSize: subtitleSize,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                              ),
-                            ),
-                          )
-                        : null,
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSortBanner({
-    required AppLocalizations l10n,
-    required TodoList currentList,
-    required Color headerFg,
-  }) {
-    final notifier = ref.read(tasksViewPresenterProvider);
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 2, 8, 6),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 32),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: TodoColors.isLightTheme(currentList.themeColor)
-                  ? Colors.white.withValues(alpha: 0.72)
-                  : Colors.black.withValues(alpha: 0.25),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: InkWell(
-                      onTap: () =>
-                          notifier.toggleListSortDirection(currentList.id),
-                      borderRadius: BorderRadius.circular(4),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 4,
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                l10n.sortedBy(
-                                  _sortLabel(l10n, currentList.sortOption),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: headerFg,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            AnimatedRotation(
-                              turns: currentList.sortAscending ? 0.5 : 0.0,
-                              duration: const Duration(milliseconds: 180),
-                              curve: Curves.easeInOut,
-                              child: Icon(
-                                Icons.keyboard_arrow_down,
-                                color: headerFg,
-                                size: 18,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                InkWell(
-                  onTap: () => notifier.setListSortOption(
-                    currentList.id,
-                    TaskSortOption.defaultOrder,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(Icons.close, size: 20, color: headerFg),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPlannedFilterBanner({
-    required AppLocalizations l10n,
-    required TodoList currentList,
-    required PlannedDueDateFilter currentFilter,
-    required Color headerFg,
-  }) {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: InkWell(
-            onTap: () => _showPlannedFilterSheet(currentFilter),
-            borderRadius: BorderRadius.circular(4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: currentList.themePhoto != null
-                    ? Colors.black.withValues(alpha: 0.35)
-                    : (Theme.of(context).brightness == Brightness.dark
-                        ? Colors.white.withValues(alpha: 0.10)
-                        : (TodoColors.isLightTheme(currentList.themeColor)
-                            ? Colors.white.withValues(alpha: 0.72)
-                            : Colors.black.withValues(alpha: 0.25))),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.filter_list, size: 16, color: headerFg),
-                  const SizedBox(width: 6),
-                  Text(
-                    _plannedFilterLabel(l10n, currentFilter),
-                    style: TextStyle(
-                      color: headerFg,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(width: 2),
-                  Icon(Icons.keyboard_arrow_down, size: 16, color: headerFg),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   List<Widget> _buildTaskSlivers({
     required AppLocalizations l10n,
     required TodoState state,
@@ -1316,7 +533,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     }
 
     return [
-      if (_mode == _TasksViewMode.reordering)
+      if (_mode == TasksViewMode.reordering)
         _buildReorderableSliver(
           l10n: l10n,
           state: state,
@@ -1328,30 +545,30 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           currentList.sortOption == TaskSortOption.defaultOrder)
         ...switch (state.plannedGroupOption) {
           PlannedGroupOption.byDueDate => _buildPlannedBucketSlivers(
-              l10n: l10n,
-              state: state,
-              currentList: currentList,
-              activeTasks: activeTasks,
-              accentColor: accentColor,
-              headerFg: headerFg,
-            ),
+            l10n: l10n,
+            state: state,
+            currentList: currentList,
+            activeTasks: activeTasks,
+            accentColor: accentColor,
+            headerFg: headerFg,
+          ),
           PlannedGroupOption.byList => _buildListBucketSlivers(
+            l10n: l10n,
+            state: state,
+            currentList: currentList,
+            activeTasks: activeTasks,
+            accentColor: accentColor,
+            headerFg: headerFg,
+          ),
+          PlannedGroupOption.ungroup => [
+            _buildFlatTaskSliver(
               l10n: l10n,
               state: state,
               currentList: currentList,
               activeTasks: activeTasks,
               accentColor: accentColor,
-              headerFg: headerFg,
             ),
-          PlannedGroupOption.ungroup => [
-              _buildFlatTaskSliver(
-                l10n: l10n,
-                state: state,
-                currentList: currentList,
-                activeTasks: activeTasks,
-                accentColor: accentColor,
-              ),
-            ],
+          ],
         }
       else if ((currentList.smartType == SmartListType.completed ||
               currentList.smartType == SmartListType.all) &&
@@ -1460,8 +677,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     return [
       for (final group in groups) ...[
         SliverToBoxAdapter(
-          child: _buildBucketPill(
-            label: _plannedBucketLabel(l10n, group.bucket),
+          child: TasksBucketPill(
+            label: plannedBucketLabel(l10n, group.bucket),
             count: group.tasks.length,
             isExpanded: !_collapsedPlannedBuckets.contains(group.bucket.name),
             onTap: () =>
@@ -1503,7 +720,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     return [
       for (final group in groups) ...[
         SliverToBoxAdapter(
-          child: _buildBucketPill(
+          child: TasksBucketPill(
             label: group.title,
             count: group.tasks.length,
             isExpanded: !_collapsedCompletedListBuckets.contains(group.listId),
@@ -1579,7 +796,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
             duration: const Duration(milliseconds: 150),
             curve: Curves.easeOut,
             child: hasCompleted
-                ? _buildBucketPill(
+                ? TasksBucketPill(
                     label: l10n.completed,
                     count: completedTasks.length,
                     isExpanded: completedExpanded,
@@ -1663,7 +880,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       right: 0,
       child: IgnorePointer(
         child: AnimatedOpacity(
-          opacity: (_scrollOffset > 4 && _mode != _TasksViewMode.multiSelecting)
+          opacity: (_scrollOffset > 4 && _mode != TasksViewMode.multiSelecting)
               ? 1.0
               : 0.0,
           duration: const Duration(milliseconds: 150),
@@ -1684,7 +901,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     required bool isDark,
   }) {
     final hideFab =
-        _mode != _TasksViewMode.browsing ||
+        _mode != TasksViewMode.browsing ||
         currentList.smartType == SmartListType.completed;
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 200),
@@ -1724,6 +941,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final brightness = Theme.of(context).brightness;
     final isDark = brightness == Brightness.dark;
     final currentList = state.selectedList;
+    final notifier = ref.read(tasksViewPresenterProvider);
 
     final baseTitle = localizedListTitle(l10n, currentList);
     final listTitle =
@@ -1750,12 +968,12 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         ? DateFormat.MMMMEEEEd().format(DateTime.now())
         : null;
     final overlayStyle = switch (_mode) {
-      _TasksViewMode.browsing =>
+      TasksViewMode.browsing =>
         currentList.themePhoto != null
             ? TodoTheme.systemUiOverlayStyleForBrightness(Brightness.dark)
             : TodoTheme.systemUiOverlayStyleFor(backgroundColor),
-      _TasksViewMode.reordering ||
-      _TasksViewMode.multiSelecting => TodoTheme.systemUiOverlayStyleFor(
+      TasksViewMode.reordering ||
+      TasksViewMode.multiSelecting => TodoTheme.systemUiOverlayStyleFor(
         isDark
             ? TodoColors.primaryBackgroundDark
             : TodoColors.secondaryTextLight,
@@ -1765,15 +983,15 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlayStyle,
       child: PopScope(
-        canPop: _mode == _TasksViewMode.browsing,
+        canPop: _mode == TasksViewMode.browsing,
         onPopInvokedWithResult: (didPop, _) {
           if (didPop) return;
           switch (_mode) {
-            case _TasksViewMode.browsing:
+            case TasksViewMode.browsing:
               break;
-            case _TasksViewMode.reordering:
+            case TasksViewMode.reordering:
               _exitReordering();
-            case _TasksViewMode.multiSelecting:
+            case TasksViewMode.multiSelecting:
               _clearSelection();
           }
         },
@@ -1824,10 +1042,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                   ? const AlwaysScrollableScrollPhysics()
                                   : null,
                               slivers: [
-                                if (_mode == _TasksViewMode.browsing)
-                                  _buildSliverAppBar(
+                                if (_mode == TasksViewMode.browsing)
+                                  TasksSliverAppBar(
                                     l10n: l10n,
-                                    state: state,
                                     currentList: currentList,
                                     listTitle: listTitle,
                                     subtitle: subtitle,
@@ -1836,10 +1053,18 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                     activeTasksCount: active.length,
                                     isDark: isDark,
                                     overlayStyle: overlayStyle,
+                                    onBackPressed: widget.onBackPressed,
+                                    onScrollToTop: _scrollToTop,
+                                    onSelectMenuAction: (action) =>
+                                        _handleMenuAction(
+                                          action,
+                                          state,
+                                          currentList,
+                                        ),
                                   )
                                 else if (_mode ==
-                                        _TasksViewMode.multiSelecting ||
-                                    _mode == _TasksViewMode.reordering)
+                                        TasksViewMode.multiSelecting ||
+                                    _mode == TasksViewMode.reordering)
                                   SliverToBoxAdapter(
                                     child: Padding(
                                       padding: const EdgeInsets.fromLTRB(
@@ -1884,20 +1109,35 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                   ),
                                 if (currentList.sortOption !=
                                         TaskSortOption.defaultOrder &&
-                                    _mode != _TasksViewMode.reordering)
-                                  _buildSortBanner(
+                                    _mode != TasksViewMode.reordering)
+                                  TasksSortBanner(
                                     l10n: l10n,
                                     currentList: currentList,
                                     headerFg: headerFg,
+                                    onToggleSortDirection: () =>
+                                        notifier.toggleListSortDirection(
+                                          currentList.id,
+                                        ),
+                                    onClearSort: () =>
+                                        notifier.setListSortOption(
+                                          currentList.id,
+                                          TaskSortOption.defaultOrder,
+                                        ),
                                   ),
                                 if (currentList.smartType ==
                                         SmartListType.planned &&
-                                    _mode == _TasksViewMode.browsing)
-                                  _buildPlannedFilterBanner(
+                                    _mode == TasksViewMode.browsing)
+                                  TasksPlannedFilterBanner(
                                     l10n: l10n,
                                     currentList: currentList,
                                     currentFilter: state.plannedDueDateFilter,
                                     headerFg: headerFg,
+                                    onTap: () => showPlannedFilterSheet(
+                                      context: context,
+                                      currentFilter: state.plannedDueDateFilter,
+                                      onSelectFilter:
+                                          notifier.setPlannedDueDateFilter,
+                                    ),
                                   ),
                                 ..._buildTaskSlivers(
                                   l10n: l10n,
@@ -1911,8 +1151,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                 _buildRuledLinesSliver(
                                   currentList,
                                   isDark,
-                                  collapseDelta:
-                                      _mode == _TasksViewMode.browsing
+                                  collapseDelta: _mode == TasksViewMode.browsing
                                       ? ((subtitle != null ? 144.0 : 116.0) -
                                             kToolbarHeight)
                                       : 0.0,
@@ -1920,7 +1159,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                               ],
                             );
                             if (!isMicrosoft ||
-                                _mode == _TasksViewMode.reordering) {
+                                _mode == TasksViewMode.reordering) {
                               return scrollView;
                             }
                             return RefreshIndicator(

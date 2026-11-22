@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+
 import '../models/task_item.dart';
 
 /// Coordinates delayed task completion in list views, matching

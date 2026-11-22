@@ -1,5 +1,7 @@
 import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../models/account.dart';
 
 class AccountSnapshot {
@@ -63,8 +65,10 @@ class AccountLocalStorage {
 
   Future<void> deleteAccountData(String accountId) async {
     final prefix = accountKeyPrefix(accountId);
-    final keysToRemove =
-        _prefs.getKeys().where((k) => k.startsWith(prefix)).toList();
+    final keysToRemove = _prefs
+        .getKeys()
+        .where((k) => k.startsWith(prefix))
+        .toList();
     for (final key in keysToRemove) {
       await _prefs.remove(key);
     }

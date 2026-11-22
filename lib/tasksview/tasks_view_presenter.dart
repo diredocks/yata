@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../data/todo_provider.dart';
@@ -18,10 +19,6 @@ class TasksViewPresenter {
     _store.selectTask(taskId);
   }
 
-  void setSortOption(TaskSortOption option) {
-    setListSortOption(_state.selectedListId, option);
-  }
-
   void setPlannedDueDateFilter(PlannedDueDateFilter filter) {
     if (_state.plannedDueDateFilter == filter) return;
     _store.commit(_state.copyWith(plannedDueDateFilter: filter));
@@ -36,18 +33,14 @@ class TasksViewPresenter {
 
   void _updateListById(
     String listId,
-    TodoList Function(TodoList list) transform, {
-    TaskSortOption? sortOption,
-  }) {
+    TodoList Function(TodoList list) transform,
+  ) {
     final updated = [
       for (final list in _state.lists)
         if (list.id == listId) transform(list) else list,
     ];
-    _store.commit(_state.copyWith(lists: updated, sortOption: sortOption));
+    _store.commit(_state.copyWith(lists: updated));
     _store.storage.saveLists(updated);
-    if (sortOption != null) {
-      _store.storage.saveSortOption(sortOption);
-    }
   }
 
   void _commitTasks(List<TaskItem> updated) {
@@ -64,12 +57,12 @@ class TasksViewPresenter {
       listId,
       (list) => list.copyWith(
         sortOption: option,
-        sortAscending: ascending ??
+        sortAscending:
+            ascending ??
             (list.sortOption == option && option != TaskSortOption.defaultOrder
                 ? !list.sortAscending
                 : option.defaultAscending),
       ),
-      sortOption: option,
     );
   }
 
@@ -79,16 +72,6 @@ class TasksViewPresenter {
       (list) => list.sortOption == TaskSortOption.defaultOrder
           ? list
           : list.copyWith(sortAscending: !list.sortAscending),
-    );
-  }
-
-  void toggleListShowCompleted(String listId) {
-    _updateListById(
-      listId,
-      (list) => (list.smartType == SmartListType.all ||
-              list.smartType == SmartListType.completed)
-          ? list
-          : list.copyWith(showCompleted: !list.showCompleted),
     );
   }
 
@@ -116,10 +99,6 @@ class TasksViewPresenter {
               clearThemePhoto: clearThemePhoto,
             ),
     );
-  }
-
-  void renameList(String listId, String newTitle) {
-    updateList(listId, title: newTitle);
   }
 
   void changeListTheme(
@@ -159,8 +138,8 @@ class TasksViewPresenter {
     final newListId = _store.nextId('list');
     final siblingOrders = source.groupId != null
         ? _state.lists
-            .where((l) => !l.isSmartList && l.groupId == source.groupId)
-            .map((l) => l.orderDateTime)
+              .where((l) => !l.isSmartList && l.groupId == source.groupId)
+              .map((l) => l.orderDateTime)
         : [
             ..._state.lists
                 .where((l) => !l.isSmartList && l.groupId == null)
@@ -205,8 +184,10 @@ class TasksViewPresenter {
         ),
     ];
 
-    final updatedLists =
-        sortListsPreservingSmartLists([..._state.lists, duplicatedList]);
+    final updatedLists = sortListsPreservingSmartLists([
+      ..._state.lists,
+      duplicatedList,
+    ]);
     final updatedTasks = [...copiedTasks, ..._state.tasks];
     _store.commit(
       _state.copyWith(
@@ -265,11 +246,12 @@ class TasksViewPresenter {
     if (trimmed.isEmpty) return;
 
     final currentList = _state.selectedList;
-    final resolvedListId = targetListId ??
-        (currentList.isSmartList ? 'tasks' : currentList.id);
+    final resolvedListId =
+        targetListId ?? (currentList.isSmartList ? 'tasks' : currentList.id);
 
     final now = DateTime.now();
-    final effectiveDueDate = dueDate ??
+    final effectiveDueDate =
+        dueDate ??
         (currentList.smartType == SmartListType.planned ? now : null);
     final committedToMyDay =
         isInMyDay || currentList.smartType == SmartListType.myDay;
@@ -342,8 +324,7 @@ class TasksViewPresenter {
     final moved = reorderedVisible.removeAt(oldIndex);
     reorderedVisible.insert(newIndex, moved);
 
-    final isMyDayView =
-        _state.selectedList.smartType == SmartListType.myDay;
+    final isMyDayView = _state.selectedList.smartType == SmartListType.myDay;
     final currentOrders = [
       for (final t in reorderedVisible)
         isMyDayView ? t.committedOrder : t.orderDateTime,
@@ -376,16 +357,9 @@ class TasksViewPresenter {
         else
           list,
     ];
-    _store.commit(
-      _state.copyWith(
-        lists: updatedLists,
-        tasks: updated,
-        sortOption: TaskSortOption.defaultOrder,
-      ),
-    );
+    _store.commit(_state.copyWith(lists: updatedLists, tasks: updated));
     _store.storage.saveLists(_state.lists);
     _store.storage.saveTasks(_state.tasks);
-    _store.storage.saveSortOption(TaskSortOption.defaultOrder);
   }
 
   DateTime _nextDueDate(DateTime base, RecurrenceType recurrence) {

@@ -1,5 +1,6 @@
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
+
 import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
@@ -24,7 +25,8 @@ String formatReminderLabel(BuildContext context, DateTime reminderAt) {
   final l10n = AppLocalizations.of(context);
   final timeStr = DateFormat.jm().format(reminderAt);
   final now = DateTime.now();
-  final isToday = reminderAt.year == now.year &&
+  final isToday =
+      reminderAt.year == now.year &&
       reminderAt.month == now.month &&
       reminderAt.day == now.day;
   if (isToday) {
@@ -239,7 +241,13 @@ Future<DateTime?> showReminderPickerSheet(
       final tmr = today.add(const Duration(days: 1));
       return DateTime(tmr.year, tmr.month, tmr.day, 9, 0);
     case 'next_week':
-      return DateTime(nextWeekDate.year, nextWeekDate.month, nextWeekDate.day, 9, 0);
+      return DateTime(
+        nextWeekDate.year,
+        nextWeekDate.month,
+        nextWeekDate.day,
+        9,
+        0,
+      );
     case 'custom':
       final pickedDate = await showDatePicker(
         context: context,

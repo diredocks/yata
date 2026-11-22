@@ -59,23 +59,35 @@ void main() {
       smartType: SmartListType.important,
       showCompleted: false,
     );
-    final importantSplit =
-        splitTasksForDisplay([older, active], importantHidden);
+    final importantSplit = splitTasksForDisplay([
+      older,
+      active,
+    ], importantHidden);
     expect(importantSplit.active.map((t) => t.id), ['t3']);
     expect(importantSplit.completed, isEmpty);
 
     // Custom list splits active and completed, sorting completed newest-first
-    final customList = TodoList(id: 'custom', title: 'Work', showCompleted: true);
-    final customSplit =
-        splitTasksForDisplay([older, active, newer], customList);
+    final customList = TodoList(
+      id: 'custom',
+      title: 'Work',
+      showCompleted: true,
+    );
+    final customSplit = splitTasksForDisplay([
+      older,
+      active,
+      newer,
+    ], customList);
     expect(customSplit.active.map((t) => t.id), ['t3']);
     expect(customSplit.completed.map((t) => t.id), ['t2', 't1']);
 
     // Custom list & Tasks with showCompleted=false still expose completed tasks
     // for the collapsible Completed pill (showCompleted tracks expansion state)
     final customCollapsed = customList.copyWith(showCompleted: false);
-    final collapsedSplit =
-        splitTasksForDisplay([older, active, newer], customCollapsed);
+    final collapsedSplit = splitTasksForDisplay([
+      older,
+      active,
+      newer,
+    ], customCollapsed);
     expect(collapsedSplit.active.map((t) => t.id), ['t3']);
     expect(collapsedSplit.completed.map((t) => t.id), ['t2', 't1']);
 
@@ -85,8 +97,11 @@ void main() {
       smartType: SmartListType.tasks,
       showCompleted: false,
     );
-    final tasksCollapsedSplit =
-        splitTasksForDisplay([older, active, newer], tasksCollapsed);
+    final tasksCollapsedSplit = splitTasksForDisplay([
+      older,
+      active,
+      newer,
+    ], tasksCollapsed);
     expect(tasksCollapsedSplit.active.map((t) => t.id), ['t3']);
     expect(tasksCollapsedSplit.completed.map((t) => t.id), ['t2', 't1']);
 
@@ -117,16 +132,13 @@ void main() {
       now: now,
     );
 
-    expect(
-      groups.map((g) => g.bucket).toList(),
-      [
-        PlannedBucket.earlier,
-        PlannedBucket.today,
-        PlannedBucket.tomorrow,
-        PlannedBucket.thisWeek,
-        PlannedBucket.later,
-      ],
-    );
+    expect(groups.map((g) => g.bucket).toList(), [
+      PlannedBucket.earlier,
+      PlannedBucket.today,
+      PlannedBucket.tomorrow,
+      PlannedBucket.thisWeek,
+      PlannedBucket.later,
+    ]);
     expect(groups[0].tasks.map((t) => t.id), ['earlier']);
     expect(groups[1].tasks.map((t) => t.id), ['today']);
     expect(groups[2].tasks.map((t) => t.id), ['tomorrow']);
@@ -136,11 +148,7 @@ void main() {
 
   test('groupTasksByList groups tasks and resolves localized Tasks title', () {
     final lists = [
-      TodoList(
-        id: 'tasks',
-        title: 'Tasks',
-        smartType: SmartListType.tasks,
-      ),
+      TodoList(id: 'tasks', title: 'Tasks', smartType: SmartListType.tasks),
       TodoList(id: 'work', title: 'Work'),
     ];
     final tasks = [

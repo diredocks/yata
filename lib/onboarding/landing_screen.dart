@@ -10,10 +10,7 @@ import '../sync/todo_wire_codecs.dart';
 import '../theme/todo_theme.dart';
 
 class LandingScreen extends ConsumerStatefulWidget {
-  const LandingScreen({
-    super.key,
-    this.isAddingAccount = false,
-  });
+  const LandingScreen({super.key, this.isAddingAccount = false});
 
   final bool isAddingAccount;
 
@@ -135,7 +132,9 @@ class _LandingScreenState extends ConsumerState<LandingScreen> {
         ? l10n.userName
         : '${l10n.localAccount} ${existingCount + 1}';
 
-    await ref.read(accountProvider.notifier).signInLocal(
+    await ref
+        .read(accountProvider.notifier)
+        .signInLocal(
           rawInput,
           fallbackName: fallbackName,
           fallbackEmail: l10n.localAccount,
@@ -366,10 +365,7 @@ class _MsaBrowserCodeDialogState extends State<_MsaBrowserCodeDialog> {
           onPressed: () => Navigator.of(context).pop(null),
           child: Text(l10n.cancel),
         ),
-        FilledButton(
-          onPressed: _submit,
-          child: Text(l10n.signIn),
-        ),
+        FilledButton(onPressed: _submit, child: Text(l10n.signIn)),
       ],
     );
   }

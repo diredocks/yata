@@ -20,13 +20,7 @@ final cloudSyncServiceProvider = Provider<CloudSyncService>((ref) {
   );
 });
 
-enum SyncStatus {
-  idle,
-  syncing,
-  success,
-  error,
-  requiresRelogin,
-}
+enum SyncStatus { idle, syncing, success, error, requiresRelogin }
 
 class SyncState {
   const SyncState({
@@ -86,7 +80,10 @@ class SyncNotifier extends Notifier<SyncState> {
     );
     final activeAccount = ref.read(accountProvider).activeAccount;
 
-    ref.listen<int>(todoProvider.select((s) => s.mutationVersion), (prev, next) {
+    ref.listen<int>(todoProvider.select((s) => s.mutationVersion), (
+      prev,
+      next,
+    ) {
       if (prev != null && next > prev) {
         scheduleDebouncedSync();
       }
@@ -210,7 +207,9 @@ class SyncNotifier extends Notifier<SyncState> {
         syncedSettingKeys: outcome.syncedSettingKeys,
       );
 
-      await ref.read(accountProvider.notifier).updateSyncStatus(
+      await ref
+          .read(accountProvider.notifier)
+          .updateSyncStatus(
             active.id,
             lastSyncedAt: outcome.syncedAt,
             clearSyncError: true,
@@ -227,37 +226,33 @@ class SyncNotifier extends Notifier<SyncState> {
       }
     } on MicrosoftAuthException catch (e) {
       if (_disposed) return;
-      final status =
-          e.requiresReauth ? SyncStatus.requiresRelogin : SyncStatus.error;
-      await ref.read(accountProvider.notifier).updateSyncStatus(
-            active.id,
-            syncError: e.message,
-          );
+      final status = e.requiresReauth
+          ? SyncStatus.requiresRelogin
+          : SyncStatus.error;
+      await ref
+          .read(accountProvider.notifier)
+          .updateSyncStatus(active.id, syncError: e.message);
       if (!_disposed) {
         state = state.copyWith(status: status, error: e.message);
       }
     } on SyncApiException catch (e) {
       if (_disposed) return;
-      final status =
-          e.isAuthError ? SyncStatus.requiresRelogin : SyncStatus.error;
-      await ref.read(accountProvider.notifier).updateSyncStatus(
-            active.id,
-            syncError: e.message,
-          );
+      final status = e.isAuthError
+          ? SyncStatus.requiresRelogin
+          : SyncStatus.error;
+      await ref
+          .read(accountProvider.notifier)
+          .updateSyncStatus(active.id, syncError: e.message);
       if (!_disposed) {
         state = state.copyWith(status: status, error: e.message);
       }
     } catch (e) {
       if (_disposed) return;
-      await ref.read(accountProvider.notifier).updateSyncStatus(
-            active.id,
-            syncError: e.toString(),
-          );
+      await ref
+          .read(accountProvider.notifier)
+          .updateSyncStatus(active.id, syncError: e.toString());
       if (!_disposed) {
-        state = state.copyWith(
-          status: SyncStatus.error,
-          error: e.toString(),
-        );
+        state = state.copyWith(status: SyncStatus.error, error: e.toString());
       }
     }
   }
@@ -266,7 +261,8 @@ class SyncNotifier extends Notifier<SyncState> {
     CloudSyncService service,
     MicrosoftAccount account,
   ) async {
-    final needsName = account.displayName == 'Microsoft Account' ||
+    final needsName =
+        account.displayName == 'Microsoft Account' ||
         account.displayName.trim().isEmpty ||
         (account.email.isNotEmpty && account.displayName == account.email);
     final needsEmail = account.email.trim().isEmpty;
@@ -287,16 +283,19 @@ class SyncNotifier extends Notifier<SyncState> {
       );
       if (_disposed) return;
 
-      final nextName = profile.displayName.trim().isNotEmpty &&
+      final nextName =
+          profile.displayName.trim().isNotEmpty &&
               profile.displayName != 'Microsoft Account' &&
               (needsName || profile.displayName != account.displayName)
           ? profile.displayName
           : null;
-      final nextEmail = profile.email.trim().isNotEmpty &&
+      final nextEmail =
+          profile.email.trim().isNotEmpty &&
               (needsEmail || profile.email != account.email)
           ? profile.email
           : null;
-      final nextAvatar = (profile.avatarBase64 != null &&
+      final nextAvatar =
+          (profile.avatarBase64 != null &&
               profile.avatarBase64!.isNotEmpty &&
               needsAvatar)
           ? profile.avatarBase64
@@ -305,7 +304,9 @@ class SyncNotifier extends Notifier<SyncState> {
       if (nextName == null && nextEmail == null && nextAvatar == null) {
         return;
       }
-      await ref.read(accountProvider.notifier).updateMicrosoftProfile(
+      await ref
+          .read(accountProvider.notifier)
+          .updateMicrosoftProfile(
             account.id,
             displayName: nextName,
             email: nextEmail,

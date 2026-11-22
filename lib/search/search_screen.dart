@@ -1,20 +1,18 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
+
+import '../data/todo_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
-import '../models/todo_list.dart';
-import '../data/todo_provider.dart';
 import '../tasksview/completion_sound_service.dart';
-import '../theme/todo_theme.dart';
 import '../tasksview/recyclerview/task_list_tile.dart';
+import '../tasksview/tasks_view_grouping.dart';
+import '../theme/todo_theme.dart';
 import '../view/delayed_task_completion.dart';
 import 'search_presenter.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
-  const SearchScreen({
-    super.key,
-    required this.onOpenTask,
-  });
+  const SearchScreen({super.key, required this.onOpenTask});
 
   final void Function(TaskItem task) onOpenTask;
 
@@ -54,8 +52,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final results = notifier.search(_query, showCompleted: _showCompleted);
 
     final bodyBg = theme.scaffoldBackgroundColor;
-    final secondaryText =
-        isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
+    final secondaryText = isDark
+        ? TodoColors.secondaryTextDark
+        : TodoColors.secondaryTextLight;
 
     return Scaffold(
       backgroundColor: bodyBg,
@@ -133,11 +132,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        Icons.search,
-                        size: 64,
-                        color: theme.disabledColor,
-                      ),
+                      Icon(Icons.search, size: 64, color: theme.disabledColor),
                       const SizedBox(height: 12),
                       Text(
                         l10n.searchEmptyPrompt,
@@ -151,59 +146,56 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 ),
               )
             : results.isEmpty
-                ? Center(
-                    key: const ValueKey('search_no_results'),
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Text(
-                        l10n.searchNoResults,
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          color: secondaryText,
-                        ),
-                      ),
+            ? Center(
+                key: const ValueKey('search_no_results'),
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Text(
+                    l10n.searchNoResults,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: secondaryText,
                     ),
-                  )
-                : ListView.builder(
-                    key: const ValueKey('search_results'),
-                    padding: const EdgeInsets.all(8),
-                    itemCount: results.length,
-                    itemBuilder: (context, index) {
-                      final task = results[index];
-                      final listName = state.lists
-                          .where((l) => l.id == task.listId)
-                          .map(
-                            (l) => l.smartType == SmartListType.tasks
-                                ? l10n.tasks
-                                : l.title,
-                          )
-                          .firstOrNull;
-                      return TaskListTile(
-                        key: ValueKey('search_task_${task.id}'),
-                        task: _completionController.effectiveTask(task),
-                        listName: listName,
-                        showMyDayBadge: true,
-                        onTap: () => widget.onOpenTask(task),
-                        onToggleCompleted: () {
-                          if (!task.isCompleted &&
-                              !_completionController.isPending(task.id)) {
-                            ref
-                                .read(completionSoundServiceProvider)
-                                .playIfEnabled();
-                          }
-                          _completionController.toggle(
-                            task,
-                            onCommit: notifier.setTaskCompleted,
-                            onStateChanged: () {
-                              if (mounted) setState(() {});
-                            },
-                          );
+                  ),
+                ),
+              )
+            : ListView.builder(
+                key: const ValueKey('search_results'),
+                padding: const EdgeInsets.all(8),
+                itemCount: results.length,
+                itemBuilder: (context, index) {
+                  final task = results[index];
+                  final listName = resolveOriginListName(
+                    l10n,
+                    state.lists,
+                    task.listId,
+                  );
+                  return TaskListTile(
+                    key: ValueKey('search_task_${task.id}'),
+                    task: _completionController.effectiveTask(task),
+                    listName: listName,
+                    showMyDayBadge: true,
+                    onTap: () => widget.onOpenTask(task),
+                    onToggleCompleted: () {
+                      if (!task.isCompleted &&
+                          !_completionController.isPending(task.id)) {
+                        ref
+                            .read(completionSoundServiceProvider)
+                            .playIfEnabled();
+                      }
+                      _completionController.toggle(
+                        task,
+                        onCommit: notifier.setTaskCompleted,
+                        onStateChanged: () {
+                          if (mounted) setState(() {});
                         },
-                        onToggleImportant: () =>
-                            notifier.toggleTaskImportant(task.id),
                       );
                     },
-                  ),
+                    onToggleImportant: () =>
+                        notifier.toggleTaskImportant(task.id),
+                  );
+                },
+              ),
       ),
     );
   }

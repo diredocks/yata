@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'account_local_storage.dart';
 import '../models/account.dart';
 import '../auth/browser_launcher.dart';
@@ -24,7 +25,9 @@ final microsoftAuthClientProvider = Provider<MicrosoftAuthClient>((ref) {
   return HttpMicrosoftAuthClient();
 });
 
-final msaInteractiveSignInProvider = Provider<MsaInteractiveSignInClient>((ref) {
+final msaInteractiveSignInProvider = Provider<MsaInteractiveSignInClient>((
+  ref,
+) {
   return PlatformMsaInteractiveSignInClient();
 });
 
@@ -38,10 +41,7 @@ final microsoftTodoApiProvider = Provider<MicrosoftTodoApi>((ref) {
 
 @immutable
 class AccountState {
-  const AccountState({
-    required this.accounts,
-    required this.activeAccountId,
-  });
+  const AccountState({required this.accounts, required this.activeAccountId});
 
   final List<Account> accounts;
   final String? activeAccountId;
@@ -106,10 +106,7 @@ class AccountNotifier extends Notifier<AccountState> {
     );
 
     final nextAccounts = [...state.accounts, account];
-    state = AccountState(
-      accounts: nextAccounts,
-      activeAccountId: account.id,
-    );
+    state = AccountState(accounts: nextAccounts, activeAccountId: account.id);
     await _storage.saveAccounts(nextAccounts);
     await _storage.saveActiveAccountId(account.id);
     return account;
@@ -119,8 +116,7 @@ class AccountNotifier extends Notifier<AccountState> {
   Future<MicrosoftAccount> signInMicrosoft(MicrosoftSignInResult result) async {
     final tokenStorage = ref.read(authTokenStorageProvider);
     final existingIndex = state.accounts.indexWhere(
-      (a) =>
-          a is MicrosoftAccount && a.microsoftUserId == result.profile.id,
+      (a) => a is MicrosoftAccount && a.microsoftUserId == result.profile.id,
     );
 
     late final MicrosoftAccount account;
@@ -151,10 +147,7 @@ class AccountNotifier extends Notifier<AccountState> {
     }
 
     await tokenStorage.saveTokens(account.id, result.tokens);
-    state = AccountState(
-      accounts: nextAccounts,
-      activeAccountId: account.id,
-    );
+    state = AccountState(accounts: nextAccounts, activeAccountId: account.id);
     await _storage.saveAccounts(nextAccounts);
     await _storage.saveActiveAccountId(account.id);
     return account;
@@ -224,10 +217,7 @@ class AccountNotifier extends Notifier<AccountState> {
         ? (remaining.isNotEmpty ? remaining.first.id : null)
         : state.activeAccountId;
 
-    state = AccountState(
-      accounts: remaining,
-      activeAccountId: nextActiveId,
-    );
+    state = AccountState(accounts: remaining, activeAccountId: nextActiveId);
     await _storage.saveAccounts(remaining);
     await _storage.saveActiveAccountId(nextActiveId);
   }

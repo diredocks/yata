@@ -4,345 +4,10 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../auth/microsoft_auth_service.dart';
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
+import 'microsoft_todo_models.dart';
 import 'todo_wire_codecs.dart';
 
-/// Per-request routing & auth context for Substrate To Do v1 API calls.
-class SubstrateRequestContext {
-  SubstrateRequestContext({
-    required String baseUrl,
-    required this.accessToken,
-    required String cid,
-  })  : baseUrl = _normalizeBaseUrl(baseUrl),
-        cid = MsaAuthConfig.normalizeCid(cid);
-
-  /// Discovered Substrate To Do `/api/v1/` base URL (guaranteed trailing `/`).
-  final String baseUrl;
-  final String accessToken;
-
-  /// Normalized personal MSA CID (without `CID:` prefix).
-  final String cid;
-
-  String get anchorMailbox => MsaAuthConfig.anchorMailboxForCid(cid);
-
-  Uri endpointUri(String relativePath) {
-    final cleaned =
-        relativePath.startsWith('/') ? relativePath.substring(1) : relativePath;
-    return Uri.parse('$baseUrl$cleaned');
-  }
-
-  static String _normalizeBaseUrl(String raw) {
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty) {
-      return MsaAuthConfig.defaultTodoApiBaseUrl;
-    }
-    return trimmed.endsWith('/') ? trimmed : '$trimmed/';
-  }
-}
-
-/// Exception thrown by Substrate v1 API calls with decoded error codes.
-class SyncApiException implements Exception {
-  const SyncApiException({
-    required this.statusCode,
-    required this.message,
-    this.errorCode,
-    this.responseBody,
-    this.retryAfter,
-  });
-
-  final int statusCode;
-  final String message;
-  final String? errorCode;
-  final String? responseBody;
-  final Duration? retryAfter;
-
-  bool get isAuthError => statusCode == 401;
-
-  bool get isNotFound =>
-      statusCode == 404 ||
-      errorCode == 'ErrorItemNotFound' ||
-      errorCode == 'itemNotFound' ||
-      errorCode == 'ParentFolderDoesNotContainTaskWithGivenId';
-
-  bool get isConflict =>
-      statusCode == 409 ||
-      statusCode == 412 ||
-      errorCode == 'ErrorIrresolvableConflict';
-
-  bool get isDeltaExpired =>
-      statusCode == 410 ||
-      errorCode == 'SyncStateNotFound' ||
-      errorCode == 'SyncStateInvalid' ||
-      errorCode == 'resyncRequired';
-
-  bool get isThrottled => statusCode == 429;
-
-  bool get isFolderGroupNotEmpty => errorCode == 'FolderGroupNotEmpty';
-
-  bool get isCantDeleteDefaultFolder =>
-      errorCode == 'CantDeleteDefaultFolder';
-
-  @override
-  String toString() {
-    final codePart = errorCode != null ? ' [$errorCode]' : '';
-    return 'SyncApiException($statusCode$codePart): $message';
-  }
-}
-
-class RemoteFolderGroup {
-  const RemoteFolderGroup({
-    required this.id,
-    required this.name,
-    this.orderDateTime,
-    this.isDeleted = false,
-  });
-
-  final String id;
-  final String name;
-  final DateTime? orderDateTime;
-  final bool isDeleted;
-
-  factory RemoteFolderGroup.fromJson(Map<String, dynamic> json) {
-    final reason = (json['Reason'] as String?)?.toLowerCase();
-    return RemoteFolderGroup(
-      id: json['Id'] as String? ?? '',
-      name: json['Name'] as String? ?? '',
-      orderDateTime: parseSubstrateTimestamp(json['OrderDateTime'] as String?),
-      isDeleted: reason == 'deleted',
-    );
-  }
-}
-
-class RemoteTodoFolder {
-  const RemoteTodoFolder({
-    required this.id,
-    required this.name,
-    this.isDefaultFolder = false,
-    this.folderType,
-    this.parentFolderGroupId,
-    this.themeColor,
-    this.themeBackground,
-    this.showCompletedTasks = true,
-    this.sortOption = TaskSortOption.defaultOrder,
-    this.sortAscending = false,
-    this.orderDateTime,
-    this.isDeleted = false,
-  });
-
-  final String id;
-  final String name;
-  final bool isDefaultFolder;
-  final String? folderType;
-  final String? parentFolderGroupId;
-  final String? themeColor;
-  final String? themeBackground;
-  final bool showCompletedTasks;
-  final TaskSortOption sortOption;
-  final bool sortAscending;
-  final DateTime? orderDateTime;
-  final bool isDeleted;
-
-  bool get isIgnoredSpecialFolder =>
-      folderType == 'com.microsoft.outlook.email.flagged' ||
-      folderType == 'com.microsoft.planner';
-
-  factory RemoteTodoFolder.fromJson(Map<String, dynamic> json) {
-    final reason = (json['Reason'] as String?)?.toLowerCase();
-    final sortOption = decodeSortType(json['SortType']);
-    final sortAscending = parseWireBool(
-      json['SortAscending'],
-      fallback: sortOption.defaultAscending,
-    );
-    return RemoteTodoFolder(
-      id: json['Id'] as String? ?? '',
-      name: json['Name'] as String? ?? '',
-      isDefaultFolder: json['IsDefaultFolder'] as bool? ?? false,
-      folderType: json['FolderType'] as String?,
-      parentFolderGroupId: json['ParentFolderGroupId'] as String?,
-      themeColor: json['ThemeColor'] as String?,
-      themeBackground: json['ThemeBackground'] as String?,
-      showCompletedTasks: json['ShowCompletedTasks'] as bool? ?? true,
-      sortOption: sortOption,
-      sortAscending: sortAscending,
-      orderDateTime: parseSubstrateTimestamp(json['OrderDateTime'] as String?),
-      isDeleted: reason == 'deleted',
-    );
-  }
-}
-
-class RemoteTaskStep {
-  const RemoteTaskStep({
-    required this.id,
-    required this.subject,
-    this.isCompleted = false,
-    this.orderDateTime,
-  });
-
-  final String id;
-  final String subject;
-  final bool isCompleted;
-  final DateTime? orderDateTime;
-
-  factory RemoteTaskStep.fromJson(Map<String, dynamic> json) {
-    return RemoteTaskStep(
-      id: json['Id'] as String? ?? '',
-      subject: json['Subject'] as String? ?? '',
-      isCompleted: json['IsCompleted'] as bool? ?? false,
-      orderDateTime: parseSubstrateTimestamp(json['OrderDateTime'] as String?),
-    );
-  }
-}
-
-class RemoteTodoTask {
-  const RemoteTodoTask({
-    required this.id,
-    required this.subject,
-    this.changeKey,
-    this.parentFolderId,
-    this.bodyContent = '',
-    this.bodyContentType,
-    this.bodyLastModifiedTime,
-    this.orderDateTime,
-    this.dueDate,
-    this.reminderDateTime,
-    this.isReminderOn = false,
-    this.completedDateTime,
-    this.status = 'NotStarted',
-    this.importance = 'Normal',
-    this.isIgnored = false,
-    this.committedDay,
-    this.committedOrder,
-    this.postponedDay,
-    this.createdDateTime,
-    this.lastModifiedDateTime,
-    this.recurrence = RecurrenceType.none,
-    this.subtasks = const [],
-    this.isDeleted = false,
-  });
-
-  final String id;
-  final String? changeKey;
-  final String? parentFolderId;
-  final String subject;
-  final String bodyContent;
-  final String? bodyContentType;
-  final DateTime? bodyLastModifiedTime;
-  final DateTime? orderDateTime;
-  final DateTime? dueDate;
-  final DateTime? reminderDateTime;
-  final bool isReminderOn;
-  final DateTime? completedDateTime;
-  final String status;
-  final String importance;
-  final bool isIgnored;
-  final DateTime? committedDay;
-  final DateTime? committedOrder;
-  final DateTime? postponedDay;
-  final DateTime? createdDateTime;
-  final DateTime? lastModifiedDateTime;
-  final RecurrenceType recurrence;
-  final List<RemoteTaskStep> subtasks;
-  final bool isDeleted;
-
-  bool get isCompleted => status.toLowerCase() == 'completed';
-
-  bool get isImportant => importance.toLowerCase() == 'high';
-
-  String get plainTextNote =>
-      stripHtmlToPlainText(bodyContent, contentType: bodyContentType);
-
-  factory RemoteTodoTask.fromJson(Map<String, dynamic> json) {
-    final reason = (json['Reason'] as String?)?.toLowerCase();
-    final bodyMap = _asMap(json['Body']);
-    final bodyContent = (bodyMap?['Content'] as String?) ?? '';
-    final bodyContentType = bodyMap?['ContentType'] as String?;
-    final subtasksRaw = json['Subtasks'] as List<dynamic>?;
-    final subtasks = subtasksRaw == null
-        ? const <RemoteTaskStep>[]
-        : subtasksRaw
-            .whereType<Map>()
-            .map((m) => RemoteTaskStep.fromJson(Map<String, dynamic>.from(m)))
-            .toList();
-
-    return RemoteTodoTask(
-      id: json['Id'] as String? ?? '',
-      changeKey: json['ChangeKey'] as String?,
-      parentFolderId: json['ParentFolderId'] as String?,
-      subject: json['Subject'] as String? ?? '',
-      bodyContent: bodyContent,
-      bodyContentType: bodyContentType,
-      bodyLastModifiedTime:
-          parseSubstrateTimestamp(json['BodyLastModifiedTime'] as String?),
-      orderDateTime: parseSubstrateTimestamp(json['OrderDateTime'] as String?),
-      dueDate: parseSubstrateDay(json['DueDate'] ?? json['DueDateTime']),
-      reminderDateTime:
-          parseSubstrateDateTimeTimeZone(_asMap(json['ReminderDateTime'])),
-      isReminderOn: json['IsReminderOn'] as bool? ?? false,
-      completedDateTime:
-          parseSubstrateDateTimeTimeZone(_asMap(json['CompletedDateTime'])),
-      status: json['Status'] as String? ?? 'NotStarted',
-      importance: json['Importance'] as String? ?? 'Normal',
-      isIgnored: json['IsIgnored'] as bool? ?? false,
-      committedDay: parseSubstrateDay(json['CommittedDay']),
-      committedOrder:
-          parseSubstrateTimestamp(json['CommittedOrder'] as String?),
-      postponedDay: parseSubstrateDay(json['PostponedDay']),
-      createdDateTime:
-          parseSubstrateTimestamp(json['CreatedDateTime'] as String?),
-      lastModifiedDateTime:
-          parseSubstrateTimestamp(json['LastModifiedDateTime'] as String?),
-      recurrence: decodeSubstrateRecurrence(_asMap(json['Recurrence'])),
-      subtasks: subtasks,
-      isDeleted: reason == 'deleted',
-    );
-  }
-}
-
-class DeltaPageResult<T> {
-  const DeltaPageResult({
-    required this.items,
-    this.deltaLink,
-  });
-
-  final List<T> items;
-  final String? deltaLink;
-}
-
-class RealtimeEvent {
-  const RealtimeEvent({
-    this.id,
-    required this.type,
-    this.operation,
-    this.requestId,
-    this.payload,
-  });
-
-  final String? id;
-  final String type;
-  final String? operation;
-  final String? requestId;
-  final Map<String, dynamic>? payload;
-
-  bool get isKeepAlive => type.trim().toLowerCase() == 'keepalive';
-
-  factory RealtimeEvent.fromJson(Map<String, dynamic> json) {
-    return RealtimeEvent(
-      id: json['Id'] as String?,
-      type: json['Type'] as String? ?? '',
-      operation: json['Operation'] as String?,
-      requestId: json['RequestId'] as String?,
-      payload: _asMap(json['Payload']),
-    );
-  }
-}
-
-Map<String, dynamic>? _asMap(dynamic value) {
-  if (value is Map<String, dynamic>) return value;
-  if (value is Map) return Map<String, dynamic>.from(value);
-  return null;
-}
+export 'microsoft_todo_models.dart';
 
 /// Abstract Substrate To Do v1 API client.
 abstract class MicrosoftTodoApi {
@@ -371,10 +36,7 @@ abstract class MicrosoftTodoApi {
     Map<String, dynamic> patch,
   );
 
-  Future<void> deleteFolderGroup(
-    SubstrateRequestContext ctx,
-    String remoteId,
-  );
+  Future<void> deleteFolderGroup(SubstrateRequestContext ctx, String remoteId);
 
   Future<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta(
     SubstrateRequestContext ctx, {
@@ -392,10 +54,7 @@ abstract class MicrosoftTodoApi {
     Map<String, dynamic> patch,
   );
 
-  Future<void> deleteFolder(
-    SubstrateRequestContext ctx,
-    String remoteId,
-  );
+  Future<void> deleteFolder(SubstrateRequestContext ctx, String remoteId);
 
   Future<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta(
     SubstrateRequestContext ctx, {
@@ -421,10 +80,7 @@ abstract class MicrosoftTodoApi {
     String? changeKey,
   });
 
-  Future<void> deleteTask(
-    SubstrateRequestContext ctx,
-    String taskRemoteId,
-  );
+  Future<void> deleteTask(SubstrateRequestContext ctx, String taskRemoteId);
 
   Future<RemoteTaskStep> createStep(
     SubstrateRequestContext ctx,
@@ -455,8 +111,8 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
   HttpMicrosoftTodoApi({
     http.Client? httpClient,
     Future<void> Function(Duration)? delayFn,
-  })  : _http = httpClient ?? http.Client(),
-        _delay = delayFn ?? Future<void>.delayed;
+  }) : _http = httpClient ?? http.Client(),
+       _delay = delayFn ?? Future<void>.delayed;
 
   static const _userAgent = 'Microsoft To-Do/Android/2.178.8840.00.beta';
   static const _requestTimeout = Duration(seconds: 60);
@@ -540,12 +196,14 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
       final encoded = jsonBody == null ? null : jsonEncode(jsonBody);
       return switch (method) {
         'GET' => _http.get(uri, headers: headers).timeout(_requestTimeout),
-        'POST' => _http
-            .post(uri, headers: headers, body: encoded)
-            .timeout(_requestTimeout),
-        'PATCH' => _http
-            .patch(uri, headers: headers, body: encoded)
-            .timeout(_requestTimeout),
+        'POST' =>
+          _http
+              .post(uri, headers: headers, body: encoded)
+              .timeout(_requestTimeout),
+        'PATCH' =>
+          _http
+              .patch(uri, headers: headers, body: encoded)
+              .timeout(_requestTimeout),
         'DELETE' =>
           _http.delete(uri, headers: headers).timeout(_requestTimeout),
         _ => throw ArgumentError('Unsupported HTTP method: $method'),
@@ -567,16 +225,24 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
 
   Duration? _extractThrottleDelay(http.Response response) {
     final status = response.statusCode;
-    final retryAfterRaw = _headerCaseInsensitive(response.headers, 'retry-after');
-    final rateRemainingRaw =
-        _headerCaseInsensitive(response.headers, 'rate-limit-remaining');
+    final retryAfterRaw = _headerCaseInsensitive(
+      response.headers,
+      'retry-after',
+    );
+    final rateRemainingRaw = _headerCaseInsensitive(
+      response.headers,
+      'rate-limit-remaining',
+    );
 
-    final retryAfterSecs =
-        retryAfterRaw != null ? int.tryParse(retryAfterRaw.trim()) : null;
-    final rateRemaining =
-        rateRemainingRaw != null ? int.tryParse(rateRemainingRaw.trim()) : null;
+    final retryAfterSecs = retryAfterRaw != null
+        ? int.tryParse(retryAfterRaw.trim())
+        : null;
+    final rateRemaining = rateRemainingRaw != null
+        ? int.tryParse(rateRemainingRaw.trim())
+        : null;
 
-    final throttled = status == 429 ||
+    final throttled =
+        status == 429 ||
         rateRemaining == 0 ||
         (status >= 400 && retryAfterSecs != null);
     if (!throttled) return null;
@@ -612,8 +278,7 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
             }
           } else {
             errorCode = (decoded['code'] ?? decoded['Code']) as String?;
-            final msg =
-                (decoded['message'] ?? decoded['Message']) as String?;
+            final msg = (decoded['message'] ?? decoded['Message']) as String?;
             if (msg != null && msg.isNotEmpty) {
               message = msg;
             }
@@ -622,18 +287,22 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
       } on FormatException catch (_) {}
     }
 
-    final retryAfterRaw =
-        _headerCaseInsensitive(response.headers, 'retry-after');
-    final retryAfterSecs =
-        retryAfterRaw != null ? int.tryParse(retryAfterRaw.trim()) : null;
+    final retryAfterRaw = _headerCaseInsensitive(
+      response.headers,
+      'retry-after',
+    );
+    final retryAfterSecs = retryAfterRaw != null
+        ? int.tryParse(retryAfterRaw.trim())
+        : null;
 
     return SyncApiException(
       statusCode: response.statusCode,
       message: message,
       errorCode: errorCode,
       responseBody: response.body,
-      retryAfter:
-          retryAfterSecs != null ? Duration(seconds: retryAfterSecs) : null,
+      retryAfter: retryAfterSecs != null
+          ? Duration(seconds: retryAfterSecs)
+          : null,
     );
   }
 
@@ -709,30 +378,26 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
         uri: nextUri,
         trackChanges: true,
       );
-      final rawList = (page['Value'] ??
-              page['Values'] ??
-              page['value'] ??
-              page['values']) as List<dynamic>? ??
+      final rawList =
+          (page['Value'] ?? page['Values'] ?? page['value'] ?? page['values'])
+              as List<dynamic>? ??
           const [];
       for (final raw in rawList) {
         if (raw is Map) {
           items.add(parser(Map<String, dynamic>.from(raw)));
         }
       }
-      final delta =
-          (page['DeltaLink'] ?? page['@odata.deltaLink']) as String?;
+      final delta = (page['DeltaLink'] ?? page['@odata.deltaLink']) as String?;
       if (delta != null && delta.trim().isNotEmpty) {
         resolvedDeltaLink = delta.trim();
       }
       final next = (page['NextLink'] ?? page['@odata.nextLink']) as String?;
-      nextUri =
-          (next != null && next.trim().isNotEmpty) ? Uri.parse(next.trim()) : null;
+      nextUri = (next != null && next.trim().isNotEmpty)
+          ? Uri.parse(next.trim())
+          : null;
     }
 
-    return DeltaPageResult<T>(
-      items: items,
-      deltaLink: resolvedDeltaLink,
-    );
+    return DeltaPageResult<T>(items: items, deltaLink: resolvedDeltaLink);
   }
 
   @override
@@ -741,8 +406,8 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
       ctx: ctx,
       uri: ctx.endpointUri('settings'),
     );
-    final rawList = (json['Value'] ?? json['Values'] ?? json['value'])
-            as List<dynamic>? ??
+    final rawList =
+        (json['Value'] ?? json['Values'] ?? json['value']) as List<dynamic>? ??
         const [];
     final result = <String, String>{};
     for (final entry in rawList) {
@@ -1023,8 +688,9 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
       );
     }
 
-    final lines =
-        streamed.stream.transform(utf8.decoder).transform(const LineSplitter());
+    final lines = streamed.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter());
     await for (final line in lines) {
       final trimmed = line.trim();
       if (trimmed.isEmpty) continue;

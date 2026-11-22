@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../models/task_item.dart';
 import '../data/todo_provider.dart';
 import '../sync/todo_wire_codecs.dart';
@@ -12,12 +13,12 @@ class TasksActionPresenter {
   TodoNotifier get _store => _ref.read(todoProvider.notifier);
   TodoState get _state => _ref.read(todoProvider);
 
-  void _commitTasks(List<TaskItem> updated, {bool clearSelectedTaskId = false}) {
+  void _commitTasks(
+    List<TaskItem> updated, {
+    bool clearSelectedTaskId = false,
+  }) {
     _store.commit(
-      _state.copyWith(
-        tasks: updated,
-        clearSelectedTaskId: clearSelectedTaskId,
-      ),
+      _state.copyWith(tasks: updated, clearSelectedTaskId: clearSelectedTaskId),
     );
     _store.storage.saveTasks(updated);
   }
@@ -51,7 +52,8 @@ class TasksActionPresenter {
           clearMyDayDate: !value,
           committedOrder: committedOrder,
           clearCommittedOrder: !value,
-          postponedDay: !value &&
+          postponedDay:
+              !value &&
                   task.dueDate != null &&
                   TodoNotifier.isSameDay(task.dueDate!, now)
               ? now
@@ -66,13 +68,6 @@ class TasksActionPresenter {
 
   void batchAddToMyDay(Set<String> taskIds) {
     batchSetMyDay(taskIds, true);
-  }
-
-  void batchToggleMyDay(Set<String> taskIds) {
-    final selected = _state.tasks.where((t) => taskIds.contains(t.id));
-    final allInMyDay =
-        selected.isNotEmpty && selected.every((t) => t.isInMyDay);
-    batchSetMyDay(taskIds, !allInMyDay);
   }
 
   void batchSetImportant(Set<String> taskIds, bool value) {
@@ -114,12 +109,13 @@ class TasksActionPresenter {
 
         var bumpedCommitted = next.committedOrder;
         if (task.isInMyDay) {
-          bumpedCommitted = computeNewOrderDateTime(
-            existingOrders: [maxCommittedOrder],
-            addToTop: true,
-          ).add(
-            Duration(milliseconds: 1000 * (taskIds.length - bumpIndex + 1)),
-          );
+          bumpedCommitted =
+              computeNewOrderDateTime(
+                existingOrders: [maxCommittedOrder],
+                addToTop: true,
+              ).add(
+                Duration(milliseconds: 1000 * (taskIds.length - bumpIndex + 1)),
+              );
           maxCommittedOrder = bumpedCommitted;
         }
 
@@ -137,13 +133,6 @@ class TasksActionPresenter {
 
   void batchMarkImportant(Set<String> taskIds) {
     batchSetImportant(taskIds, true);
-  }
-
-  void batchToggleImportant(Set<String> taskIds) {
-    final selected = _state.tasks.where((t) => taskIds.contains(t.id));
-    final allImportant =
-        selected.isNotEmpty && selected.every((t) => t.isImportant);
-    batchSetImportant(taskIds, !allImportant);
   }
 
   void batchCopyToList(Set<String> taskIds, String targetListId) {
@@ -195,7 +184,8 @@ class TasksActionPresenter {
   void batchSetDueDate(Set<String> taskIds, DateTime? dueDate) {
     final now = DateTime.now();
     _mapSelectedTasks(taskIds, (task) {
-      final clearPostponed = dueDate != null &&
+      final clearPostponed =
+          dueDate != null &&
           _state.showDueTodayInMyDay &&
           task.postponedDay != null &&
           TodoNotifier.isSameDay(dueDate, task.postponedDay!);
@@ -213,18 +203,15 @@ class TasksActionPresenter {
   }
 
   void batchMoveToList(Set<String> taskIds, String targetListId) {
-    _mapSelectedTasks(
-      taskIds,
-      (task) => task.copyWith(listId: targetListId),
-    );
+    _mapSelectedTasks(taskIds, (task) => task.copyWith(listId: targetListId));
   }
 
   void batchDeleteTasks(Set<String> taskIds) {
-    final updated =
-        _state.tasks.where((t) => !taskIds.contains(t.id)).toList();
+    final updated = _state.tasks.where((t) => !taskIds.contains(t.id)).toList();
     _commitTasks(
       updated,
-      clearSelectedTaskId: _state.selectedTaskId != null &&
+      clearSelectedTaskId:
+          _state.selectedTaskId != null &&
           taskIds.contains(_state.selectedTaskId),
     );
   }

@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+
 import '../../theme/todo_theme.dart';
 
 /// List row item in `homeview/HomeViewFragment`.
@@ -64,8 +65,10 @@ class HomeListTile extends StatelessWidget {
                     SizedBox(
                       width: 22,
                       child: Center(
-                        child:
-                            Text(emoji!, style: const TextStyle(fontSize: 18)),
+                        child: Text(
+                          emoji!,
+                          style: const TextStyle(fontSize: 18),
+                        ),
                       ),
                     )
                   else
@@ -76,14 +79,12 @@ class HomeListTile extends StatelessWidget {
                       duration: const Duration(milliseconds: 180),
                       style: (theme.textTheme.bodyLarge ?? const TextStyle())
                           .copyWith(
-                        fontSize: 15,
-                        fontWeight:
-                            isSelected ? FontWeight.w600 : FontWeight.normal,
-                      ),
-                      child: Text(
-                        title,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                            fontSize: 15,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                          ),
+                      child: Text(title, overflow: TextOverflow.ellipsis),
                     ),
                   ),
                   if (count > 0)

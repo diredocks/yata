@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
-import '../../customizations/theme_picker_sheet.dart';
+
+import '../../theme/theme_picker_sheet.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/todo_list.dart';
 import '../../theme/todo_theme.dart';
@@ -130,8 +131,9 @@ class _EditListDialogState extends State<_EditListDialog> {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final attentionColor =
-        isDark ? TodoColors.attentionDark : TodoColors.attentionLight;
+    final attentionColor = isDark
+        ? TodoColors.attentionDark
+        : TodoColors.attentionLight;
 
     return AlertDialog(
       title: Text(widget.dialogTitle),

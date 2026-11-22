@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:intl/intl.dart';
+
 import '../../detailview/recurrence/task_pickers.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
@@ -46,13 +47,13 @@ class TaskListTile extends StatelessWidget {
     final cardColor = isMultiSelected
         ? (isDark ? const Color(0xFF34373D) : const Color(0xFFF7F7F7))
         : isSelected
-            ? (isDark
-                ? TodoColors.selectedCardDark
-                : TodoColors.selectedCardLight)
-            : (isDark ? TodoColors.cardDark : TodoColors.primaryBackgroundLight);
-    final secondaryColor =
-        isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
-    final starActiveColor = accentColor ??
+        ? (isDark ? TodoColors.selectedCardDark : TodoColors.selectedCardLight)
+        : (isDark ? TodoColors.cardDark : TodoColors.primaryBackgroundLight);
+    final secondaryColor = isDark
+        ? TodoColors.secondaryTextDark
+        : TodoColors.secondaryTextLight;
+    final starActiveColor =
+        accentColor ??
         (isDark ? TodoColors.attentionDark : TodoColors.attentionLight);
 
     final now = DateTime.now();
@@ -71,9 +72,7 @@ class TaskListTile extends StatelessWidget {
     }
 
     if (listName != null && listName!.isNotEmpty) {
-      textMetaItems.add(
-        _MetaText(label: listName!, color: secondaryColor),
-      );
+      textMetaItems.add(_MetaText(label: listName!, color: secondaryColor));
     }
 
     if (task.steps.isNotEmpty) {
@@ -89,10 +88,7 @@ class TaskListTile extends StatelessWidget {
                 label: stepsLabel,
                 color: secondaryColor,
               )
-            : _MetaText(
-                label: stepsLabel,
-                color: secondaryColor,
-              ),
+            : _MetaText(label: stepsLabel, color: secondaryColor),
       );
     }
 
@@ -167,10 +163,7 @@ class TaskListTile extends StatelessWidget {
     for (var i = 0; i < textMetaItems.length; i++) {
       if (i > 0) {
         separatedMeta.add(
-          Text(
-            '•',
-            style: TextStyle(fontSize: 11, color: secondaryColor),
-          ),
+          Text('•', style: TextStyle(fontSize: 11, color: secondaryColor)),
         );
       }
       separatedMeta.add(textMetaItems[i]);
@@ -178,10 +171,7 @@ class TaskListTile extends StatelessWidget {
     if (trailingIconItems.isNotEmpty) {
       if (textMetaItems.isNotEmpty) {
         separatedMeta.add(
-          Text(
-            '•',
-            style: TextStyle(fontSize: 11, color: secondaryColor),
-          ),
+          Text('•', style: TextStyle(fontSize: 11, color: secondaryColor)),
         );
       }
       separatedMeta.addAll(trailingIconItems);
@@ -199,101 +189,109 @@ class TaskListTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(4),
             elevation: 1,
             child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          borderRadius: BorderRadius.circular(4),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 52),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  if (isReordering && !task.isCompleted)
-                    const SizedBox(width: 10)
-                  else ...[
-                    IgnorePointer(
-                      ignoring: isReordering,
-                      child: TaskCheckbox(
-                        isChecked: isMultiSelecting
-                            ? isMultiSelected
-                            : task.isCompleted,
-                        onTap: isMultiSelecting ? onTap : onToggleCompleted,
-                        accentColor: accentColor,
-                        mode: isMultiSelecting
-                            ? CheckboxMode.select
-                            : CheckboxMode.complete,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                  ],
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        AnimatedDefaultTextStyle(
-                          duration: const Duration(milliseconds: 180),
-                          style: (theme.textTheme.bodyLarge ?? const TextStyle())
-                              .copyWith(
-                            fontSize: 15.5,
-                            decoration: task.isCompleted
-                                ? TextDecoration.lineThrough
-                                : null,
-                            color: task.isCompleted
-                                ? secondaryColor
-                                : (isDark
-                                    ? TodoColors.primaryTextDark
-                                    : TodoColors.primaryTextLight),
+              onTap: onTap,
+              onLongPress: onLongPress,
+              borderRadius: BorderRadius.circular(4),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 52),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      if (isReordering && !task.isCompleted)
+                        const SizedBox(width: 10)
+                      else ...[
+                        IgnorePointer(
+                          ignoring: isReordering,
+                          child: TaskCheckbox(
+                            isChecked: isMultiSelecting
+                                ? isMultiSelected
+                                : task.isCompleted,
+                            onTap: isMultiSelecting ? onTap : onToggleCompleted,
+                            accentColor: accentColor,
+                            mode: isMultiSelecting
+                                ? CheckboxMode.select
+                                : CheckboxMode.complete,
                           ),
-                          child: Text(task.title),
                         ),
-                        if (separatedMeta.isNotEmpty) ...[
-                          const SizedBox(height: 3),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 2,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: separatedMeta,
-                          ),
-                        ],
+                        const SizedBox(width: 6),
                       ],
-                    ),
-                  ),
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 180),
-                    switchInCurve: Curves.easeOutBack,
-                    switchOutCurve: Curves.easeIn,
-                    transitionBuilder: (child, anim) => ScaleTransition(
-                      scale: anim,
-                      child: FadeTransition(opacity: anim, child: child),
-                    ),
-                    child: trailingHandle != null
-                        ? KeyedSubtree(
-                            key: const ValueKey('trailing_handle'),
-                            child: trailingHandle!,
-                          )
-                        : IconButton(
-                            key: ValueKey('trailing_star_${task.isImportant}'),
-                            onPressed: onToggleImportant,
-                            icon: Icon(
-                              task.isImportant
-                                  ? Icons.star
-                                  : Icons.star_outline,
-                              color: task.isImportant
-                                  ? starActiveColor
-                                  : secondaryColor,
-                              size: 22,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            AnimatedDefaultTextStyle(
+                              duration: const Duration(milliseconds: 180),
+                              style:
+                                  (theme.textTheme.bodyLarge ??
+                                          const TextStyle())
+                                      .copyWith(
+                                        fontSize: 15.5,
+                                        decoration: task.isCompleted
+                                            ? TextDecoration.lineThrough
+                                            : null,
+                                        color: task.isCompleted
+                                            ? secondaryColor
+                                            : (isDark
+                                                  ? TodoColors.primaryTextDark
+                                                  : TodoColors
+                                                        .primaryTextLight),
+                                      ),
+                              child: Text(task.title),
                             ),
-                            visualDensity: VisualDensity.compact,
-                          ),
+                            if (separatedMeta.isNotEmpty) ...[
+                              const SizedBox(height: 3),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 2,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: separatedMeta,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        switchInCurve: Curves.easeOutBack,
+                        switchOutCurve: Curves.easeIn,
+                        transitionBuilder: (child, anim) => ScaleTransition(
+                          scale: anim,
+                          child: FadeTransition(opacity: anim, child: child),
+                        ),
+                        child: trailingHandle != null
+                            ? KeyedSubtree(
+                                key: const ValueKey('trailing_handle'),
+                                child: trailingHandle!,
+                              )
+                            : IconButton(
+                                key: ValueKey(
+                                  'trailing_star_${task.isImportant}',
+                                ),
+                                onPressed: onToggleImportant,
+                                icon: Icon(
+                                  task.isImportant
+                                      ? Icons.star
+                                      : Icons.star_outline,
+                                  color: task.isImportant
+                                      ? starActiveColor
+                                      : secondaryColor,
+                                  size: 22,
+                                ),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
-      ),
         ),
       ),
     );
@@ -318,10 +316,7 @@ class _MetaItem extends StatelessWidget {
       children: [
         Icon(icon, size: 13, color: color),
         const SizedBox(width: 3),
-        Text(
-          label,
-          style: TextStyle(fontSize: 12, color: color),
-        ),
+        Text(label, style: TextStyle(fontSize: 12, color: color)),
       ],
     );
   }
@@ -335,9 +330,6 @@ class _MetaText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      label,
-      style: TextStyle(fontSize: 12, color: color),
-    );
+    return Text(label, style: TextStyle(fontSize: 12, color: color));
   }
 }
