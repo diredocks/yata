@@ -1,3 +1,4 @@
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,18 +34,29 @@ class YataApp extends ConsumerWidget {
     final themeMode = activeAccount == null
         ? ThemeMode.system
         : ref.watch(todoProvider.select((s) => s.themeMode));
+    final useDynamicColor = activeAccount == null
+        ? true
+        : ref.watch(todoProvider.select((s) => s.useDynamicColor));
 
-    return MaterialApp(
-      onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
-      debugShowCheckedModeBanner: false,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      theme: TodoTheme.light(),
-      darkTheme: TodoTheme.dark(),
-      themeMode: themeMode,
-      home: activeAccount == null
-          ? const LandingScreen()
-          : const MainShellScreen(),
+    return DynamicColorBuilder(
+      builder: (lightDynamic, darkDynamic) {
+        return MaterialApp(
+          onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
+          debugShowCheckedModeBanner: false,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: TodoTheme.light(
+            dynamicColorScheme: useDynamicColor ? lightDynamic : null,
+          ),
+          darkTheme: TodoTheme.dark(
+            dynamicColorScheme: useDynamicColor ? darkDynamic : null,
+          ),
+          themeMode: themeMode,
+          home: activeAccount == null
+              ? const LandingScreen()
+              : const MainShellScreen(),
+        );
+      },
     );
   }
 }

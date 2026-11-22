@@ -56,16 +56,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         ? const <TaskItem>[]
         : notifier.search(_query, showCompleted: _showCompleted);
 
-    final bodyBg = TodoColors.searchBackground(theme.brightness);
+    final bodyBg = theme.scaffoldBackgroundColor;
     final secondaryText =
         isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
 
     return Scaffold(
       backgroundColor: bodyBg,
       appBar: AppBar(
-        backgroundColor: isDark
-            ? TodoColors.secondaryBackgroundDark
-            : TodoColors.primaryBackgroundLight,
+        backgroundColor: theme.appBarTheme.backgroundColor,
         titleSpacing: 0,
         title: TextField(
           controller: _controller,

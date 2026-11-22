@@ -101,9 +101,7 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
     final collapsedAvatarSize = widget.isSidebar ? 32.0 : 38.0;
 
     return Material(
-      color: isDark
-          ? TodoColors.primaryBackgroundDark
-          : TodoColors.primaryBackgroundLight,
+      color: theme.scaffoldBackgroundColor,
       child: SafeArea(
         child: Column(
           children: [

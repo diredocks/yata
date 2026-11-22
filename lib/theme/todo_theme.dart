@@ -1,3 +1,4 @@
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:material_ui/material_ui.dart';
 import '../models/todo_list.dart';
 
@@ -352,7 +353,30 @@ class TodoTheme {
     },
   );
 
-  static ThemeData light() {
+  static ThemeData light({ColorScheme? dynamicColorScheme}) {
+    if (dynamicColorScheme != null) {
+      final scheme = dynamicColorScheme.harmonized();
+      return ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.light,
+        pageTransitionsTheme: _pageTransitionsTheme,
+        colorScheme: scheme,
+        scaffoldBackgroundColor: scheme.surface,
+        dividerColor: scheme.outlineVariant,
+        dividerTheme: DividerThemeData(
+          color: scheme.outlineVariant,
+          thickness: 1,
+          space: 1,
+        ),
+        cardColor: scheme.surfaceContainerLow,
+        appBarTheme: AppBarTheme(
+          backgroundColor: scheme.surface,
+          foregroundColor: scheme.onSurface,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+        ),
+      );
+    }
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
@@ -380,7 +404,30 @@ class TodoTheme {
     );
   }
 
-  static ThemeData dark() {
+  static ThemeData dark({ColorScheme? dynamicColorScheme}) {
+    if (dynamicColorScheme != null) {
+      final scheme = dynamicColorScheme.harmonized();
+      return ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        pageTransitionsTheme: _pageTransitionsTheme,
+        colorScheme: scheme,
+        scaffoldBackgroundColor: scheme.surface,
+        dividerColor: scheme.outlineVariant,
+        dividerTheme: DividerThemeData(
+          color: scheme.outlineVariant,
+          thickness: 1,
+          space: 1,
+        ),
+        cardColor: scheme.surfaceContainerLow,
+        appBarTheme: AppBarTheme(
+          backgroundColor: scheme.surface,
+          foregroundColor: scheme.onSurface,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+        ),
+      );
+    }
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,

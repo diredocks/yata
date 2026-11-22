@@ -50,6 +50,7 @@ class _NoteCardViewState extends State<NoteCardView> {
     return Card(
       color: widget.cardColor,
       elevation: 1,
+      margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 132),

@@ -266,5 +266,7 @@
   "routineNotificationBody": "What do you want to accomplish today? Plan it with Yata.",
   "quickAddNotificationTitle": "Yata Quick Add",
   "quickAddNotificationBody": "Tap to add a task",
-  "notificationPermissionDenied": "Notification permission is disabled. Enable it in system settings to receive reminders."
+  "notificationPermissionDenied": "Notification permission is disabled. Enable it in system settings to receive reminders.",
+  "useDynamicColor": "Use system dynamic color",
+  "useDynamicColorSummary": "Use system colors on pages without a list theme"
 }

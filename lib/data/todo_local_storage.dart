@@ -47,6 +47,7 @@ class TodoSnapshot {
     required this.showSmartListAll,
     required this.showSmartListCompleted,
     required this.autoHideEmptySmartLists,
+    this.useDynamicColor = true,
     this.remindersEnabled = true,
     this.pinReminders = false,
     this.dueTodayNotificationsEnabled = false,
@@ -77,6 +78,7 @@ class TodoSnapshot {
   final bool showSmartListAll;
   final bool showSmartListCompleted;
   final bool autoHideEmptySmartLists;
+  final bool useDynamicColor;
   final bool remindersEnabled;
   final bool pinReminders;
   final bool dueTodayNotificationsEnabled;
@@ -121,6 +123,7 @@ class TodoLocalStorage {
   String get _showAllKey => _k('show_smart_all');
   String get _showCompletedListKey => _k('show_smart_completed');
   String get _autoHideSmartListsKey => _k('autohide_smart_lists');
+  String get _useDynamicColorKey => _k('use_dynamic_color');
   String get _remindersEnabledKey => _k('reminder_notification_enabled');
   String get _pinRemindersKey => _k('reminder_pin_setting');
   String get _dueTodayNotificationsKey => _k('due_date_notification_enabled');
@@ -269,6 +272,7 @@ class TodoLocalStorage {
       showSmartListCompleted: _prefs.getBool(_showCompletedListKey) ?? false,
       autoHideEmptySmartLists:
           _prefs.getBool(_autoHideSmartListsKey) ?? false,
+      useDynamicColor: _prefs.getBool(_useDynamicColorKey) ?? true,
       remindersEnabled: _prefs.getBool(_remindersEnabledKey) ?? true,
       pinReminders: _prefs.getBool(_pinRemindersKey) ?? false,
       dueTodayNotificationsEnabled:
@@ -357,6 +361,9 @@ class TodoLocalStorage {
 
   Future<void> saveAutoHideEmptySmartLists(bool value) =>
       saveBoolSetting(_autoHideSmartListsKey, value);
+
+  Future<void> saveUseDynamicColor(bool value) =>
+      saveBoolSetting(_useDynamicColorKey, value);
 
   Future<void> saveRemindersEnabled(bool value) =>
       saveBoolSetting(_remindersEnabledKey, value);

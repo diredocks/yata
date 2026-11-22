@@ -204,9 +204,18 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
       return const SizedBox.shrink();
     }
 
-    final primaryBg = TodoColors.detailHeaderBackground(theme.brightness);
-    final bodyBg = TodoColors.detailBodyBackground(theme.brightness);
-    final cardBg = isDark ? TodoColors.secondaryBackgroundDark : Colors.white;
+    final useDynamicColors = state.useDynamicColor &&
+        theme.scaffoldBackgroundColor != TodoColors.primaryBackgroundLight &&
+        theme.scaffoldBackgroundColor != TodoColors.primaryBackgroundDark;
+    final primaryBg = useDynamicColors
+        ? theme.colorScheme.surfaceContainerLow
+        : TodoColors.detailHeaderBackground(theme.brightness);
+    final bodyBg = useDynamicColors
+        ? theme.scaffoldBackgroundColor
+        : TodoColors.detailBodyBackground(theme.brightness);
+    final cardBg = useDynamicColors
+        ? theme.colorScheme.surfaceContainerLow
+        : (isDark ? TodoColors.secondaryBackgroundDark : Colors.white);
     final secondaryText =
         isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
 

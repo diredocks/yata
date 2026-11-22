@@ -17,6 +17,11 @@ class SettingsPresenter {
     _store.storage.saveThemeMode(mode);
   }
 
+  void setUseDynamicColor(bool value) {
+    _store.commit(_state.copyWith(useDynamicColor: value));
+    _store.storage.saveUseDynamicColor(value);
+  }
+
   void toggleShowCompleted(bool value) {
     _store.commit(_state.copyWith(showCompleted: value));
     _store.storage.saveShowCompleted(value);

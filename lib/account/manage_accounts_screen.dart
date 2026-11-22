@@ -66,9 +66,7 @@ class ManageAccountsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.manageAccounts),
-        backgroundColor: isDark
-            ? TodoColors.primaryBackgroundDark
-            : TodoColors.primaryBackgroundLight,
+        backgroundColor: theme.appBarTheme.backgroundColor,
         surfaceTintColor: Colors.transparent,
         elevation: 4,
         scrolledUnderElevation: 4,

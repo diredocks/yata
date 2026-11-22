@@ -180,5 +180,7 @@
   "routineNotificationBody": "你今天的目标是什么？使用 Yata 制订计划。",
   "quickAddNotificationTitle": "Yata 快速添加",
   "quickAddNotificationBody": "点击以添加任务",
-  "notificationPermissionDenied": "通知权限未开启，请在系统设置中允许通知以接收提醒。"
+  "notificationPermissionDenied": "通知权限未开启，请在系统设置中允许通知以接收提醒。",
+  "useDynamicColor": "使用系统动态取色",
+  "useDynamicColorSummary": "在未指定清单颜色的页面应用系统默认配色"
 }

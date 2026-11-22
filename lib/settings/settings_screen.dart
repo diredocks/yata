@@ -102,9 +102,7 @@ class SettingsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.settings),
-        backgroundColor: isDark
-            ? TodoColors.primaryBackgroundDark
-            : TodoColors.primaryBackgroundLight,
+        backgroundColor: theme.appBarTheme.backgroundColor,
         surfaceTintColor: Colors.transparent,
         elevation: 4,
         scrolledUnderElevation: 4,
@@ -340,6 +338,13 @@ class SettingsScreen extends ConsumerWidget {
                 notifier.setThemeMode(selected);
               }
             },
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.color_lens_outlined),
+            title: Text(l10n.useDynamicColor),
+            subtitle: Text(l10n.useDynamicColorSummary),
+            value: state.useDynamicColor,
+            onChanged: notifier.setUseDynamicColor,
           ),
           ListTile(
             leading: const Icon(Icons.calendar_view_week_outlined),

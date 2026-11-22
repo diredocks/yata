@@ -30,7 +30,7 @@ class HomeListTile extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final selectedBg = isDark
         ? Colors.white.withValues(alpha: 0.08)
-        : TodoColors.blue100.withValues(alpha: 0.08);
+        : theme.colorScheme.primary.withValues(alpha: 0.08);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),

@@ -37,6 +37,7 @@ class TodoState {
     this.showSmartListAll = false,
     this.showSmartListCompleted = false,
     this.autoHideEmptySmartLists = false,
+    this.useDynamicColor = true,
     this.remindersEnabled = true,
     this.pinReminders = false,
     this.dueTodayNotificationsEnabled = false,
@@ -68,6 +69,7 @@ class TodoState {
   final bool showSmartListAll;
   final bool showSmartListCompleted;
   final bool autoHideEmptySmartLists;
+  final bool useDynamicColor;
   final bool remindersEnabled;
   final bool pinReminders;
   final bool dueTodayNotificationsEnabled;
@@ -205,6 +207,7 @@ class TodoState {
     bool? showSmartListAll,
     bool? showSmartListCompleted,
     bool? autoHideEmptySmartLists,
+    bool? useDynamicColor,
     bool? remindersEnabled,
     bool? pinReminders,
     bool? dueTodayNotificationsEnabled,
@@ -242,6 +245,7 @@ class TodoState {
           showSmartListCompleted ?? this.showSmartListCompleted,
       autoHideEmptySmartLists:
           autoHideEmptySmartLists ?? this.autoHideEmptySmartLists,
+      useDynamicColor: useDynamicColor ?? this.useDynamicColor,
       remindersEnabled: remindersEnabled ?? this.remindersEnabled,
       pinReminders: pinReminders ?? this.pinReminders,
       dueTodayNotificationsEnabled:
@@ -343,6 +347,7 @@ class TodoNotifier extends Notifier<TodoState> {
       showSmartListAll: snapshot.showSmartListAll,
       showSmartListCompleted: snapshot.showSmartListCompleted,
       autoHideEmptySmartLists: snapshot.autoHideEmptySmartLists,
+      useDynamicColor: snapshot.useDynamicColor,
       remindersEnabled: snapshot.remindersEnabled,
       pinReminders: snapshot.pinReminders,
       dueTodayNotificationsEnabled: snapshot.dueTodayNotificationsEnabled,
