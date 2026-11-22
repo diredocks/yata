@@ -36,7 +36,7 @@ class NotificationStrings {
     required this.completeActionLabel,
     required this.snoozeActionLabel,
     required this.dueTodaySingleTitle,
-    required this.dueTodayMultipleTitleBuilder,
+    required this.dueTodayMultipleTitle,
     required this.routineTitle,
     required this.routineBody,
     required this.quickAddTitle,
@@ -49,7 +49,7 @@ class NotificationStrings {
       completeActionLabel: l10n.notificationCompleteAction,
       snoozeActionLabel: l10n.notificationSnoozeAction,
       dueTodaySingleTitle: l10n.dueTodayNotificationSingleTitle,
-      dueTodayMultipleTitleBuilder: l10n.dueTodayNotificationMultipleTitle,
+      dueTodayMultipleTitle: l10n.dueTodayNotificationMultipleTitle,
       routineTitle: l10n.routineNotificationTitle,
       routineBody: l10n.routineNotificationBody,
       quickAddTitle: l10n.quickAddNotificationTitle,
@@ -59,16 +59,15 @@ class NotificationStrings {
   }
 
   static NotificationStrings fallbackEnglish() {
-    return NotificationStrings(
+    return const NotificationStrings(
       completeActionLabel: 'Complete',
       snoozeActionLabel: 'Snooze',
       dueTodaySingleTitle: 'You have a task due today',
-      dueTodayMultipleTitleBuilder: (count) =>
-          'You have $count tasks due today',
+      dueTodayMultipleTitle: 'You have tasks due today',
       routineTitle: 'What will you do today?',
       routineBody: 'What do you want to accomplish today? Plan it with YATA.',
       quickAddTitle: 'YATA Quick Add',
-      quickAddBody: 'Tap to add a new task',
+      quickAddBody: 'Tap to add a task',
       defaultTasksListName: 'Tasks',
     );
   }
@@ -76,7 +75,7 @@ class NotificationStrings {
   final String completeActionLabel;
   final String snoozeActionLabel;
   final String dueTodaySingleTitle;
-  final String Function(int count) dueTodayMultipleTitleBuilder;
+  final String dueTodayMultipleTitle;
   final String routineTitle;
   final String routineBody;
   final String quickAddTitle;
@@ -567,7 +566,7 @@ class NotificationService {
       );
       final title = dueTodayTasks.length == 1
           ? l10n.dueTodaySingleTitle
-          : l10n.dueTodayMultipleTitleBuilder(dueTodayTasks.length);
+          : l10n.dueTodayMultipleTitle;
       final body = dueTodayTasks.take(3).map((t) => t.title).join(', ');
       final payload = jsonEncode({'type': 'due_today'});
 

@@ -354,9 +354,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Notifications'), findsOneWidget);
-    expect(find.text('Pin reminders'), findsOneWidget);
+    expect(find.text('Pin Reminders'), findsOneWidget);
     expect(find.text('Due Today notifications'), findsOneWidget);
-    expect(find.text('Plan your day reminder'), findsOneWidget);
+    expect(find.text('Plan your day reminders'), findsOneWidget);
     expect(find.text('Quick add notification'), findsOneWidget);
 
     // Enable Due Today notifications -> reveals time tile and requests permission.
