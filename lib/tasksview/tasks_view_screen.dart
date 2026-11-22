@@ -721,8 +721,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     bool isDark,
   ) {
     return AppBar(
-      backgroundColor:
-          isDark ? const Color(0xFF2B2B2B) : TodoColors.secondaryTextLight,
+      backgroundColor: isDark
+          ? TodoColors.primaryBackgroundDark
+          : TodoColors.secondaryTextLight,
       foregroundColor: Colors.white,
       leading: IconButton(
         onPressed: _exitReordering,
@@ -1078,7 +1079,13 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
     return [
       if (_mode == _TasksViewMode.reordering)
-        _buildReorderableSliver(activeTasks, accentColor)
+        _buildReorderableSliver(
+          l10n: l10n,
+          state: state,
+          currentList: currentList,
+          activeTasks: activeTasks,
+          accentColor: accentColor,
+        )
       else if (currentList.smartType == SmartListType.planned &&
           currentList.sortOption == TaskSortOption.defaultOrder)
         ..._buildPlannedBucketSlivers(
@@ -1120,11 +1127,17 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     ];
   }
 
-  Widget _buildReorderableSliver(
-    List<TaskItem> activeTasks,
-    Color accentColor,
-  ) {
+  Widget _buildReorderableSliver({
+    required AppLocalizations l10n,
+    required TodoState state,
+    required TodoList currentList,
+    required List<TaskItem> activeTasks,
+    required Color accentColor,
+  }) {
     final notifier = ref.read(tasksViewPresenterProvider);
+    final showMyDayBadge = currentList.smartType != SmartListType.myDay;
+    final showOriginList = currentList.isSmartList &&
+        currentList.smartType != SmartListType.tasks;
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       sliver: SliverReorderableList(
@@ -1138,6 +1151,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
             color: Colors.transparent,
             child: TaskListTile(
               task: task,
+              listName: showOriginList
+                  ? resolveOriginListName(l10n, state.lists, task.listId)
+                  : null,
+              showMyDayBadge: showMyDayBadge,
               accentColor: accentColor,
               isReordering: true,
               onTap: () {},
@@ -1520,7 +1537,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                             activeTasksCount: active.length,
                             isDark: isDark,
                           )
-                        else if (_mode == _TasksViewMode.multiSelecting)
+                        else if (_mode == _TasksViewMode.multiSelecting ||
+                            _mode == _TasksViewMode.reordering)
                           SliverToBoxAdapter(
                             child: Padding(
                               padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),

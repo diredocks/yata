@@ -205,11 +205,11 @@ class TaskListTile extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  IgnorePointer(
-                    ignoring: isReordering,
-                    child: AnimatedOpacity(
-                      duration: const Duration(milliseconds: 180),
-                      opacity: isReordering ? 0.45 : 1.0,
+                  if (isReordering && !task.isCompleted)
+                    const SizedBox(width: 10)
+                  else ...[
+                    IgnorePointer(
+                      ignoring: isReordering,
                       child: TaskCheckbox(
                         isChecked: isMultiSelecting
                             ? isMultiSelected
@@ -221,8 +221,8 @@ class TaskListTile extends StatelessWidget {
                             : CheckboxMode.complete,
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
+                    const SizedBox(width: 6),
+                  ],
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
