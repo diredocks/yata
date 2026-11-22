@@ -97,10 +97,25 @@ void main() {
     expect(find.text('Task deleted'), findsOneWidget);
     expect(find.text('Undo'), findsOneWidget);
 
+    // Snackbar is scoped to TasksViewScreen (not spanning sidebar) and above FAB
+    final snackBarRect = tester.getRect(find.byType(SnackBar));
+    final fabRect = tester.getRect(find.byType(FloatingActionButton));
+    expect(snackBarRect.left, greaterThanOrEqualTo(280));
+    expect(snackBarRect.overlaps(fabRect), isFalse);
+    expect(fabRect.bottom, lessThanOrEqualTo(snackBarRect.top));
+
     // Tapping Undo restores the task
     await tester.tap(find.text('Undo'));
     await tester.pumpAndSettle();
     expect(container.read(todoProvider).tasks.length, 1);
     expect(container.read(todoProvider).tasks.first.title, 'Swipe me');
+
+    // Swiping left again -> Snackbar auto-dismisses after 4 seconds
+    await tester.drag(find.text('Swipe me'), const Offset(-350, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Task deleted'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.text('Task deleted'), findsNothing);
   });
 }

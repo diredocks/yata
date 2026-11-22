@@ -64,6 +64,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   final Set<String> _collapsedPlannedBuckets = {};
   final Set<String> _collapsedCompletedListBuckets = {};
   final _completionController = DelayedTaskCompletionController();
+  final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
   late final TasksViewPresenter _presenter;
 
   @override
@@ -394,7 +395,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
     notifier.duplicateList(currentList.id, keepCompleted: keepCompleted);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
+    _scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(content: Text(l10n.duplicateListSuccess)),
     );
   }
@@ -593,11 +594,13 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final presenter = ref.read(tasksViewPresenterProvider);
     final originalIndex = allStateTasks.indexWhere((t) => t.id == task.id);
     ref.read(tasksActionPresenterProvider).batchDeleteTasks({task.id});
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.clearSnackBars();
-    messenger.showSnackBar(
+    final messenger = _scaffoldMessengerKey.currentState;
+    messenger?.clearSnackBars();
+    messenger?.showSnackBar(
       SnackBar(
         content: Text(l10n.taskDeleted),
+        persist: false,
+        duration: const Duration(seconds: 4),
         action: SnackBarAction(
           label: l10n.undo,
           onPressed: () => presenter.restoreTask(task, index: originalIndex),
@@ -1527,8 +1530,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
             _clearSelection();
         }
       },
-      child: Scaffold(
-        appBar: _buildAppBar(
+      child: ScaffoldMessenger(
+        key: _scaffoldMessengerKey,
+        child: Scaffold(
+          appBar: _buildAppBar(
           l10n: l10n,
           state: state,
           currentList: currentList,
@@ -1635,6 +1640,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           brightness: brightness,
           isDark: isDark,
         ),
+      ),
       ),
     );
   }
