@@ -2,11 +2,18 @@ import 'package:lottie/lottie.dart';
 import 'package:material_ui/material_ui.dart';
 import '../theme/todo_theme.dart';
 
+/// Mode matching `AnimatableCheckBox.b` (`COMPLETE` vs `SELECT`).
+enum CheckboxMode {
+  complete,
+  select,
+}
+
 /// Task/step completion checkbox matching `AnimatableCheckBox.java`:
 /// - Unchecked: hollow circle (`emptyCircle`), checkmark hidden at 1.8x scale.
 /// - Checking: `emptyCircle` shrinks/fades out (200ms), `filledCircle` scales
 ///   in (50ms delay, 300ms), `checkmark` scales 1.8->1.0 & fades in (50ms delay,
-///   300ms), and for tasks (`showConfetti: true`) `confetti.json` plays at 5x speed.
+///   300ms), and for tasks (`showConfetti: true` & `mode == CheckboxMode.complete`)
+///   `confetti.json` plays at 5x speed.
 /// - Unchecking: `emptyCircle` restores (10ms), `filledCircle` shrinks out
 ///   (100ms), `checkmark` scales 1.0->1.8 & fades out (20ms).
 class TaskCheckbox extends StatefulWidget {
@@ -17,6 +24,7 @@ class TaskCheckbox extends StatefulWidget {
     this.accentColor,
     this.size = 22,
     this.showConfetti = true,
+    this.mode = CheckboxMode.complete,
   });
 
   final bool isChecked;
@@ -24,6 +32,7 @@ class TaskCheckbox extends StatefulWidget {
   final Color? accentColor;
   final double size;
   final bool showConfetti;
+  final CheckboxMode mode;
 
   @override
   State<TaskCheckbox> createState() => _TaskCheckboxState();
@@ -63,7 +72,7 @@ class _TaskCheckboxState extends State<TaskCheckbox>
     super.didUpdateWidget(oldWidget);
     if (!oldWidget.isChecked && widget.isChecked) {
       _checkController.forward();
-      if (widget.showConfetti) {
+      if (widget.showConfetti && widget.mode == CheckboxMode.complete) {
         setState(() => _showConfetti = true);
         _confettiController.forward(from: 0);
       }
@@ -88,9 +97,11 @@ class _TaskCheckboxState extends State<TaskCheckbox>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final activeColor = widget.accentColor ??
         (isDark ? TodoColors.attentionDark : TodoColors.attentionLight);
-    final uncheckedBorderColor = isDark
-        ? TodoColors.secondaryTextDark
-        : TodoColors.secondaryTextLight;
+    final uncheckedBorderColor = widget.mode == CheckboxMode.select
+        ? activeColor
+        : (isDark
+            ? TodoColors.secondaryTextDark
+            : TodoColors.secondaryTextLight);
 
     return InkResponse(
       onTap: widget.onTap,

@@ -201,17 +201,29 @@ void main() {
     await tester.tap(find.byIcon(Icons.check));
     await tester.pumpAndSettle();
 
-    // Long-press enters multi-select mode; secondary actions are in overflow menu
+    // Long-press enters multi-select mode matching TasksActionMode & AnimatableCheckBox.SELECT
     await tester.longPress(find.text('First task'));
     await tester.pumpAndSettle();
-    expect(find.text('1 selected'), findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('1')),
+      findsOneWidget,
+    );
+    expect(find.text('My Day'), findsWidgets);
     expect(find.byIcon(Icons.select_all), findsNothing);
 
     await tester.tap(find.byIcon(Icons.more_vert));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Select all'));
     await tester.pumpAndSettle();
-    expect(find.text('2 selected'), findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('2')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    expect(find.text('Clear all'), findsOneWidget);
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
 
     // Open Settings and toggle Completed smart list + persist
     await tester.tap(find.byIcon(Icons.close));
@@ -363,12 +375,18 @@ void main() {
 
     await tester.longPress(find.text('Back test task'));
     await tester.pumpAndSettle();
-    expect(find.text('1 selected'), findsOneWidget);
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('1')),
+      findsOneWidget,
+    );
 
     // System back in multi-select mode clears selection without popping route
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.text('1 selected'), findsNothing);
+    expect(
+      find.descendant(of: find.byType(AppBar), matching: find.text('1')),
+      findsNothing,
+    );
     expect(find.text('Back test task'), findsOneWidget);
 
     // System back in normal mode pops back to HomeViewScreen

@@ -34,7 +34,7 @@ enum _ListMenuAction {
 }
 
 enum _MultiSelectAction {
-  selectAll,
+  selectOrClearAll,
   important,
   move,
   copy,
@@ -568,8 +568,14 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   ) {
     final actionPresenter = ref.read(tasksActionPresenterProvider);
     switch (action) {
-      case _MultiSelectAction.selectAll:
-        _selectAll(allTasks);
+      case _MultiSelectAction.selectOrClearAll:
+        final allSelected = allTasks.isNotEmpty &&
+            allTasks.every((t) => _multiSelectedIds.contains(t.id));
+        if (allSelected) {
+          _clearSelection();
+        } else {
+          _selectAll(allTasks);
+        }
       case _MultiSelectAction.important:
         actionPresenter.batchMarkImportant(_multiSelectedIds);
         _clearSelection();
@@ -600,6 +606,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       showMyDayBadge: showMyDayBadge,
       accentColor: accentColor,
       isSelected: state.selectedTaskId == task.id,
+      isMultiSelecting: _mode == _TasksViewMode.multiSelecting,
       isMultiSelected: _multiSelectedIds.contains(task.id),
       onTap: () {
         if (_mode == _TasksViewMode.multiSelecting) {
@@ -748,16 +755,19 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final canBatchMarkImportant =
         currentList.smartType != SmartListType.important &&
             selectedTasks.any((t) => !t.isImportant);
+    final allSelected = allTasks.isNotEmpty &&
+        allTasks.every((t) => _multiSelectedIds.contains(t.id));
 
     return AppBar(
-      backgroundColor:
-          isDark ? const Color(0xFF2B2B2B) : TodoColors.secondaryTextLight,
+      backgroundColor: isDark
+          ? TodoColors.primaryBackgroundDark
+          : TodoColors.secondaryTextLight,
       foregroundColor: Colors.white,
       leading: IconButton(
         onPressed: _clearSelection,
         icon: const Icon(Icons.close),
       ),
-      title: Text(l10n.selectedCount(_multiSelectedIds.length)),
+      title: Text('${_multiSelectedIds.length}'),
       actions: [
         if (canBatchAddToMyDay)
           IconButton(
@@ -780,9 +790,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
               _handleMultiSelectAction(action, state, allTasks),
           itemBuilder: (_) => [
             _buildPopupMenuItem(
-              value: _MultiSelectAction.selectAll,
-              icon: Icons.select_all,
-              label: l10n.selectAll,
+              value: _MultiSelectAction.selectOrClearAll,
+              icon: allSelected ? Icons.deselect_outlined : Icons.select_all,
+              label: allSelected ? l10n.clearAll : l10n.selectAll,
             ),
             if (canBatchMarkImportant)
               _buildPopupMenuItem(
@@ -1500,6 +1510,41 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                             gradient: gradient,
                             activeTasksCount: active.length,
                             isDark: isDark,
+                          )
+                        else if (_mode == _TasksViewMode.multiSelecting)
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    listTitle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: headerFg,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 30,
+                                    ),
+                                  ),
+                                  if (subtitle != null) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      subtitle,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: headerFg.withValues(alpha: 0.92),
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
                           ),
                         if (currentList.sortOption !=
                                 TaskSortOption.defaultOrder &&

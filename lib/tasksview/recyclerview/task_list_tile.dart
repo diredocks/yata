@@ -18,6 +18,7 @@ class TaskListTile extends StatelessWidget {
     this.showMyDayBadge = false,
     this.accentColor,
     this.isSelected = false,
+    this.isMultiSelecting = false,
     this.isMultiSelected = false,
     this.isReordering = false,
     this.trailingHandle,
@@ -32,6 +33,7 @@ class TaskListTile extends StatelessWidget {
   final bool showMyDayBadge;
   final Color? accentColor;
   final bool isSelected;
+  final bool isMultiSelecting;
   final bool isMultiSelected;
   final bool isReordering;
   final Widget? trailingHandle;
@@ -41,9 +43,13 @@ class TaskListTile extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final l10n = AppLocalizations.of(context);
-    final cardColor = (isSelected || isMultiSelected)
-        ? (isDark ? TodoColors.selectedCardDark : TodoColors.selectedCardLight)
-        : (isDark ? TodoColors.cardDark : TodoColors.primaryBackgroundLight);
+    final cardColor = isMultiSelected
+        ? (isDark ? const Color(0xFF34373D) : const Color(0xFFF7F7F7))
+        : isSelected
+            ? (isDark
+                ? TodoColors.selectedCardDark
+                : TodoColors.selectedCardLight)
+            : (isDark ? TodoColors.cardDark : TodoColors.primaryBackgroundLight);
     final secondaryColor =
         isDark ? TodoColors.secondaryTextDark : TodoColors.secondaryTextLight;
     final starActiveColor = accentColor ??
@@ -151,9 +157,14 @@ class TaskListTile extends StatelessWidget {
                       duration: const Duration(milliseconds: 180),
                       opacity: isReordering ? 0.45 : 1.0,
                       child: TaskCheckbox(
-                        isChecked: task.isCompleted,
-                        onTap: onToggleCompleted,
+                        isChecked: isMultiSelecting
+                            ? isMultiSelected
+                            : task.isCompleted,
+                        onTap: isMultiSelecting ? onTap : onToggleCompleted,
                         accentColor: accentColor,
+                        mode: isMultiSelecting
+                            ? CheckboxMode.select
+                            : CheckboxMode.complete,
                       ),
                     ),
                   ),
@@ -204,30 +215,20 @@ class TaskListTile extends StatelessWidget {
                             key: const ValueKey('trailing_handle'),
                             child: trailingHandle!,
                           )
-                        : isMultiSelected
-                            ? Padding(
-                                key: const ValueKey('trailing_selected'),
-                                padding: const EdgeInsets.only(right: 8),
-                                child: Icon(
-                                  Icons.check_circle,
-                                  color: starActiveColor,
-                                  size: 22,
-                                ),
-                              )
-                            : IconButton(
-                                key: ValueKey('trailing_star_${task.isImportant}'),
-                                onPressed: onToggleImportant,
-                                icon: Icon(
-                                  task.isImportant
-                                      ? Icons.star
-                                      : Icons.star_outline,
-                                  color: task.isImportant
-                                      ? starActiveColor
-                                      : secondaryColor,
-                                  size: 22,
-                                ),
-                                visualDensity: VisualDensity.compact,
-                              ),
+                        : IconButton(
+                            key: ValueKey('trailing_star_${task.isImportant}'),
+                            onPressed: onToggleImportant,
+                            icon: Icon(
+                              task.isImportant
+                                  ? Icons.star
+                                  : Icons.star_outline,
+                              color: task.isImportant
+                                  ? starActiveColor
+                                  : secondaryColor,
+                              size: 22,
+                            ),
+                            visualDensity: VisualDensity.compact,
+                          ),
                   ),
                 ],
               ),

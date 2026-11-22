@@ -187,5 +187,6 @@
     "placeholders": {
       "time": {"type": "String"}
     }
-  }
+  },
+  "clearAll": "Clear all"
 }
