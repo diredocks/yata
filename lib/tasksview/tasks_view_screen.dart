@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
+
 import '../customizations/theme_picker_sheet.dart';
 import '../detailview/recurrence/task_pickers.dart';
 import '../l10n/app_localizations.dart';
@@ -23,28 +24,11 @@ import 'tasks_action_presenter.dart';
 import 'tasks_view_grouping.dart';
 import 'tasks_view_presenter.dart';
 
-enum _TasksViewMode {
-  browsing,
-  reordering,
-  multiSelecting,
-}
+enum _TasksViewMode { browsing, reordering, multiSelecting }
 
-enum _ListMenuAction {
-  rename,
-  sort,
-  reorder,
-  changeTheme,
-  duplicate,
-  delete,
-}
+enum _ListMenuAction { rename, sort, reorder, changeTheme, duplicate, delete }
 
-enum _MultiSelectAction {
-  selectOrClearAll,
-  important,
-  move,
-  copy,
-  delete,
-}
+enum _MultiSelectAction { selectOrClearAll, important, move, copy, delete }
 
 class TasksViewScreen extends ConsumerStatefulWidget {
   const TasksViewScreen({
@@ -95,8 +79,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final offset = _scrollController.offset;
     if (offset <= 0.5 || offset >= collapseDelta - 0.5) return;
     final maxScroll = _scrollController.position.maxScrollExtent;
-    final target = (offset >= collapseDelta / 2 ? collapseDelta : 0.0)
-        .clamp(0.0, maxScroll);
+    final target = (offset >= collapseDelta / 2 ? collapseDelta : 0.0).clamp(
+      0.0,
+      maxScroll,
+    );
     if ((target - offset).abs() <= 0.5) return;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -113,6 +99,20 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           .whenComplete(() => _isSnappingHeader = false);
     });
     WidgetsBinding.instance.scheduleFrame();
+  }
+
+  void _scrollToTop() {
+    if (!_scrollController.hasClients || _scrollController.offset <= 0) {
+      return;
+    }
+    _isSnappingHeader = true;
+    _scrollController
+        .animateTo(
+          0,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+        )
+        .whenComplete(() => _isSnappingHeader = false);
   }
 
   void _enterReordering() {
@@ -171,21 +171,22 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         lists: state.lists,
         currentList: state.selectedList,
         startOfWeek: state.startOfWeek,
-        onSubmit: ({
-          required String title,
-          String? targetListId,
-          DateTime? dueDate,
-          DateTime? reminderAt,
-          RecurrenceType recurrence = RecurrenceType.none,
-        }) {
-          notifier.addTask(
-            title: title,
-            targetListId: targetListId,
-            dueDate: dueDate,
-            reminderAt: reminderAt,
-            recurrence: recurrence,
-          );
-        },
+        onSubmit:
+            ({
+              required String title,
+              String? targetListId,
+              DateTime? dueDate,
+              DateTime? reminderAt,
+              RecurrenceType recurrence = RecurrenceType.none,
+            }) {
+              notifier.addTask(
+                title: title,
+                targetListId: targetListId,
+                dueDate: dueDate,
+                reminderAt: reminderAt,
+                recurrence: recurrence,
+              );
+            },
       ),
     );
   }
@@ -231,11 +232,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         l10n.sortByAlphabetical,
         Icons.sort_by_alpha,
       ),
-      (
-        TaskSortOption.creationDate,
-        l10n.sortByCreationDate,
-        Icons.access_time,
-      ),
+      (TaskSortOption.creationDate, l10n.sortByCreationDate, Icons.access_time),
     ];
 
     await showModalBottomSheet<void>(
@@ -403,7 +400,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   ) async {
     final l10n = AppLocalizations.of(context);
     final notifier = ref.read(tasksViewPresenterProvider);
-    final hasCompleted = currentList.showCompleted &&
+    final hasCompleted =
+        currentList.showCompleted &&
         state.tasks.any((t) => t.listId == currentList.id && t.isCompleted);
 
     var keepCompleted = false;
@@ -477,11 +475,13 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     int activeTasksCount,
   ) {
     final isCustom = !list.isSmartList;
-    final supportsSort = isCustom ||
+    final supportsSort =
+        isCustom ||
         list.smartType == SmartListType.myDay ||
         list.smartType == SmartListType.all ||
         list.smartType == SmartListType.tasks;
-    final supportsReorder = (isCustom ||
+    final supportsReorder =
+        (isCustom ||
             list.smartType == SmartListType.myDay ||
             list.smartType == SmartListType.tasks) &&
         list.sortOption == TaskSortOption.defaultOrder &&
@@ -592,7 +592,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final actionPresenter = ref.read(tasksActionPresenterProvider);
     switch (action) {
       case _MultiSelectAction.selectOrClearAll:
-        final allSelected = allTasks.isNotEmpty &&
+        final allSelected =
+            allTasks.isNotEmpty &&
             allTasks.every((t) => _multiSelectedIds.contains(t.id));
         if (allSelected) {
           _clearSelection();
@@ -708,10 +709,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 color: currentList.themePhoto != null
                     ? Colors.black.withValues(alpha: 0.35)
                     : (Theme.of(context).brightness == Brightness.dark
-                        ? Colors.white.withValues(alpha: 0.10)
-                        : (TodoColors.isLightTheme(currentList.themeColor)
-                            ? Colors.white.withValues(alpha: 0.72)
-                            : Colors.black.withValues(alpha: 0.25))),
+                          ? Colors.white.withValues(alpha: 0.10)
+                          : (TodoColors.isLightTheme(currentList.themeColor)
+                                ? Colors.white.withValues(alpha: 0.72)
+                                : Colors.black.withValues(alpha: 0.25))),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Row(
@@ -764,16 +765,19 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   }) {
     return switch (_mode) {
       _TasksViewMode.browsing => null,
-      _TasksViewMode.reordering =>
-        _buildReorderingAppBar(l10n, isDark, overlayStyle),
+      _TasksViewMode.reordering => _buildReorderingAppBar(
+        l10n,
+        isDark,
+        overlayStyle,
+      ),
       _TasksViewMode.multiSelecting => _buildMultiSelectAppBar(
-          l10n: l10n,
-          state: state,
-          currentList: currentList,
-          allTasks: allTasks,
-          isDark: isDark,
-          overlayStyle: overlayStyle,
-        ),
+        l10n: l10n,
+        state: state,
+        currentList: currentList,
+        allTasks: allTasks,
+        isDark: isDark,
+        overlayStyle: overlayStyle,
+      ),
     };
   }
 
@@ -812,14 +816,17 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     required SystemUiOverlayStyle overlayStyle,
   }) {
     final actionPresenter = ref.read(tasksActionPresenterProvider);
-    final selectedTasks =
-        state.tasks.where((t) => _multiSelectedIds.contains(t.id)).toList();
-    final canBatchAddToMyDay = currentList.smartType != SmartListType.myDay &&
+    final selectedTasks = state.tasks
+        .where((t) => _multiSelectedIds.contains(t.id))
+        .toList();
+    final canBatchAddToMyDay =
+        currentList.smartType != SmartListType.myDay &&
         selectedTasks.any((t) => !t.isInMyDay);
     final canBatchMarkImportant =
         currentList.smartType != SmartListType.important &&
-            selectedTasks.any((t) => !t.isImportant);
-    final allSelected = allTasks.isNotEmpty &&
+        selectedTasks.any((t) => !t.isImportant);
+    final allSelected =
+        allTasks.isNotEmpty &&
         allTasks.every((t) => _multiSelectedIds.contains(t.id));
 
     return AppBar(
@@ -940,104 +947,106 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           icon: Icon(Icons.more_vert, color: headerFg),
           tooltip: l10n.moreOptions,
           onSelected: (action) => _handleMenuAction(action, state, currentList),
-          itemBuilder: (context) => _buildMenuItems(
-            l10n,
-            currentList,
-            activeTasksCount,
-          ),
+          itemBuilder: (context) =>
+              _buildMenuItems(l10n, currentList, activeTasksCount),
         ),
       ],
-      flexibleSpace: ClipRect(
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 260),
-              child: currentList.themePhoto != null
-                  ? Stack(
-                      key: ValueKey(
-                        'header_photo_${currentList.themePhoto!.name}',
-                      ),
-                      fit: StackFit.expand,
-                      children: [
-                        Image.asset(
-                          TodoColors.photoAssetFor(currentList.themePhoto!),
-                          fit: BoxFit.cover,
-                          alignment: Alignment.topCenter,
+      flexibleSpace: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onDoubleTap: _scrollToTop,
+        child: ClipRect(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 260),
+                child: currentList.themePhoto != null
+                    ? Stack(
+                        key: ValueKey(
+                          'header_photo_${currentList.themePhoto!.name}',
                         ),
-                        Container(
-                          color: Colors.black.withValues(
-                            alpha: isDark ? 0.35 : 0.12,
+                        fit: StackFit.expand,
+                        children: [
+                          Image.asset(
+                            TodoColors.photoAssetFor(currentList.themePhoto!),
+                            fit: BoxFit.cover,
+                            alignment: Alignment.topCenter,
                           ),
+                          Container(
+                            color: Colors.black.withValues(
+                              alpha: isDark ? 0.35 : 0.12,
+                            ),
+                          ),
+                        ],
+                      )
+                    : SizedBox.expand(
+                        key: const ValueKey('header_color'),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 260),
+                          curve: Curves.easeOutCubic,
+                          color: backgroundColor,
                         ),
-                      ],
-                    )
-                  : SizedBox.expand(
-                      key: const ValueKey('header_color'),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 260),
-                        curve: Curves.easeOutCubic,
-                        color: backgroundColor,
+                      ),
+              ),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final topPadding = MediaQuery.paddingOf(context).top;
+                  final collapsedHeight = kToolbarHeight + topPadding;
+                  final expandedHeight =
+                      (subtitle != null ? 144.0 : 116.0) + topPadding;
+                  final denom = expandedHeight - collapsedHeight;
+                  final t = ((expandedHeight - constraints.maxHeight) / denom)
+                      .clamp(0.0, 1.0);
+                  final startPad = widget.onBackPressed != null
+                      ? 16.0 + 40.0 * t
+                      : 15.0;
+                  final bottomPad = subtitle != null ? 42.0 - 26.0 * t : 16.0;
+                  final subtitleSize = 20.0 - 7.0 * t;
+
+                  return FlexibleSpaceBar(
+                    expandedTitleScale: 1.5,
+                    titlePadding: EdgeInsetsDirectional.only(
+                      start: startPad,
+                      bottom: bottomPad,
+                      end: 56,
+                    ),
+                    title: Text(
+                      listTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: headerFg,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 20,
                       ),
                     ),
-            ),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final topPadding = MediaQuery.paddingOf(context).top;
-                final collapsedHeight = kToolbarHeight + topPadding;
-                final expandedHeight =
-                    (subtitle != null ? 144.0 : 116.0) + topPadding;
-                final denom = expandedHeight - collapsedHeight;
-                final t = ((expandedHeight - constraints.maxHeight) / denom)
-                    .clamp(0.0, 1.0);
-                final startPad =
-                    widget.onBackPressed != null ? 16.0 + 40.0 * t : 15.0;
-                final bottomPad = subtitle != null ? 42.0 - 26.0 * t : 16.0;
-                final subtitleSize = 20.0 - 7.0 * t;
-
-                return FlexibleSpaceBar(
-                  expandedTitleScale: 1.5,
-                  titlePadding: EdgeInsetsDirectional.only(
-                    start: startPad,
-                    bottom: bottomPad,
-                    end: 56,
-                  ),
-                  title: Text(
-                    listTitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: headerFg,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 20,
-                    ),
-                  ),
-                  background: subtitle != null
-                      ? Align(
-                          alignment: AlignmentDirectional.bottomStart,
-                          child: Padding(
-                            padding: EdgeInsetsDirectional.only(
-                              start: startPad,
-                              bottom: 10.0 - 4.0 * t,
-                              end: 56,
-                            ),
-                            child: Text(
-                              subtitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: headerFg.withValues(alpha: 0.92),
-                                fontSize: subtitleSize,
-                                fontWeight: FontWeight.w400,
+                    background: subtitle != null
+                        ? Align(
+                            alignment: AlignmentDirectional.bottomStart,
+                            child: Padding(
+                              padding: EdgeInsetsDirectional.only(
+                                start: startPad,
+                                bottom: 10.0 - 4.0 * t,
+                                end: 56,
+                              ),
+                              child: Text(
+                                subtitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: headerFg.withValues(alpha: 0.92),
+                                  fontSize: subtitleSize,
+                                  fontWeight: FontWeight.w400,
+                                ),
                               ),
                             ),
-                          ),
-                        )
-                      : null,
-                );
-              },
-            ),
-          ],
+                          )
+                        : null,
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1118,11 +1127,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                   borderRadius: BorderRadius.circular(16),
                   child: Padding(
                     padding: const EdgeInsets.all(4),
-                    child: Icon(
-                      Icons.close,
-                      size: 20,
-                      color: headerFg,
-                    ),
+                    child: Icon(Icons.close, size: 20, color: headerFg),
                   ),
                 ),
               ],
@@ -1204,8 +1209,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   }) {
     final notifier = ref.read(tasksViewPresenterProvider);
     final showMyDayBadge = currentList.smartType != SmartListType.myDay;
-    final showOriginList = currentList.isSmartList &&
-        currentList.smartType != SmartListType.tasks;
+    final showOriginList =
+        currentList.isSmartList && currentList.smartType != SmartListType.tasks;
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       sliver: AnimatedReorderableTaskSliver(
@@ -1349,8 +1354,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     required Color accentColor,
   }) {
     final isMyDay = currentList.smartType == SmartListType.myDay;
-    final showOriginList = currentList.isSmartList &&
-        currentList.smartType != SmartListType.tasks;
+    final showOriginList =
+        currentList.isSmartList && currentList.smartType != SmartListType.tasks;
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       sliver: AnimatedTaskSliverList(
@@ -1398,7 +1403,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                     onTap: () => ref
                         .read(todoProvider.notifier)
                         .setCompletedExpanded(
-                            currentList.id, !completedExpanded),
+                          currentList.id,
+                          !completedExpanded,
+                        ),
                     currentList: currentList,
                     headerFg: headerFg,
                   )
@@ -1412,7 +1419,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         tasks: completedTasks,
         padding: const EdgeInsets.fromLTRB(8, 2, 8, 16),
         itemBuilder: (context, task) {
-          final showOriginList = currentList.isSmartList &&
+          final showOriginList =
+              currentList.isSmartList &&
               currentList.smartType != SmartListType.tasks;
           return _buildTaskTile(
             task: task,
@@ -1433,15 +1441,17 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     bool isDark, {
     required double collapseDelta,
   }) {
-    final useLightLines = currentList.themePhoto == null &&
+    final useLightLines =
+        currentList.themePhoto == null &&
         TodoColors.isLightTheme(currentList.themeColor) &&
         !isDark;
     return SliverLayoutBuilder(
       builder: (context, constraints) {
-        final minHeight = (constraints.viewportMainAxisExtent +
-                collapseDelta -
-                constraints.precedingScrollExtent)
-            .clamp(84.0, double.infinity);
+        final minHeight =
+            (constraints.viewportMainAxisExtent +
+                    collapseDelta -
+                    constraints.precedingScrollExtent)
+                .clamp(84.0, double.infinity);
         return SliverFillRemaining(
           hasScrollBody: false,
           fillOverscroll: true,
@@ -1490,7 +1500,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     required Brightness brightness,
     required bool isDark,
   }) {
-    final hideFab = _mode != _TasksViewMode.browsing ||
+    final hideFab =
+        _mode != _TasksViewMode.browsing ||
         currentList.smartType == SmartListType.completed;
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 200),
@@ -1532,15 +1543,13 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final currentList = state.selectedList;
 
     final baseTitle = localizedListTitle(l10n, currentList);
-    final listTitle = (currentList.emoji != null && currentList.emoji!.isNotEmpty)
+    final listTitle =
+        (currentList.emoji != null && currentList.emoji!.isNotEmpty)
         ? '${currentList.emoji!} $baseTitle'
         : baseTitle;
     final accentColor = currentList.themePhoto != null
         ? TodoColors.photoFabBackgroundFor(currentList.themePhoto!)
-        : TodoColors.accentFor(
-            currentList.themeColor,
-            brightness: brightness,
-          );
+        : TodoColors.accentFor(currentList.themeColor, brightness: brightness);
     final backgroundColor = TodoColors.backgroundColorFor(
       currentList.themeColor,
       brightness: brightness,
@@ -1558,15 +1567,16 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         ? DateFormat.MMMMEEEEd().format(DateTime.now())
         : null;
     final overlayStyle = switch (_mode) {
-      _TasksViewMode.browsing => currentList.themePhoto != null
-          ? TodoTheme.systemUiOverlayStyleForBrightness(Brightness.dark)
-          : TodoTheme.systemUiOverlayStyleFor(backgroundColor),
-      _TasksViewMode.reordering || _TasksViewMode.multiSelecting =>
-        TodoTheme.systemUiOverlayStyleFor(
-          isDark
-              ? TodoColors.primaryBackgroundDark
-              : TodoColors.secondaryTextLight,
-        ),
+      _TasksViewMode.browsing =>
+        currentList.themePhoto != null
+            ? TodoTheme.systemUiOverlayStyleForBrightness(Brightness.dark)
+            : TodoTheme.systemUiOverlayStyleFor(backgroundColor),
+      _TasksViewMode.reordering ||
+      _TasksViewMode.multiSelecting => TodoTheme.systemUiOverlayStyleFor(
+        isDark
+            ? TodoColors.primaryBackgroundDark
+            : TodoColors.secondaryTextLight,
+      ),
     };
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -1595,42 +1605,42 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
               isDark: isDark,
               overlayStyle: overlayStyle,
             ),
-          body: Stack(
-            fit: StackFit.expand,
-            children: [
-              _buildBackground(currentList, backgroundColor),
-              SafeArea(
-                bottom: false,
-                child: Stack(
-                  children: [
-                    NotificationListener<ScrollNotification>(
-                      onNotification: (notification) {
-                        if (notification.depth != 0) return false;
-                        final offset = notification.metrics.pixels;
-                        if ((offset - _scrollOffset).abs() > 0.5) {
-                          setState(() => _scrollOffset = offset);
-                        }
-                        if (notification is ScrollEndNotification) {
-                          final collapseDelta =
-                              (subtitle != null ? 144.0 : 116.0) -
-                                  kToolbarHeight;
-                          _snapHeaderIfNeeded(collapseDelta);
-                        }
-                        return false;
-                      },
-                      child: Builder(
-                        builder: (context) {
-                          final isMicrosoft = ref.watch(
-                            accountProvider.select(
-                              (s) => s.activeAccount?.isMicrosoft ?? false,
-                            ),
-                          );
-                          final scrollView = CustomScrollView(
-                            controller: _scrollController,
-                            physics: isMicrosoft
-                                ? const AlwaysScrollableScrollPhysics()
-                                : null,
-                            slivers: [
+            body: Stack(
+              fit: StackFit.expand,
+              children: [
+                _buildBackground(currentList, backgroundColor),
+                SafeArea(
+                  bottom: false,
+                  child: Stack(
+                    children: [
+                      NotificationListener<ScrollNotification>(
+                        onNotification: (notification) {
+                          if (notification.depth != 0) return false;
+                          final offset = notification.metrics.pixels;
+                          if ((offset - _scrollOffset).abs() > 0.5) {
+                            setState(() => _scrollOffset = offset);
+                          }
+                          if (notification is ScrollEndNotification) {
+                            final collapseDelta =
+                                (subtitle != null ? 144.0 : 116.0) -
+                                kToolbarHeight;
+                            _snapHeaderIfNeeded(collapseDelta);
+                          }
+                          return false;
+                        },
+                        child: Builder(
+                          builder: (context) {
+                            final isMicrosoft = ref.watch(
+                              accountProvider.select(
+                                (s) => s.activeAccount?.isMicrosoft ?? false,
+                              ),
+                            );
+                            final scrollView = CustomScrollView(
+                              controller: _scrollController,
+                              physics: isMicrosoft
+                                  ? const AlwaysScrollableScrollPhysics()
+                                  : null,
+                              slivers: [
                                 if (_mode == _TasksViewMode.browsing)
                                   _buildSliverAppBar(
                                     l10n: l10n,
@@ -1644,96 +1654,103 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                     isDark: isDark,
                                     overlayStyle: overlayStyle,
                                   )
-                              else if (_mode == _TasksViewMode.multiSelecting ||
-                                  _mode == _TasksViewMode.reordering)
-                                SliverToBoxAdapter(
-                                  child: Padding(
-                                    padding: const EdgeInsets.fromLTRB(
-                                        16, 12, 16, 12),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          listTitle,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            color: headerFg,
-                                            fontWeight: FontWeight.w500,
-                                            fontSize: 30,
-                                          ),
-                                        ),
-                                        if (subtitle != null) ...[
-                                          const SizedBox(height: 2),
+                                else if (_mode ==
+                                        _TasksViewMode.multiSelecting ||
+                                    _mode == _TasksViewMode.reordering)
+                                  SliverToBoxAdapter(
+                                    child: Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        16,
+                                        12,
+                                        16,
+                                        12,
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
                                           Text(
-                                            subtitle,
+                                            listTitle,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: TextStyle(
-                                              color: headerFg.withValues(
-                                                  alpha: 0.92),
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.w400,
+                                              color: headerFg,
+                                              fontWeight: FontWeight.w500,
+                                              fontSize: 30,
                                             ),
                                           ),
+                                          if (subtitle != null) ...[
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              subtitle,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: headerFg.withValues(
+                                                  alpha: 0.92,
+                                                ),
+                                                fontSize: 20,
+                                                fontWeight: FontWeight.w400,
+                                              ),
+                                            ),
+                                          ],
                                         ],
-                                      ],
+                                      ),
                                     ),
                                   ),
-                                ),
-                              if (currentList.sortOption !=
-                                      TaskSortOption.defaultOrder &&
-                                  _mode != _TasksViewMode.reordering)
-                                _buildSortBanner(
+                                if (currentList.sortOption !=
+                                        TaskSortOption.defaultOrder &&
+                                    _mode != _TasksViewMode.reordering)
+                                  _buildSortBanner(
+                                    l10n: l10n,
+                                    currentList: currentList,
+                                    headerFg: headerFg,
+                                  ),
+                                ..._buildTaskSlivers(
                                   l10n: l10n,
+                                  state: state,
                                   currentList: currentList,
+                                  activeTasks: active,
+                                  completedTasks: completed,
+                                  accentColor: accentColor,
                                   headerFg: headerFg,
                                 ),
-                              ..._buildTaskSlivers(
-                                l10n: l10n,
-                                state: state,
-                                currentList: currentList,
-                                activeTasks: active,
-                                completedTasks: completed,
-                                accentColor: accentColor,
-                                headerFg: headerFg,
-                              ),
-                              _buildRuledLinesSliver(
-                                currentList,
-                                isDark,
-                                collapseDelta: _mode == _TasksViewMode.browsing
-                                    ? ((subtitle != null ? 144.0 : 116.0) -
-                                        kToolbarHeight)
-                                    : 0.0,
-                              ),
-                            ],
-                          );
-                          if (!isMicrosoft) return scrollView;
-                          return RefreshIndicator(
-                            onRefresh: () =>
-                                ref.read(syncProvider.notifier).syncNow(),
-                            child: scrollView,
-                          );
-                        },
+                                _buildRuledLinesSliver(
+                                  currentList,
+                                  isDark,
+                                  collapseDelta:
+                                      _mode == _TasksViewMode.browsing
+                                      ? ((subtitle != null ? 144.0 : 116.0) -
+                                            kToolbarHeight)
+                                      : 0.0,
+                                ),
+                              ],
+                            );
+                            if (!isMicrosoft) return scrollView;
+                            return RefreshIndicator(
+                              onRefresh: () =>
+                                  ref.read(syncProvider.notifier).syncNow(),
+                              child: scrollView,
+                            );
+                          },
+                        ),
                       ),
-                    ),
-                    _buildScrollShadow(subtitle),
-                  ],
+                      _buildScrollShadow(subtitle),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
+            floatingActionButton: _buildFab(
+              l10n: l10n,
+              state: state,
+              currentList: currentList,
+              brightness: brightness,
+              isDark: isDark,
+            ),
           ),
-        floatingActionButton: _buildFab(
-          l10n: l10n,
-          state: state,
-          currentList: currentList,
-          brightness: brightness,
-          isDark: isDark,
         ),
-      ),
-      ),
       ),
     );
   }
