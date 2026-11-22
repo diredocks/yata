@@ -13,6 +13,26 @@ import 'recurrence/task_pickers.dart';
 import 'steps/steps_section.dart';
 
 /// Task detail view matching `detailview/DetailViewFragment`.
+/// Route matching the original app's `DetailViewActivity` shared-element
+/// expand/collapse + fade transition (`detailview_shared_enter.xml` &
+/// `detailview_enter.xml` / `detailview_return.xml`).
+Route<void> buildDetailViewRoute({required String taskId}) {
+  return PageRouteBuilder<void>(
+    transitionDuration: const Duration(milliseconds: 260),
+    reverseTransitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (context, animation, secondaryAnimation) =>
+        DetailViewScreen(taskId: taskId),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return FadeTransition(opacity: curved, child: child);
+    },
+  );
+}
+
 class DetailViewScreen extends ConsumerStatefulWidget {
   const DetailViewScreen({
     super.key,
@@ -206,8 +226,35 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                 ? l10n.tasks
                 : originList.title));
 
-    return Scaffold(
-      backgroundColor: bodyBg,
+    return HeroMode(
+      enabled: widget.onClose == null,
+      child: Hero(
+        tag: 'task_card_${widget.taskId}',
+        flightShuttleBuilder: (
+          flightContext,
+          animation,
+          flightDirection,
+          fromHeroContext,
+          toHeroContext,
+        ) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+          return AnimatedBuilder(
+            animation: curved,
+            builder: (context, _) {
+              final radius = 4.0 * (1.0 - curved.value);
+              return Material(
+                color: Color.lerp(cardBg, bodyBg, curved.value),
+                borderRadius: BorderRadius.circular(radius),
+                elevation: 1.0 * (1.0 - curved.value),
+              );
+            },
+          );
+        },
+        child: Scaffold(
+          backgroundColor: bodyBg,
       body: SafeArea(
         child: Column(
           children: [
@@ -320,6 +367,8 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
               ),
             ),
           ],
+        ),
+      ),
         ),
       ),
     );

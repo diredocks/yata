@@ -189,12 +189,16 @@ class TaskListTile extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
-      child: Material(
-        color: cardColor,
-        animationDuration: const Duration(milliseconds: 180),
-        borderRadius: BorderRadius.circular(4),
-        elevation: 1,
-        child: InkWell(
+      child: HeroMode(
+        enabled: MediaQuery.sizeOf(context).width < 960,
+        child: Hero(
+          tag: 'task_card_${task.id}',
+          child: Material(
+            color: cardColor,
+            animationDuration: const Duration(milliseconds: 180),
+            borderRadius: BorderRadius.circular(4),
+            elevation: 1,
+            child: InkWell(
           onTap: onTap,
           onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(4),
@@ -288,6 +292,8 @@ class TaskListTile extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
         ),
       ),
     );

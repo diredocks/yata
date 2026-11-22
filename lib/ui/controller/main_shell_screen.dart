@@ -22,11 +22,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       MaterialPageRoute<void>(
         builder: (ctx) => SearchScreen(
           onOpenTask: (task) {
-            Navigator.of(ctx).push(
-              MaterialPageRoute<void>(
-                builder: (_) => DetailViewScreen(taskId: task.id),
-              ),
-            );
+            Navigator.of(ctx).push(buildDetailViewRoute(taskId: task.id));
           },
         ),
       ),
@@ -59,11 +55,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     if (isWide) {
       ref.read(todoProvider.notifier).selectTask(task.id);
     } else {
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => DetailViewScreen(taskId: task.id),
-        ),
-      );
+      Navigator.of(context).push(buildDetailViewRoute(taskId: task.id));
     }
   }
 
