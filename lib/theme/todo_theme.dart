@@ -82,80 +82,25 @@ class TodoColors {
     };
   }
 
-  static LinearGradient gradientFor(
+  static Color backgroundColorFor(
     ListThemeColor themeColor, {
     Brightness brightness = Brightness.light,
   }) {
     if (brightness == Brightness.dark) {
-      return const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [primaryBackgroundDark, primaryBackgroundDark],
-      );
+      return primaryBackgroundDark;
     }
+    return swatchColorFor(themeColor);
+  }
 
-    final (top, bottom) = switch (themeColor) {
-      ListThemeColor.blue => (
-          const Color(0xFF5C70BE),
-          const Color(0xFF788CDE),
-        ),
-      ListThemeColor.rose => (
-          const Color(0xFFC14C6C),
-          const Color(0xFFE46C8C),
-        ),
-      ListThemeColor.teal => (
-          const Color(0xFF25817C),
-          const Color(0xFF479E98),
-        ),
-      ListThemeColor.green => (
-          const Color(0xFF2A835D),
-          const Color(0xFF4AA079),
-        ),
-      ListThemeColor.purple => (
-          const Color(0xFF9D5D9F),
-          const Color(0xFFBC7ABC),
-        ),
-      ListThemeColor.red => (
-          const Color(0xFFC24F4A),
-          const Color(0xFFE46B67),
-        ),
-      ListThemeColor.grey => (
-          const Color(0xFF687681),
-          const Color(0xFF8795A0),
-        ),
-      ListThemeColor.lightBlue => (
-          const Color(0xFFDFEDF9),
-          const Color(0xFFDFEDF9),
-        ),
-      ListThemeColor.lightRose => (
-          const Color(0xFFFFE4E9),
-          const Color(0xFFFFE4E9),
-        ),
-      ListThemeColor.lightTeal => (
-          const Color(0xFFD4F1EF),
-          const Color(0xFFD4F1EF),
-        ),
-      ListThemeColor.lightGreen => (
-          const Color(0xFFD5F1E5),
-          const Color(0xFFD5F1E5),
-        ),
-      ListThemeColor.lightPurple => (
-          const Color(0xFFF2E7F9),
-          const Color(0xFFF2E7F9),
-        ),
-      ListThemeColor.lightRed => (
-          const Color(0xFFF9E8DE),
-          const Color(0xFFF9E8DE),
-        ),
-      ListThemeColor.lightGrey => (
-          const Color(0xFFE7ECF0),
-          const Color(0xFFE7ECF0),
-        ),
-    };
+  static LinearGradient gradientFor(
+    ListThemeColor themeColor, {
+    Brightness brightness = Brightness.light,
+  }) {
+    final color = backgroundColorFor(themeColor, brightness: brightness);
     return LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [top, bottom],
+      colors: [color, color],
     );
   }
 

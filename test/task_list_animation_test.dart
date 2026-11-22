@@ -223,4 +223,55 @@ void main() {
       closeTo(kToolbarHeight, 1.0),
     );
   });
+
+  testWidgets(
+      'Solid color theme uses uniform solid background and matching header mask',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({
+      'yata.accounts':
+          '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.active_account_id': 'test',
+    });
+    final prefs = await SharedPreferences.getInstance();
+
+    tester.view.physicalSize = const Size(412, 800);
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.padding = const FakeViewPadding(top: 24);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetPadding);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+        child: const YataApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    if (find.text('Important').evaluate().isNotEmpty) {
+      await tester.tap(find.text('Important').first);
+      await tester.pumpAndSettle();
+    }
+
+    final bgFinder = find.descendant(
+      of: find.byKey(const ValueKey('bg_color')),
+      matching: find.byType(AnimatedContainer),
+    );
+    final headerFinder = find.descendant(
+      of: find.byKey(const ValueKey('header_color')),
+      matching: find.byType(AnimatedContainer),
+    );
+    expect(bgFinder, findsOneWidget);
+    expect(headerFinder, findsOneWidget);
+
+    final bgDecoration =
+        tester.widget<AnimatedContainer>(bgFinder).decoration as BoxDecoration;
+    final headerDecoration = tester
+        .widget<AnimatedContainer>(headerFinder)
+        .decoration as BoxDecoration;
+    expect(bgDecoration.gradient, isNull);
+    expect(headerDecoration.gradient, isNull);
+    expect(headerDecoration.color, isNotNull);
+    expect(headerDecoration.color, bgDecoration.color);
+  });
 }

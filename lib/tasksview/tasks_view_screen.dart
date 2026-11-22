@@ -893,7 +893,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     );
   }
 
-  Widget _buildBackground(TodoList currentList, LinearGradient gradient) {
+  Widget _buildBackground(TodoList currentList, Color backgroundColor) {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 260),
       child: currentList.themePhoto != null
@@ -904,11 +904,13 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 fit: BoxFit.cover,
               ),
             )
-          : AnimatedContainer(
-              key: const ValueKey('bg_gradient'),
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutCubic,
-              decoration: BoxDecoration(gradient: gradient),
+          : SizedBox.expand(
+              key: const ValueKey('bg_color'),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                color: backgroundColor,
+              ),
             ),
     );
   }
@@ -920,7 +922,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     required String listTitle,
     required String? subtitle,
     required Color headerFg,
-    required LinearGradient gradient,
+    required Color backgroundColor,
     required int activeTasksCount,
     required bool isDark,
   }) {
@@ -976,11 +978,13 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                         ),
                       ],
                     )
-                  : AnimatedContainer(
+                  : SizedBox.expand(
                       key: const ValueKey('header_color'),
-                      duration: const Duration(milliseconds: 260),
-                      curve: Curves.easeOutCubic,
-                      color: gradient.colors.first,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 260),
+                        curve: Curves.easeOutCubic,
+                        color: backgroundColor,
+                      ),
                     ),
             ),
             LayoutBuilder(
@@ -1541,7 +1545,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
             currentList.themeColor,
             brightness: brightness,
           );
-    final gradient = TodoColors.gradientFor(
+    final backgroundColor = TodoColors.backgroundColorFor(
       currentList.themeColor,
       brightness: brightness,
     );
@@ -1575,140 +1579,141 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         key: _scaffoldMessengerKey,
         child: Scaffold(
           appBar: _buildAppBar(
-          l10n: l10n,
-          state: state,
-          currentList: currentList,
-          allTasks: allTasks,
-          isDark: isDark,
-        ),
-        body: Stack(
-          fit: StackFit.expand,
-          children: [
-            _buildBackground(currentList, gradient),
-            SafeArea(
-              bottom: false,
-              child: Stack(
-                children: [
-                  NotificationListener<ScrollNotification>(
-                    onNotification: (notification) {
-                      if (notification.depth != 0) return false;
-                      final offset = notification.metrics.pixels;
-                      if ((offset - _scrollOffset).abs() > 0.5) {
-                        setState(() => _scrollOffset = offset);
-                      }
-                      if (notification is ScrollEndNotification) {
-                        final collapseDelta =
-                            (subtitle != null ? 144.0 : 116.0) - kToolbarHeight;
-                        _snapHeaderIfNeeded(collapseDelta);
-                      }
-                      return false;
-                    },
-                    child: Builder(
-                      builder: (context) {
-                        final isMicrosoft = ref.watch(
-                          accountProvider.select(
-                            (s) => s.activeAccount?.isMicrosoft ?? false,
-                          ),
-                        );
-                        final scrollView = CustomScrollView(
-                          controller: _scrollController,
-                          physics: isMicrosoft
-                              ? const AlwaysScrollableScrollPhysics()
-                              : null,
-                          slivers: [
-                            if (_mode == _TasksViewMode.browsing)
-                              _buildSliverAppBar(
-                                l10n: l10n,
-                                state: state,
-                                currentList: currentList,
-                                listTitle: listTitle,
-                                subtitle: subtitle,
-                                headerFg: headerFg,
-                                gradient: gradient,
-                                activeTasksCount: active.length,
-                                isDark: isDark,
-                              )
-                            else if (_mode == _TasksViewMode.multiSelecting ||
-                                _mode == _TasksViewMode.reordering)
-                              SliverToBoxAdapter(
-                                child: Padding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        listTitle,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: headerFg,
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 30,
-                                        ),
-                                      ),
-                                      if (subtitle != null) ...[
-                                        const SizedBox(height: 2),
+            l10n: l10n,
+            state: state,
+            currentList: currentList,
+            allTasks: allTasks,
+            isDark: isDark,
+          ),
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              _buildBackground(currentList, backgroundColor),
+              SafeArea(
+                bottom: false,
+                child: Stack(
+                  children: [
+                    NotificationListener<ScrollNotification>(
+                      onNotification: (notification) {
+                        if (notification.depth != 0) return false;
+                        final offset = notification.metrics.pixels;
+                        if ((offset - _scrollOffset).abs() > 0.5) {
+                          setState(() => _scrollOffset = offset);
+                        }
+                        if (notification is ScrollEndNotification) {
+                          final collapseDelta =
+                              (subtitle != null ? 144.0 : 116.0) -
+                                  kToolbarHeight;
+                          _snapHeaderIfNeeded(collapseDelta);
+                        }
+                        return false;
+                      },
+                      child: Builder(
+                        builder: (context) {
+                          final isMicrosoft = ref.watch(
+                            accountProvider.select(
+                              (s) => s.activeAccount?.isMicrosoft ?? false,
+                            ),
+                          );
+                          final scrollView = CustomScrollView(
+                            controller: _scrollController,
+                            physics: isMicrosoft
+                                ? const AlwaysScrollableScrollPhysics()
+                                : null,
+                            slivers: [
+                              if (_mode == _TasksViewMode.browsing)
+                                _buildSliverAppBar(
+                                  l10n: l10n,
+                                  state: state,
+                                  currentList: currentList,
+                                  listTitle: listTitle,
+                                  subtitle: subtitle,
+                                  headerFg: headerFg,
+                                  backgroundColor: backgroundColor,
+                                  activeTasksCount: active.length,
+                                  isDark: isDark,
+                                )
+                              else if (_mode == _TasksViewMode.multiSelecting ||
+                                  _mode == _TasksViewMode.reordering)
+                                SliverToBoxAdapter(
+                                  child: Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                        16, 12, 16, 12),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
                                         Text(
-                                          subtitle,
+                                          listTitle,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
-                                            color:
-                                                headerFg.withValues(alpha: 0.92),
-                                            fontSize: 20,
-                                            fontWeight: FontWeight.w400,
+                                            color: headerFg,
+                                            fontWeight: FontWeight.w500,
+                                            fontSize: 30,
                                           ),
                                         ),
+                                        if (subtitle != null) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            subtitle,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: headerFg.withValues(
+                                                  alpha: 0.92),
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.w400,
+                                            ),
+                                          ),
+                                        ],
                                       ],
-                                    ],
+                                    ),
                                   ),
                                 ),
-                              ),
-                            if (currentList.sortOption !=
-                                    TaskSortOption.defaultOrder &&
-                                _mode != _TasksViewMode.reordering)
-                              _buildSortBanner(
+                              if (currentList.sortOption !=
+                                      TaskSortOption.defaultOrder &&
+                                  _mode != _TasksViewMode.reordering)
+                                _buildSortBanner(
+                                  l10n: l10n,
+                                  currentList: currentList,
+                                  headerFg: headerFg,
+                                ),
+                              ..._buildTaskSlivers(
                                 l10n: l10n,
+                                state: state,
                                 currentList: currentList,
+                                activeTasks: active,
+                                completedTasks: completed,
+                                accentColor: accentColor,
                                 headerFg: headerFg,
                               ),
-                            ..._buildTaskSlivers(
-                              l10n: l10n,
-                              state: state,
-                              currentList: currentList,
-                              activeTasks: active,
-                              completedTasks: completed,
-                              accentColor: accentColor,
-                              headerFg: headerFg,
-                            ),
-                            _buildRuledLinesSliver(
-                              currentList,
-                              isDark,
-                              collapseDelta: _mode == _TasksViewMode.browsing
-                                  ? ((subtitle != null ? 144.0 : 116.0) -
-                                      kToolbarHeight)
-                                  : 0.0,
-                            ),
-                          ],
-                        );
-                        if (!isMicrosoft) return scrollView;
-                        return RefreshIndicator(
-                          onRefresh: () =>
-                              ref.read(syncProvider.notifier).syncNow(),
-                          child: scrollView,
-                        );
-                      },
+                              _buildRuledLinesSliver(
+                                currentList,
+                                isDark,
+                                collapseDelta: _mode == _TasksViewMode.browsing
+                                    ? ((subtitle != null ? 144.0 : 116.0) -
+                                        kToolbarHeight)
+                                    : 0.0,
+                              ),
+                            ],
+                          );
+                          if (!isMicrosoft) return scrollView;
+                          return RefreshIndicator(
+                            onRefresh: () =>
+                                ref.read(syncProvider.notifier).syncNow(),
+                            child: scrollView,
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                  _buildScrollShadow(subtitle),
-                ],
+                    _buildScrollShadow(subtitle),
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
         floatingActionButton: _buildFab(
           l10n: l10n,
           state: state,
