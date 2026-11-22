@@ -190,5 +190,6 @@
   },
   "clearAll": "Clear all",
   "taskDeleted": "Task deleted",
-  "undo": "Undo"
+  "undo": "Undo",
+  "playCompletionSound": "Play completion sound"
 }

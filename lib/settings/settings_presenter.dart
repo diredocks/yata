@@ -32,6 +32,11 @@ class SettingsPresenter {
     _store.storage.saveMoveStarredTasksToTop(value);
   }
 
+  void setPlayCompletionSound(bool value) {
+    _store.commit(_state.copyWith(playCompletionSound: value));
+    _store.storage.savePlayCompletionSound(value);
+  }
+
   void setConfirmBeforeDeleting(bool value) {
     _store.commit(_state.copyWith(confirmBeforeDeleting: value));
     _store.storage.saveConfirmBeforeDeleting(value);

@@ -124,5 +124,6 @@
   "remindMeAt": "在 {time} 时提醒我",
   "clearAll": "取消全选",
   "taskDeleted": "已删除任务",
-  "undo": "撤消"
+  "undo": "撤消",
+  "playCompletionSound": "播放完成提示音"
 }

@@ -15,6 +15,7 @@ class TodoSnapshot {
     required this.themeMode,
     required this.addNewTasksOnTop,
     required this.moveStarredTasksToTop,
+    required this.playCompletionSound,
     required this.confirmBeforeDeleting,
     required this.showDueTodayInMyDay,
     required this.startOfWeek,
@@ -35,6 +36,7 @@ class TodoSnapshot {
   final ThemeMode themeMode;
   final bool addNewTasksOnTop;
   final bool moveStarredTasksToTop;
+  final bool playCompletionSound;
   final bool confirmBeforeDeleting;
   final bool showDueTodayInMyDay;
   final WeekStart startOfWeek;
@@ -60,6 +62,7 @@ class TodoLocalStorage {
   static const _themeModeKey = 'yata.theme_mode';
   static const _addNewTasksOnTopKey = 'yata.add_new_tasks_on_top';
   static const _moveStarredToTopKey = 'yata.move_starred_to_top';
+  static const _playCompletionSoundKey = 'yata.play_completion_sound';
   static const _confirmBeforeDeletingKey = 'yata.confirm_before_deleting';
   static const _showDueTodayInMyDayKey = 'yata.show_due_today_in_my_day';
   static const _startOfWeekKey = 'yata.start_of_week';
@@ -192,6 +195,7 @@ class TodoLocalStorage {
       themeMode: themeMode,
       addNewTasksOnTop: _prefs.getBool(_addNewTasksOnTopKey) ?? true,
       moveStarredTasksToTop: _prefs.getBool(_moveStarredToTopKey) ?? true,
+      playCompletionSound: _prefs.getBool(_playCompletionSoundKey) ?? true,
       confirmBeforeDeleting:
           _prefs.getBool(_confirmBeforeDeletingKey) ?? true,
       showDueTodayInMyDay: _prefs.getBool(_showDueTodayInMyDayKey) ?? true,
@@ -247,6 +251,9 @@ class TodoLocalStorage {
 
   Future<void> saveMoveStarredTasksToTop(bool value) =>
       saveBoolSetting(_moveStarredToTopKey, value);
+
+  Future<void> savePlayCompletionSound(bool value) =>
+      saveBoolSetting(_playCompletionSoundKey, value);
 
   Future<void> saveConfirmBeforeDeleting(bool value) =>
       saveBoolSetting(_confirmBeforeDeletingKey, value);

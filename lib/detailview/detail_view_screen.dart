@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../providers/todo_provider.dart';
+import '../services/completion_sound_service.dart';
 import '../theme/todo_theme.dart';
 import 'detail_view_presenter.dart';
 import 'details/detail_cards.dart';
@@ -263,7 +264,12 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
               originListTitle: originListTitle,
               backgroundColor: primaryBg,
               accentColor: listAccent,
-              onToggleCompleted: () => notifier.toggleTaskCompleted(task.id),
+              onToggleCompleted: () {
+                if (!task.isCompleted) {
+                  ref.read(completionSoundServiceProvider).playIfEnabled();
+                }
+                notifier.toggleTaskCompleted(task.id);
+              },
               onToggleImportant: () => notifier.toggleTaskImportant(task.id),
               onTitleSubmitted: (val) => notifier.updateTaskTitle(task.id, val),
               onClose: widget.onClose,

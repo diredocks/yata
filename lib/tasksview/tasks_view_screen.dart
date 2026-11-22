@@ -7,6 +7,7 @@ import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../providers/todo_provider.dart';
+import '../services/completion_sound_service.dart';
 import '../theme/todo_theme.dart';
 import '../view/delayed_task_completion.dart';
 import 'recyclerview/animated_task_sliver_list.dart';
@@ -646,14 +647,19 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           }
         },
         onLongPress: () => _toggleSelection(task.id),
-        onToggleCompleted: () => _completionController.toggle(
-          task,
-          instant: isCompletedSmartList,
-          onCommit: notifier.setTaskCompleted,
-          onStateChanged: () {
-            if (mounted) setState(() {});
-          },
-        ),
+        onToggleCompleted: () {
+          if (!task.isCompleted && !_completionController.isPending(task.id)) {
+            ref.read(completionSoundServiceProvider).playIfEnabled();
+          }
+          _completionController.toggle(
+            task,
+            instant: isCompletedSmartList,
+            onCommit: notifier.setTaskCompleted,
+            onStateChanged: () {
+              if (mounted) setState(() {});
+            },
+          );
+        },
         onToggleImportant: () => notifier.toggleTaskImportant(task.id),
       ),
     );

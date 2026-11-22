@@ -26,6 +26,7 @@ class TodoState {
     this.themeMode = ThemeMode.system,
     this.addNewTasksOnTop = true,
     this.moveStarredTasksToTop = true,
+    this.playCompletionSound = true,
     this.confirmBeforeDeleting = true,
     this.showDueTodayInMyDay = true,
     this.startOfWeek = WeekStart.system,
@@ -46,6 +47,7 @@ class TodoState {
   final ThemeMode themeMode;
   final bool addNewTasksOnTop;
   final bool moveStarredTasksToTop;
+  final bool playCompletionSound;
   final bool confirmBeforeDeleting;
   final bool showDueTodayInMyDay;
   final WeekStart startOfWeek;
@@ -172,6 +174,7 @@ class TodoState {
     ThemeMode? themeMode,
     bool? addNewTasksOnTop,
     bool? moveStarredTasksToTop,
+    bool? playCompletionSound,
     bool? confirmBeforeDeleting,
     bool? showDueTodayInMyDay,
     WeekStart? startOfWeek,
@@ -194,6 +197,7 @@ class TodoState {
       addNewTasksOnTop: addNewTasksOnTop ?? this.addNewTasksOnTop,
       moveStarredTasksToTop:
           moveStarredTasksToTop ?? this.moveStarredTasksToTop,
+      playCompletionSound: playCompletionSound ?? this.playCompletionSound,
       confirmBeforeDeleting:
           confirmBeforeDeleting ?? this.confirmBeforeDeleting,
       showDueTodayInMyDay: showDueTodayInMyDay ?? this.showDueTodayInMyDay,
@@ -280,6 +284,7 @@ class TodoNotifier extends Notifier<TodoState> {
       themeMode: snapshot.themeMode,
       addNewTasksOnTop: snapshot.addNewTasksOnTop,
       moveStarredTasksToTop: snapshot.moveStarredTasksToTop,
+      playCompletionSound: snapshot.playCompletionSound,
       confirmBeforeDeleting: snapshot.confirmBeforeDeleting,
       showDueTodayInMyDay: snapshot.showDueTodayInMyDay,
       startOfWeek: snapshot.startOfWeek,

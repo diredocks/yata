@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../providers/todo_provider.dart';
+import '../services/completion_sound_service.dart';
 import '../theme/todo_theme.dart';
 import '../tasksview/recyclerview/task_list_tile.dart';
 import '../view/delayed_task_completion.dart';
@@ -188,13 +189,21 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         listName: listName,
                         showMyDayBadge: true,
                         onTap: () => widget.onOpenTask(task),
-                        onToggleCompleted: () => _completionController.toggle(
-                          task,
-                          onCommit: notifier.setTaskCompleted,
-                          onStateChanged: () {
-                            if (mounted) setState(() {});
-                          },
-                        ),
+                        onToggleCompleted: () {
+                          if (!task.isCompleted &&
+                              !_completionController.isPending(task.id)) {
+                            ref
+                                .read(completionSoundServiceProvider)
+                                .playIfEnabled();
+                          }
+                          _completionController.toggle(
+                            task,
+                            onCommit: notifier.setTaskCompleted,
+                            onStateChanged: () {
+                              if (mounted) setState(() {});
+                            },
+                          );
+                        },
                         onToggleImportant: () =>
                             notifier.toggleTaskImportant(task.id),
                       );

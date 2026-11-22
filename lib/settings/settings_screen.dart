@@ -53,6 +53,12 @@ class SettingsScreen extends ConsumerWidget {
             onChanged: notifier.setMoveStarredTasksToTop,
           ),
           SwitchListTile(
+            secondary: const Icon(Icons.volume_up_outlined),
+            title: Text(l10n.playCompletionSound),
+            value: state.playCompletionSound,
+            onChanged: notifier.setPlayCompletionSound,
+          ),
+          SwitchListTile(
             secondary: const Icon(Icons.delete_outline),
             title: Text(l10n.confirmBeforeDeleting),
             value: state.confirmBeforeDeleting,
