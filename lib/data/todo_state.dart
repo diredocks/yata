@@ -1,75 +1,50 @@
+import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 
-@immutable
-class TodoState {
-  const TodoState({
-    required this.lists,
-    required this.groups,
-    required this.tasks,
-    required this.selectedListId,
-    this.selectedTaskId,
-    this.themeMode = ThemeMode.system,
-    this.addNewTasksOnTop = true,
-    this.moveStarredTasksToTop = true,
-    this.playCompletionSound = true,
-    this.confirmBeforeDeleting = true,
-    this.showDueTodayInMyDay = true,
-    this.startOfWeek = WeekStart.system,
-    this.showSmartListImportant = true,
-    this.showSmartListPlanned = true,
-    this.showSmartListAll = false,
-    this.showSmartListCompleted = false,
-    this.autoHideEmptySmartLists = false,
-    this.plannedDueDateFilter = PlannedDueDateFilter.all,
-    this.plannedGroupOption = PlannedGroupOption.byDueDate,
-    this.useDynamicColor = true,
-    this.remindersEnabled = true,
-    this.pinReminders = false,
-    this.dueTodayNotificationsEnabled = false,
-    this.dueTodayNotificationHour = 9,
-    this.dueTodayNotificationMinute = 0,
-    this.routineNotificationEnabled = false,
-    this.routineNotificationHour = 8,
-    this.routineNotificationMinute = 30,
-    this.quickAddNotificationEnabled = false,
-    this.completedExpandedByList = const {},
-    this.mutationVersion = 0,
-  });
+part 'todo_state.freezed.dart';
 
-  final List<TodoList> lists;
-  final List<ListGroup> groups;
-  final List<TaskItem> tasks;
-  final String selectedListId;
-  final String? selectedTaskId;
-  final ThemeMode themeMode;
-  final bool addNewTasksOnTop;
-  final bool moveStarredTasksToTop;
-  final bool playCompletionSound;
-  final bool confirmBeforeDeleting;
-  final bool showDueTodayInMyDay;
-  final WeekStart startOfWeek;
-  final bool showSmartListImportant;
-  final bool showSmartListPlanned;
-  final bool showSmartListAll;
-  final bool showSmartListCompleted;
-  final bool autoHideEmptySmartLists;
-  final PlannedDueDateFilter plannedDueDateFilter;
-  final PlannedGroupOption plannedGroupOption;
-  final bool useDynamicColor;
-  final bool remindersEnabled;
-  final bool pinReminders;
-  final bool dueTodayNotificationsEnabled;
-  final int dueTodayNotificationHour;
-  final int dueTodayNotificationMinute;
-  final bool routineNotificationEnabled;
-  final int routineNotificationHour;
-  final int routineNotificationMinute;
-  final bool quickAddNotificationEnabled;
-  final Map<String, bool> completedExpandedByList;
-  final int mutationVersion;
+@freezed
+abstract class TodoState with _$TodoState {
+  const TodoState._();
+
+  const factory TodoState({
+    required List<TodoList> lists,
+    required List<ListGroup> groups,
+    required List<TaskItem> tasks,
+    required String selectedListId,
+    String? selectedTaskId,
+    @Default(ThemeMode.system) ThemeMode themeMode,
+    @Default(true) bool addNewTasksOnTop,
+    @Default(true) bool moveStarredTasksToTop,
+    @Default(true) bool playCompletionSound,
+    @Default(true) bool confirmBeforeDeleting,
+    @Default(true) bool showDueTodayInMyDay,
+    @Default(WeekStart.system) WeekStart startOfWeek,
+    @Default(true) bool showSmartListImportant,
+    @Default(true) bool showSmartListPlanned,
+    @Default(false) bool showSmartListAll,
+    @Default(false) bool showSmartListCompleted,
+    @Default(false) bool autoHideEmptySmartLists,
+    @Default(PlannedDueDateFilter.all)
+    PlannedDueDateFilter plannedDueDateFilter,
+    @Default(PlannedGroupOption.byDueDate)
+    PlannedGroupOption plannedGroupOption,
+    @Default(true) bool useDynamicColor,
+    @Default(true) bool remindersEnabled,
+    @Default(false) bool pinReminders,
+    @Default(false) bool dueTodayNotificationsEnabled,
+    @Default(9) int dueTodayNotificationHour,
+    @Default(0) int dueTodayNotificationMinute,
+    @Default(false) bool routineNotificationEnabled,
+    @Default(8) int routineNotificationHour,
+    @Default(30) int routineNotificationMinute,
+    @Default(false) bool quickAddNotificationEnabled,
+    @Default(<String, bool>{}) Map<String, bool> completedExpandedByList,
+    @Default(0) int mutationVersion,
+  }) = _TodoState;
 
   bool isCompletedExpanded(String listId) {
     final explicit = completedExpandedByList[listId];
@@ -257,89 +232,5 @@ class TodoState {
       }
     }
     return true;
-  }
-
-  TodoState copyWith({
-    List<TodoList>? lists,
-    List<ListGroup>? groups,
-    List<TaskItem>? tasks,
-    String? selectedListId,
-    String? selectedTaskId,
-    bool clearSelectedTaskId = false,
-    ThemeMode? themeMode,
-    bool? addNewTasksOnTop,
-    bool? moveStarredTasksToTop,
-    bool? playCompletionSound,
-    bool? confirmBeforeDeleting,
-    bool? showDueTodayInMyDay,
-    WeekStart? startOfWeek,
-    bool? showSmartListImportant,
-    bool? showSmartListPlanned,
-    bool? showSmartListAll,
-    bool? showSmartListCompleted,
-    bool? autoHideEmptySmartLists,
-    PlannedDueDateFilter? plannedDueDateFilter,
-    PlannedGroupOption? plannedGroupOption,
-    bool? useDynamicColor,
-    bool? remindersEnabled,
-    bool? pinReminders,
-    bool? dueTodayNotificationsEnabled,
-    int? dueTodayNotificationHour,
-    int? dueTodayNotificationMinute,
-    bool? routineNotificationEnabled,
-    int? routineNotificationHour,
-    int? routineNotificationMinute,
-    bool? quickAddNotificationEnabled,
-    Map<String, bool>? completedExpandedByList,
-    int? mutationVersion,
-  }) {
-    return TodoState(
-      lists: lists ?? this.lists,
-      groups: groups ?? this.groups,
-      tasks: tasks ?? this.tasks,
-      selectedListId: selectedListId ?? this.selectedListId,
-      selectedTaskId: clearSelectedTaskId
-          ? null
-          : (selectedTaskId ?? this.selectedTaskId),
-      themeMode: themeMode ?? this.themeMode,
-      addNewTasksOnTop: addNewTasksOnTop ?? this.addNewTasksOnTop,
-      moveStarredTasksToTop:
-          moveStarredTasksToTop ?? this.moveStarredTasksToTop,
-      playCompletionSound: playCompletionSound ?? this.playCompletionSound,
-      confirmBeforeDeleting:
-          confirmBeforeDeleting ?? this.confirmBeforeDeleting,
-      showDueTodayInMyDay: showDueTodayInMyDay ?? this.showDueTodayInMyDay,
-      startOfWeek: startOfWeek ?? this.startOfWeek,
-      showSmartListImportant:
-          showSmartListImportant ?? this.showSmartListImportant,
-      showSmartListPlanned: showSmartListPlanned ?? this.showSmartListPlanned,
-      showSmartListAll: showSmartListAll ?? this.showSmartListAll,
-      showSmartListCompleted:
-          showSmartListCompleted ?? this.showSmartListCompleted,
-      autoHideEmptySmartLists:
-          autoHideEmptySmartLists ?? this.autoHideEmptySmartLists,
-      plannedDueDateFilter: plannedDueDateFilter ?? this.plannedDueDateFilter,
-      plannedGroupOption: plannedGroupOption ?? this.plannedGroupOption,
-      useDynamicColor: useDynamicColor ?? this.useDynamicColor,
-      remindersEnabled: remindersEnabled ?? this.remindersEnabled,
-      pinReminders: pinReminders ?? this.pinReminders,
-      dueTodayNotificationsEnabled:
-          dueTodayNotificationsEnabled ?? this.dueTodayNotificationsEnabled,
-      dueTodayNotificationHour:
-          dueTodayNotificationHour ?? this.dueTodayNotificationHour,
-      dueTodayNotificationMinute:
-          dueTodayNotificationMinute ?? this.dueTodayNotificationMinute,
-      routineNotificationEnabled:
-          routineNotificationEnabled ?? this.routineNotificationEnabled,
-      routineNotificationHour:
-          routineNotificationHour ?? this.routineNotificationHour,
-      routineNotificationMinute:
-          routineNotificationMinute ?? this.routineNotificationMinute,
-      quickAddNotificationEnabled:
-          quickAddNotificationEnabled ?? this.quickAddNotificationEnabled,
-      completedExpandedByList:
-          completedExpandedByList ?? this.completedExpandedByList,
-      mutationVersion: mutationVersion ?? this.mutationVersion,
-    );
   }
 }

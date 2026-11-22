@@ -1,4 +1,8 @@
+import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:material_ui/material_ui.dart';
+
+part 'todo_list.freezed.dart';
+part 'todo_list.g.dart';
 
 enum SmartListType { myDay, important, planned, all, completed, tasks }
 
@@ -59,82 +63,54 @@ enum PlannedDueDateFilter { overdue, today, tomorrow, thisWeek, later, all }
 
 enum PlannedGroupOption { ungroup, byDueDate, byList }
 
-@immutable
-class TodoList {
-  const TodoList({
-    required this.id,
-    required this.title,
-    this.smartType,
-    this.groupId,
-    this.emoji,
-    this.themeColor = ListThemeColor.blue,
-    this.themePhoto,
-    this.icon = Icons.format_list_bulleted,
-    this.sortOption = TaskSortOption.defaultOrder,
-    this.sortAscending = true,
-    this.showCompleted = true,
-    this.remoteId,
-    this.orderDateTime,
-    this.updatedAt,
-  });
+IconData _iconFromJson(Object? raw) {
+  if (raw is String) {
+    final type = SmartListType.values.where((e) => e.name == raw).firstOrNull;
+    return TodoList.iconForSmartType(type);
+  }
+  return Icons.format_list_bulleted;
+}
 
-  final String id;
-  final String title;
-  final SmartListType? smartType;
-  final String? groupId;
-  final String? emoji;
-  final ListThemeColor themeColor;
-  final ListThemePhoto? themePhoto;
-  final IconData icon;
-  final TaskSortOption sortOption;
-  final bool sortAscending;
-  final bool showCompleted;
-  final String? remoteId;
-  final DateTime? orderDateTime;
-  final DateTime? updatedAt;
+Object? _readSmartTypeForIcon(Map<dynamic, dynamic> json, String _) =>
+    json['smartType'];
 
-  bool get isSmartList => smartType != null;
+@freezed
+abstract class TodoList with _$TodoList {
+  const TodoList._();
 
-  TodoList copyWith({
-    String? id,
-    String? title,
+  const factory TodoList({
+    required String id,
+    required String title,
+    @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)
     SmartListType? smartType,
     String? groupId,
-    bool clearGroupId = false,
     String? emoji,
-    bool clearEmoji = false,
-    ListThemeColor? themeColor,
+    @Default(ListThemeColor.blue)
+    @JsonKey(unknownEnumValue: ListThemeColor.blue)
+    ListThemeColor themeColor,
+    @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)
     ListThemePhoto? themePhoto,
-    bool clearThemePhoto = false,
-    IconData? icon,
-    TaskSortOption? sortOption,
-    bool? sortAscending,
-    bool? showCompleted,
+    @Default(Icons.format_list_bulleted)
+    @JsonKey(
+      includeToJson: false,
+      readValue: _readSmartTypeForIcon,
+      fromJson: _iconFromJson,
+    )
+    IconData icon,
+    @Default(TaskSortOption.defaultOrder)
+    @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder)
+    TaskSortOption sortOption,
+    @Default(true) bool sortAscending,
+    @Default(true) bool showCompleted,
     String? remoteId,
-    bool clearRemoteId = false,
     DateTime? orderDateTime,
-    bool clearOrderDateTime = false,
     DateTime? updatedAt,
-  }) {
-    return TodoList(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      smartType: smartType ?? this.smartType,
-      groupId: clearGroupId ? null : (groupId ?? this.groupId),
-      emoji: clearEmoji ? null : (emoji ?? this.emoji),
-      themeColor: themeColor ?? this.themeColor,
-      themePhoto: clearThemePhoto ? null : (themePhoto ?? this.themePhoto),
-      icon: icon ?? this.icon,
-      sortOption: sortOption ?? this.sortOption,
-      sortAscending: sortAscending ?? this.sortAscending,
-      showCompleted: showCompleted ?? this.showCompleted,
-      remoteId: clearRemoteId ? null : (remoteId ?? this.remoteId),
-      orderDateTime: clearOrderDateTime
-          ? null
-          : (orderDateTime ?? this.orderDateTime),
-      updatedAt: updatedAt ?? this.updatedAt,
-    );
-  }
+  }) = _TodoList;
+
+  factory TodoList.fromJson(Map<String, dynamic> json) =>
+      _$TodoListFromJson(json);
+
+  bool get isSmartList => smartType != null;
 
   static IconData iconForSmartType(SmartListType? type) {
     return switch (type) {
@@ -147,131 +123,19 @@ class TodoList {
       null => Icons.format_list_bulleted,
     };
   }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'title': title,
-      'smartType': smartType?.name,
-      'groupId': groupId,
-      'emoji': emoji,
-      'themeColor': themeColor.name,
-      'themePhoto': themePhoto?.name,
-      'sortOption': sortOption.name,
-      'sortAscending': sortAscending,
-      'showCompleted': showCompleted,
-      'remoteId': remoteId,
-      'orderDateTime': orderDateTime?.toIso8601String(),
-      'updatedAt': updatedAt?.toIso8601String(),
-    };
-  }
-
-  factory TodoList.fromJson(Map<String, dynamic> json) {
-    final smartName = json['smartType'] as String?;
-    final smartType = smartName == null
-        ? null
-        : SmartListType.values.where((e) => e.name == smartName).firstOrNull;
-    final colorName = json['themeColor'] as String? ?? 'blue';
-    final themeColor = ListThemeColor.values.firstWhere(
-      (e) => e.name == colorName,
-      orElse: () => ListThemeColor.blue,
-    );
-    final photoName = json['themePhoto'] as String?;
-    final themePhoto = photoName == null
-        ? null
-        : ListThemePhoto.values.where((e) => e.name == photoName).firstOrNull;
-    final sortName = json['sortOption'] as String? ?? 'defaultOrder';
-    final sortOption = TaskSortOption.values.firstWhere(
-      (e) => e.name == sortName,
-      orElse: () => TaskSortOption.defaultOrder,
-    );
-
-    return TodoList(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      smartType: smartType,
-      groupId: json['groupId'] as String?,
-      emoji: json['emoji'] as String?,
-      themeColor: themeColor,
-      themePhoto: themePhoto,
-      icon: iconForSmartType(smartType),
-      sortOption: sortOption,
-      sortAscending: json['sortAscending'] as bool? ?? true,
-      showCompleted: json['showCompleted'] as bool? ?? true,
-      remoteId: json['remoteId'] as String?,
-      orderDateTime: json['orderDateTime'] != null
-          ? DateTime.parse(json['orderDateTime'] as String)
-          : null,
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.parse(json['updatedAt'] as String)
-          : null,
-    );
-  }
 }
 
-@immutable
-class ListGroup {
-  const ListGroup({
-    required this.id,
-    required this.title,
-    this.isExpanded = true,
-    this.remoteId,
-    this.orderDateTime,
-    this.updatedAt,
-  });
-
-  final String id;
-  final String title;
-  final bool isExpanded;
-  final String? remoteId;
-  final DateTime? orderDateTime;
-  final DateTime? updatedAt;
-
-  ListGroup copyWith({
-    String? id,
-    String? title,
-    bool? isExpanded,
+@freezed
+abstract class ListGroup with _$ListGroup {
+  const factory ListGroup({
+    required String id,
+    required String title,
+    @Default(true) bool isExpanded,
     String? remoteId,
-    bool clearRemoteId = false,
     DateTime? orderDateTime,
-    bool clearOrderDateTime = false,
     DateTime? updatedAt,
-  }) {
-    return ListGroup(
-      id: id ?? this.id,
-      title: title ?? this.title,
-      isExpanded: isExpanded ?? this.isExpanded,
-      remoteId: clearRemoteId ? null : (remoteId ?? this.remoteId),
-      orderDateTime: clearOrderDateTime
-          ? null
-          : (orderDateTime ?? this.orderDateTime),
-      updatedAt: updatedAt ?? this.updatedAt,
-    );
-  }
+  }) = _ListGroup;
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'title': title,
-      'isExpanded': isExpanded,
-      'remoteId': remoteId,
-      'orderDateTime': orderDateTime?.toIso8601String(),
-      'updatedAt': updatedAt?.toIso8601String(),
-    };
-  }
-
-  factory ListGroup.fromJson(Map<String, dynamic> json) {
-    return ListGroup(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      isExpanded: json['isExpanded'] as bool? ?? true,
-      remoteId: json['remoteId'] as String?,
-      orderDateTime: json['orderDateTime'] != null
-          ? DateTime.parse(json['orderDateTime'] as String)
-          : null,
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.parse(json['updatedAt'] as String)
-          : null,
-    );
-  }
+  factory ListGroup.fromJson(Map<String, dynamic> json) =>
+      _$ListGroupFromJson(json);
 }

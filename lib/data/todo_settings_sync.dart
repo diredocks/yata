@@ -240,43 +240,43 @@ Future<({TodoState state, List<TodoList> lists})> applySyncedSettingsPatch({
   var next = current;
   if (patch.confirmBeforeDeleting != null &&
       canApplySetting(TodoSettingKeys.confirmOnDelete)) {
-    next = next.copyWith(confirmBeforeDeleting: patch.confirmBeforeDeleting);
+    next = next.copyWith(confirmBeforeDeleting: patch.confirmBeforeDeleting!);
     await storage.saveConfirmBeforeDeleting(next.confirmBeforeDeleting);
   }
   if (patch.playCompletionSound != null &&
       canApplySetting(TodoSettingKeys.soundOnCompletion)) {
-    next = next.copyWith(playCompletionSound: patch.playCompletionSound);
+    next = next.copyWith(playCompletionSound: patch.playCompletionSound!);
     await storage.savePlayCompletionSound(next.playCompletionSound);
   }
   if (patch.showDueTodayInMyDay != null &&
       canApplySetting(TodoSettingKeys.myDayShowDueTasks)) {
-    next = next.copyWith(showDueTodayInMyDay: patch.showDueTodayInMyDay);
+    next = next.copyWith(showDueTodayInMyDay: patch.showDueTodayInMyDay!);
     await storage.saveShowDueTodayInMyDay(next.showDueTodayInMyDay);
   }
   if (patch.addNewTasksOnTop != null &&
       canApplySetting(TodoSettingKeys.addTasksToTop)) {
-    next = next.copyWith(addNewTasksOnTop: patch.addNewTasksOnTop);
+    next = next.copyWith(addNewTasksOnTop: patch.addNewTasksOnTop!);
     await storage.saveAddNewTasksOnTop(next.addNewTasksOnTop);
   }
   if (patch.moveStarredTasksToTop != null &&
       canApplySetting(TodoSettingKeys.moveStarredTasksToTop)) {
-    next = next.copyWith(moveStarredTasksToTop: patch.moveStarredTasksToTop);
+    next = next.copyWith(moveStarredTasksToTop: patch.moveStarredTasksToTop!);
     await storage.saveMoveStarredTasksToTop(next.moveStarredTasksToTop);
   }
   if (patch.startOfWeek != null &&
       canApplySetting(TodoSettingKeys.startWeekFrom)) {
-    next = next.copyWith(startOfWeek: patch.startOfWeek);
+    next = next.copyWith(startOfWeek: patch.startOfWeek!);
     await storage.saveStartOfWeek(next.startOfWeek);
   }
   if (patch.remindersEnabled != null &&
       canApplySetting(TodoSettingKeys.reminderNotifications)) {
-    next = next.copyWith(remindersEnabled: patch.remindersEnabled);
+    next = next.copyWith(remindersEnabled: patch.remindersEnabled!);
     await storage.saveRemindersEnabled(next.remindersEnabled);
   }
   if (patch.dueTodayNotificationsEnabled != null &&
       canApplySetting(TodoSettingKeys.dueDateNotifications)) {
     next = next.copyWith(
-      dueTodayNotificationsEnabled: patch.dueTodayNotificationsEnabled,
+      dueTodayNotificationsEnabled: patch.dueTodayNotificationsEnabled!,
     );
     await storage.saveDueTodayNotificationsEnabled(
       next.dueTodayNotificationsEnabled,
@@ -293,13 +293,13 @@ Future<({TodoState state, List<TodoList> lists})> applySyncedSettingsPatch({
   }
   if (patch.pinReminders != null &&
       canApplySetting(TodoSettingKeys.pinReminders)) {
-    next = next.copyWith(pinReminders: patch.pinReminders);
+    next = next.copyWith(pinReminders: patch.pinReminders!);
     await storage.savePinReminders(next.pinReminders);
   }
   if (patch.routineNotificationEnabled != null &&
       canApplySetting(TodoSettingKeys.routineNotification)) {
     next = next.copyWith(
-      routineNotificationEnabled: patch.routineNotificationEnabled,
+      routineNotificationEnabled: patch.routineNotificationEnabled!,
     );
     await storage.saveRoutineNotificationEnabled(
       next.routineNotificationEnabled,
@@ -316,39 +316,39 @@ Future<({TodoState state, List<TodoList> lists})> applySyncedSettingsPatch({
   }
   if (patch.showSmartListImportant != null &&
       canApplySetting(TodoSettingKeys.smartListStarredEnabled)) {
-    next = next.copyWith(showSmartListImportant: patch.showSmartListImportant);
+    next = next.copyWith(showSmartListImportant: patch.showSmartListImportant!);
     await storage.saveShowSmartListImportant(next.showSmartListImportant);
   }
   if (patch.showSmartListPlanned != null &&
       canApplySetting(TodoSettingKeys.smartListPlannedEnabled)) {
-    next = next.copyWith(showSmartListPlanned: patch.showSmartListPlanned);
+    next = next.copyWith(showSmartListPlanned: patch.showSmartListPlanned!);
     await storage.saveShowSmartListPlanned(next.showSmartListPlanned);
   }
   if (patch.showSmartListAll != null &&
       canApplySetting(TodoSettingKeys.smartListAllEnabled)) {
-    next = next.copyWith(showSmartListAll: patch.showSmartListAll);
+    next = next.copyWith(showSmartListAll: patch.showSmartListAll!);
     await storage.saveShowSmartListAll(next.showSmartListAll);
   }
   if (patch.showSmartListCompleted != null &&
       canApplySetting(TodoSettingKeys.smartListCompletedEnabled)) {
-    next = next.copyWith(showSmartListCompleted: patch.showSmartListCompleted);
+    next = next.copyWith(showSmartListCompleted: patch.showSmartListCompleted!);
     await storage.saveShowSmartListCompleted(next.showSmartListCompleted);
   }
   if (patch.autoHideEmptySmartLists != null &&
       canApplySetting(TodoSettingKeys.smartListsAutoHide)) {
     next = next.copyWith(
-      autoHideEmptySmartLists: patch.autoHideEmptySmartLists,
+      autoHideEmptySmartLists: patch.autoHideEmptySmartLists!,
     );
     await storage.saveAutoHideEmptySmartLists(next.autoHideEmptySmartLists);
   }
   if (patch.plannedDueDateFilter != null &&
       canApplySetting(TodoSettingKeys.smartListPlannedDueDateFilter)) {
-    next = next.copyWith(plannedDueDateFilter: patch.plannedDueDateFilter);
+    next = next.copyWith(plannedDueDateFilter: patch.plannedDueDateFilter!);
     await storage.savePlannedDueDateFilter(next.plannedDueDateFilter);
   }
   if (patch.plannedGroupOption != null &&
       canApplySetting(TodoSettingKeys.smartListPlannedGroupType)) {
-    next = next.copyWith(plannedGroupOption: patch.plannedGroupOption);
+    next = next.copyWith(plannedGroupOption: patch.plannedGroupOption!);
     await storage.savePlannedGroupOption(next.plannedGroupOption);
   }
 
@@ -379,26 +379,25 @@ TodoList _applySmartListPatch({
   if (patch.showCompleted != null &&
       mapping.showCompletedKey != null &&
       canApplySetting(mapping.showCompletedKey!)) {
-    updated = updated.copyWith(showCompleted: patch.showCompleted);
+    updated = updated.copyWith(showCompleted: patch.showCompleted!);
   }
   if (patch.hasTheme &&
       mapping.themeColorKey != null &&
       canApplySetting(mapping.themeColorKey!)) {
     updated = updated.copyWith(
       themeColor: patch.themeColor ?? updated.themeColor,
-      themePhoto: patch.themePhoto,
-      clearThemePhoto: patch.clearThemePhoto,
+      themePhoto: patch.clearThemePhoto ? null : patch.themePhoto,
     );
   }
   if (patch.sortOption != null &&
       mapping.sortTypeKey != null &&
       canApplySetting(mapping.sortTypeKey!)) {
-    updated = updated.copyWith(sortOption: patch.sortOption);
+    updated = updated.copyWith(sortOption: patch.sortOption!);
   }
   if (patch.sortAscending != null &&
       mapping.sortAscKey != null &&
       canApplySetting(mapping.sortAscKey!)) {
-    updated = updated.copyWith(sortAscending: patch.sortAscending);
+    updated = updated.copyWith(sortAscending: patch.sortAscending!);
   }
   return updated;
 }

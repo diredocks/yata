@@ -55,7 +55,7 @@ class HomeViewPresenter {
       _state.copyWith(
         lists: updated,
         selectedListId: newList.id,
-        clearSelectedTaskId: true,
+        selectedTaskId: null,
       ),
     );
     _store.storage.saveLists(_state.lists);
@@ -125,10 +125,7 @@ class HomeViewPresenter {
     final updatedGroups = _state.groups.where((g) => g.id != groupId).toList();
     final updatedLists = [
       for (final list in _state.lists)
-        if (list.groupId == groupId)
-          list.copyWith(clearGroupId: true)
-        else
-          list,
+        if (list.groupId == groupId) list.copyWith(groupId: null) else list,
     ];
     _store.commit(_state.copyWith(groups: updatedGroups, lists: updatedLists));
     _store.storage.saveGroups(updatedGroups);
@@ -141,7 +138,7 @@ class HomeViewPresenter {
         if (!list.isSmartList && memberListIds.contains(list.id))
           list.copyWith(groupId: groupId)
         else if (list.groupId == groupId && !memberListIds.contains(list.id))
-          list.copyWith(clearGroupId: true)
+          list.copyWith(groupId: null)
         else
           list,
     ];

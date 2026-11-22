@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -785,20 +789,69 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
   }
 }
 
-/// Persists personal MSA OAuth2 tokens in SharedPreferences scoped by account.
+/// Persists personal MSA OAuth2 tokens in encrypted OS storage via
+/// [FlutterSecureStorage], with automatic migration from legacy
+/// [SharedPreferences] entries and fallback in headless test environments.
 class AuthTokenStorage {
-  const AuthTokenStorage(this._prefs);
+  const AuthTokenStorage(this._prefs, {this.secureStorage});
 
   final SharedPreferences _prefs;
+  final FlutterSecureStorage? secureStorage;
+
+  static const FlutterSecureStorage _defaultSecureStorage =
+      FlutterSecureStorage();
 
   static String _keyFor(String accountId) => 'yata.msa.tokens.$accountId';
 
+  FlutterSecureStorage? get _effectiveSecureStorage {
+    if (secureStorage != null) return secureStorage;
+    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
+      return null;
+    }
+    return _defaultSecureStorage;
+  }
+
   Future<void> saveTokens(String accountId, MicrosoftAuthTokens tokens) async {
-    await _prefs.setString(_keyFor(accountId), jsonEncode(tokens.toJson()));
+    final key = _keyFor(accountId);
+    final encoded = jsonEncode(tokens.toJson());
+    final secure = _effectiveSecureStorage;
+    if (secure != null) {
+      try {
+        await secure.write(key: key, value: encoded);
+        await _prefs.remove(key);
+        return;
+      } on MissingPluginException {
+        // Fall through to SharedPreferences.
+      } on PlatformException {
+        // Fall through to SharedPreferences.
+      }
+    }
+    await _prefs.setString(key, encoded);
   }
 
   Future<MicrosoftAuthTokens?> loadTokens(String accountId) async {
-    final raw = _prefs.getString(_keyFor(accountId));
+    final key = _keyFor(accountId);
+    String? raw;
+    final secure = _effectiveSecureStorage;
+    if (secure != null) {
+      try {
+        raw = await secure.read(key: key);
+        if (raw == null || raw.isEmpty) {
+          final legacy = _prefs.getString(key);
+          if (legacy != null && legacy.isNotEmpty) {
+            raw = legacy;
+            await secure.write(key: key, value: legacy);
+            await _prefs.remove(key);
+          }
+        }
+      } on MissingPluginException {
+        raw = _prefs.getString(key);
+      } on PlatformException {
+        raw = _prefs.getString(key);
+      }
+    } else {
+      raw = _prefs.getString(key);
+    }
     if (raw == null || raw.isEmpty) return null;
     try {
       final map = jsonDecode(raw) as Map<String, dynamic>;
@@ -809,6 +862,17 @@ class AuthTokenStorage {
   }
 
   Future<void> clearTokens(String accountId) async {
-    await _prefs.remove(_keyFor(accountId));
+    final key = _keyFor(accountId);
+    final secure = _effectiveSecureStorage;
+    if (secure != null) {
+      try {
+        await secure.delete(key: key);
+      } on MissingPluginException {
+        // Ignore and remove from SharedPreferences below.
+      } on PlatformException {
+        // Ignore and remove from SharedPreferences below.
+      }
+    }
+    await _prefs.remove(key);
   }
 }

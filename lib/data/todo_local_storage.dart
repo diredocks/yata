@@ -1,96 +1,62 @@
 import 'dart:convert';
 
+import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../account/account_local_storage.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
-import '../account/account_local_storage.dart';
 
-class PendingStepDeletion {
-  const PendingStepDeletion({
-    required this.taskRemoteId,
-    required this.stepRemoteId,
-  });
+part 'todo_local_storage.freezed.dart';
+part 'todo_local_storage.g.dart';
 
-  final String taskRemoteId;
-  final String stepRemoteId;
+@freezed
+abstract class PendingStepDeletion with _$PendingStepDeletion {
+  const factory PendingStepDeletion({
+    required String taskRemoteId,
+    required String stepRemoteId,
+  }) = _PendingStepDeletion;
 
-  Map<String, dynamic> toJson() => {
-    'taskRemoteId': taskRemoteId,
-    'stepRemoteId': stepRemoteId,
-  };
-
-  factory PendingStepDeletion.fromJson(Map<String, dynamic> json) {
-    return PendingStepDeletion(
-      taskRemoteId: json['taskRemoteId'] as String,
-      stepRemoteId: json['stepRemoteId'] as String,
-    );
-  }
+  factory PendingStepDeletion.fromJson(Map<String, dynamic> json) =>
+      _$PendingStepDeletionFromJson(json);
 }
 
-class TodoSnapshot {
-  const TodoSnapshot({
-    required this.lists,
-    required this.groups,
-    required this.tasks,
-    required this.selectedListId,
-    required this.themeMode,
-    required this.addNewTasksOnTop,
-    required this.moveStarredTasksToTop,
-    required this.playCompletionSound,
-    required this.confirmBeforeDeleting,
-    required this.showDueTodayInMyDay,
-    required this.startOfWeek,
-    required this.showSmartListImportant,
-    required this.showSmartListPlanned,
-    required this.showSmartListAll,
-    required this.showSmartListCompleted,
-    required this.autoHideEmptySmartLists,
-    this.plannedDueDateFilter = PlannedDueDateFilter.all,
-    this.plannedGroupOption = PlannedGroupOption.byDueDate,
-    this.useDynamicColor = true,
-    this.remindersEnabled = true,
-    this.pinReminders = false,
-    this.dueTodayNotificationsEnabled = false,
-    this.dueTodayNotificationHour = 9,
-    this.dueTodayNotificationMinute = 0,
-    this.routineNotificationEnabled = false,
-    this.routineNotificationHour = 8,
-    this.routineNotificationMinute = 30,
-    this.quickAddNotificationEnabled = false,
-    this.lastMyDayResetDate,
-  });
-
-  final List<TodoList> lists;
-  final List<ListGroup> groups;
-  final List<TaskItem> tasks;
-  final String selectedListId;
-  final ThemeMode themeMode;
-  final bool addNewTasksOnTop;
-  final bool moveStarredTasksToTop;
-  final bool playCompletionSound;
-  final bool confirmBeforeDeleting;
-  final bool showDueTodayInMyDay;
-  final WeekStart startOfWeek;
-  final bool showSmartListImportant;
-  final bool showSmartListPlanned;
-  final bool showSmartListAll;
-  final bool showSmartListCompleted;
-  final bool autoHideEmptySmartLists;
-  final PlannedDueDateFilter plannedDueDateFilter;
-  final PlannedGroupOption plannedGroupOption;
-  final bool useDynamicColor;
-  final bool remindersEnabled;
-  final bool pinReminders;
-  final bool dueTodayNotificationsEnabled;
-  final int dueTodayNotificationHour;
-  final int dueTodayNotificationMinute;
-  final bool routineNotificationEnabled;
-  final int routineNotificationHour;
-  final int routineNotificationMinute;
-  final bool quickAddNotificationEnabled;
-  final String? lastMyDayResetDate;
+@freezed
+abstract class TodoSnapshot with _$TodoSnapshot {
+  const factory TodoSnapshot({
+    required List<TodoList> lists,
+    required List<ListGroup> groups,
+    required List<TaskItem> tasks,
+    required String selectedListId,
+    required ThemeMode themeMode,
+    required bool addNewTasksOnTop,
+    required bool moveStarredTasksToTop,
+    required bool playCompletionSound,
+    required bool confirmBeforeDeleting,
+    required bool showDueTodayInMyDay,
+    required WeekStart startOfWeek,
+    required bool showSmartListImportant,
+    required bool showSmartListPlanned,
+    required bool showSmartListAll,
+    required bool showSmartListCompleted,
+    required bool autoHideEmptySmartLists,
+    @Default(PlannedDueDateFilter.all)
+    PlannedDueDateFilter plannedDueDateFilter,
+    @Default(PlannedGroupOption.byDueDate)
+    PlannedGroupOption plannedGroupOption,
+    @Default(true) bool useDynamicColor,
+    @Default(true) bool remindersEnabled,
+    @Default(false) bool pinReminders,
+    @Default(false) bool dueTodayNotificationsEnabled,
+    @Default(9) int dueTodayNotificationHour,
+    @Default(0) int dueTodayNotificationMinute,
+    @Default(false) bool routineNotificationEnabled,
+    @Default(8) int routineNotificationHour,
+    @Default(30) int routineNotificationMinute,
+    @Default(false) bool quickAddNotificationEnabled,
+    String? lastMyDayResetDate,
+  }) = _TodoSnapshot;
 }
 
 class TodoLocalStorage {

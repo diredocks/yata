@@ -20,7 +20,10 @@ class DetailViewPresenter {
     bool clearSelectedTaskId = false,
   }) {
     _store.commit(
-      _state.copyWith(tasks: updated, clearSelectedTaskId: clearSelectedTaskId),
+      _state.copyWith(
+        tasks: updated,
+        selectedTaskId: clearSelectedTaskId ? null : _state.selectedTaskId,
+      ),
     );
     _store.storage.saveTasks(updated);
   }
@@ -62,11 +65,10 @@ class DetailViewPresenter {
       return TodoNotifier.syncMyDayFlag(
         task.copyWith(
           myDayDate: adding ? now : null,
-          clearMyDayDate: !adding,
           committedOrder: committedOrder,
-          clearCommittedOrder: !adding,
-          postponedDay: !adding && dueToday ? now : task.postponedDay,
-          clearPostponedDay: adding,
+          postponedDay: adding
+              ? null
+              : (!adding && dueToday ? now : task.postponedDay),
         ),
         now: now,
         showDueTodayInMyDay: _state.showDueTodayInMyDay,
@@ -111,9 +113,8 @@ class DetailViewPresenter {
       return TodoNotifier.syncMyDayFlag(
         task.copyWith(
           dueDate: dueDate,
-          clearDueDate: dueDate == null,
           recurrence: dueDate == null ? RecurrenceType.none : task.recurrence,
-          clearPostponedDay: clearPostponed,
+          postponedDay: clearPostponed ? null : task.postponedDay,
         ),
         now: now,
         showDueTodayInMyDay: _state.showDueTodayInMyDay,
@@ -122,13 +123,7 @@ class DetailViewPresenter {
   }
 
   void setTaskReminder(String taskId, DateTime? reminderAt) {
-    _updateTaskById(
-      taskId,
-      (task) => task.copyWith(
-        reminderAt: reminderAt,
-        clearReminderAt: reminderAt == null,
-      ),
-    );
+    _updateTaskById(taskId, (task) => task.copyWith(reminderAt: reminderAt));
   }
 
   void setTaskRecurrence(String taskId, RecurrenceType recurrence) {

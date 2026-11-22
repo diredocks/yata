@@ -92,11 +92,11 @@ class TasksViewPresenter {
           ? list
           : list.copyWith(
               title: trimmed,
-              emoji: emoji,
-              clearEmoji: clearEmoji,
-              themeColor: themeColor,
-              themePhoto: themePhoto,
-              clearThemePhoto: clearThemePhoto,
+              emoji: clearEmoji ? null : (emoji ?? list.emoji),
+              themeColor: themeColor ?? list.themeColor,
+              themePhoto: clearThemePhoto
+                  ? null
+                  : (themePhoto ?? list.themePhoto),
             ),
     );
   }
@@ -108,11 +108,7 @@ class TasksViewPresenter {
   }) {
     _updateListById(
       listId,
-      (list) => list.copyWith(
-        themeColor: themeColor,
-        themePhoto: themePhoto,
-        clearThemePhoto: themePhoto == null,
-      ),
+      (list) => list.copyWith(themeColor: themeColor, themePhoto: themePhoto),
     );
   }
 
@@ -166,18 +162,18 @@ class TasksViewPresenter {
           id: _store.nextId('task'),
           listId: newListId,
           createdAt: now,
-          clearRemoteId: true,
-          clearRemoteParentFolderId: true,
-          clearChangeKey: true,
+          remoteId: null,
+          remoteParentFolderId: null,
+          changeKey: null,
           orderDateTime: baseTaskOrder.subtract(Duration(seconds: copyIndex++)),
-          clearCommittedOrder: true,
+          committedOrder: null,
           isCompleted: keepCompleted ? task.isCompleted : false,
-          clearCompletedAt: !keepCompleted,
+          completedAt: keepCompleted ? task.completedAt : null,
           steps: [
             for (final step in task.steps)
               step.copyWith(
                 id: _store.nextId('step'),
-                clearRemoteId: true,
+                remoteId: null,
                 isCompleted: keepCompleted ? step.isCompleted : false,
               ),
           ],
@@ -194,7 +190,7 @@ class TasksViewPresenter {
         lists: updatedLists,
         tasks: updatedTasks,
         selectedListId: newListId,
-        clearSelectedTaskId: true,
+        selectedTaskId: null,
       ),
     );
     _store.storage.saveLists(updatedLists);
@@ -225,7 +221,7 @@ class TasksViewPresenter {
         lists: updatedLists,
         tasks: updatedTasks,
         selectedListId: nextSelected,
-        clearSelectedTaskId: true,
+        selectedTaskId: null,
       ),
     );
     _store.storage.saveLists(updatedLists);
@@ -468,7 +464,6 @@ class TasksViewPresenter {
         task.copyWith(
           isCompleted: completed,
           completedAt: completed ? now : null,
-          clearCompletedAt: !completed,
         ),
       );
       if (completed && task.recurrence != RecurrenceType.none) {

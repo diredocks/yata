@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/foundation.dart';
+import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'account_local_storage.dart';
@@ -8,6 +8,8 @@ import '../auth/browser_launcher.dart';
 import '../auth/microsoft_auth_service.dart';
 import '../auth/msa_webview_launcher.dart';
 import '../sync/microsoft_todo_api.dart';
+
+part 'account_provider.freezed.dart';
 
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
   throw UnimplementedError('sharedPreferencesProvider must be overridden');
@@ -39,12 +41,14 @@ final microsoftTodoApiProvider = Provider<MicrosoftTodoApi>((ref) {
   return HttpMicrosoftTodoApi();
 });
 
-@immutable
-class AccountState {
-  const AccountState({required this.accounts, required this.activeAccountId});
+@freezed
+abstract class AccountState with _$AccountState {
+  const AccountState._();
 
-  final List<Account> accounts;
-  final String? activeAccountId;
+  const factory AccountState({
+    required List<Account> accounts,
+    required String? activeAccountId,
+  }) = _AccountState;
 
   Account? get activeAccount {
     if (activeAccountId == null) return null;
@@ -52,19 +56,6 @@ class AccountState {
       if (account.id == activeAccountId) return account;
     }
     return accounts.isNotEmpty ? accounts.first : null;
-  }
-
-  AccountState copyWith({
-    List<Account>? accounts,
-    String? activeAccountId,
-    bool clearActiveAccountId = false,
-  }) {
-    return AccountState(
-      accounts: accounts ?? this.accounts,
-      activeAccountId: clearActiveAccountId
-          ? null
-          : (activeAccountId ?? this.activeAccountId),
-    );
   }
 }
 
@@ -128,7 +119,7 @@ class AccountNotifier extends Notifier<AccountState> {
         displayName: result.profile.displayName,
         email: result.profile.email,
         avatarBase64: result.profile.avatarBase64 ?? existing.avatarBase64,
-        clearSyncError: true,
+        syncError: null,
       );
       nextAccounts = [
         for (var i = 0; i < state.accounts.length; i++)
@@ -165,9 +156,8 @@ class AccountNotifier extends Notifier<AccountState> {
     if (target is! MicrosoftAccount) return;
 
     final updated = target.copyWith(
-      lastSyncedAt: lastSyncedAt,
-      syncError: syncError,
-      clearSyncError: clearSyncError,
+      lastSyncedAt: lastSyncedAt ?? target.lastSyncedAt,
+      syncError: clearSyncError ? null : (syncError ?? target.syncError),
     );
     final nextAccounts = [
       for (var i = 0; i < state.accounts.length; i++)

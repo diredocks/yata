@@ -1,24 +1,16 @@
-import 'dart:math';
-
+import 'package:characters/characters.dart';
+import 'package:html/dom.dart' as dom;
+import 'package:html/parser.dart' as html_parser;
 import 'package:material_ui/material_ui.dart' show TimeOfDay;
+import 'package:uuid/uuid.dart';
 
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 
-final Random _uuidRandom = Random.secure();
+const Uuid _uuid = Uuid();
 
 /// Generates a random RFC-4122 version 4 UUID string.
-String generateUuidV4() {
-  final bytes = List<int>.generate(16, (_) => _uuidRandom.nextInt(256));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  String hex(int b) => b.toRadixString(16).padLeft(2, '0');
-  return '${hex(bytes[0])}${hex(bytes[1])}${hex(bytes[2])}${hex(bytes[3])}-'
-      '${hex(bytes[4])}${hex(bytes[5])}-'
-      '${hex(bytes[6])}${hex(bytes[7])}-'
-      '${hex(bytes[8])}${hex(bytes[9])}-'
-      '${hex(bytes[10])}${hex(bytes[11])}${hex(bytes[12])}${hex(bytes[13])}${hex(bytes[14])}${hex(bytes[15])}';
-}
+String generateUuidV4() => _uuid.v4();
 
 /// Substrate `/settings` keys synchronized for personal Microsoft To Do accounts.
 abstract final class TodoSettingKeys {
@@ -240,19 +232,8 @@ DecodedTheme decodeFolderTheme({
   );
 }
 
-final RegExp _leadingEmojiRegex = RegExp(
-  r'^(?:'
-  // Regional indicator flag pair
-  r'[\u{1F1E6}-\u{1F1FF}]{2}'
-  r'|'
-  // Keycap sequence (#, *, 0-9)
-  r'[#*0-9]\uFE0F?\u20E3'
-  r'|'
-  // Base emoji / dingbat / misc symbol + optional VS, skin tone, ZWJ chains
-  r'(?:[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u2B50\u2B55\u2934\u2935\u3030\u303D\u3297\u3299])'
-  r'(?:[\uFE0E\uFE0F]|[\u{1F3FB}-\u{1F3FF}])?'
-  r'(?:\u200D(?:[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u2B50\u2B55])(?:[\uFE0E\uFE0F]|[\u{1F3FB}-\u{1F3FF}])?)*'
-  r')',
+final RegExp _emojiCodePointRegex = RegExp(
+  r'[\u{1F1E6}-\u{1FAFF}\u{2300}-\u{27BF}\u20E3\u2B50\u2B55\u2934\u2935\u3030\u303D\u3297\u3299]',
   unicode: true,
 );
 
@@ -269,22 +250,22 @@ String encodeFolderName(String title, String? emoji) {
   return '$cleanEmoji $cleanTitle';
 }
 
-/// Splits a Substrate folder `Name` into leading [emoji] and [title].
+/// Splits a Substrate folder `Name` into leading [emoji] and [title] using
+/// Unicode extended grapheme clusters via `package:characters`.
 DecodedFolderName decodeFolderName(String raw) {
   final trimmed = raw.trimLeft();
   if (trimmed.isEmpty) {
     return const DecodedFolderName(title: '');
   }
-  final match = _leadingEmojiRegex.firstMatch(trimmed);
-  if (match == null) {
+  final firstGrapheme = trimmed.characters.first;
+  if (!_emojiCodePointRegex.hasMatch(firstGrapheme)) {
     return DecodedFolderName(title: raw);
   }
-  final emoji = match.group(0)!;
-  final remainder = trimmed.substring(match.end).trimLeft();
+  final remainder = trimmed.substring(firstGrapheme.length).trimLeft();
   if (remainder.isEmpty) {
     return DecodedFolderName(title: raw);
   }
-  return DecodedFolderName(emoji: emoji, title: remainder);
+  return DecodedFolderName(emoji: firstGrapheme, title: remainder);
 }
 
 /// Encodes [TaskSortOption] to MS To Do `TasksSortOrder` integer (`0..6`).
@@ -770,56 +751,62 @@ RecurrenceType decodeSubstrateRecurrence(Map<String, dynamic>? map) {
   }
 }
 
-/// Strips HTML task body markup to plain text when [contentType] is `"HTML"`.
+const Set<String> _htmlBlockTags = {
+  'p',
+  'div',
+  'li',
+  'tr',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+};
+
+/// Strips HTML task body markup to plain text when [contentType] is `"HTML"`
+/// using `package:html`.
 String stripHtmlToPlainText(String raw, {String? contentType}) {
   if (raw.isEmpty) return '';
   final isHtml = contentType?.trim().toLowerCase() == 'html';
   if (!isHtml) {
     return raw.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
   }
-  var text = raw;
-  text = text.replaceAll(
-    RegExp(r'<head\b[^>]*>[\s\S]*?</head>', caseSensitive: false),
-    '',
-  );
-  text = text.replaceAll(
-    RegExp(r'<style\b[^>]*>[\s\S]*?</style>', caseSensitive: false),
-    '',
-  );
-  text = text.replaceAll(
-    RegExp(r'<script\b[^>]*>[\s\S]*?</script>', caseSensitive: false),
-    '',
-  );
-  text = text.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
-  text = text.replaceAll(
-    RegExp(r'</(?:p|div|li|tr|h[1-6])>', caseSensitive: false),
-    '\n',
-  );
-  text = text.replaceAll(RegExp(r'<[^>]+>'), '');
-  text = _decodeHtmlEntities(text);
-  text = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
-  text = text.replaceAll(RegExp(r'\n+$'), '');
-  return text;
-}
+  final doc = html_parser.parse(raw);
+  for (final el in doc.querySelectorAll('head, style, script')) {
+    el.remove();
+  }
+  final buffer = StringBuffer();
+  void walk(dom.Node node) {
+    if (node is dom.Text) {
+      buffer.write(node.text.replaceAll('\u00A0', ' '));
+      return;
+    }
+    if (node is dom.Element) {
+      final tag = node.localName?.toLowerCase();
+      if (tag == 'br') {
+        buffer.write('\n');
+        return;
+      }
+      for (final child in node.nodes) {
+        walk(child);
+      }
+      if (tag != null && _htmlBlockTags.contains(tag)) {
+        buffer.write('\n');
+      }
+      return;
+    }
+    for (final child in node.nodes) {
+      walk(child);
+    }
+  }
 
-String _decodeHtmlEntities(String input) {
-  var out = input
-      .replaceAll('&nbsp;', ' ')
-      .replaceAll('&amp;', '&')
-      .replaceAll('&lt;', '<')
-      .replaceAll('&gt;', '>')
-      .replaceAll('&quot;', '"')
-      .replaceAll('&apos;', "'")
-      .replaceAll('&#39;', "'");
-  out = out.replaceAllMapped(RegExp(r'&#(\d+);'), (m) {
-    final code = int.tryParse(m.group(1)!);
-    return code != null ? String.fromCharCode(code) : m.group(0)!;
-  });
-  out = out.replaceAllMapped(RegExp(r'&#x([0-9a-fA-F]+);'), (m) {
-    final code = int.tryParse(m.group(1)!, radix: 16);
-    return code != null ? String.fromCharCode(code) : m.group(0)!;
-  });
-  return out;
+  walk(doc.body ?? doc);
+  return buffer
+      .toString()
+      .replaceAll('\r\n', '\n')
+      .replaceAll('\r', '\n')
+      .replaceAll(RegExp(r'\n+$'), '');
 }
 
 /// Default spacing (`4096s`) used by Microsoft To Do for `OrderDateTime`

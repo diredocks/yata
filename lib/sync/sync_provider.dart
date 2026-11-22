@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:freezed_annotation/freezed_annotation.dart';
 
 import '../account/account_provider.dart';
 import '../auth/microsoft_auth_service.dart';
@@ -8,6 +9,8 @@ import '../data/todo_provider.dart';
 import '../models/account.dart';
 import 'cloud_sync_service.dart';
 import 'microsoft_todo_api.dart';
+
+part 'sync_provider.freezed.dart';
 
 /// Allows tests to disable background realtime long-polling streams.
 final realtimeSyncEnabledProvider = Provider<bool>((ref) => true);
@@ -22,32 +25,18 @@ final cloudSyncServiceProvider = Provider<CloudSyncService>((ref) {
 
 enum SyncStatus { idle, syncing, success, error, requiresRelogin }
 
-class SyncState {
-  const SyncState({
-    this.status = SyncStatus.idle,
-    this.lastSyncedAt,
-    this.error,
-  });
+@freezed
+abstract class SyncState with _$SyncState {
+  const SyncState._();
 
-  final SyncStatus status;
-  final DateTime? lastSyncedAt;
-  final String? error;
+  const factory SyncState({
+    @Default(SyncStatus.idle) SyncStatus status,
+    DateTime? lastSyncedAt,
+    String? error,
+  }) = _SyncState;
 
   bool get isSyncing => status == SyncStatus.syncing;
   bool get requiresRelogin => status == SyncStatus.requiresRelogin;
-
-  SyncState copyWith({
-    SyncStatus? status,
-    DateTime? lastSyncedAt,
-    String? error,
-    bool clearError = false,
-  }) {
-    return SyncState(
-      status: status ?? this.status,
-      lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
-      error: clearError ? null : (error ?? this.error),
-    );
-  }
 }
 
 class SyncNotifier extends Notifier<SyncState> {
@@ -154,7 +143,7 @@ class SyncNotifier extends Notifier<SyncState> {
   }
 
   Future<void> _runSyncLoop() async {
-    state = state.copyWith(status: SyncStatus.syncing, clearError: true);
+    state = state.copyWith(status: SyncStatus.syncing, error: null);
     try {
       do {
         _syncQueued = false;
@@ -221,7 +210,7 @@ class SyncNotifier extends Notifier<SyncState> {
         state = state.copyWith(
           status: SyncStatus.success,
           lastSyncedAt: outcome.syncedAt,
-          clearError: true,
+          error: null,
         );
       }
     } on MicrosoftAuthException catch (e) {

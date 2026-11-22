@@ -18,7 +18,10 @@ class TasksActionPresenter {
     bool clearSelectedTaskId = false,
   }) {
     _store.commit(
-      _state.copyWith(tasks: updated, clearSelectedTaskId: clearSelectedTaskId),
+      _state.copyWith(
+        tasks: updated,
+        selectedTaskId: clearSelectedTaskId ? null : _state.selectedTaskId,
+      ),
     );
     _store.storage.saveTasks(updated);
   }
@@ -49,16 +52,14 @@ class TasksActionPresenter {
       return TodoNotifier.syncMyDayFlag(
         task.copyWith(
           myDayDate: value ? now : null,
-          clearMyDayDate: !value,
           committedOrder: committedOrder,
-          clearCommittedOrder: !value,
-          postponedDay:
-              !value &&
-                  task.dueDate != null &&
-                  TodoNotifier.isSameDay(task.dueDate!, now)
-              ? now
-              : task.postponedDay,
-          clearPostponedDay: value,
+          postponedDay: value
+              ? null
+              : (!value &&
+                        task.dueDate != null &&
+                        TodoNotifier.isSameDay(task.dueDate!, now)
+                    ? now
+                    : task.postponedDay),
         ),
         now: now,
         showDueTodayInMyDay: _state.showDueTodayInMyDay,
@@ -157,11 +158,11 @@ class TasksActionPresenter {
               id: _store.nextId('task'),
               listId: targetListId,
               createdAt: now,
-              clearRemoteId: true,
-              clearRemoteParentFolderId: true,
-              clearChangeKey: true,
+              remoteId: null,
+              remoteParentFolderId: null,
+              changeKey: null,
               orderDateTime: order,
-              clearCommittedOrder: true,
+              committedOrder: null,
               steps: [
                 for (final step in task.steps)
                   TaskStep(
@@ -192,9 +193,8 @@ class TasksActionPresenter {
       return TodoNotifier.syncMyDayFlag(
         task.copyWith(
           dueDate: dueDate,
-          clearDueDate: dueDate == null,
           recurrence: dueDate == null ? RecurrenceType.none : task.recurrence,
-          clearPostponedDay: clearPostponed,
+          postponedDay: clearPostponed ? null : task.postponedDay,
         ),
         now: now,
         showDueTodayInMyDay: _state.showDueTodayInMyDay,

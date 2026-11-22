@@ -52,6 +52,8 @@
           pkgs.pcre2.dev
           pkgs.elfutils.dev
           pkgs.zstd.dev
+          pkgs.libsecret
+          pkgs.json-glib
           pkgs.gst_all_1.gstreamer
           pkgs.gst_all_1.gstreamer.dev
           pkgs.gst_all_1.gst-plugins-base

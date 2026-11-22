@@ -341,31 +341,22 @@ class TodoNotifier extends Notifier<TodoState> {
 
   static bool _taskNeedsSyncStamp(TaskItem? prev, TaskItem next) {
     if (prev == null) return true;
-    if (prev.title != next.title ||
-        prev.listId != next.listId ||
-        prev.isCompleted != next.isCompleted ||
-        prev.completedAt != next.completedAt ||
-        prev.isImportant != next.isImportant ||
-        prev.isInMyDay != next.isInMyDay ||
-        prev.myDayDate != next.myDayDate ||
-        prev.postponedDay != next.postponedDay ||
-        prev.dueDate != next.dueDate ||
-        prev.reminderAt != next.reminderAt ||
-        prev.recurrence != next.recurrence ||
-        prev.note != next.note ||
-        prev.orderDateTime != next.orderDateTime ||
-        prev.committedOrder != next.committedOrder ||
-        prev.steps.length != next.steps.length) {
-      return true;
-    }
-    for (var i = 0; i < prev.steps.length; i++) {
-      if (prev.steps[i].title != next.steps[i].title ||
-          prev.steps[i].isCompleted != next.steps[i].isCompleted ||
-          prev.steps[i].orderDateTime != next.steps[i].orderDateTime) {
-        return true;
-      }
-    }
-    return false;
+    if (prev.steps.length != next.steps.length) return true;
+    final normalizedPrev = prev.copyWith(
+      remoteId: next.remoteId,
+      remoteParentFolderId: next.remoteParentFolderId,
+      changeKey: next.changeKey,
+      updatedAt: next.updatedAt,
+      noteUpdatedAt: next.noteUpdatedAt,
+      steps: [
+        for (var i = 0; i < prev.steps.length; i++)
+          prev.steps[i].copyWith(
+            id: next.steps[i].id,
+            remoteId: next.steps[i].remoteId,
+          ),
+      ],
+    );
+    return normalizedPrev != next;
   }
 
   List<ListGroup> _reconcileSyncedGroups({
@@ -556,7 +547,7 @@ class TodoNotifier extends Notifier<TodoState> {
     reconciledLists = [
       for (final list in reconciledLists)
         if (list.groupId != null && !validGroupIds.contains(list.groupId))
-          list.copyWith(clearGroupId: true)
+          list.copyWith(groupId: null)
         else
           list,
     ];
@@ -707,7 +698,7 @@ class TodoNotifier extends Notifier<TodoState> {
   }
 
   void selectList(String listId) {
-    state = state.copyWith(selectedListId: listId, clearSelectedTaskId: true);
+    state = state.copyWith(selectedListId: listId, selectedTaskId: null);
     storage.saveSelectedListId(listId);
   }
 
@@ -746,10 +737,7 @@ class TodoNotifier extends Notifier<TodoState> {
   }
 
   void selectTask(String? taskId) {
-    state = state.copyWith(
-      selectedTaskId: taskId,
-      clearSelectedTaskId: taskId == null,
-    );
+    state = state.copyWith(selectedTaskId: taskId);
   }
 }
 
