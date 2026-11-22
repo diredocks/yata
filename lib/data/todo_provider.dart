@@ -1,23 +1,43 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../account/account_provider.dart';
 import '../homeview/home_view_ordering.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
+import 'todo_database.dart';
 import 'todo_local_storage.dart';
 import 'todo_settings_sync.dart';
 import 'todo_state.dart';
 
 export '../account/account_provider.dart' show sharedPreferencesProvider;
+export 'todo_database.dart';
 export 'todo_settings_sync.dart';
 export 'todo_state.dart';
 
+final todoDatabaseProvider = Provider<TodoDatabase?>((ref) {
+  if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
+    return null;
+  }
+  final db = TodoDatabase();
+  ref.onDispose(() => unawaited(db.close()));
+  return db;
+});
+
 final todoLocalStorageProvider = Provider<TodoLocalStorage>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
+  final database = ref.watch(todoDatabaseProvider);
   final activeAccountId = ref.watch(
     accountProvider.select((s) => s.activeAccountId),
   );
-  return TodoLocalStorage(prefs, accountId: activeAccountId);
+  return TodoLocalStorage(
+    prefs,
+    accountId: activeAccountId,
+    database: database,
+  );
 });
 
 class TodoNotifier extends Notifier<TodoState> {

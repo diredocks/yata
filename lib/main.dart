@@ -3,20 +3,34 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'account/account_local_storage.dart';
+import 'account/account_provider.dart';
+import 'data/todo_local_storage.dart';
+import 'data/todo_provider.dart';
 import 'l10n/app_localizations.dart';
 import 'onboarding/landing_screen.dart';
-import 'account/account_provider.dart';
-import 'data/todo_provider.dart';
-import 'view/main_shell_screen.dart';
 import 'theme/todo_theme.dart';
+import 'view/main_shell_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
+  final database = TodoDatabase();
+  final accountSnapshot = AccountLocalStorage(prefs).load();
+  for (final account in accountSnapshot.accounts) {
+    await TodoLocalStorage(
+      prefs,
+      accountId: account.id,
+      database: database,
+    ).hydrateFromDatabase();
+  }
 
   runApp(
     ProviderScope(
-      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        todoDatabaseProvider.overrideWithValue(database),
+      ],
       child: const YataApp(),
     ),
   );

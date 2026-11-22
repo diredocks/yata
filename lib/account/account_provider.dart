@@ -3,10 +3,12 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'account_local_storage.dart';
-import '../models/account.dart';
 import '../auth/browser_launcher.dart';
 import '../auth/microsoft_auth_service.dart';
 import '../auth/msa_webview_launcher.dart';
+import '../data/todo_local_storage.dart';
+import '../data/todo_provider.dart';
+import '../models/account.dart';
 import '../sync/microsoft_todo_api.dart';
 
 part 'account_provider.freezed.dart';
@@ -195,6 +197,11 @@ class AccountNotifier extends Notifier<AccountState> {
     if (state.activeAccountId == accountId) return;
     if (!state.accounts.any((a) => a.id == accountId)) return;
 
+    await TodoLocalStorage(
+      ref.read(sharedPreferencesProvider),
+      accountId: accountId,
+      database: ref.read(todoDatabaseProvider),
+    ).hydrateFromDatabase();
     state = state.copyWith(activeAccountId: accountId);
     await _storage.saveActiveAccountId(accountId);
   }
@@ -202,6 +209,11 @@ class AccountNotifier extends Notifier<AccountState> {
   Future<void> signOut(String accountId) async {
     await ref.read(authTokenStorageProvider).clearTokens(accountId);
     await _storage.deleteAccountData(accountId);
+    await TodoLocalStorage(
+      ref.read(sharedPreferencesProvider),
+      accountId: accountId,
+      database: ref.read(todoDatabaseProvider),
+    ).clearAccountRecords();
     final remaining = state.accounts.where((a) => a.id != accountId).toList();
     final nextActiveId = state.activeAccountId == accountId
         ? (remaining.isNotEmpty ? remaining.first.id : null)

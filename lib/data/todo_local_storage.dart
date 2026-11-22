@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:freezed_annotation/freezed_annotation.dart';
@@ -7,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../account/account_local_storage.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
+import '../sync/todo_wire_codecs.dart';
+import 'todo_database.dart';
 
 part 'todo_local_storage.freezed.dart';
 part 'todo_local_storage.g.dart';
@@ -60,10 +63,35 @@ abstract class TodoSnapshot with _$TodoSnapshot {
 }
 
 class TodoLocalStorage {
-  TodoLocalStorage(this._prefs, {this.accountId});
+  TodoLocalStorage(this._prefs, {this.accountId, TodoDatabase? database})
+    : _database = database ?? _sharedFallbackDb;
+
+  static final TodoDatabase _sharedFallbackDb = TodoDatabase();
+  static const String _sessionKey = 'yata._db_session_id';
 
   final SharedPreferences _prefs;
   final String? accountId;
+  final TodoDatabase _database;
+
+  String get _accountKey =>
+      (accountId == null || accountId!.isEmpty) ? 'default' : accountId!;
+
+  String get _scopeKey {
+    var session = _prefs.getString(_sessionKey);
+    if (session == null || session.isEmpty) {
+      session = generateUuidV4();
+      unawaited(_prefs.setString(_sessionKey, session));
+    }
+    return '$session::$_accountKey';
+  }
+
+  /// Preloads this account's rows from the Drift SQLite database into memory.
+  Future<void> hydrateFromDatabase() =>
+      _database.preloadAccount(_accountKey, scopeKey: _scopeKey);
+
+  /// Deletes all Drift records for this account.
+  Future<void> clearAccountRecords() =>
+      _database.deleteAccountRecords(_accountKey, scopeKey: _scopeKey);
 
   String _k(String suffix) {
     final id = accountId;
@@ -73,9 +101,6 @@ class TodoLocalStorage {
     return '${AccountLocalStorage.accountKeyPrefix(id)}$suffix';
   }
 
-  String get _listsKey => _k('lists');
-  String get _groupsKey => _k('groups');
-  String get _tasksKey => _k('tasks');
   String get _selectedListIdKey => _k('selected_list_id');
   String get _lastEnteredListIdKey => _k('last_entered_list_id');
   String get _completedExpandedByListKey => _k('completed_expanded_by_list');
@@ -105,13 +130,6 @@ class TodoLocalStorage {
   String get _lastMyDayResetKey => _k('last_my_day_reset');
   String get _plannedDueDateFilterKey => _k('planned_due_date_filter');
   String get _plannedGroupOptionKey => _k('planned_group_option');
-  String get _pendingDeletedListsKey => _k('pending_deleted_lists');
-  String get _pendingDeletedTaskIdsKey => _k('pending_deleted_task_ids');
-  String get _pendingDeletedGroupsKey => _k('pending_deleted_groups');
-  String get _pendingDeletedStepsKey => _k('pending_deleted_steps');
-  String get _dirtyListIdsKey => _k('dirty_list_ids');
-  String get _dirtyGroupIdsKey => _k('dirty_group_ids');
-  String get _dirtyTaskIdsKey => _k('dirty_task_ids');
   String get _dirtySettingKeysKey => _k('dirty_setting_keys');
   String get _groupsDeltaLinkKey => _k('groups_delta_link');
   String get _foldersDeltaLinkKey => _k('folders_delta_link');
@@ -169,15 +187,8 @@ class TodoLocalStorage {
   }
 
   TodoSnapshot load() {
-    final listsRaw = _prefs.getString(_listsKey);
-    final groupsRaw = _prefs.getString(_groupsKey);
-    final tasksRaw = _prefs.getString(_tasksKey);
-
-    var lists = listsRaw != null
-        ? (jsonDecode(listsRaw) as List<dynamic>)
-              .map((e) => TodoList.fromJson(e as Map<String, dynamic>))
-              .toList()
-        : defaultSmartLists();
+    final cachedLists = _database.readCachedLists(_scopeKey);
+    var lists = cachedLists != null ? [...cachedLists] : defaultSmartLists();
 
     if (lists.isEmpty) {
       lists = defaultSmartLists();
@@ -203,17 +214,8 @@ class TodoLocalStorage {
           list,
     ];
 
-    final groups = groupsRaw != null
-        ? (jsonDecode(groupsRaw) as List<dynamic>)
-              .map((e) => ListGroup.fromJson(e as Map<String, dynamic>))
-              .toList()
-        : <ListGroup>[];
-
-    final tasks = tasksRaw != null
-        ? (jsonDecode(tasksRaw) as List<dynamic>)
-              .map((e) => TaskItem.fromJson(e as Map<String, dynamic>))
-              .toList()
-        : <TaskItem>[];
+    final groups = [..._database.readCachedGroups(_scopeKey)];
+    final tasks = [..._database.readCachedTasks(_scopeKey)];
 
     final selectedListId = _prefs.getString(_selectedListIdKey) ?? 'my_day';
     final themeName = _prefs.getString(_themeModeKey);
@@ -276,26 +278,14 @@ class TodoLocalStorage {
     );
   }
 
-  Future<void> saveLists(List<TodoList> lists) async {
-    await _prefs.setString(
-      _listsKey,
-      jsonEncode(lists.map((l) => l.toJson()).toList()),
-    );
-  }
+  Future<void> saveLists(List<TodoList> lists) =>
+      _database.writeLists(_accountKey, lists, scopeKey: _scopeKey);
 
-  Future<void> saveGroups(List<ListGroup> groups) async {
-    await _prefs.setString(
-      _groupsKey,
-      jsonEncode(groups.map((g) => g.toJson()).toList()),
-    );
-  }
+  Future<void> saveGroups(List<ListGroup> groups) =>
+      _database.writeGroups(_accountKey, groups, scopeKey: _scopeKey);
 
-  Future<void> saveTasks(List<TaskItem> tasks) async {
-    await _prefs.setString(
-      _tasksKey,
-      jsonEncode(tasks.map((t) => t.toJson()).toList()),
-    );
-  }
+  Future<void> saveTasks(List<TaskItem> tasks) =>
+      _database.writeTasks(_accountKey, tasks, scopeKey: _scopeKey);
 
   Future<void> saveSelectedListId(String listId) =>
       _prefs.setString(_selectedListIdKey, listId);
@@ -404,91 +394,73 @@ class TodoLocalStorage {
   Future<void> savePlannedGroupOption(PlannedGroupOption option) =>
       _prefs.setString(_plannedGroupOptionKey, option.name);
 
-  List<String> loadPendingDeletedListRemoteIds() {
-    return _prefs.getStringList(_pendingDeletedListsKey) ?? const [];
-  }
+  List<String> loadPendingDeletedListRemoteIds() =>
+      _database.readCachedMutationKeys(_scopeKey, 'deleted_list');
 
-  Future<void> savePendingDeletedListRemoteIds(List<String> ids) async {
-    if (ids.isEmpty) {
-      await _prefs.remove(_pendingDeletedListsKey);
-    } else {
-      await _prefs.setStringList(_pendingDeletedListsKey, ids);
-    }
-  }
+  Future<void> savePendingDeletedListRemoteIds(List<String> ids) => _database
+      .writeMutationKeys(_accountKey, 'deleted_list', ids, scopeKey: _scopeKey);
 
-  List<String> loadPendingDeletedTaskRemoteIds() {
-    return _prefs.getStringList(_pendingDeletedTaskIdsKey) ?? const [];
-  }
+  List<String> loadPendingDeletedTaskRemoteIds() =>
+      _database.readCachedMutationKeys(_scopeKey, 'deleted_task');
 
-  Future<void> savePendingDeletedTaskRemoteIds(List<String> ids) async {
-    if (ids.isEmpty) {
-      await _prefs.remove(_pendingDeletedTaskIdsKey);
-    } else {
-      await _prefs.setStringList(_pendingDeletedTaskIdsKey, ids);
-    }
-  }
+  Future<void> savePendingDeletedTaskRemoteIds(List<String> ids) => _database
+      .writeMutationKeys(_accountKey, 'deleted_task', ids, scopeKey: _scopeKey);
 
-  List<String> loadPendingDeletedGroupRemoteIds() {
-    return _prefs.getStringList(_pendingDeletedGroupsKey) ?? const [];
-  }
+  List<String> loadPendingDeletedGroupRemoteIds() =>
+      _database.readCachedMutationKeys(_scopeKey, 'deleted_group');
 
-  Future<void> savePendingDeletedGroupRemoteIds(List<String> ids) async {
-    if (ids.isEmpty) {
-      await _prefs.remove(_pendingDeletedGroupsKey);
-    } else {
-      await _prefs.setStringList(_pendingDeletedGroupsKey, ids);
-    }
-  }
-
-  List<PendingStepDeletion> loadPendingDeletedSteps() {
-    final raw = _prefs.getString(_pendingDeletedStepsKey);
-    if (raw == null || raw.isEmpty) return const [];
-    final decoded = jsonDecode(raw) as List<dynamic>;
-    return decoded
-        .map((e) => PendingStepDeletion.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<void> savePendingDeletedSteps(List<PendingStepDeletion> items) async {
-    if (items.isEmpty) {
-      await _prefs.remove(_pendingDeletedStepsKey);
-    } else {
-      await _prefs.setString(
-        _pendingDeletedStepsKey,
-        jsonEncode(items.map((e) => e.toJson()).toList()),
+  Future<void> savePendingDeletedGroupRemoteIds(List<String> ids) =>
+      _database.writeMutationKeys(
+        _accountKey,
+        'deleted_group',
+        ids,
+        scopeKey: _scopeKey,
       );
-    }
-  }
+
+  List<PendingStepDeletion> loadPendingDeletedSteps() =>
+      _database.readCachedPendingDeletedSteps(_scopeKey);
+
+  Future<void> savePendingDeletedSteps(List<PendingStepDeletion> items) =>
+      _database.writePendingDeletedSteps(
+        _accountKey,
+        items,
+        scopeKey: _scopeKey,
+      );
 
   Set<String> loadDirtyListIds() =>
-      (_prefs.getStringList(_dirtyListIdsKey) ?? const []).toSet();
+      _database.readCachedMutationKeys(_scopeKey, 'dirty_list').toSet();
 
-  Future<void> saveDirtyListIds(Set<String> ids) =>
-      _saveStringSet(_dirtyListIdsKey, ids);
+  Future<void> saveDirtyListIds(Set<String> ids) => _database.writeMutationKeys(
+    _accountKey,
+    'dirty_list',
+    ids,
+    scopeKey: _scopeKey,
+  );
 
   Set<String> loadDirtyGroupIds() =>
-      (_prefs.getStringList(_dirtyGroupIdsKey) ?? const []).toSet();
+      _database.readCachedMutationKeys(_scopeKey, 'dirty_group').toSet();
 
-  Future<void> saveDirtyGroupIds(Set<String> ids) =>
-      _saveStringSet(_dirtyGroupIdsKey, ids);
+  Future<void> saveDirtyGroupIds(Set<String> ids) => _database
+      .writeMutationKeys(_accountKey, 'dirty_group', ids, scopeKey: _scopeKey);
 
   Set<String> loadDirtyTaskIds() =>
-      (_prefs.getStringList(_dirtyTaskIdsKey) ?? const []).toSet();
+      _database.readCachedMutationKeys(_scopeKey, 'dirty_task').toSet();
 
-  Future<void> saveDirtyTaskIds(Set<String> ids) =>
-      _saveStringSet(_dirtyTaskIdsKey, ids);
+  Future<void> saveDirtyTaskIds(Set<String> ids) => _database.writeMutationKeys(
+    _accountKey,
+    'dirty_task',
+    ids,
+    scopeKey: _scopeKey,
+  );
 
   Set<String> loadDirtySettingKeys() =>
       (_prefs.getStringList(_dirtySettingKeysKey) ?? const []).toSet();
 
-  Future<void> saveDirtySettingKeys(Set<String> keys) =>
-      _saveStringSet(_dirtySettingKeysKey, keys);
-
-  Future<void> _saveStringSet(String key, Set<String> values) async {
-    if (values.isEmpty) {
-      await _prefs.remove(key);
+  Future<void> saveDirtySettingKeys(Set<String> keys) async {
+    if (keys.isEmpty) {
+      await _prefs.remove(_dirtySettingKeysKey);
     } else {
-      await _prefs.setStringList(key, values.toList());
+      await _prefs.setStringList(_dirtySettingKeysKey, keys.toList());
     }
   }
 

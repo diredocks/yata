@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -790,8 +789,7 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
 }
 
 /// Persists personal MSA OAuth2 tokens in encrypted OS storage via
-/// [FlutterSecureStorage], with automatic migration from legacy
-/// [SharedPreferences] entries and fallback in headless test environments.
+/// [FlutterSecureStorage], with fallback in headless test environments.
 class AuthTokenStorage {
   const AuthTokenStorage(this._prefs, {this.secureStorage});
 
@@ -816,42 +814,18 @@ class AuthTokenStorage {
     final encoded = jsonEncode(tokens.toJson());
     final secure = _effectiveSecureStorage;
     if (secure != null) {
-      try {
-        await secure.write(key: key, value: encoded);
-        await _prefs.remove(key);
-        return;
-      } on MissingPluginException {
-        // Fall through to SharedPreferences.
-      } on PlatformException {
-        // Fall through to SharedPreferences.
-      }
+      await secure.write(key: key, value: encoded);
+      return;
     }
     await _prefs.setString(key, encoded);
   }
 
   Future<MicrosoftAuthTokens?> loadTokens(String accountId) async {
     final key = _keyFor(accountId);
-    String? raw;
     final secure = _effectiveSecureStorage;
-    if (secure != null) {
-      try {
-        raw = await secure.read(key: key);
-        if (raw == null || raw.isEmpty) {
-          final legacy = _prefs.getString(key);
-          if (legacy != null && legacy.isNotEmpty) {
-            raw = legacy;
-            await secure.write(key: key, value: legacy);
-            await _prefs.remove(key);
-          }
-        }
-      } on MissingPluginException {
-        raw = _prefs.getString(key);
-      } on PlatformException {
-        raw = _prefs.getString(key);
-      }
-    } else {
-      raw = _prefs.getString(key);
-    }
+    final raw = secure != null
+        ? await secure.read(key: key)
+        : _prefs.getString(key);
     if (raw == null || raw.isEmpty) return null;
     try {
       final map = jsonDecode(raw) as Map<String, dynamic>;
@@ -865,13 +839,8 @@ class AuthTokenStorage {
     final key = _keyFor(accountId);
     final secure = _effectiveSecureStorage;
     if (secure != null) {
-      try {
-        await secure.delete(key: key);
-      } on MissingPluginException {
-        // Ignore and remove from SharedPreferences below.
-      } on PlatformException {
-        // Ignore and remove from SharedPreferences below.
-      }
+      await secure.delete(key: key);
+      return;
     }
     await _prefs.remove(key);
   }
