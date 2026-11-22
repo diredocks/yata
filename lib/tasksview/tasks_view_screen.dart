@@ -198,7 +198,6 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         l10n.sortByCreationDate,
         Icons.access_time,
       ),
-      (TaskSortOption.defaultOrder, l10n.sortByDefault, Icons.list),
     ];
 
     await showModalBottomSheet<void>(
