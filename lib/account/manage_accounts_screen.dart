@@ -101,7 +101,12 @@ class ManageAccountsScreen extends ConsumerWidget {
               horizontal: 16,
               vertical: 6,
             ),
-            leading: PersonaAvatar(name: account.displayName, size: 40),
+            leading: PersonaAvatar(
+              name: account.displayName,
+              size: 40,
+              avatarBase64:
+                  account is MicrosoftAccount ? account.avatarBase64 : null,
+            ),
             title: Row(
               children: [
                 Flexible(

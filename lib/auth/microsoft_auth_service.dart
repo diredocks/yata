@@ -102,11 +102,13 @@ class MicrosoftUserProfile {
     required this.id,
     required this.displayName,
     required this.email,
+    this.avatarBase64,
   });
 
   final String id;
   final String displayName;
   final String email;
+  final String? avatarBase64;
 }
 
 class MicrosoftSignInResult {
@@ -470,11 +472,29 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
         ? body['displayName'] as String
         : email;
 
+    final avatarBase64 = await _fetchUserPhotoBase64(accessToken);
+
     return MicrosoftUserProfile(
       id: body['id'] as String? ?? email,
       displayName: displayName,
       email: email,
+      avatarBase64: avatarBase64,
     );
+  }
+
+  Future<String?> _fetchUserPhotoBase64(String accessToken) async {
+    try {
+      final response = await _http.get(
+        Uri.parse('${MicrosoftAuthConfig.graphBaseUrl}/me/photo/\$value'),
+        headers: {'Authorization': 'Bearer $accessToken'},
+      );
+      if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+        return base64Encode(response.bodyBytes);
+      }
+    } catch (_) {
+      // Avatar fetch is best-effort; fallback to initials on 404 or network error.
+    }
+    return null;
   }
 
   MicrosoftAuthTokens _tokensFromResponse(

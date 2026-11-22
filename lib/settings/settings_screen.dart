@@ -101,6 +101,9 @@ class SettingsScreen extends ConsumerWidget {
                   child: PersonaAvatar(
                     name: activeAccount.displayName,
                     size: 64,
+                    avatarBase64: activeAccount is MicrosoftAccount
+                        ? activeAccount.avatarBase64
+                        : null,
                   ),
                 ),
                 Expanded(

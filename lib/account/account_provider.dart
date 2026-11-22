@@ -121,6 +121,7 @@ class AccountNotifier extends Notifier<AccountState> {
       account = existing.copyWith(
         displayName: result.profile.displayName,
         email: result.profile.email,
+        avatarBase64: result.profile.avatarBase64,
         clearSyncError: true,
       );
       nextAccounts = [
@@ -134,6 +135,7 @@ class AccountNotifier extends Notifier<AccountState> {
         email: result.profile.email,
         createdAt: DateTime.now(),
         microsoftUserId: result.profile.id,
+        avatarBase64: result.profile.avatarBase64,
       );
       nextAccounts = [...state.accounts, account];
     }

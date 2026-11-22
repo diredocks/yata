@@ -143,6 +143,9 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
                           child: PersonaAvatar(
                             name: displayName,
                             size: avatarSize,
+                            avatarBase64: activeAccount is MicrosoftAccount
+                                ? activeAccount.avatarBase64
+                                : null,
                           ),
                         ),
                         Positioned(
@@ -275,6 +278,9 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
                               leading: PersonaAvatar(
                                 name: account.displayName,
                                 size: 38,
+                                avatarBase64: account is MicrosoftAccount
+                                    ? account.avatarBase64
+                                    : null,
                               ),
                               title: Text(
                                 account.displayName,

@@ -102,11 +102,13 @@ final class MicrosoftAccount extends Account {
     required super.email,
     required super.createdAt,
     required this.microsoftUserId,
+    this.avatarBase64,
     this.lastSyncedAt,
     this.syncError,
   });
 
   final String microsoftUserId;
+  final String? avatarBase64;
   final DateTime? lastSyncedAt;
   final String? syncError;
 
@@ -116,6 +118,7 @@ final class MicrosoftAccount extends Account {
     String? email,
     DateTime? createdAt,
     String? microsoftUserId,
+    String? avatarBase64,
     DateTime? lastSyncedAt,
     String? syncError,
     bool clearSyncError = false,
@@ -126,6 +129,7 @@ final class MicrosoftAccount extends Account {
       email: email ?? this.email,
       createdAt: createdAt ?? this.createdAt,
       microsoftUserId: microsoftUserId ?? this.microsoftUserId,
+      avatarBase64: avatarBase64 ?? this.avatarBase64,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
       syncError: clearSyncError ? null : (syncError ?? this.syncError),
     );
@@ -140,6 +144,7 @@ final class MicrosoftAccount extends Account {
       'createdAt': createdAt.toIso8601String(),
       'accountType': 'microsoft',
       'microsoftUserId': microsoftUserId,
+      'avatarBase64': avatarBase64,
       'lastSyncedAt': lastSyncedAt?.toIso8601String(),
       'syncError': syncError,
     };
@@ -154,6 +159,7 @@ final class MicrosoftAccount extends Account {
           ? DateTime.parse(json['createdAt'] as String)
           : DateTime.now(),
       microsoftUserId: json['microsoftUserId'] as String? ?? '',
+      avatarBase64: json['avatarBase64'] as String?,
       lastSyncedAt: json['lastSyncedAt'] != null
           ? DateTime.parse(json['lastSyncedAt'] as String)
           : null,
