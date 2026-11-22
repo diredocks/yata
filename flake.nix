@@ -44,6 +44,19 @@
           androidSdk
           pkgs.android-tools
           pkgs.git
+          pkgs.pkg-config
+          pkgs.libunwind
+          pkgs.orc
+          pkgs.libsysprof-capture
+          pkgs.pcre2.dev
+          pkgs.elfutils.dev
+          pkgs.zstd.dev
+          pkgs.gst_all_1.gstreamer
+          pkgs.gst_all_1.gstreamer.dev
+          pkgs.gst_all_1.gst-plugins-base
+          pkgs.gst_all_1.gst-plugins-base.dev
+          pkgs.gst_all_1.gst-plugins-good
+          pkgs.gst_all_1.gst-plugins-ugly
         ];
 
         JAVA_HOME = "${jdk}";
