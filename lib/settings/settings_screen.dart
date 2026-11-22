@@ -5,6 +5,7 @@ import '../l10n/app_localizations.dart';
 import '../models/account.dart';
 import '../models/todo_list.dart';
 import '../account/account_provider.dart';
+import '../notifications/notification_service.dart';
 import '../sync/sync_provider.dart';
 import '../data/todo_provider.dart';
 import '../theme/todo_theme.dart';
@@ -56,6 +57,25 @@ class SettingsScreen extends ConsumerWidget {
       ThemeMode.light => l10n.themeLight,
       ThemeMode.dark => l10n.themeDark,
     };
+  }
+
+  String _formatTime(BuildContext context, int hour, int minute) {
+    return TimeOfDay(hour: hour, minute: minute).format(context);
+  }
+
+  Future<void> _ensureNotificationPermission(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final granted =
+        await ref.read(notificationServiceProvider).requestPermissions();
+    if (!granted && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context).notificationPermissionDenied),
+        ),
+      );
+    }
   }
 
   String _weekStartLabel(AppLocalizations l10n, WeekStart start) {
@@ -405,6 +425,116 @@ class SettingsScreen extends ConsumerWidget {
             title: Text(l10n.autoHideEmptySmartLists),
             value: state.autoHideEmptySmartLists,
             onChanged: notifier.setAutoHideEmptySmartLists,
+          ),
+          const Divider(),
+          _SectionHeader(title: l10n.notificationsSection),
+          SwitchListTile(
+            secondary: const Icon(Icons.notifications_active_outlined),
+            title: Text(l10n.remindersEnabled),
+            subtitle: Text(l10n.remindersEnabledSummary),
+            value: state.remindersEnabled,
+            onChanged: (value) async {
+              notifier.setRemindersEnabled(value);
+              if (value) {
+                await _ensureNotificationPermission(context, ref);
+              }
+            },
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.push_pin_outlined),
+            title: Text(l10n.pinReminders),
+            subtitle: Text(l10n.pinRemindersSummary),
+            value: state.pinReminders,
+            onChanged: state.remindersEnabled ? notifier.setPinReminders : null,
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.today_outlined),
+            title: Text(l10n.dueTodayNotifications),
+            value: state.dueTodayNotificationsEnabled,
+            onChanged: (value) async {
+              notifier.setDueTodayNotificationsEnabled(value);
+              if (value) {
+                await _ensureNotificationPermission(context, ref);
+              }
+            },
+          ),
+          if (state.dueTodayNotificationsEnabled)
+            ListTile(
+              leading: const Icon(Icons.schedule_outlined),
+              title: Text(l10n.dueTodayNotificationTime),
+              subtitle: Text(
+                _formatTime(
+                  context,
+                  state.dueTodayNotificationHour,
+                  state.dueTodayNotificationMinute,
+                ),
+              ),
+              onTap: () async {
+                final picked = await showTimePicker(
+                  context: context,
+                  initialTime: TimeOfDay(
+                    hour: state.dueTodayNotificationHour,
+                    minute: state.dueTodayNotificationMinute,
+                  ),
+                );
+                if (picked != null) {
+                  notifier.setDueTodayNotificationTime(
+                    picked.hour,
+                    picked.minute,
+                  );
+                }
+              },
+            ),
+          SwitchListTile(
+            secondary: const Icon(Icons.wb_sunny_outlined),
+            title: Text(l10n.routineNotifications),
+            subtitle: Text(l10n.routineNotificationsSummary),
+            value: state.routineNotificationEnabled,
+            onChanged: (value) async {
+              notifier.setRoutineNotificationEnabled(value);
+              if (value) {
+                await _ensureNotificationPermission(context, ref);
+              }
+            },
+          ),
+          if (state.routineNotificationEnabled)
+            ListTile(
+              leading: const Icon(Icons.schedule_outlined),
+              title: Text(l10n.routineNotificationTime),
+              subtitle: Text(
+                _formatTime(
+                  context,
+                  state.routineNotificationHour,
+                  state.routineNotificationMinute,
+                ),
+              ),
+              onTap: () async {
+                final picked = await showTimePicker(
+                  context: context,
+                  initialTime: TimeOfDay(
+                    hour: state.routineNotificationHour,
+                    minute: state.routineNotificationMinute,
+                  ),
+                );
+                if (picked != null) {
+                  notifier.setRoutineNotificationTime(
+                    picked.hour,
+                    picked.minute,
+                  );
+                }
+              },
+            ),
+          SwitchListTile(
+            secondary: const Icon(Icons.add_alert_outlined),
+            title: Text(l10n.quickAddNotification),
+            subtitle: Text(l10n.quickAddNotificationSummary),
+            value: state.quickAddNotificationEnabled,
+            onChanged: (value) async {
+              notifier.setQuickAddNotificationEnabled(value);
+              if (value) {
+                await _ensureNotificationPermission(context, ref);
+              }
+            },
           ),
           const Divider(),
           _SectionHeader(title: l10n.aboutSection),

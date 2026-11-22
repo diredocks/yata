@@ -237,5 +237,31 @@
       "error": {"type": "String"}
     }
   },
-  "clientIdLabel": "App Client ID (optional)"
+  "clientIdLabel": "App Client ID (optional)",
+  "notificationsSection": "Notifications",
+  "remindersEnabled": "Reminders",
+  "remindersEnabledSummary": "Notify when a task reminder time is reached",
+  "pinReminders": "Pin reminders",
+  "pinRemindersSummary": "Keep reminders in your notification bar until viewed, completed, or snoozed",
+  "dueTodayNotifications": "Due Today notifications",
+  "dueTodayNotificationTime": "Time of Due Today notifications",
+  "routineNotifications": "Plan your day reminder",
+  "routineNotificationsSummary": "Get a daily reminder to plan your day",
+  "routineNotificationTime": "Plan your day time",
+  "quickAddNotification": "Quick add notification",
+  "quickAddNotificationSummary": "Add your tasks from the notification bar",
+  "notificationCompleteAction": "Complete",
+  "notificationSnoozeAction": "Snooze 15m",
+  "dueTodayNotificationSingleTitle": "You have a task due today",
+  "dueTodayNotificationMultipleTitle": "You have {count} tasks due today",
+  "@dueTodayNotificationMultipleTitle": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "routineNotificationTitle": "What will you do today?",
+  "routineNotificationBody": "What do you want to accomplish today? Plan it with YATA.",
+  "quickAddNotificationTitle": "YATA Quick Add",
+  "quickAddNotificationBody": "Tap to add a new task",
+  "notificationPermissionDenied": "Notification permission is disabled. Enable it in system settings to receive reminders."
 }

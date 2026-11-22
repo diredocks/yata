@@ -37,6 +37,15 @@ class TodoState {
     this.showSmartListAll = false,
     this.showSmartListCompleted = false,
     this.autoHideEmptySmartLists = false,
+    this.remindersEnabled = true,
+    this.pinReminders = false,
+    this.dueTodayNotificationsEnabled = false,
+    this.dueTodayNotificationHour = 9,
+    this.dueTodayNotificationMinute = 0,
+    this.routineNotificationEnabled = false,
+    this.routineNotificationHour = 8,
+    this.routineNotificationMinute = 30,
+    this.quickAddNotificationEnabled = false,
     this.mutationVersion = 0,
   });
 
@@ -59,6 +68,15 @@ class TodoState {
   final bool showSmartListAll;
   final bool showSmartListCompleted;
   final bool autoHideEmptySmartLists;
+  final bool remindersEnabled;
+  final bool pinReminders;
+  final bool dueTodayNotificationsEnabled;
+  final int dueTodayNotificationHour;
+  final int dueTodayNotificationMinute;
+  final bool routineNotificationEnabled;
+  final int routineNotificationHour;
+  final int routineNotificationMinute;
+  final bool quickAddNotificationEnabled;
   final int mutationVersion;
 
   TodoList get selectedList {
@@ -187,6 +205,15 @@ class TodoState {
     bool? showSmartListAll,
     bool? showSmartListCompleted,
     bool? autoHideEmptySmartLists,
+    bool? remindersEnabled,
+    bool? pinReminders,
+    bool? dueTodayNotificationsEnabled,
+    int? dueTodayNotificationHour,
+    int? dueTodayNotificationMinute,
+    bool? routineNotificationEnabled,
+    int? routineNotificationHour,
+    int? routineNotificationMinute,
+    bool? quickAddNotificationEnabled,
     int? mutationVersion,
   }) {
     return TodoState(
@@ -215,6 +242,22 @@ class TodoState {
           showSmartListCompleted ?? this.showSmartListCompleted,
       autoHideEmptySmartLists:
           autoHideEmptySmartLists ?? this.autoHideEmptySmartLists,
+      remindersEnabled: remindersEnabled ?? this.remindersEnabled,
+      pinReminders: pinReminders ?? this.pinReminders,
+      dueTodayNotificationsEnabled:
+          dueTodayNotificationsEnabled ?? this.dueTodayNotificationsEnabled,
+      dueTodayNotificationHour:
+          dueTodayNotificationHour ?? this.dueTodayNotificationHour,
+      dueTodayNotificationMinute:
+          dueTodayNotificationMinute ?? this.dueTodayNotificationMinute,
+      routineNotificationEnabled:
+          routineNotificationEnabled ?? this.routineNotificationEnabled,
+      routineNotificationHour:
+          routineNotificationHour ?? this.routineNotificationHour,
+      routineNotificationMinute:
+          routineNotificationMinute ?? this.routineNotificationMinute,
+      quickAddNotificationEnabled:
+          quickAddNotificationEnabled ?? this.quickAddNotificationEnabled,
       mutationVersion: mutationVersion ?? this.mutationVersion,
     );
   }
@@ -300,6 +343,15 @@ class TodoNotifier extends Notifier<TodoState> {
       showSmartListAll: snapshot.showSmartListAll,
       showSmartListCompleted: snapshot.showSmartListCompleted,
       autoHideEmptySmartLists: snapshot.autoHideEmptySmartLists,
+      remindersEnabled: snapshot.remindersEnabled,
+      pinReminders: snapshot.pinReminders,
+      dueTodayNotificationsEnabled: snapshot.dueTodayNotificationsEnabled,
+      dueTodayNotificationHour: snapshot.dueTodayNotificationHour,
+      dueTodayNotificationMinute: snapshot.dueTodayNotificationMinute,
+      routineNotificationEnabled: snapshot.routineNotificationEnabled,
+      routineNotificationHour: snapshot.routineNotificationHour,
+      routineNotificationMinute: snapshot.routineNotificationMinute,
+      quickAddNotificationEnabled: snapshot.quickAddNotificationEnabled,
     );
   }
 

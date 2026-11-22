@@ -47,6 +47,15 @@ class TodoSnapshot {
     required this.showSmartListAll,
     required this.showSmartListCompleted,
     required this.autoHideEmptySmartLists,
+    this.remindersEnabled = true,
+    this.pinReminders = false,
+    this.dueTodayNotificationsEnabled = false,
+    this.dueTodayNotificationHour = 9,
+    this.dueTodayNotificationMinute = 0,
+    this.routineNotificationEnabled = false,
+    this.routineNotificationHour = 8,
+    this.routineNotificationMinute = 30,
+    this.quickAddNotificationEnabled = false,
     this.lastMyDayResetDate,
   });
 
@@ -68,6 +77,15 @@ class TodoSnapshot {
   final bool showSmartListAll;
   final bool showSmartListCompleted;
   final bool autoHideEmptySmartLists;
+  final bool remindersEnabled;
+  final bool pinReminders;
+  final bool dueTodayNotificationsEnabled;
+  final int dueTodayNotificationHour;
+  final int dueTodayNotificationMinute;
+  final bool routineNotificationEnabled;
+  final int routineNotificationHour;
+  final int routineNotificationMinute;
+  final bool quickAddNotificationEnabled;
   final String? lastMyDayResetDate;
 }
 
@@ -103,6 +121,17 @@ class TodoLocalStorage {
   String get _showAllKey => _k('show_smart_all');
   String get _showCompletedListKey => _k('show_smart_completed');
   String get _autoHideSmartListsKey => _k('autohide_smart_lists');
+  String get _remindersEnabledKey => _k('reminder_notification_enabled');
+  String get _pinRemindersKey => _k('reminder_pin_setting');
+  String get _dueTodayNotificationsKey => _k('due_date_notification_enabled');
+  String get _dueTodayNotificationHourKey => _k('due_date_notification_hour');
+  String get _dueTodayNotificationMinuteKey =>
+      _k('due_date_notification_minute');
+  String get _routineNotificationKey => _k('routine_notification_enabled');
+  String get _routineNotificationHourKey => _k('routine_notification_hour');
+  String get _routineNotificationMinuteKey =>
+      _k('routine_notification_minute');
+  String get _quickAddNotificationKey => _k('quick_add_notification_enabled');
   String get _lastMyDayResetKey => _k('last_my_day_reset');
   String get _pendingDeletedListsKey => _k('pending_deleted_lists');
   String get _pendingDeletedTasksKey => _k('pending_deleted_tasks');
@@ -240,6 +269,22 @@ class TodoLocalStorage {
       showSmartListCompleted: _prefs.getBool(_showCompletedListKey) ?? false,
       autoHideEmptySmartLists:
           _prefs.getBool(_autoHideSmartListsKey) ?? false,
+      remindersEnabled: _prefs.getBool(_remindersEnabledKey) ?? true,
+      pinReminders: _prefs.getBool(_pinRemindersKey) ?? false,
+      dueTodayNotificationsEnabled:
+          _prefs.getBool(_dueTodayNotificationsKey) ?? false,
+      dueTodayNotificationHour:
+          _prefs.getInt(_dueTodayNotificationHourKey) ?? 9,
+      dueTodayNotificationMinute:
+          _prefs.getInt(_dueTodayNotificationMinuteKey) ?? 0,
+      routineNotificationEnabled:
+          _prefs.getBool(_routineNotificationKey) ?? false,
+      routineNotificationHour:
+          _prefs.getInt(_routineNotificationHourKey) ?? 8,
+      routineNotificationMinute:
+          _prefs.getInt(_routineNotificationMinuteKey) ?? 30,
+      quickAddNotificationEnabled:
+          _prefs.getBool(_quickAddNotificationKey) ?? false,
       lastMyDayResetDate: _prefs.getString(_lastMyDayResetKey),
     );
   }
@@ -312,6 +357,31 @@ class TodoLocalStorage {
 
   Future<void> saveAutoHideEmptySmartLists(bool value) =>
       saveBoolSetting(_autoHideSmartListsKey, value);
+
+  Future<void> saveRemindersEnabled(bool value) =>
+      saveBoolSetting(_remindersEnabledKey, value);
+
+  Future<void> savePinReminders(bool value) =>
+      saveBoolSetting(_pinRemindersKey, value);
+
+  Future<void> saveDueTodayNotificationsEnabled(bool value) =>
+      saveBoolSetting(_dueTodayNotificationsKey, value);
+
+  Future<void> saveDueTodayNotificationTime(int hour, int minute) async {
+    await _prefs.setInt(_dueTodayNotificationHourKey, hour);
+    await _prefs.setInt(_dueTodayNotificationMinuteKey, minute);
+  }
+
+  Future<void> saveRoutineNotificationEnabled(bool value) =>
+      saveBoolSetting(_routineNotificationKey, value);
+
+  Future<void> saveRoutineNotificationTime(int hour, int minute) async {
+    await _prefs.setInt(_routineNotificationHourKey, hour);
+    await _prefs.setInt(_routineNotificationMinuteKey, minute);
+  }
+
+  Future<void> saveQuickAddNotificationEnabled(bool value) =>
+      saveBoolSetting(_quickAddNotificationKey, value);
 
   Future<void> saveLastMyDayResetDate(String dateKey) =>
       _prefs.setString(_lastMyDayResetKey, dateKey);

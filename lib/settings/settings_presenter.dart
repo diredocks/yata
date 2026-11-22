@@ -100,6 +100,51 @@ class SettingsPresenter {
     _store.commit(_state.copyWith(autoHideEmptySmartLists: value));
     _store.storage.saveAutoHideEmptySmartLists(value);
   }
+
+  void setRemindersEnabled(bool value) {
+    _store.commit(_state.copyWith(remindersEnabled: value));
+    _store.storage.saveRemindersEnabled(value);
+  }
+
+  void setPinReminders(bool value) {
+    _store.commit(_state.copyWith(pinReminders: value));
+    _store.storage.savePinReminders(value);
+  }
+
+  void setDueTodayNotificationsEnabled(bool value) {
+    _store.commit(_state.copyWith(dueTodayNotificationsEnabled: value));
+    _store.storage.saveDueTodayNotificationsEnabled(value);
+  }
+
+  void setDueTodayNotificationTime(int hour, int minute) {
+    _store.commit(
+      _state.copyWith(
+        dueTodayNotificationHour: hour,
+        dueTodayNotificationMinute: minute,
+      ),
+    );
+    _store.storage.saveDueTodayNotificationTime(hour, minute);
+  }
+
+  void setRoutineNotificationEnabled(bool value) {
+    _store.commit(_state.copyWith(routineNotificationEnabled: value));
+    _store.storage.saveRoutineNotificationEnabled(value);
+  }
+
+  void setRoutineNotificationTime(int hour, int minute) {
+    _store.commit(
+      _state.copyWith(
+        routineNotificationHour: hour,
+        routineNotificationMinute: minute,
+      ),
+    );
+    _store.storage.saveRoutineNotificationTime(hour, minute);
+  }
+
+  void setQuickAddNotificationEnabled(bool value) {
+    _store.commit(_state.copyWith(quickAddNotificationEnabled: value));
+    _store.storage.saveQuickAddNotificationEnabled(value);
+  }
 }
 
 final settingsPresenterProvider = Provider<SettingsPresenter>((ref) {
