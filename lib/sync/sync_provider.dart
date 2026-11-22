@@ -115,6 +115,7 @@ class SyncNotifier extends Notifier<SyncState> {
         localTasks: todoState.tasks,
         pendingDeletedListRemoteIds: storage.loadPendingDeletedListRemoteIds(),
         pendingDeletedTasks: storage.loadPendingDeletedTasks(),
+        addNewTasksOnTop: todoState.addNewTasksOnTop,
       );
 
       // Ensure we are still on the same account before committing.

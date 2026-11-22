@@ -482,4 +482,105 @@ void main() {
       expect(container.read(accountProvider).accounts.length, 1);
     },
   );
+
+  test(
+    'CloudSyncService preserves local task order across lists and orders new remote tasks by createdDateTime',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      final authClient = _FakeMicrosoftAuthClient(
+        profile: const MicrosoftUserProfile(
+          id: 'ms_user_003',
+          displayName: 'Order Tester',
+          email: 'order@outlook.com',
+        ),
+      );
+      final todoApi = _FakeMicrosoftTodoApi();
+      todoApi.lists['default_remote'] = const RemoteTodoList(
+        id: 'default_remote',
+        displayName: 'Tasks',
+        wellknownListName: 'defaultList',
+      );
+      todoApi.lists['work_remote'] = const RemoteTodoList(
+        id: 'work_remote',
+        displayName: 'Work',
+      );
+      todoApi.tasksByList['default_remote'] = {
+        't_old': RemoteTodoTask(
+          id: 't_old',
+          title: 'Older remote task',
+          isCompleted: false,
+          isImportant: false,
+          createdDateTime: DateTime.utc(2026, 11, 18),
+          lastModifiedDateTime: DateTime.utc(2026, 11, 18),
+        ),
+        't_new': RemoteTodoTask(
+          id: 't_new',
+          title: 'Newer remote task',
+          isCompleted: false,
+          isImportant: false,
+          createdDateTime: DateTime.utc(2026, 11, 21),
+          lastModifiedDateTime: DateTime.utc(2026, 11, 21),
+        ),
+      };
+      todoApi.tasksByList['work_remote'] = {
+        't_work': RemoteTodoTask(
+          id: 't_work',
+          title: 'Work task',
+          isCompleted: false,
+          isImportant: false,
+          createdDateTime: DateTime.utc(2026, 11, 19),
+          lastModifiedDateTime: DateTime.utc(2026, 11, 19),
+        ),
+      };
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(authClient),
+          microsoftTodoApiProvider.overrideWithValue(todoApi),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final signInResult = await authClient.pollDeviceCodeToken(
+        await authClient.startDeviceCodeFlow(),
+      );
+      await container
+          .read(accountProvider.notifier)
+          .signInMicrosoft(signInResult);
+
+      // Initial sync: new remote tasks ordered newest first (addNewTasksOnTop: true)
+      await container.read(syncProvider.notifier).syncNow();
+      var titles = container
+          .read(todoProvider)
+          .tasks
+          .map((t) => t.title)
+          .toList();
+      expect(
+        titles,
+        ['Newer remote task', 'Work task', 'Older remote task'],
+      );
+
+      // Reorder tasks across lists: move 'Older remote task' to index 0
+      final tasks = container.read(todoProvider).tasks;
+      final reordered = [tasks[2], tasks[0], tasks[1]];
+      container.read(todoProvider.notifier).commit(
+            container.read(todoProvider).copyWith(tasks: reordered),
+          );
+
+      // Sync again -> cross-list custom order must be preserved
+      await container.read(syncProvider.notifier).syncNow();
+      titles = container
+          .read(todoProvider)
+          .tasks
+          .map((t) => t.title)
+          .toList();
+      expect(
+        titles,
+        ['Older remote task', 'Newer remote task', 'Work task'],
+      );
+    },
+  );
 }

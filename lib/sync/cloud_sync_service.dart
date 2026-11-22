@@ -50,6 +50,7 @@ class CloudSyncService {
     required List<TaskItem> localTasks,
     required List<String> pendingDeletedListRemoteIds,
     required List<PendingTaskDeletion> pendingDeletedTasks,
+    bool addNewTasksOnTop = true,
   }) async {
     final accessToken = await _getValidAccessToken(account.id);
 
@@ -144,106 +145,116 @@ class CloudSyncService {
       localToRemoteListId[localId] = remote.id;
     }
 
-    // 3. Reconcile tasks per synced list.
-    final mergedTasks = <TaskItem>[];
-    final tasksByList = <String, List<TaskItem>>{};
-    for (final task in localTasks) {
-      if (removedLocalListIds.contains(task.listId)) continue;
-      tasksByList.putIfAbsent(task.listId, () => []).add(task);
-    }
-
-    // Keep tasks belonging to any list without a remoteId as-is.
-    for (final entry in tasksByList.entries) {
-      if (!localToRemoteListId.containsKey(entry.key)) {
-        mergedTasks.addAll(entry.value);
-      }
-    }
-
+    // 3. Reconcile tasks while preserving existing local task order across lists.
     final deletedTaskRemoteIds =
         pendingDeletedTasks.map((d) => d.taskRemoteId).toSet();
+
+    final remoteTasksByLocalList = <String, List<RemoteTodoTask>>{};
+    final remoteTasksByIdPerList = <String, Map<String, RemoteTodoTask>>{};
+    final matchedRemoteTaskIdsPerList = <String, Set<String>>{};
 
     for (final entry in localToRemoteListId.entries) {
       final localListId = entry.key;
       final remoteListId = entry.value;
-      final localForList = tasksByList[localListId] ?? const [];
       final remoteTasks = await todoApi.fetchTasks(accessToken, remoteListId);
-      final remoteTasksById = {for (final r in remoteTasks) r.id: r};
-      final matchedRemoteTaskIds = <String>{};
+      remoteTasksByLocalList[localListId] = remoteTasks;
+      remoteTasksByIdPerList[localListId] = {
+        for (final r in remoteTasks) r.id: r,
+      };
+      matchedRemoteTaskIdsPerList[localListId] = <String>{};
+    }
 
-      for (final localTask in localForList) {
-        if (localTask.remoteId == null) {
-          final created = await todoApi.createTask(
+    final existingMergedTasks = <TaskItem>[];
+    for (final localTask in localTasks) {
+      if (removedLocalListIds.contains(localTask.listId)) continue;
+      final remoteListId = localToRemoteListId[localTask.listId];
+      if (remoteListId == null) {
+        existingMergedTasks.add(localTask);
+        continue;
+      }
+
+      final remoteTasksById = remoteTasksByIdPerList[localTask.listId]!;
+      final matchedRemoteTaskIds = matchedRemoteTaskIdsPerList[localTask.listId]!;
+
+      if (localTask.remoteId == null) {
+        final created = await todoApi.createTask(
+          accessToken,
+          remoteListId,
+          localTask,
+        );
+        final syncedSteps = await _syncStepsForNewTask(
+          accessToken: accessToken,
+          remoteListId: remoteListId,
+          remoteTaskId: created.id,
+          localSteps: localTask.steps,
+        );
+        existingMergedTasks.add(
+          localTask.copyWith(
+            remoteId: created.id,
+            updatedAt: created.lastModifiedDateTime.toUtc(),
+            steps: syncedSteps,
+          ),
+        );
+        matchedRemoteTaskIds.add(created.id);
+      } else {
+        final remoteTask = remoteTasksById[localTask.remoteId!];
+        if (remoteTask == null) {
+          // Deleted remotely
+          continue;
+        }
+        matchedRemoteTaskIds.add(remoteTask.id);
+
+        final localUpdated = localTask.updatedAt;
+        final localIsNewer = localUpdated != null &&
+            localUpdated.toUtc().isAfter(
+                  remoteTask.lastModifiedDateTime.toUtc().add(
+                        const Duration(seconds: 2),
+                      ),
+                );
+
+        if (localIsNewer) {
+          final updatedRemote = await todoApi.updateTask(
             accessToken,
             remoteListId,
+            remoteTask.id,
             localTask,
           );
-          final syncedSteps = await _syncStepsForNewTask(
+          final syncedSteps = await _reconcileStepsToRemote(
             accessToken: accessToken,
             remoteListId: remoteListId,
-            remoteTaskId: created.id,
+            remoteTaskId: remoteTask.id,
             localSteps: localTask.steps,
+            remoteSteps: remoteTask.checklistItems,
           );
-          mergedTasks.add(
+          existingMergedTasks.add(
             localTask.copyWith(
-              remoteId: created.id,
-              updatedAt: created.lastModifiedDateTime.toUtc(),
+              updatedAt: updatedRemote.lastModifiedDateTime.toUtc(),
               steps: syncedSteps,
             ),
           );
-          matchedRemoteTaskIds.add(created.id);
         } else {
-          final remoteTask = remoteTasksById[localTask.remoteId!];
-          if (remoteTask == null) {
-            // Deleted remotely
-            continue;
-          }
-          matchedRemoteTaskIds.add(remoteTask.id);
-
-          final localUpdated = localTask.updatedAt;
-          final localIsNewer = localUpdated != null &&
-              localUpdated.toUtc().isAfter(
-                    remoteTask.lastModifiedDateTime.toUtc().add(
-                          const Duration(seconds: 2),
-                        ),
-                  );
-
-          if (localIsNewer) {
-            final updatedRemote = await todoApi.updateTask(
-              accessToken,
-              remoteListId,
-              remoteTask.id,
-              localTask,
-            );
-            final syncedSteps = await _reconcileStepsToRemote(
-              accessToken: accessToken,
-              remoteListId: remoteListId,
-              remoteTaskId: remoteTask.id,
-              localSteps: localTask.steps,
-              remoteSteps: remoteTask.checklistItems,
-            );
-            mergedTasks.add(
-              localTask.copyWith(
-                updatedAt: updatedRemote.lastModifiedDateTime.toUtc(),
-                steps: syncedSteps,
-              ),
-            );
-          } else {
-            mergedTasks.add(
-              _mergeRemoteIntoLocal(
-                local: localTask,
-                remote: remoteTask,
-                localListId: localListId,
-              ),
-            );
-          }
+          existingMergedTasks.add(
+            _mergeRemoteIntoLocal(
+              local: localTask,
+              remote: remoteTask,
+              localListId: localTask.listId,
+            ),
+          );
         }
       }
+    }
 
-      // Add remote-only tasks.
+    // Collect newly added remote-only tasks and order by createdDateTime.
+    final newRemoteTasks = <TaskItem>[];
+    for (final entry in localToRemoteListId.entries) {
+      final localListId = entry.key;
+      final remoteTasks = remoteTasksByLocalList[localListId] ?? const [];
+      final matchedRemoteTaskIds =
+          matchedRemoteTaskIdsPerList[localListId] ?? const <String>{};
       for (final remoteTask in remoteTasks) {
         if (matchedRemoteTaskIds.contains(remoteTask.id)) continue;
         if (deletedTaskRemoteIds.contains(remoteTask.id)) continue;
-        mergedTasks.add(
+        newRemoteTasks.add(
           _fromRemoteTask(
             remote: remoteTask,
             localListId: localListId,
@@ -251,6 +262,16 @@ class CloudSyncService {
         );
       }
     }
+
+    newRemoteTasks.sort(
+      (a, b) => addNewTasksOnTop
+          ? b.createdAt.compareTo(a.createdAt)
+          : a.createdAt.compareTo(b.createdAt),
+    );
+
+    final mergedTasks = addNewTasksOnTop
+        ? [...newRemoteTasks, ...existingMergedTasks]
+        : [...existingMergedTasks, ...newRemoteTasks];
 
     return SyncOutcome(
       lists: mergedLists,
