@@ -1,4 +1,5 @@
 import 'package:dynamic_color/dynamic_color.dart';
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import '../models/todo_list.dart';
 
@@ -288,6 +289,27 @@ class TodoColors {
 
 class TodoTheme {
   TodoTheme._();
+
+  /// Returns a [SystemUiOverlayStyle] whose status bar icon brightness contrasts
+  /// with a background of [backgroundBrightness].
+  static SystemUiOverlayStyle systemUiOverlayStyleForBrightness(
+    Brightness backgroundBrightness,
+  ) {
+    final isDarkBg = backgroundBrightness == Brightness.dark;
+    return SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: isDarkBg ? Brightness.light : Brightness.dark,
+      statusBarBrightness: isDarkBg ? Brightness.dark : Brightness.light,
+    );
+  }
+
+  /// Returns a [SystemUiOverlayStyle] whose status bar icon brightness contrasts
+  /// with [backgroundColor].
+  static SystemUiOverlayStyle systemUiOverlayStyleFor(Color backgroundColor) {
+    return systemUiOverlayStyleForBrightness(
+      ThemeData.estimateBrightnessForColor(backgroundColor),
+    );
+  }
 
   static const PageTransitionsTheme _pageTransitionsTheme =
       PageTransitionsTheme(

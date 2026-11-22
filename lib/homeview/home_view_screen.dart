@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../account/manage_accounts_screen.dart';
@@ -100,7 +101,7 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
 
     final collapsedAvatarSize = widget.isSidebar ? 32.0 : 38.0;
 
-    return Material(
+    final content = Material(
       color: theme.scaffoldBackgroundColor,
       child: SafeArea(
         child: Column(
@@ -601,6 +602,15 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
           ],
         ),
       ),
+    );
+
+    if (widget.isSidebar) {
+      return content;
+    }
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: TodoTheme.systemUiOverlayStyleFor(theme.scaffoldBackgroundColor),
+      child: content,
     );
   }
 }

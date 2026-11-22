@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import '../l10n/app_localizations.dart';
@@ -236,7 +237,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                 ? l10n.tasks
                 : originList.title));
 
-    return HeroMode(
+    final detailContent = HeroMode(
       enabled: widget.onClose == null,
       child: Hero(
         tag: 'task_card_${widget.taskId}',
@@ -265,26 +266,38 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
         },
         child: Scaffold(
           backgroundColor: bodyBg,
-      body: SafeArea(
-        child: Column(
-          children: [
-            DetailsHeaderView(
-              task: task,
-              originListTitle: originListTitle,
-              backgroundColor: primaryBg,
-              accentColor: listAccent,
-              onToggleCompleted: () {
-                if (!task.isCompleted) {
-                  ref.read(completionSoundServiceProvider).playIfEnabled();
-                }
-                notifier.toggleTaskCompleted(task.id);
-              },
-              onToggleImportant: () => notifier.toggleTaskImportant(task.id),
-              onTitleSubmitted: (val) => notifier.updateTaskTitle(task.id, val),
-              onClose: widget.onClose,
-            ),
-            Expanded(
-              child: ListView(
+          body: Column(
+            children: [
+              ColoredBox(
+                color: primaryBg,
+                child: SafeArea(
+                  bottom: false,
+                  child: DetailsHeaderView(
+                    task: task,
+                    originListTitle: originListTitle,
+                    backgroundColor: primaryBg,
+                    accentColor: listAccent,
+                    onToggleCompleted: () {
+                      if (!task.isCompleted) {
+                        ref.read(completionSoundServiceProvider).playIfEnabled();
+                      }
+                      notifier.toggleTaskCompleted(task.id);
+                    },
+                    onToggleImportant: () =>
+                        notifier.toggleTaskImportant(task.id),
+                    onTitleSubmitted: (val) =>
+                        notifier.updateTaskTitle(task.id, val),
+                    onClose: widget.onClose,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: SafeArea(
+                  top: false,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
                   StepsSection(
@@ -380,12 +393,24 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                   ),
                 ],
               ),
-            ),
-          ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-        ),
-      ),
+    );
+
+    if (widget.onClose != null) {
+      return detailContent;
+    }
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: TodoTheme.systemUiOverlayStyleFor(primaryBg),
+      child: detailContent,
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
@@ -774,16 +775,19 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     required TodoList currentList,
     required List<TaskItem> allTasks,
     required bool isDark,
+    required SystemUiOverlayStyle overlayStyle,
   }) {
     return switch (_mode) {
       _TasksViewMode.browsing => null,
-      _TasksViewMode.reordering => _buildReorderingAppBar(l10n, isDark),
+      _TasksViewMode.reordering =>
+        _buildReorderingAppBar(l10n, isDark, overlayStyle),
       _TasksViewMode.multiSelecting => _buildMultiSelectAppBar(
           l10n: l10n,
           state: state,
           currentList: currentList,
           allTasks: allTasks,
           isDark: isDark,
+          overlayStyle: overlayStyle,
         ),
     };
   }
@@ -791,8 +795,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   PreferredSizeWidget _buildReorderingAppBar(
     AppLocalizations l10n,
     bool isDark,
+    SystemUiOverlayStyle overlayStyle,
   ) {
     return AppBar(
+      systemOverlayStyle: overlayStyle,
       backgroundColor: isDark
           ? TodoColors.primaryBackgroundDark
           : TodoColors.secondaryTextLight,
@@ -818,6 +824,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     required TodoList currentList,
     required List<TaskItem> allTasks,
     required bool isDark,
+    required SystemUiOverlayStyle overlayStyle,
   }) {
     final actionPresenter = ref.read(tasksActionPresenterProvider);
     final selectedTasks =
@@ -831,6 +838,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         allTasks.every((t) => _multiSelectedIds.contains(t.id));
 
     return AppBar(
+      systemOverlayStyle: overlayStyle,
       backgroundColor: isDark
           ? TodoColors.primaryBackgroundDark
           : TodoColors.secondaryTextLight,
@@ -925,8 +933,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     required Color backgroundColor,
     required int activeTasksCount,
     required bool isDark,
+    required SystemUiOverlayStyle overlayStyle,
   }) {
     return SliverAppBar(
+      systemOverlayStyle: overlayStyle,
       backgroundColor: Colors.transparent,
       foregroundColor: headerFg,
       expandedHeight: subtitle != null ? 144 : 116,
@@ -1560,30 +1570,44 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final subtitle = currentList.smartType == SmartListType.myDay
         ? DateFormat.MMMMEEEEd().format(DateTime.now())
         : null;
+    final overlayStyle = switch (_mode) {
+      _TasksViewMode.browsing => currentList.themePhoto != null
+          ? TodoTheme.systemUiOverlayStyleForBrightness(Brightness.dark)
+          : TodoTheme.systemUiOverlayStyleFor(backgroundColor),
+      _TasksViewMode.reordering || _TasksViewMode.multiSelecting =>
+        TodoTheme.systemUiOverlayStyleFor(
+          isDark
+              ? TodoColors.primaryBackgroundDark
+              : TodoColors.secondaryTextLight,
+        ),
+    };
 
-    return PopScope(
-      canPop: _mode == _TasksViewMode.browsing,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        switch (_mode) {
-          case _TasksViewMode.browsing:
-            break;
-          case _TasksViewMode.reordering:
-            _exitReordering();
-          case _TasksViewMode.multiSelecting:
-            _clearSelection();
-        }
-      },
-      child: ScaffoldMessenger(
-        key: _scaffoldMessengerKey,
-        child: Scaffold(
-          appBar: _buildAppBar(
-            l10n: l10n,
-            state: state,
-            currentList: currentList,
-            allTasks: allTasks,
-            isDark: isDark,
-          ),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: overlayStyle,
+      child: PopScope(
+        canPop: _mode == _TasksViewMode.browsing,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          switch (_mode) {
+            case _TasksViewMode.browsing:
+              break;
+            case _TasksViewMode.reordering:
+              _exitReordering();
+            case _TasksViewMode.multiSelecting:
+              _clearSelection();
+          }
+        },
+        child: ScaffoldMessenger(
+          key: _scaffoldMessengerKey,
+          child: Scaffold(
+            appBar: _buildAppBar(
+              l10n: l10n,
+              state: state,
+              currentList: currentList,
+              allTasks: allTasks,
+              isDark: isDark,
+              overlayStyle: overlayStyle,
+            ),
           body: Stack(
             fit: StackFit.expand,
             children: [
@@ -1620,18 +1644,19 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                 ? const AlwaysScrollableScrollPhysics()
                                 : null,
                             slivers: [
-                              if (_mode == _TasksViewMode.browsing)
-                                _buildSliverAppBar(
-                                  l10n: l10n,
-                                  state: state,
-                                  currentList: currentList,
-                                  listTitle: listTitle,
-                                  subtitle: subtitle,
-                                  headerFg: headerFg,
-                                  backgroundColor: backgroundColor,
-                                  activeTasksCount: active.length,
-                                  isDark: isDark,
-                                )
+                                if (_mode == _TasksViewMode.browsing)
+                                  _buildSliverAppBar(
+                                    l10n: l10n,
+                                    state: state,
+                                    currentList: currentList,
+                                    listTitle: listTitle,
+                                    subtitle: subtitle,
+                                    headerFg: headerFg,
+                                    backgroundColor: backgroundColor,
+                                    activeTasksCount: active.length,
+                                    isDark: isDark,
+                                    overlayStyle: overlayStyle,
+                                  )
                               else if (_mode == _TasksViewMode.multiSelecting ||
                                   _mode == _TasksViewMode.reordering)
                                 SliverToBoxAdapter(
@@ -1720,6 +1745,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           brightness: brightness,
           isDark: isDark,
         ),
+      ),
       ),
       ),
     );
