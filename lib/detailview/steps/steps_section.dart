@@ -174,7 +174,7 @@ class _StepsSectionState extends State<StepsSection> {
                 ),
               ],
             ),
-            const Divider(height: 1, indent: 66, endIndent: 16),
+            const Divider(height: 1, indent: 44),
           ],
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 4, 12, 8),
@@ -208,14 +208,22 @@ class _StepsSectionState extends State<StepsSection> {
                   child: TextField(
                     controller: _stepController,
                     focusNode: _addStepFocusNode,
+                    textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
                       hintText: l10n.addStepPlaceholder,
                       hintStyle: TextStyle(color: accent),
                       border: InputBorder.none,
                     ),
+                    onEditingComplete: () {},
+                    onTapOutside: (_) => _addStepFocusNode.unfocus(),
                     onSubmitted: (val) {
+                      if (val.trim().isEmpty) {
+                        _addStepFocusNode.unfocus();
+                        return;
+                      }
                       widget.onAddStep(val);
                       _stepController.clear();
+                      _addStepFocusNode.requestFocus();
                     },
                   ),
                 ),
