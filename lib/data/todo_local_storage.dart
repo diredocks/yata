@@ -110,6 +110,7 @@ class TodoLocalStorage {
   String get _tasksKey => _k('tasks');
   String get _selectedListIdKey => _k('selected_list_id');
   String get _lastEnteredListIdKey => _k('last_entered_list_id');
+  String get _completedExpandedByListKey => _k('completed_expanded_by_list');
   String get _sortOptionKey => _k('sort_option');
   String get _showCompletedKey => _k('show_completed');
   String get _themeModeKey => _k('theme_mode');
@@ -325,6 +326,24 @@ class TodoLocalStorage {
       await _prefs.remove(_lastEnteredListIdKey);
     } else {
       await _prefs.setString(_lastEnteredListIdKey, listId);
+    }
+  }
+
+  Map<String, bool> loadCompletedExpandedByList() {
+    final raw = _prefs.getString(_completedExpandedByListKey);
+    if (raw == null) return const {};
+    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    return {
+      for (final entry in decoded.entries)
+        if (entry.value is bool) entry.key: entry.value as bool,
+    };
+  }
+
+  Future<void> saveCompletedExpandedByList(Map<String, bool> value) async {
+    if (value.isEmpty) {
+      await _prefs.remove(_completedExpandedByListKey);
+    } else {
+      await _prefs.setString(_completedExpandedByListKey, jsonEncode(value));
     }
   }
 

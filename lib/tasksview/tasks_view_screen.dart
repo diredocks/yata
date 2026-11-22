@@ -34,7 +34,6 @@ enum _ListMenuAction {
   sort,
   reorder,
   changeTheme,
-  toggleCompleted,
   duplicate,
   delete,
 }
@@ -63,7 +62,6 @@ class TasksViewScreen extends ConsumerStatefulWidget {
 
 class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   _TasksViewMode _mode = _TasksViewMode.browsing;
-  bool _completedExpanded = true;
   double _scrollOffset = 0.0;
   bool _isSnappingHeader = false;
   final ScrollController _scrollController = ScrollController();
@@ -476,7 +474,6 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   List<PopupMenuEntry<_ListMenuAction>> _buildMenuItems(
     AppLocalizations l10n,
     TodoList list,
-    bool showCompleted,
     int activeTasksCount,
   ) {
     final isCustom = !list.isSmartList;
@@ -489,8 +486,6 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
             list.smartType == SmartListType.tasks) &&
         list.sortOption == TaskSortOption.defaultOrder &&
         activeTasksCount >= 2;
-    final supportsToggleCompleted = list.smartType != SmartListType.all &&
-        list.smartType != SmartListType.completed;
 
     return [
       if (isCustom)
@@ -516,15 +511,6 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         icon: Icons.palette_outlined,
         label: l10n.changeTheme,
       ),
-      if (supportsToggleCompleted)
-        _buildPopupMenuItem(
-          value: _ListMenuAction.toggleCompleted,
-          icon: showCompleted
-              ? Icons.visibility_off_outlined
-              : Icons.check_circle_outline,
-          label:
-              showCompleted ? l10n.hideCompletedTasks : l10n.showCompletedTasks,
-        ),
       if (isCustom) ...[
         _buildPopupMenuItem(
           value: _ListMenuAction.duplicate,
@@ -591,8 +577,6 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
             themePhoto: photo,
           ),
         );
-      case _ListMenuAction.toggleCompleted:
-        notifier.toggleListShowCompleted(currentList.id);
       case _ListMenuAction.duplicate:
         await _duplicateListWithPrompt(state, currentList);
       case _ListMenuAction.delete:
@@ -959,7 +943,6 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           itemBuilder: (context) => _buildMenuItems(
             l10n,
             currentList,
-            currentList.showCompleted,
             activeTasksCount,
           ),
         ),
@@ -1395,7 +1378,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     required Color headerFg,
   }) {
     final hasCompleted = completedTasks.isNotEmpty;
-    final showItems = hasCompleted && _completedExpanded;
+    final completedExpanded = state.isCompletedExpanded(currentList.id);
+    final showItems = hasCompleted && completedExpanded;
     return [
       SliverToBoxAdapter(
         child: AnimatedSize(
@@ -1410,9 +1394,11 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 ? _buildBucketPill(
                     label: l10n.completed,
                     count: completedTasks.length,
-                    isExpanded: _completedExpanded,
-                    onTap: () =>
-                        setState(() => _completedExpanded = !_completedExpanded),
+                    isExpanded: completedExpanded,
+                    onTap: () => ref
+                        .read(todoProvider.notifier)
+                        .setCompletedExpanded(
+                            currentList.id, !completedExpanded),
                     currentList: currentList,
                     headerFg: headerFg,
                   )

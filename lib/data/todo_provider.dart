@@ -47,6 +47,7 @@ class TodoState {
     this.routineNotificationHour = 8,
     this.routineNotificationMinute = 30,
     this.quickAddNotificationEnabled = false,
+    this.completedExpandedByList = const {},
     this.mutationVersion = 0,
   });
 
@@ -79,7 +80,11 @@ class TodoState {
   final int routineNotificationHour;
   final int routineNotificationMinute;
   final bool quickAddNotificationEnabled;
+  final Map<String, bool> completedExpandedByList;
   final int mutationVersion;
+
+  bool isCompletedExpanded(String listId) =>
+      completedExpandedByList[listId] ?? true;
 
   TodoList get selectedList {
     return lists.firstWhere(
@@ -217,6 +222,7 @@ class TodoState {
     int? routineNotificationHour,
     int? routineNotificationMinute,
     bool? quickAddNotificationEnabled,
+    Map<String, bool>? completedExpandedByList,
     int? mutationVersion,
   }) {
     return TodoState(
@@ -262,6 +268,8 @@ class TodoState {
           routineNotificationMinute ?? this.routineNotificationMinute,
       quickAddNotificationEnabled:
           quickAddNotificationEnabled ?? this.quickAddNotificationEnabled,
+      completedExpandedByList:
+          completedExpandedByList ?? this.completedExpandedByList,
       mutationVersion: mutationVersion ?? this.mutationVersion,
     );
   }
@@ -357,6 +365,7 @@ class TodoNotifier extends Notifier<TodoState> {
       routineNotificationHour: snapshot.routineNotificationHour,
       routineNotificationMinute: snapshot.routineNotificationMinute,
       quickAddNotificationEnabled: snapshot.quickAddNotificationEnabled,
+      completedExpandedByList: storage.loadCompletedExpandedByList(),
     );
   }
 
@@ -625,6 +634,13 @@ class TodoNotifier extends Notifier<TodoState> {
 
   void setLastEnteredListId(String? listId) {
     storage.saveLastEnteredListId(listId);
+  }
+
+  void setCompletedExpanded(String listId, bool expanded) {
+    final next = Map<String, bool>.from(state.completedExpandedByList)
+      ..[listId] = expanded;
+    state = state.copyWith(completedExpandedByList: next);
+    storage.saveCompletedExpandedByList(next);
   }
 
   void selectTask(String? taskId) {
