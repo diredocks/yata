@@ -108,13 +108,18 @@ class SyncNotifier extends Notifier<SyncState> {
       final todoState = ref.read(todoProvider);
       final storage = ref.read(todoLocalStorageProvider);
       final service = ref.read(cloudSyncServiceProvider);
+      final snapshotLists = todoState.lists;
+      final snapshotTasks = todoState.tasks;
+      final snapshotMutationVersion = todoState.mutationVersion;
+      final pendingDeletedLists = storage.loadPendingDeletedListRemoteIds();
+      final pendingDeletedTasks = storage.loadPendingDeletedTasks();
 
       final outcome = await service.sync(
         account: account,
-        localLists: todoState.lists,
-        localTasks: todoState.tasks,
-        pendingDeletedListRemoteIds: storage.loadPendingDeletedListRemoteIds(),
-        pendingDeletedTasks: storage.loadPendingDeletedTasks(),
+        localLists: snapshotLists,
+        localTasks: snapshotTasks,
+        pendingDeletedListRemoteIds: pendingDeletedLists,
+        pendingDeletedTasks: pendingDeletedTasks,
         addNewTasksOnTop: todoState.addNewTasksOnTop,
       );
 
@@ -123,7 +128,14 @@ class SyncNotifier extends Notifier<SyncState> {
         await ref.read(todoProvider.notifier).applySyncResult(
               lists: outcome.lists,
               tasks: outcome.tasks,
+              snapshotLists: snapshotLists,
+              snapshotTasks: snapshotTasks,
+              processedDeletedListRemoteIds: pendingDeletedLists,
+              processedDeletedTasks: pendingDeletedTasks,
             );
+        if (ref.read(todoProvider).mutationVersion != snapshotMutationVersion) {
+          scheduleSync();
+        }
       }
 
       await ref.read(accountProvider.notifier).updateSyncStatus(

@@ -369,6 +369,7 @@ class TodoNotifier extends Notifier<TodoState> {
     final tasksChanged = !identical(prevTasks, nextState.tasks);
 
     var stampedLists = nextState.lists;
+    var listSyncNeeded = false;
     if (listsChanged) {
       final prevListById = {for (final l in prevLists) l.id: l};
       final nextListIds = {for (final l in nextState.lists) l.id};
@@ -377,26 +378,30 @@ class TodoNotifier extends Notifier<TodoState> {
         ...storage.loadPendingDeletedListRemoteIds(),
       ];
       for (final prev in prevLists) {
-        if (!nextListIds.contains(prev.id) &&
-            prev.remoteId != null &&
-            !deletedListRemoteIds.contains(prev.remoteId)) {
-          deletedListRemoteIds.add(prev.remoteId!);
+        if (!nextListIds.contains(prev.id) && prev.remoteId != null) {
+          listSyncNeeded = true;
+          if (!deletedListRemoteIds.contains(prev.remoteId)) {
+            deletedListRemoteIds.add(prev.remoteId!);
+          }
         }
       }
       storage.savePendingDeletedListRemoteIds(deletedListRemoteIds);
 
-      stampedLists = [
-        for (final list in nextState.lists)
-          if (!list.isSmartList &&
-              (prevListById[list.id] == null ||
-                  prevListById[list.id]!.title != list.title))
-            list.copyWith(updatedAt: nowUtc)
-          else
-            list,
-      ];
+      final nextLists = <TodoList>[];
+      for (final list in nextState.lists) {
+        final prev = prevListById[list.id];
+        if (!list.isSmartList && (prev == null || prev.title != list.title)) {
+          listSyncNeeded = true;
+          nextLists.add(list.copyWith(updatedAt: nowUtc));
+        } else {
+          nextLists.add(list);
+        }
+      }
+      stampedLists = nextLists;
     }
 
     var stampedTasks = nextState.tasks;
+    var taskSyncNeeded = false;
     if (tasksChanged) {
       final prevTaskById = {for (final t in prevTasks) t.id: t};
       final nextTaskIds = {for (final t in nextState.tasks) t.id};
@@ -405,6 +410,7 @@ class TodoNotifier extends Notifier<TodoState> {
       final deletedTasks = [...storage.loadPendingDeletedTasks()];
       for (final prev in prevTasks) {
         if (!nextTaskIds.contains(prev.id) && prev.remoteId != null) {
+          taskSyncNeeded = true;
           final listRemoteId = listById[prev.listId]?.remoteId;
           if (listRemoteId != null &&
               !deletedTasks.any((d) => d.taskRemoteId == prev.remoteId)) {
@@ -419,19 +425,22 @@ class TodoNotifier extends Notifier<TodoState> {
       }
       storage.savePendingDeletedTasks(deletedTasks);
 
-      stampedTasks = [
-        for (final task in nextState.tasks)
-          if (_taskNeedsSyncStamp(prevTaskById[task.id], task))
-            task.copyWith(updatedAt: nowUtc)
-          else
-            task,
-      ];
+      final nextTasks = <TaskItem>[];
+      for (final task in nextState.tasks) {
+        if (_taskNeedsSyncStamp(prevTaskById[task.id], task)) {
+          taskSyncNeeded = true;
+          nextTasks.add(task.copyWith(updatedAt: nowUtc));
+        } else {
+          nextTasks.add(task);
+        }
+      }
+      stampedTasks = nextTasks;
     }
 
     state = nextState.copyWith(
       lists: stampedLists,
       tasks: stampedTasks,
-      mutationVersion: (listsChanged || tasksChanged)
+      mutationVersion: (listSyncNeeded || taskSyncNeeded)
           ? state.mutationVersion + 1
           : state.mutationVersion,
     );
@@ -459,30 +468,148 @@ class TodoNotifier extends Notifier<TodoState> {
     return false;
   }
 
+  List<TodoList> _reconcileSyncedLists({
+    required List<TodoList> outcomeLists,
+    required List<TodoList> snapshotLists,
+  }) {
+    final snapshotById = {for (final l in snapshotLists) l.id: l};
+    final currentById = {for (final l in state.lists) l.id: l};
+    final outcomeById = {for (final l in outcomeLists) l.id: l};
+
+    final reconciled = <TodoList>[];
+    for (final current in state.lists) {
+      final outcome = outcomeById[current.id];
+      final snap = snapshotById[current.id];
+      if (outcome == null) {
+        if (snap == null) {
+          reconciled.add(current);
+        }
+        continue;
+      }
+      final titleEditedLocally = snap != null && current.title != snap.title;
+      reconciled.add(
+        current.copyWith(
+          title: titleEditedLocally ? current.title : outcome.title,
+          remoteId: outcome.remoteId ?? current.remoteId,
+          updatedAt: titleEditedLocally
+              ? current.updatedAt
+              : (outcome.updatedAt ?? current.updatedAt),
+        ),
+      );
+    }
+
+    for (final outcome in outcomeLists) {
+      if (!snapshotById.containsKey(outcome.id) &&
+          !currentById.containsKey(outcome.id)) {
+        reconciled.add(outcome);
+      }
+    }
+    return reconciled;
+  }
+
+  List<TaskItem> _reconcileSyncedTasks({
+    required List<TaskItem> outcomeTasks,
+    required List<TaskItem> snapshotTasks,
+    required Set<String> validListIds,
+  }) {
+    final snapshotById = {for (final t in snapshotTasks) t.id: t};
+    final currentById = {for (final t in state.tasks) t.id: t};
+    final outcomeById = {for (final t in outcomeTasks) t.id: t};
+
+    final newRemoteTasks = <TaskItem>[
+      for (final outcome in outcomeTasks)
+        if (!snapshotById.containsKey(outcome.id) &&
+            !currentById.containsKey(outcome.id) &&
+            validListIds.contains(outcome.listId))
+          outcome,
+    ];
+
+    final existingAndLocal = <TaskItem>[];
+    for (final current in state.tasks) {
+      if (!validListIds.contains(current.listId)) continue;
+      final outcome = outcomeById[current.id];
+      final snap = snapshotById[current.id];
+      if (outcome == null) {
+        if (snap == null) {
+          existingAndLocal.add(current);
+        }
+        continue;
+      }
+      if (snap != null && identical(snap, current)) {
+        existingAndLocal.add(outcome);
+      } else {
+        existingAndLocal.add(
+          current.copyWith(remoteId: outcome.remoteId ?? current.remoteId),
+        );
+      }
+    }
+
+    return state.addNewTasksOnTop
+        ? [...newRemoteTasks, ...existingAndLocal]
+        : [...existingAndLocal, ...newRemoteTasks];
+  }
+
   Future<void> applySyncResult({
     required List<TodoList> lists,
     required List<TaskItem> tasks,
+    List<TodoList>? snapshotLists,
+    List<TaskItem>? snapshotTasks,
+    List<String>? processedDeletedListRemoteIds,
+    List<PendingTaskDeletion>? processedDeletedTasks,
   }) async {
+    final reconciledLists = snapshotLists != null
+        ? _reconcileSyncedLists(
+            outcomeLists: lists,
+            snapshotLists: snapshotLists,
+          )
+        : lists;
+    final validListIds = {for (final l in reconciledLists) l.id};
+    final reconciledTasks = snapshotTasks != null
+        ? _reconcileSyncedTasks(
+            outcomeTasks: tasks,
+            snapshotTasks: snapshotTasks,
+            validListIds: validListIds,
+          )
+        : tasks;
+
     final now = DateTime.now();
     final syncedTasks = [
-      for (final task in tasks)
+      for (final task in reconciledTasks)
         syncMyDayFlag(
           task,
           now: now,
           showDueTodayInMyDay: state.showDueTodayInMyDay,
         ),
     ];
-    await storage.saveLists(lists);
-    await storage.saveTasks(syncedTasks);
-    await storage.savePendingDeletedListRemoteIds(const []);
-    await storage.savePendingDeletedTasks(const []);
 
-    final validSelectedListId = lists.any((l) => l.id == state.selectedListId)
-        ? state.selectedListId
-        : 'my_day';
+    final remainingDeletedLists = processedDeletedListRemoteIds == null
+        ? const <String>[]
+        : storage
+            .loadPendingDeletedListRemoteIds()
+            .where((id) => !processedDeletedListRemoteIds.contains(id))
+            .toList();
+    final processedTaskIds = processedDeletedTasks == null
+        ? const <String>{}
+        : {for (final d in processedDeletedTasks) d.taskRemoteId};
+    final remainingDeletedTasks = processedDeletedTasks == null
+        ? const <PendingTaskDeletion>[]
+        : storage
+            .loadPendingDeletedTasks()
+            .where((d) => !processedTaskIds.contains(d.taskRemoteId))
+            .toList();
+
+    await storage.saveLists(reconciledLists);
+    await storage.saveTasks(syncedTasks);
+    await storage.savePendingDeletedListRemoteIds(remainingDeletedLists);
+    await storage.savePendingDeletedTasks(remainingDeletedTasks);
+
+    final validSelectedListId =
+        reconciledLists.any((l) => l.id == state.selectedListId)
+            ? state.selectedListId
+            : 'my_day';
 
     state = state.copyWith(
-      lists: lists,
+      lists: reconciledLists,
       tasks: syncedTasks,
       selectedListId: validSelectedListId,
     );

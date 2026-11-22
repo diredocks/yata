@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/main.dart';
 import 'package:yata/models/account.dart';
 import 'package:yata/models/task_item.dart';
+import 'package:yata/models/todo_list.dart';
 import 'package:yata/account/account_provider.dart';
 import 'package:yata/sync/sync_provider.dart';
 import 'package:yata/data/todo_provider.dart';
@@ -100,6 +101,7 @@ class _FakeMicrosoftTodoApi implements MicrosoftTodoApi {
   final Map<String, Map<String, RemoteTodoTask>> tasksByList = {};
   final List<String> deletedListIds = [];
   final List<String> deletedTaskIds = [];
+  Completer<void>? fetchTasksGate;
   int _counter = 0;
 
   String _nextId(String prefix) {
@@ -152,6 +154,9 @@ class _FakeMicrosoftTodoApi implements MicrosoftTodoApi {
     String accessToken,
     String listId,
   ) async {
+    if (fetchTasksGate != null && !fetchTasksGate!.isCompleted) {
+      await fetchTasksGate!.future;
+    }
     return (tasksByList[listId] ?? const {}).values.toList();
   }
 
@@ -581,6 +586,138 @@ void main() {
         titles,
         ['Older remote task', 'Newer remote task', 'Work task'],
       );
+    },
+  );
+
+  test(
+    'Sync preserves list sortOption, sortAscending, showCompleted, theme, and concurrent task reorder',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      final authClient = _FakeMicrosoftAuthClient(
+        profile: const MicrosoftUserProfile(
+          id: 'ms_user_004',
+          displayName: 'Options Tester',
+          email: 'options@outlook.com',
+        ),
+      );
+      final todoApi = _FakeMicrosoftTodoApi();
+      todoApi.lists['default_remote'] = const RemoteTodoList(
+        id: 'default_remote',
+        displayName: 'Tasks',
+        wellknownListName: 'defaultList',
+      );
+      todoApi.lists['work_remote'] = const RemoteTodoList(
+        id: 'work_remote',
+        displayName: 'Work',
+      );
+      todoApi.tasksByList['default_remote'] = {
+        't1': RemoteTodoTask(
+          id: 't1',
+          title: 'First task',
+          isCompleted: false,
+          isImportant: false,
+          createdDateTime: DateTime.utc(2026, 11, 18),
+          lastModifiedDateTime: DateTime.utc(2026, 11, 18),
+        ),
+        't2': RemoteTodoTask(
+          id: 't2',
+          title: 'Second task',
+          isCompleted: false,
+          isImportant: false,
+          createdDateTime: DateTime.utc(2026, 11, 20),
+          lastModifiedDateTime: DateTime.utc(2026, 11, 20),
+        ),
+      };
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(authClient),
+          microsoftTodoApiProvider.overrideWithValue(todoApi),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final signInResult = await authClient.pollDeviceCodeToken(
+        await authClient.startDeviceCodeFlow(),
+      );
+      await container
+          .read(accountProvider.notifier)
+          .signInMicrosoft(signInResult);
+
+      await container.read(syncProvider.notifier).syncNow();
+
+      final presenter = container.read(tasksViewPresenterProvider);
+      final workList = container
+          .read(todoProvider)
+          .lists
+          .firstWhere((l) => l.title == 'Work');
+
+      // Local-only list option edits must not bump mutationVersion.
+      final versionBefore = container.read(todoProvider).mutationVersion;
+      presenter.setListSortOption(
+        workList.id,
+        TaskSortOption.dueDate,
+        ascending: false,
+      );
+      presenter.toggleListShowCompleted(workList.id);
+      presenter.changeListTheme(
+        workList.id,
+        ListThemeColor.purple,
+        themePhoto: ListThemePhoto.beach,
+      );
+      presenter.setListSortOption('my_day', TaskSortOption.importance);
+      presenter.toggleListShowCompleted('my_day');
+      expect(container.read(todoProvider).mutationVersion, versionBefore);
+
+      // Verify options survive a subsequent sync.
+      await container.read(syncProvider.notifier).syncNow();
+      var syncedWork = container
+          .read(todoProvider)
+          .lists
+          .firstWhere((l) => l.id == workList.id);
+      expect(syncedWork.sortOption, TaskSortOption.dueDate);
+      expect(syncedWork.sortAscending, isFalse);
+      expect(syncedWork.showCompleted, isFalse);
+      expect(syncedWork.themeColor, ListThemeColor.purple);
+      expect(syncedWork.themePhoto, ListThemePhoto.beach);
+
+      var syncedMyDay = container
+          .read(todoProvider)
+          .lists
+          .firstWhere((l) => l.id == 'my_day');
+      expect(syncedMyDay.sortOption, TaskSortOption.importance);
+      expect(syncedMyDay.showCompleted, isFalse);
+
+      // Now mutate list options and reorder tasks WHILE a sync is in flight.
+      todoApi.fetchTasksGate = Completer<void>();
+      final inFlightSync = container.read(syncProvider.notifier).syncNow();
+      await Future<void>.delayed(Duration.zero);
+
+      presenter.setListSortOption(workList.id, TaskSortOption.alphabetical);
+      presenter.toggleListShowCompleted(workList.id);
+      final tasksBeforeReorder = container.read(todoProvider).tasks;
+      presenter.reorderActiveTasks(tasksBeforeReorder, 0, 1);
+
+      todoApi.fetchTasksGate!.complete();
+      await inFlightSync;
+
+      syncedWork = container
+          .read(todoProvider)
+          .lists
+          .firstWhere((l) => l.id == workList.id);
+      expect(syncedWork.sortOption, TaskSortOption.alphabetical);
+      expect(syncedWork.sortAscending, isTrue);
+      expect(syncedWork.showCompleted, isTrue);
+
+      final titlesAfterConcurrentSync = container
+          .read(todoProvider)
+          .tasks
+          .map((t) => t.title)
+          .toList();
+      expect(titlesAfterConcurrentSync, ['First task', 'Second task']);
     },
   );
 }
