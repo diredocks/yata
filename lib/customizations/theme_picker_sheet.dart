@@ -130,13 +130,29 @@ class _ThemePickerViewState extends State<ThemePickerView> {
         const SizedBox(height: 10),
         SizedBox(
           height: 52,
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: !_showPhotos
-                ? ListView.separated(
-                    key: const ValueKey('theme_colors_list'),
-                    scrollDirection: Axis.horizontal,
-                    itemCount: ListThemeColor.values.length,
+          child: ShaderMask(
+            shaderCallback: (rect) {
+              return const LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  Colors.transparent,
+                  Colors.black,
+                  Colors.black,
+                  Colors.transparent,
+                ],
+                stops: [0.0, 0.05, 0.95, 1.0],
+              ).createShader(rect);
+            },
+            blendMode: BlendMode.dstIn,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: !_showPhotos
+                  ? ListView.separated(
+                      key: const ValueKey('theme_colors_list'),
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      itemCount: ListThemeColor.values.length,
                     separatorBuilder: (_, _) => const SizedBox(width: 10),
                     itemBuilder: (context, index) {
                       final color = ListThemeColor.values[index];
@@ -188,10 +204,11 @@ class _ThemePickerViewState extends State<ThemePickerView> {
                       );
                     },
                   )
-                : ListView.separated(
-                    key: const ValueKey('theme_photos_list'),
-                    scrollDirection: Axis.horizontal,
-                    itemCount: ListThemePhoto.values.length,
+                  : ListView.separated(
+                      key: const ValueKey('theme_photos_list'),
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      itemCount: ListThemePhoto.values.length,
                     separatorBuilder: (_, _) => const SizedBox(width: 10),
                     itemBuilder: (context, index) {
                       final photo = ListThemePhoto.values[index];
@@ -236,6 +253,7 @@ class _ThemePickerViewState extends State<ThemePickerView> {
                       );
                     },
                   ),
+            ),
           ),
         ),
       ],
