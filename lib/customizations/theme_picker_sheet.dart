@@ -130,36 +130,26 @@ class _ThemePickerViewState extends State<ThemePickerView> {
         const SizedBox(height: 10),
         SizedBox(
           height: 52,
-          child: ShaderMask(
-            shaderCallback: (rect) {
-              return const LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [
-                  Colors.transparent,
-                  Colors.black,
-                  Colors.black,
-                  Colors.transparent,
-                ],
-                stops: [0.0, 0.05, 0.95, 1.0],
-              ).createShader(rect);
-            },
-            blendMode: BlendMode.dstIn,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              child: !_showPhotos
-                  ? ListView.separated(
-                      key: const ValueKey('theme_colors_list'),
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      itemCount: ListThemeColor.values.length,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: !_showPhotos
+                ? ListView.separated(
+                    key: const ValueKey('theme_colors_list'),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: ListThemeColor.values.length,
                     separatorBuilder: (_, _) => const SizedBox(width: 10),
                     itemBuilder: (context, index) {
                       final color = ListThemeColor.values[index];
                       final isSelected = widget.selectedPhoto == null &&
                           widget.selectedColor == color;
+                      final dotColor = theme.brightness == Brightness.dark
+                          ? Colors.black
+                          : (TodoColors.isLightTheme(color)
+                              ? TodoColors.accentFor(color)
+                              : Colors.white);
                       return Center(
                         child: GestureDetector(
+                          key: ValueKey('color_theme_${color.name}'),
                           onTap: () => widget.onSelectTheme(color, null),
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 180),
@@ -171,44 +161,28 @@ class _ThemePickerViewState extends State<ThemePickerView> {
                                 brightness: theme.brightness,
                               ),
                               shape: BoxShape.circle,
-                              border: isSelected
+                              border: TodoColors.isLightTheme(color) &&
+                                      theme.brightness == Brightness.light
                                   ? Border.all(
-                                      color: theme.colorScheme.onSurface,
-                                      width: 2.5,
+                                      color: TodoColors.accentFor(color)
+                                          .withValues(alpha: 0.45),
+                                      width: 1,
                                     )
-                                  : (TodoColors.isLightTheme(color) &&
-                                          theme.brightness == Brightness.light
-                                      ? Border.all(
-                                          color: TodoColors.accentFor(color)
-                                              .withValues(alpha: 0.45),
-                                          width: 1,
-                                        )
-                                      : null),
+                                  : null,
                             ),
-                            child: AnimatedScale(
-                              scale: isSelected ? 1.0 : 0.0,
-                              duration: const Duration(milliseconds: 160),
-                              curve: Curves.easeOutBack,
-                              child: Icon(
-                                Icons.check,
-                                size: 18,
-                                color: theme.brightness == Brightness.dark
-                                    ? Colors.black
-                                    : (TodoColors.isLightTheme(color)
-                                        ? TodoColors.accentFor(color)
-                                        : Colors.white),
-                              ),
+                            child: _SelectionDot(
+                              visible: isSelected,
+                              color: dotColor,
                             ),
                           ),
                         ),
                       );
                     },
                   )
-                  : ListView.separated(
-                      key: const ValueKey('theme_photos_list'),
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      itemCount: ListThemePhoto.values.length,
+                : ListView.separated(
+                    key: const ValueKey('theme_photos_list'),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: ListThemePhoto.values.length,
                     separatorBuilder: (_, _) => const SizedBox(width: 10),
                     itemBuilder: (context, index) {
                       final photo = ListThemePhoto.values[index];
@@ -224,39 +198,64 @@ class _ThemePickerViewState extends State<ThemePickerView> {
                             height: 44,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: isSelected
-                                  ? Border.all(
-                                      color: theme.colorScheme.primary,
-                                      width: 2.5,
-                                    )
-                                  : null,
                               image: DecorationImage(
                                 image:
                                     AssetImage(TodoColors.photoAssetFor(photo)),
                                 fit: BoxFit.cover,
                               ),
                             ),
-                            child: Center(
-                              child: AnimatedScale(
-                                scale: isSelected ? 1.0 : 0.0,
-                                duration: const Duration(milliseconds: 160),
-                                curve: Curves.easeOutBack,
-                                child: const Icon(
-                                  Icons.check,
-                                  size: 20,
-                                  color: Colors.white,
-                                ),
-                              ),
+                            child: _SelectionDot(
+                              visible: isSelected,
+                              color: Colors.white,
+                              withShadow: true,
                             ),
                           ),
                         ),
                       );
                     },
                   ),
-            ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SelectionDot extends StatelessWidget {
+  const _SelectionDot({
+    required this.visible,
+    required this.color,
+    this.withShadow = false,
+  });
+
+  final bool visible;
+  final Color color;
+  final bool withShadow;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: AnimatedScale(
+        scale: visible ? 1.0 : 0.0,
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOutBack,
+        child: Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color,
+            boxShadow: withShadow
+                ? const [
+                    BoxShadow(
+                      color: Color(0x40000000),
+                      blurRadius: 2,
+                    ),
+                  ]
+                : null,
+          ),
+        ),
+      ),
     );
   }
 }
