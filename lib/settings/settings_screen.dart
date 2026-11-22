@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../account/manage_accounts_screen.dart';
 import '../l10n/app_localizations.dart';
 import '../models/account.dart';
@@ -12,6 +13,10 @@ import '../theme/todo_theme.dart';
 import '../view/persona_avatar.dart';
 import '../view/sync_status_label.dart';
 import 'settings_presenter.dart';
+
+final appPackageInfoProvider = FutureProvider<PackageInfo>((ref) {
+  return PackageInfo.fromPlatform();
+});
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -547,7 +552,13 @@ class SettingsScreen extends ConsumerWidget {
             leading: const Icon(Icons.info_outline),
             title: Text(l10n.appVersion),
             subtitle: Text(
-              '1.0.0',
+              ref.watch(appPackageInfoProvider).when(
+                    data: (info) => info.buildNumber.isNotEmpty
+                        ? '${info.version}+${info.buildNumber}'
+                        : info.version,
+                    loading: () => '...',
+                    error: (_, _) => '1.0.0',
+                  ),
               style: theme.textTheme.bodyMedium,
             ),
           ),
