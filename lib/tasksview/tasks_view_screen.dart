@@ -8,6 +8,7 @@ import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../providers/todo_provider.dart';
 import '../theme/todo_theme.dart';
+import '../view/delayed_task_completion.dart';
 import 'recyclerview/ruled_lines_painter.dart';
 import 'recyclerview/task_list_tile.dart';
 import 'renamelist/list_editor_dialog.dart';
@@ -61,6 +62,20 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   final Set<String> _multiSelectedIds = {};
   final Set<String> _collapsedPlannedBuckets = {};
   final Set<String> _collapsedCompletedListBuckets = {};
+  final _completionController = DelayedTaskCompletionController();
+  late final TasksViewPresenter _presenter;
+
+  @override
+  void initState() {
+    super.initState();
+    _presenter = ref.read(tasksViewPresenterProvider);
+  }
+
+  @override
+  void dispose() {
+    _completionController.flushAndDispose(_presenter.setTaskCompleted);
+    super.dispose();
+  }
 
   void _enterReordering() {
     setState(() {
@@ -575,8 +590,12 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     String? originListName,
   }) {
     final notifier = ref.read(tasksViewPresenterProvider);
+    final displayTask = _completionController.effectiveTask(task);
+    final isCompletedSmartList =
+        state.selectedList.smartType == SmartListType.completed;
     return TaskListTile(
-      task: task,
+      key: ValueKey('task_${task.id}'),
+      task: displayTask,
       listName: originListName,
       showMyDayBadge: showMyDayBadge,
       accentColor: accentColor,
@@ -590,7 +609,14 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         }
       },
       onLongPress: () => _toggleSelection(task.id),
-      onToggleCompleted: () => notifier.toggleTaskCompleted(task.id),
+      onToggleCompleted: () => _completionController.toggle(
+        task,
+        instant: isCompletedSmartList,
+        onCommit: notifier.setTaskCompleted,
+        onStateChanged: () {
+          if (mounted) setState(() {});
+        },
+      ),
       onToggleImportant: () => notifier.toggleTaskImportant(task.id),
     );
   }

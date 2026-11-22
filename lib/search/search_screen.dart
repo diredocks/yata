@@ -6,6 +6,7 @@ import '../models/todo_list.dart';
 import '../providers/todo_provider.dart';
 import '../theme/todo_theme.dart';
 import '../tasksview/recyclerview/task_list_tile.dart';
+import '../view/delayed_task_completion.dart';
 import 'search_presenter.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
@@ -22,6 +23,8 @@ class SearchScreen extends ConsumerStatefulWidget {
 
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _controller = TextEditingController();
+  final _completionController = DelayedTaskCompletionController();
+  late final SearchPresenter _presenter;
   String _query = '';
   bool _showCompleted = true;
 
@@ -29,10 +32,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   void initState() {
     super.initState();
     _showCompleted = true;
+    _presenter = ref.read(searchPresenterProvider);
   }
 
   @override
   void dispose() {
+    _completionController.flushAndDispose(_presenter.setTaskCompleted);
     _controller.dispose();
     super.dispose();
   }
@@ -178,12 +183,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                           )
                           .firstOrNull;
                       return TaskListTile(
-                        task: task,
+                        key: ValueKey('search_task_${task.id}'),
+                        task: _completionController.effectiveTask(task),
                         listName: listName,
                         showMyDayBadge: true,
                         onTap: () => widget.onOpenTask(task),
-                        onToggleCompleted: () =>
-                            notifier.toggleTaskCompleted(task.id),
+                        onToggleCompleted: () => _completionController.toggle(
+                          task,
+                          onCommit: notifier.setTaskCompleted,
+                          onStateChanged: () {
+                            if (mounted) setState(() {});
+                          },
+                        ),
                         onToggleImportant: () =>
                             notifier.toggleTaskImportant(task.id),
                       );

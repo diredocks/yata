@@ -90,6 +90,7 @@ class _StepsSectionState extends State<StepsSection> {
                   onTap: () => widget.onToggleStepCompleted(step.id),
                   accentColor: accent,
                   size: 18,
+                  showConfetti: false,
                 ),
                 const SizedBox(width: 6),
                 Expanded(

@@ -372,27 +372,40 @@ class TasksViewPresenter {
   }
 
   void toggleTaskCompleted(String taskId) {
+    final target = _state.tasks.where((t) => t.id == taskId).firstOrNull;
+    if (target == null) return;
+    setTaskCompleted(taskId, completed: !target.isCompleted);
+  }
+
+  void setTaskCompleted(String taskId, {required bool completed}) {
     TaskItem? nextOccurrence;
     final updated = <TaskItem>[];
     final now = DateTime.now();
+    var changed = false;
 
     for (final task in _state.tasks) {
       if (task.id != taskId) {
         updated.add(task);
         continue;
       }
-      final nowCompleted = !task.isCompleted;
+      if (task.isCompleted == completed) {
+        updated.add(task);
+        continue;
+      }
+      changed = true;
       updated.add(
         task.copyWith(
-          isCompleted: nowCompleted,
-          completedAt: nowCompleted ? now : null,
-          clearCompletedAt: !nowCompleted,
+          isCompleted: completed,
+          completedAt: completed ? now : null,
+          clearCompletedAt: !completed,
         ),
       );
-      if (nowCompleted && task.recurrence != RecurrenceType.none) {
+      if (completed && task.recurrence != RecurrenceType.none) {
         nextOccurrence = _buildNextRecurringTask(task, now);
       }
     }
+
+    if (!changed) return;
 
     if (nextOccurrence != null) {
       if (_state.addNewTasksOnTop) {

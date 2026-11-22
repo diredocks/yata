@@ -45,6 +45,12 @@ class SearchPresenter {
     _ref.read(tasksViewPresenterProvider).toggleTaskCompleted(taskId);
   }
 
+  void setTaskCompleted(String taskId, {required bool completed}) {
+    _ref
+        .read(tasksViewPresenterProvider)
+        .setTaskCompleted(taskId, completed: completed);
+  }
+
   void toggleTaskImportant(String taskId) {
     _ref.read(tasksViewPresenterProvider).toggleTaskImportant(taskId);
   }
