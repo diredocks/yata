@@ -182,6 +182,9 @@ class TasksViewPresenter {
     _store.storage.saveLists(updatedLists);
     _store.storage.saveTasks(updatedTasks);
     _store.storage.saveSelectedListId(newListId);
+    if (_store.storage.loadLastEnteredListId() != null) {
+      _store.setLastEnteredListId(newListId);
+    }
   }
 
   void deleteList(String listId) {

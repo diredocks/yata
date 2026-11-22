@@ -109,6 +109,7 @@ class TodoLocalStorage {
   String get _groupsKey => _k('groups');
   String get _tasksKey => _k('tasks');
   String get _selectedListIdKey => _k('selected_list_id');
+  String get _lastEnteredListIdKey => _k('last_entered_list_id');
   String get _sortOptionKey => _k('sort_option');
   String get _showCompletedKey => _k('show_completed');
   String get _themeModeKey => _k('theme_mode');
@@ -316,6 +317,16 @@ class TodoLocalStorage {
 
   Future<void> saveSelectedListId(String listId) =>
       _prefs.setString(_selectedListIdKey, listId);
+
+  String? loadLastEnteredListId() => _prefs.getString(_lastEnteredListIdKey);
+
+  Future<void> saveLastEnteredListId(String? listId) async {
+    if (listId == null) {
+      await _prefs.remove(_lastEnteredListIdKey);
+    } else {
+      await _prefs.setString(_lastEnteredListIdKey, listId);
+    }
+  }
 
   Future<void> saveSortOption(TaskSortOption option) =>
       _prefs.setString(_sortOptionKey, option.name);

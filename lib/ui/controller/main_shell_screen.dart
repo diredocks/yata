@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../account/account_provider.dart';
 import '../../detailview/detail_view_presenter.dart';
 import '../../detailview/detail_view_screen.dart';
 import '../../homeview/home_view_screen.dart';
@@ -38,6 +39,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       final strings =
           NotificationStrings.fromLocalizations(AppLocalizations.of(context));
       unawaited(notificationService.syncWithState(state, strings: strings));
+      _restoreLastEnteredListIfNeeded();
     });
   }
 
@@ -144,17 +146,52 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     );
   }
 
-  void _handleSelectList(TodoList list, bool isWide) {
+  void _restoreLastEnteredListIfNeeded() {
+    if (!mounted) return;
+    final isWide = MediaQuery.sizeOf(context).width >= 600;
+    if (isWide) return;
+    final lastListId =
+        ref.read(todoLocalStorageProvider).loadLastEnteredListId();
+    if (lastListId == null) return;
+    final lists = ref.read(todoProvider).lists;
+    TodoList? targetList;
+    for (final list in lists) {
+      if (list.id == lastListId) {
+        targetList = list;
+        break;
+      }
+    }
+    if (targetList == null) {
+      ref.read(todoProvider.notifier).setLastEnteredListId(null);
+      return;
+    }
+    _pushTasksView(targetList);
+  }
+
+  void _pushTasksView(TodoList list) {
     ref.read(todoProvider.notifier).selectList(list.id);
-    if (!isWide) {
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (routeCtx) => TasksViewScreen(
-            onBackPressed: () => Navigator.of(routeCtx).pop(),
-            onOpenTask: (task) => _handleOpenTask(task, false),
+    ref.read(todoProvider.notifier).setLastEnteredListId(list.id);
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute<void>(
+            builder: (routeCtx) => TasksViewScreen(
+              onBackPressed: () => Navigator.of(routeCtx).pop(),
+              onOpenTask: (task) => _handleOpenTask(task, false),
+            ),
           ),
-        ),
-      );
+        )
+        .then((_) {
+      if (mounted) {
+        ref.read(todoProvider.notifier).setLastEnteredListId(null);
+      }
+    });
+  }
+
+  void _handleSelectList(TodoList list, bool isWide) {
+    if (!isWide) {
+      _pushTasksView(list);
+    } else {
+      ref.read(todoProvider.notifier).selectList(list.id);
     }
   }
 
@@ -169,6 +206,14 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    ref.listen<String?>(
+      accountProvider.select((s) => s.activeAccountId),
+      (previous, next) {
+        if (previous != null && next != null && previous != next) {
+          ref.read(todoProvider.notifier).setLastEnteredListId(null);
+        }
+      },
+    );
     ref.listen<TodoState>(todoProvider, (_, next) {
       unawaited(
         ref.read(notificationServiceProvider).syncWithState(

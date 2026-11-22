@@ -623,6 +623,10 @@ class TodoNotifier extends Notifier<TodoState> {
     storage.saveSelectedListId(listId);
   }
 
+  void setLastEnteredListId(String? listId) {
+    storage.saveLastEnteredListId(listId);
+  }
+
   void selectTask(String? taskId) {
     state = state.copyWith(
       selectedTaskId: taskId,
