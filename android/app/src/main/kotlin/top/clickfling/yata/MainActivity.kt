@@ -1,4 +1,4 @@
-package com.example.yata
+package top.clickfling.yata
 
 import android.content.Intent
 import android.net.Uri
@@ -11,7 +11,7 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "com.example.yata/browser",
+            "top.clickfling.yata/browser",
         ).setMethodCallHandler { call, result ->
             if (call.method == "openUrl") {
                 val url = call.argument<String>("url")

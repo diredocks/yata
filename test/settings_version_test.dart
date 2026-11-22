@@ -19,7 +19,7 @@ void main() {
 
     PackageInfo.setMockInitialValues(
       appName: 'Yata',
-      packageName: 'com.example.yata',
+      packageName: 'top.clickfling.yata',
       version: '2.3.4',
       buildNumber: '42',
       buildSignature: '',
