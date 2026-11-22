@@ -114,6 +114,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           )
           .whenComplete(() => _isSnappingHeader = false);
     });
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   void _enterReordering() {

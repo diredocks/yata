@@ -217,6 +217,19 @@ void main() {
       (appBarSliver as dynamic).geometry.paintExtent,
       closeTo(kToolbarHeight, 1.0),
     );
+
+    // Drag down partially and pause before lifting finger (no offset delta on
+    // ScrollEndNotification) -> must still schedule frame and snap cleanly.
+    final center = tester.getCenter(scrollViewFinder);
+    final gesture = await tester.startGesture(center);
+    await gesture.moveBy(const Offset(0, 30));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(
+      (appBarSliver as dynamic).geometry.paintExtent,
+      closeTo(kToolbarHeight, 1.0),
+    );
   });
 
   testWidgets(
