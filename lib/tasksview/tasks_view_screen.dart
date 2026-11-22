@@ -9,6 +9,7 @@ import '../models/todo_list.dart';
 import '../providers/todo_provider.dart';
 import '../theme/todo_theme.dart';
 import '../view/delayed_task_completion.dart';
+import 'recyclerview/animated_task_sliver_list.dart';
 import 'recyclerview/ruled_lines_painter.dart';
 import 'recyclerview/swipeable_task_card.dart';
 import 'recyclerview/task_list_tile.dart';
@@ -1171,12 +1172,11 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         currentList.smartType != SmartListType.tasks;
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      sliver: SliverReorderableList(
-        itemCount: activeTasks.length,
-        onReorderItem: (oldIndex, newIndex) =>
+      sliver: AnimatedReorderableTaskSliver(
+        tasks: activeTasks,
+        onReorder: (oldIndex, newIndex) =>
             notifier.reorderActiveTasks(activeTasks, oldIndex, newIndex),
-        itemBuilder: (context, index) {
-          final task = activeTasks[index];
+        itemBuilder: (context, index, task, onAnimatedStep) {
           return Material(
             key: ValueKey(task.id),
             color: Colors.transparent,
@@ -1196,22 +1196,14 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 children: [
                   IconButton(
                     onPressed: index > 0
-                        ? () => notifier.reorderActiveTasks(
-                              activeTasks,
-                              index,
-                              index - 1,
-                            )
+                        ? () => onAnimatedStep(index, index - 1)
                         : null,
                     icon: const Icon(Icons.keyboard_arrow_up),
                     visualDensity: VisualDensity.compact,
                   ),
                   IconButton(
                     onPressed: index < activeTasks.length - 1
-                        ? () => notifier.reorderActiveTasks(
-                              activeTasks,
-                              index,
-                              index + 1,
-                            )
+                        ? () => onAnimatedStep(index, index + 1)
                         : null,
                     icon: const Icon(Icons.keyboard_arrow_down),
                     visualDensity: VisualDensity.compact,
@@ -1257,23 +1249,19 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         if (!_collapsedPlannedBuckets.contains(group.bucket.name))
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final task = group.tasks[index];
-                  return _buildTaskTile(
-                    task: task,
-                    state: state,
-                    accentColor: accentColor,
-                    showMyDayBadge: true,
-                    originListName: resolveOriginListName(
-                      l10n,
-                      state.lists,
-                      task.listId,
-                    ),
-                  );
-                },
-                childCount: group.tasks.length,
+            sliver: AnimatedTaskSliverList(
+              key: ValueKey('planned_${group.bucket.name}'),
+              tasks: group.tasks,
+              itemBuilder: (context, task) => _buildTaskTile(
+                task: task,
+                state: state,
+                accentColor: accentColor,
+                showMyDayBadge: true,
+                originListName: resolveOriginListName(
+                  l10n,
+                  state.lists,
+                  task.listId,
+                ),
               ),
             ),
           ),
@@ -1306,15 +1294,14 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         if (!_collapsedCompletedListBuckets.contains(group.listId))
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) => _buildTaskTile(
-                  task: group.tasks[index],
-                  state: state,
-                  accentColor: accentColor,
-                  showMyDayBadge: true,
-                ),
-                childCount: group.tasks.length,
+            sliver: AnimatedTaskSliverList(
+              key: ValueKey('bucket_${currentList.id}_${group.listId}'),
+              tasks: group.tasks,
+              itemBuilder: (context, task) => _buildTaskTile(
+                task: task,
+                state: state,
+                accentColor: accentColor,
+                showMyDayBadge: true,
               ),
             ),
           ),
@@ -1334,21 +1321,17 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         currentList.smartType != SmartListType.tasks;
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            final task = activeTasks[index];
-            return _buildTaskTile(
-              task: task,
-              state: state,
-              accentColor: accentColor,
-              showMyDayBadge: !isMyDay,
-              originListName: showOriginList
-                  ? resolveOriginListName(l10n, state.lists, task.listId)
-                  : null,
-            );
-          },
-          childCount: activeTasks.length,
+      sliver: AnimatedTaskSliverList(
+        key: ValueKey('flat_${currentList.id}'),
+        tasks: activeTasks,
+        itemBuilder: (context, task) => _buildTaskTile(
+          task: task,
+          state: state,
+          accentColor: accentColor,
+          showMyDayBadge: !isMyDay,
+          originListName: showOriginList
+              ? resolveOriginListName(l10n, state.lists, task.listId)
+              : null,
         ),
       ),
     );
@@ -1376,24 +1359,22 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       if (_completedExpanded)
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(8, 2, 8, 16),
-          sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final task = completedTasks[index];
-                final showOriginList = currentList.isSmartList &&
-                    currentList.smartType != SmartListType.tasks;
-                return _buildTaskTile(
-                  task: task,
-                  state: state,
-                  accentColor: accentColor,
-                  showMyDayBadge: currentList.smartType != SmartListType.myDay,
-                  originListName: showOriginList
-                      ? resolveOriginListName(l10n, state.lists, task.listId)
-                      : null,
-                );
-              },
-              childCount: completedTasks.length,
-            ),
+          sliver: AnimatedTaskSliverList(
+            key: ValueKey('completed_${currentList.id}'),
+            tasks: completedTasks,
+            itemBuilder: (context, task) {
+              final showOriginList = currentList.isSmartList &&
+                  currentList.smartType != SmartListType.tasks;
+              return _buildTaskTile(
+                task: task,
+                state: state,
+                accentColor: accentColor,
+                showMyDayBadge: currentList.smartType != SmartListType.myDay,
+                originListName: showOriginList
+                    ? resolveOriginListName(l10n, state.lists, task.listId)
+                    : null,
+              );
+            },
           ),
         ),
     ];
