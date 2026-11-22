@@ -1283,6 +1283,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     required Color accentColor,
   }) {
     final isMyDay = currentList.smartType == SmartListType.myDay;
+    final showOriginList = currentList.isSmartList &&
+        currentList.smartType != SmartListType.tasks;
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       sliver: SliverList(
@@ -1294,7 +1296,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
               state: state,
               accentColor: accentColor,
               showMyDayBadge: !isMyDay,
-              originListName: currentList.isSmartList
+              originListName: showOriginList
                   ? resolveOriginListName(l10n, state.lists, task.listId)
                   : null,
             );
@@ -1329,12 +1331,20 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           padding: const EdgeInsets.fromLTRB(8, 2, 8, 16),
           sliver: SliverList(
             delegate: SliverChildBuilderDelegate(
-              (context, index) => _buildTaskTile(
-                task: completedTasks[index],
-                state: state,
-                accentColor: accentColor,
-                showMyDayBadge: true,
-              ),
+              (context, index) {
+                final task = completedTasks[index];
+                final showOriginList = currentList.isSmartList &&
+                    currentList.smartType != SmartListType.tasks;
+                return _buildTaskTile(
+                  task: task,
+                  state: state,
+                  accentColor: accentColor,
+                  showMyDayBadge: currentList.smartType != SmartListType.myDay,
+                  originListName: showOriginList
+                      ? resolveOriginListName(l10n, state.lists, task.listId)
+                      : null,
+                );
+              },
               childCount: completedTasks.length,
             ),
           ),

@@ -55,10 +55,13 @@ class TaskListTile extends StatelessWidget {
     final starActiveColor = accentColor ??
         (isDark ? TodoColors.attentionDark : TodoColors.attentionLight);
 
-    final metadataWidgets = <Widget>[];
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final textMetaItems = <Widget>[];
+    final trailingIconItems = <Widget>[];
 
     if (showMyDayBadge && task.isInMyDay) {
-      metadataWidgets.add(
+      textMetaItems.add(
         _MetaItem(
           icon: Icons.wb_sunny_outlined,
           label: l10n.myDay,
@@ -68,60 +71,100 @@ class TaskListTile extends StatelessWidget {
     }
 
     if (listName != null && listName!.isNotEmpty) {
-      metadataWidgets.add(
+      textMetaItems.add(
         _MetaText(label: listName!, color: secondaryColor),
       );
     }
 
     if (task.steps.isNotEmpty) {
-      metadataWidgets.add(
-        _MetaText(
-          label: l10n.stepsProgress(
-            task.completedStepsCount,
-            task.steps.length,
-          ),
-          color: secondaryColor,
-        ),
+      final allStepsDone = task.completedStepsCount == task.steps.length;
+      final stepsLabel = l10n.stepsProgress(
+        task.completedStepsCount,
+        task.steps.length,
+      );
+      textMetaItems.add(
+        allStepsDone
+            ? _MetaItem(
+                icon: Icons.check,
+                label: stepsLabel,
+                color: secondaryColor,
+              )
+            : _MetaText(
+                label: stepsLabel,
+                color: secondaryColor,
+              ),
       );
     }
 
     if (task.dueDate != null) {
-      final dueColor =
-          task.isOverdue ? TodoColors.overdueRed : secondaryColor;
-      metadataWidgets.add(
-        _MetaItem(
-          icon: Icons.calendar_today_outlined,
-          label: formatRelativeDate(context, task.dueDate!),
-          color: dueColor,
+      final dueDay = DateTime(
+        task.dueDate!.year,
+        task.dueDate!.month,
+        task.dueDate!.day,
+      );
+      final Color dueColor;
+      if (task.isCompleted) {
+        dueColor = secondaryColor;
+      } else if (dueDay.isBefore(today)) {
+        dueColor = TodoColors.overdueRed;
+      } else if (dueDay == today) {
+        dueColor = starActiveColor;
+      } else {
+        dueColor = secondaryColor;
+      }
+
+      textMetaItems.add(
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _MetaItem(
+              icon: Icons.calendar_today_outlined,
+              label: formatRelativeDate(context, task.dueDate!),
+              color: dueColor,
+            ),
+            if (task.recurrence != RecurrenceType.none) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.repeat, size: 13, color: secondaryColor),
+            ],
+          ],
         ),
       );
     }
 
-    if (task.recurrence != RecurrenceType.none) {
-      metadataWidgets.add(
-        Icon(Icons.repeat, size: 13, color: secondaryColor),
+    if (task.reminderAt != null && task.reminderAt!.isAfter(now)) {
+      final reminderDay = DateTime(
+        task.reminderAt!.year,
+        task.reminderAt!.month,
+        task.reminderAt!.day,
       );
-    }
-
-    if (task.reminderAt != null) {
-      metadataWidgets.add(
-        _MetaItem(
-          icon: Icons.notifications_none,
-          label: DateFormat.jm().format(task.reminderAt!),
-          color: secondaryColor,
-        ),
-      );
+      final reminderColor = (!task.isCompleted && reminderDay == today)
+          ? starActiveColor
+          : secondaryColor;
+      if (task.dueDate == null) {
+        textMetaItems.add(
+          _MetaItem(
+            icon: Icons.notifications_none,
+            label: DateFormat.jm().format(task.reminderAt!),
+            color: reminderColor,
+          ),
+        );
+      } else {
+        trailingIconItems.add(
+          Icon(Icons.notifications_none, size: 13, color: reminderColor),
+        );
+      }
     }
 
     if (task.note.trim().isNotEmpty) {
-      metadataWidgets.add(
+      trailingIconItems.add(
         Icon(Icons.sticky_note_2_outlined, size: 13, color: secondaryColor),
       );
     }
 
-    // Insert TaskMetadataDivider ('•') between metadata items matching task_metadata.xml
+    // Insert TaskMetadataDivider ('•') between text items, and a single
+    // lastDivider ('•') before trailing icon-only items matching MetadataContainer.
     final separatedMeta = <Widget>[];
-    for (var i = 0; i < metadataWidgets.length; i++) {
+    for (var i = 0; i < textMetaItems.length; i++) {
       if (i > 0) {
         separatedMeta.add(
           Text(
@@ -130,7 +173,18 @@ class TaskListTile extends StatelessWidget {
           ),
         );
       }
-      separatedMeta.add(metadataWidgets[i]);
+      separatedMeta.add(textMetaItems[i]);
+    }
+    if (trailingIconItems.isNotEmpty) {
+      if (textMetaItems.isNotEmpty) {
+        separatedMeta.add(
+          Text(
+            '•',
+            style: TextStyle(fontSize: 11, color: secondaryColor),
+          ),
+        );
+      }
+      separatedMeta.addAll(trailingIconItems);
     }
 
     return Padding(
