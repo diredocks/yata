@@ -1,13 +1,51 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
+import '../accounts/manage_accounts_screen.dart';
 import '../l10n/app_localizations.dart';
 import '../models/todo_list.dart';
+import '../providers/account_provider.dart';
 import '../providers/todo_provider.dart';
 import '../theme/todo_theme.dart';
+import '../view/persona_avatar.dart';
 import 'settings_presenter.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
+
+  Future<void> _confirmSignOut(
+    BuildContext context,
+    WidgetRef ref,
+    String accountId,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.signOut),
+        content: Text(l10n.signOutWarning),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            child: Text(l10n.yesSignOut),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    await ref.read(accountProvider.notifier).signOut(accountId);
+    if (!context.mounted) return;
+    if (ref.read(accountProvider).accounts.isEmpty) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+  }
 
   String _themeLabel(AppLocalizations l10n, ThemeMode mode) {
     return switch (mode) {
@@ -29,16 +67,124 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(todoProvider);
+    final activeAccount = ref.watch(
+      accountProvider.select((s) => s.activeAccount),
+    );
     final notifier = ref.read(settingsPresenterProvider);
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.settings),
+        backgroundColor: isDark
+            ? TodoColors.primaryBackgroundDark
+            : TodoColors.primaryBackgroundLight,
+        surfaceTintColor: Colors.transparent,
+        elevation: 4,
+        scrolledUnderElevation: 4,
+        shadowColor: Colors.black.withValues(alpha: 0.25),
       ),
       body: ListView(
         children: [
+          if (activeAccount != null) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: PersonaAvatar(
+                    name: activeAccount.displayName,
+                    size: 64,
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 24),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: Text(
+                          activeAccount.displayName,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(right: 16),
+                        child: Text(
+                          activeAccount.email,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: isDark
+                                ? TodoColors.secondaryTextDark
+                                : TodoColors.secondaryTextLight,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Padding(
+                        padding: EdgeInsets.only(right: 16),
+                        child: Divider(height: 1),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const ManageAccountsScreen(),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          constraints: const BoxConstraints(minHeight: 48),
+                          alignment: Alignment.centerLeft,
+                          padding: const EdgeInsets.only(right: 16),
+                          child: Text(
+                            l10n.manageAccounts,
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.only(right: 16),
+                        child: Divider(height: 1),
+                      ),
+                      InkWell(
+                        onTap: () => _confirmSignOut(
+                          context,
+                          ref,
+                          activeAccount.id,
+                        ),
+                        child: Container(
+                          width: double.infinity,
+                          constraints: const BoxConstraints(minHeight: 48),
+                          alignment: Alignment.centerLeft,
+                          padding: const EdgeInsets.only(right: 16),
+                          child: Text(
+                            l10n.signOut,
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: theme.colorScheme.error,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 1),
+          ],
           _SectionHeader(title: l10n.general),
           SwitchListTile(
             secondary: const Icon(Icons.vertical_align_top),

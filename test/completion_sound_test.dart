@@ -24,7 +24,11 @@ void main() {
   testWidgets(
       'Play completion sound setting defaults to true, persists, and triggers on task completion',
       (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'yata.accounts':
+          '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.active_account_id': 'test',
+    });
     final prefs = await SharedPreferences.getInstance();
 
     tester.view.physicalSize = const Size(1024, 800);
@@ -67,17 +71,19 @@ void main() {
     expect(fakeSound.playAttempts, 1);
 
     // Toggle setting off in SettingsScreen -> persists
-    await tester.tap(find.text('Local Account'));
+    await tester.tap(find.text('Local User'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
     expect(find.text('Play completion sound'), findsOneWidget);
     await tester.tap(find.text('Play completion sound'));
     await tester.pumpAndSettle();
 
     expect(container.read(todoProvider).playCompletionSound, isFalse);
-    expect(prefs.getBool('yata.play_completion_sound'), isFalse);
+    expect(prefs.getBool('yata.acct.test.play_completion_sound'), isFalse);
 
     // Re-enable via presenter and confirm persistence
     container.read(settingsPresenterProvider).setPlayCompletionSound(true);
-    expect(prefs.getBool('yata.play_completion_sound'), isTrue);
+    expect(prefs.getBool('yata.acct.test.play_completion_sound'), isTrue);
   });
 }

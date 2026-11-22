@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'l10n/app_localizations.dart';
+import 'onboarding/landing_screen.dart';
+import 'providers/account_provider.dart';
 import 'providers/todo_provider.dart';
 import 'ui/controller/main_shell_screen.dart';
 import 'theme/todo_theme.dart';
@@ -25,7 +27,12 @@ class YataApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final themeMode = ref.watch(todoProvider.select((s) => s.themeMode));
+    final activeAccount = ref.watch(
+      accountProvider.select((s) => s.activeAccount),
+    );
+    final themeMode = activeAccount == null
+        ? ThemeMode.system
+        : ref.watch(todoProvider.select((s) => s.themeMode));
 
     return MaterialApp(
       onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
@@ -35,7 +42,9 @@ class YataApp extends ConsumerWidget {
       theme: TodoTheme.light(),
       darkTheme: TodoTheme.dark(),
       themeMode: themeMode,
-      home: const MainShellScreen(),
+      home: activeAccount == null
+          ? const LandingScreen()
+          : const MainShellScreen(),
     );
   }
 }

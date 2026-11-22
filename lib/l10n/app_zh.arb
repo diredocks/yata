@@ -125,5 +125,18 @@
   "clearAll": "取消全选",
   "taskDeleted": "已删除任务",
   "undo": "撤消",
-  "playCompletionSound": "播放完成提示音"
+  "playCompletionSound": "播放完成提示音",
+  "welcomeToApp": "欢迎使用 {app}",
+  "landingSubtitle": "你的任务将安全地保存在本地存储中。",
+  "loginInputHint": "电子邮件、电话号码或用户名",
+  "signIn": "登录",
+  "createNewAccount": "新建帐户",
+  "addAccount": "添加帐户",
+  "manageAccounts": "管理帐户",
+  "signOut": "注销",
+  "yesSignOut": "是的，注销",
+  "signOutWarning": "注销后，此设备不会记住你的帐户，直到你再次登录为止。",
+  "localAccount": "本地帐户",
+  "accountSection": "帐户",
+  "activeAccount": "当前使用"
 }

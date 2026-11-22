@@ -13,7 +13,11 @@ void main() {
   testWidgets(
       'Persists newly created lists and tasks across app restarts without mock data',
       (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'yata.accounts':
+          '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.active_account_id': 'test',
+    });
     final prefs = await SharedPreferences.getInstance();
 
     tester.view.physicalSize = const Size(400, 800);
@@ -79,7 +83,11 @@ void main() {
   testWidgets(
       'Wide layout displays sidebar, detail panel, and different menus per list type',
       (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'yata.accounts':
+          '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.active_account_id': 'test',
+    });
     final prefs = await SharedPreferences.getInstance();
 
     tester.view.physicalSize = const Size(1024, 800);
@@ -154,7 +162,11 @@ void main() {
   testWidgets(
       'Supports task reordering, multi-select actions, group management, and settings persistence',
       (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'yata.accounts':
+          '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.active_account_id': 'test',
+    });
     final prefs = await SharedPreferences.getInstance();
 
     tester.view.physicalSize = const Size(1024, 800);
@@ -225,10 +237,12 @@ void main() {
     await tester.tapAt(const Offset(10, 10));
     await tester.pumpAndSettle();
 
-    // Open Settings and toggle Completed smart list + persist
+    // Open Settings via Account Switcher and toggle Completed smart list + persist
     await tester.tap(find.byIcon(Icons.close));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Local Account'));
+    await tester.tap(find.text('Local User'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Settings'));
     await tester.pumpAndSettle();
 
     expect(find.text('Add new tasks on top'), findsOneWidget);
@@ -245,7 +259,11 @@ void main() {
   testWidgets(
       'Supports per-list sort banner, step promotion, and Planned buckets',
       (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'yata.accounts':
+          '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.active_account_id': 'test',
+    });
     final prefs = await SharedPreferences.getInstance();
 
     tester.view.physicalSize = const Size(1024, 800);
@@ -332,7 +350,11 @@ void main() {
   testWidgets(
       'Mobile navigation uses Navigator route with predictive back support',
       (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'yata.accounts':
+          '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.active_account_id': 'test',
+    });
     final prefs = await SharedPreferences.getInstance();
 
     tester.view.physicalSize = const Size(400, 800);
@@ -404,7 +426,11 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'yata.accounts':
+          '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.active_account_id': 'test',
+    });
     final prefs = await SharedPreferences.getInstance();
 
     await tester.pumpWidget(

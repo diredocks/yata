@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
+import 'account_local_storage.dart';
 
 class TodoSnapshot {
   const TodoSnapshot({
@@ -49,29 +50,38 @@ class TodoSnapshot {
 }
 
 class TodoLocalStorage {
-  TodoLocalStorage(this._prefs);
+  TodoLocalStorage(this._prefs, {this.accountId});
 
   final SharedPreferences _prefs;
+  final String? accountId;
 
-  static const _listsKey = 'yata.lists';
-  static const _groupsKey = 'yata.groups';
-  static const _tasksKey = 'yata.tasks';
-  static const _selectedListIdKey = 'yata.selected_list_id';
-  static const _sortOptionKey = 'yata.sort_option';
-  static const _showCompletedKey = 'yata.show_completed';
-  static const _themeModeKey = 'yata.theme_mode';
-  static const _addNewTasksOnTopKey = 'yata.add_new_tasks_on_top';
-  static const _moveStarredToTopKey = 'yata.move_starred_to_top';
-  static const _playCompletionSoundKey = 'yata.play_completion_sound';
-  static const _confirmBeforeDeletingKey = 'yata.confirm_before_deleting';
-  static const _showDueTodayInMyDayKey = 'yata.show_due_today_in_my_day';
-  static const _startOfWeekKey = 'yata.start_of_week';
-  static const _showImportantKey = 'yata.show_smart_important';
-  static const _showPlannedKey = 'yata.show_smart_planned';
-  static const _showAllKey = 'yata.show_smart_all';
-  static const _showCompletedListKey = 'yata.show_smart_completed';
-  static const _autoHideSmartListsKey = 'yata.autohide_smart_lists';
-  static const _lastMyDayResetKey = 'yata.last_my_day_reset';
+  String _k(String suffix) {
+    final id = accountId;
+    if (id == null || id.isEmpty) {
+      return 'yata.$suffix';
+    }
+    return '${AccountLocalStorage.accountKeyPrefix(id)}$suffix';
+  }
+
+  String get _listsKey => _k('lists');
+  String get _groupsKey => _k('groups');
+  String get _tasksKey => _k('tasks');
+  String get _selectedListIdKey => _k('selected_list_id');
+  String get _sortOptionKey => _k('sort_option');
+  String get _showCompletedKey => _k('show_completed');
+  String get _themeModeKey => _k('theme_mode');
+  String get _addNewTasksOnTopKey => _k('add_new_tasks_on_top');
+  String get _moveStarredToTopKey => _k('move_starred_to_top');
+  String get _playCompletionSoundKey => _k('play_completion_sound');
+  String get _confirmBeforeDeletingKey => _k('confirm_before_deleting');
+  String get _showDueTodayInMyDayKey => _k('show_due_today_in_my_day');
+  String get _startOfWeekKey => _k('start_of_week');
+  String get _showImportantKey => _k('show_smart_important');
+  String get _showPlannedKey => _k('show_smart_planned');
+  String get _showAllKey => _k('show_smart_all');
+  String get _showCompletedListKey => _k('show_smart_completed');
+  String get _autoHideSmartListsKey => _k('autohide_smart_lists');
+  String get _lastMyDayResetKey => _k('last_my_day_reset');
 
   static List<TodoList> defaultSmartLists() {
     return const [

@@ -1,16 +1,18 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../data/local/todo_local_storage.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
+import 'account_provider.dart';
 
-final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
-  throw UnimplementedError('sharedPreferencesProvider must be overridden');
-});
+export 'account_provider.dart' show sharedPreferencesProvider;
 
 final todoLocalStorageProvider = Provider<TodoLocalStorage>((ref) {
-  return TodoLocalStorage(ref.watch(sharedPreferencesProvider));
+  final prefs = ref.watch(sharedPreferencesProvider);
+  final activeAccountId = ref.watch(
+    accountProvider.select((s) => s.activeAccountId),
+  );
+  return TodoLocalStorage(prefs, accountId: activeAccountId);
 });
 
 @immutable
@@ -251,6 +253,7 @@ class TodoNotifier extends Notifier<TodoState> {
 
   @override
   TodoState build() {
+    final storage = ref.watch(todoLocalStorageProvider);
     final snapshot = storage.load();
     final now = DateTime.now();
     final todayKey = _todayKey(now);

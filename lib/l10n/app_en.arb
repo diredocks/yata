@@ -191,5 +191,23 @@
   "clearAll": "Clear all",
   "taskDeleted": "Task deleted",
   "undo": "Undo",
-  "playCompletionSound": "Play completion sound"
+  "playCompletionSound": "Play completion sound",
+  "welcomeToApp": "Welcome to {app}",
+  "@welcomeToApp": {
+    "placeholders": {
+      "app": {"type": "String"}
+    }
+  },
+  "landingSubtitle": "Your tasks, stored locally on this device.",
+  "loginInputHint": "Email, phone, or username",
+  "signIn": "Sign in",
+  "createNewAccount": "Create a new account",
+  "addAccount": "Add account",
+  "manageAccounts": "Manage accounts",
+  "signOut": "Sign out",
+  "yesSignOut": "Yes, sign out",
+  "signOutWarning": "When you sign out we'll forget your account on this device until you sign in again.",
+  "localAccount": "Local account",
+  "accountSection": "Account",
+  "activeAccount": "Active"
 }

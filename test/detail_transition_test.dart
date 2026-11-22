@@ -10,7 +10,11 @@ void main() {
   testWidgets(
       'Opening and closing task detail on mobile has no RenderFlex overflow during Hero flight',
       (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'yata.accounts':
+          '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.active_account_id': 'test',
+    });
     final prefs = await SharedPreferences.getInstance();
 
     tester.view.physicalSize = const Size(400, 800);
