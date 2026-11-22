@@ -182,5 +182,21 @@
   "quickAddNotificationBody": "点击以添加任务",
   "notificationPermissionDenied": "通知权限未开启，请在系统设置中允许通知以接收提醒。",
   "useDynamicColor": "使用系统动态取色",
-  "useDynamicColorSummary": "在未指定清单颜色的页面应用系统默认配色"
+  "useDynamicColorSummary": "在未指定清单颜色的页面应用系统默认配色",
+  "msaBrowserSignInTitle": "使用 Microsoft 帐户登录",
+  "msaBrowserSignInInstructions": "请在浏览器中完成登录，然后粘贴跳转后的地址（包含 code=...）或授权代码：",
+  "msaPasteRedirectHint": "粘贴回调地址或授权代码",
+  "msaOpenBrowserAgain": "打开浏览器",
+  "msaInvalidCodeError": "未找到有效的授权代码。",
+  "groupBy": "分组依据",
+  "groupByUngroup": "不分组",
+  "groupByDueDate": "截止日期",
+  "groupByList": "列表",
+  "filterDueDate": "筛选",
+  "filterAllPlanned": "全部已计划",
+  "filterOverdue": "已逾期",
+  "filterToday": "今天",
+  "filterTomorrow": "明天",
+  "filterThisWeek": "本周",
+  "filterLater": "稍后"
 }

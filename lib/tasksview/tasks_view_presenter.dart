@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../data/todo_provider.dart';
+import '../homeview/home_view_ordering.dart';
+import '../sync/todo_wire_codecs.dart';
 
 /// Presenter for `tasksview/TasksViewFragment`, matching `tasksview/TasksViewPresenter`.
 class TasksViewPresenter {
@@ -18,6 +20,18 @@ class TasksViewPresenter {
 
   void setSortOption(TaskSortOption option) {
     setListSortOption(_state.selectedListId, option);
+  }
+
+  void setPlannedDueDateFilter(PlannedDueDateFilter filter) {
+    if (_state.plannedDueDateFilter == filter) return;
+    _store.commit(_state.copyWith(plannedDueDateFilter: filter));
+    _store.storage.savePlannedDueDateFilter(filter);
+  }
+
+  void setPlannedGroupOption(PlannedGroupOption option) {
+    if (_state.plannedGroupOption == option) return;
+    _store.commit(_state.copyWith(plannedGroupOption: option));
+    _store.storage.savePlannedGroupOption(option);
   }
 
   void _updateListById(
@@ -141,35 +155,58 @@ class TasksViewPresenter {
     final source = _state.lists.where((l) => l.id == listId).firstOrNull;
     if (source == null || source.isSmartList) return;
 
+    final now = DateTime.now();
     final newListId = _store.nextId('list');
+    final siblingOrders = source.groupId != null
+        ? _state.lists
+            .where((l) => !l.isSmartList && l.groupId == source.groupId)
+            .map((l) => l.orderDateTime)
+        : [
+            ..._state.lists
+                .where((l) => !l.isSmartList && l.groupId == null)
+                .map((l) => l.orderDateTime),
+            ..._state.groups.map((g) => g.orderDateTime),
+          ];
     final duplicatedList = TodoList(
       id: newListId,
       title: _deduplicateListTitle(source.title),
       groupId: source.groupId,
       emoji: source.emoji,
+      sortAscending: false,
+      orderDateTime: computeNewOrderDateTime(
+        existingOrders: siblingOrders,
+        addToTop: false,
+        fallbackNow: now,
+      ),
     );
+    var copyIndex = 0;
+    final baseTaskOrder = now.toUtc();
     final copiedTasks = [
-      for (final task in _state.tasks.where(
-        (t) =>
-            t.listId == listId && (source.showCompleted || !t.isCompleted),
-      ))
+      for (final task in _state.tasks.where((t) => t.listId == listId))
         task.copyWith(
           id: _store.nextId('task'),
           listId: newListId,
-          createdAt: DateTime.now(),
+          createdAt: now,
+          clearRemoteId: true,
+          clearRemoteParentFolderId: true,
+          clearChangeKey: true,
+          orderDateTime: baseTaskOrder.subtract(Duration(seconds: copyIndex++)),
+          clearCommittedOrder: true,
           isCompleted: keepCompleted ? task.isCompleted : false,
           clearCompletedAt: !keepCompleted,
           steps: [
             for (final step in task.steps)
               step.copyWith(
                 id: _store.nextId('step'),
+                clearRemoteId: true,
                 isCompleted: keepCompleted ? step.isCompleted : false,
               ),
           ],
         ),
     ];
 
-    final updatedLists = [..._state.lists, duplicatedList];
+    final updatedLists =
+        sortListsPreservingSmartLists([..._state.lists, duplicatedList]);
     final updatedTasks = [...copiedTasks, ..._state.tasks];
     _store.commit(
       _state.copyWith(
@@ -236,6 +273,22 @@ class TasksViewPresenter {
         (currentList.smartType == SmartListType.planned ? now : null);
     final committedToMyDay =
         isInMyDay || currentList.smartType == SmartListType.myDay;
+    final orderDateTime = computeNewOrderDateTime(
+      existingOrders: _state.tasks
+          .where((t) => t.listId == resolvedListId)
+          .map((t) => t.orderDateTime),
+      addToTop: _state.addNewTasksOnTop,
+      fallbackNow: now,
+    );
+    final committedOrder = committedToMyDay
+        ? computeNewOrderDateTime(
+            existingOrders: _state.tasks
+                .where((t) => t.isInMyDay)
+                .map((t) => t.committedOrder),
+            addToTop: _state.addNewTasksOnTop,
+            fallbackNow: now,
+          )
+        : null;
     final newTask = TodoNotifier.syncMyDayFlag(
       TaskItem(
         id: _store.nextId('task'),
@@ -244,6 +297,8 @@ class TasksViewPresenter {
         createdAt: now,
         isInMyDay: committedToMyDay,
         myDayDate: committedToMyDay ? now : null,
+        orderDateTime: orderDateTime,
+        committedOrder: committedOrder,
         isImportant:
             isImportant || currentList.smartType == SmartListType.important,
         dueDate: effectiveDueDate,
@@ -287,6 +342,23 @@ class TasksViewPresenter {
     final moved = reorderedVisible.removeAt(oldIndex);
     reorderedVisible.insert(newIndex, moved);
 
+    final isMyDayView =
+        _state.selectedList.smartType == SmartListType.myDay;
+    final currentOrders = [
+      for (final t in reorderedVisible)
+        isMyDayView ? t.committedOrder : t.orderDateTime,
+    ];
+    final newPositions = computeReorderedOrderDateTimes(
+      currentOrders,
+      newIndex,
+    );
+    for (final entry in newPositions.entries) {
+      final current = reorderedVisible[entry.key];
+      reorderedVisible[entry.key] = isMyDayView
+          ? current.copyWith(committedOrder: entry.value)
+          : current.copyWith(orderDateTime: entry.value);
+    }
+
     final visibleIds = {for (final t in visibleActiveTasks) t.id};
     var visibleCursor = 0;
     final updated = [
@@ -311,8 +383,8 @@ class TasksViewPresenter {
         sortOption: TaskSortOption.defaultOrder,
       ),
     );
-    _store.storage.saveLists(updatedLists);
-    _store.storage.saveTasks(updated);
+    _store.storage.saveLists(_state.lists);
+    _store.storage.saveTasks(_state.tasks);
     _store.storage.saveSortOption(TaskSortOption.defaultOrder);
   }
 
@@ -370,6 +442,13 @@ class TasksViewPresenter {
         listId: task.listId,
         title: task.title,
         createdAt: now,
+        orderDateTime: computeNewOrderDateTime(
+          existingOrders: _state.tasks
+              .where((t) => t.listId == task.listId)
+              .map((t) => t.orderDateTime),
+          addToTop: _state.addNewTasksOnTop,
+          fallbackNow: now,
+        ),
         isImportant: task.isImportant,
         dueDate: nextDue,
         reminderAt: nextReminder,
@@ -377,7 +456,11 @@ class TasksViewPresenter {
         note: task.note,
         steps: [
           for (final step in task.steps)
-            TaskStep(id: _store.nextId('step'), title: step.title),
+            TaskStep(
+              id: _store.nextId('step'),
+              title: step.title,
+              orderDateTime: step.orderDateTime,
+            ),
         ],
       ),
       now: now,
@@ -441,8 +524,26 @@ class TasksViewPresenter {
         continue;
       }
       final nextImportant = !task.isImportant;
-      final nextTask = task.copyWith(isImportant: nextImportant);
+      var nextTask = task.copyWith(isImportant: nextImportant);
       if (nextImportant && _state.moveStarredTasksToTop) {
+        final topOrder = computeNewOrderDateTime(
+          existingOrders: _state.tasks
+              .where((t) => t.listId == task.listId && t.id != task.id)
+              .map((t) => t.orderDateTime),
+          addToTop: true,
+        );
+        final topCommitted = task.isInMyDay
+            ? computeNewOrderDateTime(
+                existingOrders: _state.tasks
+                    .where((t) => t.isInMyDay && t.id != task.id)
+                    .map((t) => t.committedOrder),
+                addToTop: true,
+              )
+            : task.committedOrder;
+        nextTask = nextTask.copyWith(
+          orderDateTime: topOrder,
+          committedOrder: topCommitted,
+        );
         movedToTop = nextTask;
       } else {
         updated.add(nextTask);

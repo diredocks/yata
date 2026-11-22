@@ -1,54 +1,196 @@
+import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../models/task_item.dart';
 import '../auth/microsoft_auth_service.dart';
+import '../models/task_item.dart';
+import '../models/todo_list.dart';
+import 'todo_wire_codecs.dart';
 
-class RemoteTodoList {
-  const RemoteTodoList({
+/// Per-request routing & auth context for Substrate To Do v1 API calls.
+class SubstrateRequestContext {
+  SubstrateRequestContext({
+    required String baseUrl,
+    required this.accessToken,
+    required String cid,
+  })  : baseUrl = _normalizeBaseUrl(baseUrl),
+        cid = MsaAuthConfig.normalizeCid(cid);
+
+  /// Discovered Substrate To Do `/api/v1/` base URL (guaranteed trailing `/`).
+  final String baseUrl;
+  final String accessToken;
+
+  /// Normalized personal MSA CID (without `CID:` prefix).
+  final String cid;
+
+  String get anchorMailbox => MsaAuthConfig.anchorMailboxForCid(cid);
+
+  Uri endpointUri(String relativePath) {
+    final cleaned =
+        relativePath.startsWith('/') ? relativePath.substring(1) : relativePath;
+    return Uri.parse('$baseUrl$cleaned');
+  }
+
+  static String _normalizeBaseUrl(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) {
+      return MsaAuthConfig.defaultTodoApiBaseUrl;
+    }
+    return trimmed.endsWith('/') ? trimmed : '$trimmed/';
+  }
+}
+
+/// Exception thrown by Substrate v1 API calls with decoded error codes.
+class SyncApiException implements Exception {
+  const SyncApiException({
+    required this.statusCode,
+    required this.message,
+    this.errorCode,
+    this.responseBody,
+    this.retryAfter,
+  });
+
+  final int statusCode;
+  final String message;
+  final String? errorCode;
+  final String? responseBody;
+  final Duration? retryAfter;
+
+  bool get isAuthError => statusCode == 401;
+
+  bool get isNotFound =>
+      statusCode == 404 ||
+      errorCode == 'ErrorItemNotFound' ||
+      errorCode == 'itemNotFound' ||
+      errorCode == 'ParentFolderDoesNotContainTaskWithGivenId';
+
+  bool get isConflict =>
+      statusCode == 409 ||
+      statusCode == 412 ||
+      errorCode == 'ErrorIrresolvableConflict';
+
+  bool get isDeltaExpired =>
+      statusCode == 410 ||
+      errorCode == 'SyncStateNotFound' ||
+      errorCode == 'SyncStateInvalid' ||
+      errorCode == 'resyncRequired';
+
+  bool get isThrottled => statusCode == 429;
+
+  bool get isFolderGroupNotEmpty => errorCode == 'FolderGroupNotEmpty';
+
+  bool get isCantDeleteDefaultFolder =>
+      errorCode == 'CantDeleteDefaultFolder';
+
+  @override
+  String toString() {
+    final codePart = errorCode != null ? ' [$errorCode]' : '';
+    return 'SyncApiException($statusCode$codePart): $message';
+  }
+}
+
+class RemoteFolderGroup {
+  const RemoteFolderGroup({
     required this.id,
-    required this.displayName,
-    this.wellknownListName,
-    this.isOwner = true,
-    this.isShared = false,
+    required this.name,
+    this.orderDateTime,
+    this.isDeleted = false,
   });
 
   final String id;
-  final String displayName;
-  final String? wellknownListName;
-  final bool isOwner;
-  final bool isShared;
+  final String name;
+  final DateTime? orderDateTime;
+  final bool isDeleted;
 
-  bool get isDefaultList => wellknownListName == 'defaultList';
-
-  factory RemoteTodoList.fromJson(Map<String, dynamic> json) {
-    return RemoteTodoList(
-      id: json['id'] as String,
-      displayName: json['displayName'] as String? ?? '',
-      wellknownListName: json['wellknownListName'] as String?,
-      isOwner: json['isOwner'] as bool? ?? true,
-      isShared: json['isShared'] as bool? ?? false,
+  factory RemoteFolderGroup.fromJson(Map<String, dynamic> json) {
+    final reason = (json['Reason'] as String?)?.toLowerCase();
+    return RemoteFolderGroup(
+      id: json['Id'] as String? ?? '',
+      name: json['Name'] as String? ?? '',
+      orderDateTime: parseSubstrateTimestamp(json['OrderDateTime'] as String?),
+      isDeleted: reason == 'deleted',
     );
   }
 }
 
-class RemoteChecklistItem {
-  const RemoteChecklistItem({
+class RemoteTodoFolder {
+  const RemoteTodoFolder({
     required this.id,
-    required this.displayName,
-    required this.isChecked,
+    required this.name,
+    this.isDefaultFolder = false,
+    this.folderType,
+    this.parentFolderGroupId,
+    this.themeColor,
+    this.themeBackground,
+    this.showCompletedTasks = true,
+    this.sortOption = TaskSortOption.defaultOrder,
+    this.sortAscending = false,
+    this.orderDateTime,
+    this.isDeleted = false,
   });
 
   final String id;
-  final String displayName;
-  final bool isChecked;
+  final String name;
+  final bool isDefaultFolder;
+  final String? folderType;
+  final String? parentFolderGroupId;
+  final String? themeColor;
+  final String? themeBackground;
+  final bool showCompletedTasks;
+  final TaskSortOption sortOption;
+  final bool sortAscending;
+  final DateTime? orderDateTime;
+  final bool isDeleted;
 
-  factory RemoteChecklistItem.fromJson(Map<String, dynamic> json) {
-    return RemoteChecklistItem(
-      id: json['id'] as String,
-      displayName: json['displayName'] as String? ?? '',
-      isChecked: json['isChecked'] as bool? ?? false,
+  bool get isIgnoredSpecialFolder =>
+      folderType == 'com.microsoft.outlook.email.flagged' ||
+      folderType == 'com.microsoft.planner';
+
+  factory RemoteTodoFolder.fromJson(Map<String, dynamic> json) {
+    final reason = (json['Reason'] as String?)?.toLowerCase();
+    final sortOption = decodeSortType(json['SortType']);
+    final sortAscending = parseWireBool(
+      json['SortAscending'],
+      fallback: sortOption.defaultAscending,
+    );
+    return RemoteTodoFolder(
+      id: json['Id'] as String? ?? '',
+      name: json['Name'] as String? ?? '',
+      isDefaultFolder: json['IsDefaultFolder'] as bool? ?? false,
+      folderType: json['FolderType'] as String?,
+      parentFolderGroupId: json['ParentFolderGroupId'] as String?,
+      themeColor: json['ThemeColor'] as String?,
+      themeBackground: json['ThemeBackground'] as String?,
+      showCompletedTasks: json['ShowCompletedTasks'] as bool? ?? true,
+      sortOption: sortOption,
+      sortAscending: sortAscending,
+      orderDateTime: parseSubstrateTimestamp(json['OrderDateTime'] as String?),
+      isDeleted: reason == 'deleted',
+    );
+  }
+}
+
+class RemoteTaskStep {
+  const RemoteTaskStep({
+    required this.id,
+    required this.subject,
+    this.isCompleted = false,
+    this.orderDateTime,
+  });
+
+  final String id;
+  final String subject;
+  final bool isCompleted;
+  final DateTime? orderDateTime;
+
+  factory RemoteTaskStep.fromJson(Map<String, dynamic> json) {
+    return RemoteTaskStep(
+      id: json['Id'] as String? ?? '',
+      subject: json['Subject'] as String? ?? '',
+      isCompleted: json['IsCompleted'] as bool? ?? false,
+      orderDateTime: parseSubstrateTimestamp(json['OrderDateTime'] as String?),
     );
   }
 }
@@ -56,483 +198,844 @@ class RemoteChecklistItem {
 class RemoteTodoTask {
   const RemoteTodoTask({
     required this.id,
-    required this.title,
-    required this.isCompleted,
-    required this.isImportant,
-    required this.createdDateTime,
-    required this.lastModifiedDateTime,
-    this.completedDateTime,
+    required this.subject,
+    this.changeKey,
+    this.parentFolderId,
+    this.bodyContent = '',
+    this.bodyContentType,
+    this.bodyLastModifiedTime,
+    this.orderDateTime,
     this.dueDate,
-    this.reminderAt,
+    this.reminderDateTime,
+    this.isReminderOn = false,
+    this.completedDateTime,
+    this.status = 'NotStarted',
+    this.importance = 'Normal',
+    this.isIgnored = false,
+    this.committedDay,
+    this.committedOrder,
+    this.postponedDay,
+    this.createdDateTime,
+    this.lastModifiedDateTime,
     this.recurrence = RecurrenceType.none,
-    this.note = '',
-    this.checklistItems = const [],
+    this.subtasks = const [],
+    this.isDeleted = false,
   });
 
   final String id;
-  final String title;
-  final bool isCompleted;
-  final bool isImportant;
-  final DateTime createdDateTime;
-  final DateTime lastModifiedDateTime;
-  final DateTime? completedDateTime;
+  final String? changeKey;
+  final String? parentFolderId;
+  final String subject;
+  final String bodyContent;
+  final String? bodyContentType;
+  final DateTime? bodyLastModifiedTime;
+  final DateTime? orderDateTime;
   final DateTime? dueDate;
-  final DateTime? reminderAt;
+  final DateTime? reminderDateTime;
+  final bool isReminderOn;
+  final DateTime? completedDateTime;
+  final String status;
+  final String importance;
+  final bool isIgnored;
+  final DateTime? committedDay;
+  final DateTime? committedOrder;
+  final DateTime? postponedDay;
+  final DateTime? createdDateTime;
+  final DateTime? lastModifiedDateTime;
   final RecurrenceType recurrence;
-  final String note;
-  final List<RemoteChecklistItem> checklistItems;
+  final List<RemoteTaskStep> subtasks;
+  final bool isDeleted;
+
+  bool get isCompleted => status.toLowerCase() == 'completed';
+
+  bool get isImportant => importance.toLowerCase() == 'high';
+
+  String get plainTextNote =>
+      stripHtmlToPlainText(bodyContent, contentType: bodyContentType);
 
   factory RemoteTodoTask.fromJson(Map<String, dynamic> json) {
-    final status = json['status'] as String? ?? 'notStarted';
-    final importance = json['importance'] as String? ?? 'normal';
-    final bodyMap = json['body'] as Map<String, dynamic>?;
-    final rawChecklist = json['checklistItems'] as List<dynamic>? ?? const [];
+    final reason = (json['Reason'] as String?)?.toLowerCase();
+    final bodyMap = _asMap(json['Body']);
+    final bodyContent = (bodyMap?['Content'] as String?) ?? '';
+    final bodyContentType = bodyMap?['ContentType'] as String?;
+    final subtasksRaw = json['Subtasks'] as List<dynamic>?;
+    final subtasks = subtasksRaw == null
+        ? const <RemoteTaskStep>[]
+        : subtasksRaw
+            .whereType<Map>()
+            .map((m) => RemoteTaskStep.fromJson(Map<String, dynamic>.from(m)))
+            .toList();
 
     return RemoteTodoTask(
-      id: json['id'] as String,
-      title: json['title'] as String? ?? '',
-      isCompleted: status == 'completed',
-      isImportant: importance == 'high',
-      createdDateTime: _parseIso(json['createdDateTime'] as String?) ??
-          DateTime.now().toUtc(),
+      id: json['Id'] as String? ?? '',
+      changeKey: json['ChangeKey'] as String?,
+      parentFolderId: json['ParentFolderId'] as String?,
+      subject: json['Subject'] as String? ?? '',
+      bodyContent: bodyContent,
+      bodyContentType: bodyContentType,
+      bodyLastModifiedTime:
+          parseSubstrateTimestamp(json['BodyLastModifiedTime'] as String?),
+      orderDateTime: parseSubstrateTimestamp(json['OrderDateTime'] as String?),
+      dueDate: parseSubstrateDay(json['DueDate'] ?? json['DueDateTime']),
+      reminderDateTime:
+          parseSubstrateDateTimeTimeZone(_asMap(json['ReminderDateTime'])),
+      isReminderOn: json['IsReminderOn'] as bool? ?? false,
+      completedDateTime:
+          parseSubstrateDateTimeTimeZone(_asMap(json['CompletedDateTime'])),
+      status: json['Status'] as String? ?? 'NotStarted',
+      importance: json['Importance'] as String? ?? 'Normal',
+      isIgnored: json['IsIgnored'] as bool? ?? false,
+      committedDay: parseSubstrateDay(json['CommittedDay']),
+      committedOrder:
+          parseSubstrateTimestamp(json['CommittedOrder'] as String?),
+      postponedDay: parseSubstrateDay(json['PostponedDay']),
+      createdDateTime:
+          parseSubstrateTimestamp(json['CreatedDateTime'] as String?),
       lastModifiedDateTime:
-          _parseIso(json['lastModifiedDateTime'] as String?) ??
-              DateTime.now().toUtc(),
-      completedDateTime: _parseDateTimeTimeZone(
-        json['completedDateTime'] as Map<String, dynamic>?,
-      ),
-      dueDate: _parseDateTimeTimeZone(
-        json['dueDateTime'] as Map<String, dynamic>?,
-      ),
-      reminderAt: (json['isReminderOn'] as bool? ?? false)
-          ? _parseDateTimeTimeZone(
-              json['reminderDateTime'] as Map<String, dynamic>?,
-            )
-          : null,
-      recurrence: _parseRecurrence(
-        json['recurrence'] as Map<String, dynamic>?,
-      ),
-      note: bodyMap?['content'] as String? ?? '',
-      checklistItems: rawChecklist
-          .map((e) => RemoteChecklistItem.fromJson(e as Map<String, dynamic>))
-          .toList(),
+          parseSubstrateTimestamp(json['LastModifiedDateTime'] as String?),
+      recurrence: decodeSubstrateRecurrence(_asMap(json['Recurrence'])),
+      subtasks: subtasks,
+      isDeleted: reason == 'deleted',
     );
-  }
-
-  static DateTime? _parseIso(String? raw) {
-    if (raw == null || raw.isEmpty) return null;
-    return DateTime.tryParse(raw)?.toLocal();
-  }
-
-  static DateTime? _parseDateTimeTimeZone(Map<String, dynamic>? map) {
-    if (map == null) return null;
-    final raw = map['dateTime'] as String?;
-    if (raw == null || raw.isEmpty) return null;
-    final tz = (map['timeZone'] as String? ?? '').toUpperCase();
-    final normalized =
-        (tz == 'UTC' && !raw.endsWith('Z')) ? '${raw}Z' : raw;
-    return DateTime.tryParse(normalized)?.toLocal();
-  }
-
-  static RecurrenceType _parseRecurrence(Map<String, dynamic>? map) {
-    if (map == null) return RecurrenceType.none;
-    final pattern = map['pattern'] as Map<String, dynamic>?;
-    if (pattern == null) return RecurrenceType.none;
-    final type = pattern['type'] as String? ?? '';
-    switch (type) {
-      case 'daily':
-        return RecurrenceType.daily;
-      case 'weekly':
-        final days = (pattern['daysOfWeek'] as List<dynamic>? ?? const [])
-            .map((e) => e.toString().toLowerCase())
-            .toSet();
-        const weekdays = {
-          'monday',
-          'tuesday',
-          'wednesday',
-          'thursday',
-          'friday',
-        };
-        if (days.length == 5 && days.containsAll(weekdays)) {
-          return RecurrenceType.weekdays;
-        }
-        return RecurrenceType.weekly;
-      case 'absoluteMonthly':
-      case 'relativeMonthly':
-        return RecurrenceType.monthly;
-      case 'absoluteYearly':
-      case 'relativeYearly':
-        return RecurrenceType.yearly;
-      default:
-        return RecurrenceType.none;
-    }
   }
 }
 
+class DeltaPageResult<T> {
+  const DeltaPageResult({
+    required this.items,
+    this.deltaLink,
+  });
+
+  final List<T> items;
+  final String? deltaLink;
+}
+
+class RealtimeEvent {
+  const RealtimeEvent({
+    this.id,
+    required this.type,
+    this.operation,
+    this.requestId,
+    this.payload,
+  });
+
+  final String? id;
+  final String type;
+  final String? operation;
+  final String? requestId;
+  final Map<String, dynamic>? payload;
+
+  bool get isKeepAlive => type.trim().toLowerCase() == 'keepalive';
+
+  factory RealtimeEvent.fromJson(Map<String, dynamic> json) {
+    return RealtimeEvent(
+      id: json['Id'] as String?,
+      type: json['Type'] as String? ?? '',
+      operation: json['Operation'] as String?,
+      requestId: json['RequestId'] as String?,
+      payload: _asMap(json['Payload']),
+    );
+  }
+}
+
+Map<String, dynamic>? _asMap(dynamic value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) return Map<String, dynamic>.from(value);
+  return null;
+}
+
+/// Abstract Substrate To Do v1 API client.
 abstract class MicrosoftTodoApi {
-  Future<List<RemoteTodoList>> fetchLists(String accessToken);
-  Future<RemoteTodoList> createList(String accessToken, String displayName);
-  Future<RemoteTodoList> renameList(
-    String accessToken,
-    String listId,
-    String displayName,
-  );
-  Future<void> deleteList(String accessToken, String listId);
+  Future<Map<String, String>> getSettings(SubstrateRequestContext ctx);
 
-  Future<List<RemoteTodoTask>> fetchTasks(String accessToken, String listId);
+  Future<void> patchSetting(
+    SubstrateRequestContext ctx,
+    String key,
+    String value,
+  );
+
+  Future<DeltaPageResult<RemoteFolderGroup>> fetchFolderGroupsDelta(
+    SubstrateRequestContext ctx, {
+    String? deltaLink,
+  });
+
+  Future<RemoteFolderGroup> createFolderGroup(
+    SubstrateRequestContext ctx, {
+    required String name,
+    required DateTime orderDateTime,
+  });
+
+  Future<RemoteFolderGroup> patchFolderGroup(
+    SubstrateRequestContext ctx,
+    String remoteId,
+    Map<String, dynamic> patch,
+  );
+
+  Future<void> deleteFolderGroup(
+    SubstrateRequestContext ctx,
+    String remoteId,
+  );
+
+  Future<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta(
+    SubstrateRequestContext ctx, {
+    String? deltaLink,
+  });
+
+  Future<RemoteTodoFolder> createFolder(
+    SubstrateRequestContext ctx,
+    Map<String, dynamic> payload,
+  );
+
+  Future<RemoteTodoFolder> patchFolder(
+    SubstrateRequestContext ctx,
+    String remoteId,
+    Map<String, dynamic> patch,
+  );
+
+  Future<void> deleteFolder(
+    SubstrateRequestContext ctx,
+    String remoteId,
+  );
+
+  Future<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta(
+    SubstrateRequestContext ctx, {
+    required String folderRemoteId,
+    String? deltaLink,
+  });
+
+  Future<RemoteTodoTask> getTask(
+    SubstrateRequestContext ctx,
+    String taskRemoteId,
+  );
+
   Future<RemoteTodoTask> createTask(
-    String accessToken,
-    String listId,
-    TaskItem task,
-  );
-  Future<RemoteTodoTask> updateTask(
-    String accessToken,
-    String listId,
-    String taskId,
-    TaskItem task,
-  );
-  Future<void> deleteTask(
-    String accessToken,
-    String listId,
-    String taskId,
+    SubstrateRequestContext ctx,
+    String folderRemoteId,
+    Map<String, dynamic> payload,
   );
 
-  Future<RemoteChecklistItem> createChecklistItem(
-    String accessToken,
-    String listId,
-    String taskId,
-    TaskStep step,
+  Future<RemoteTodoTask> patchTask(
+    SubstrateRequestContext ctx,
+    String taskRemoteId,
+    Map<String, dynamic> patch, {
+    String? changeKey,
+  });
+
+  Future<void> deleteTask(
+    SubstrateRequestContext ctx,
+    String taskRemoteId,
   );
-  Future<RemoteChecklistItem> updateChecklistItem(
-    String accessToken,
-    String listId,
-    String taskId,
-    TaskStep step,
+
+  Future<RemoteTaskStep> createStep(
+    SubstrateRequestContext ctx,
+    String taskRemoteId, {
+    required String subject,
+    required DateTime orderDateTime,
+  });
+
+  Future<RemoteTaskStep> patchStep(
+    SubstrateRequestContext ctx,
+    String taskRemoteId,
+    String stepRemoteId,
+    Map<String, dynamic> patch,
   );
-  Future<void> deleteChecklistItem(
-    String accessToken,
-    String listId,
-    String taskId,
-    String itemId,
+
+  Future<void> deleteStep(
+    SubstrateRequestContext ctx,
+    String taskRemoteId,
+    String stepRemoteId,
   );
+
+  Stream<RealtimeEvent> connectRealtime(SubstrateRequestContext ctx);
+
+  bool isOwnRequestId(String? requestId);
 }
 
 class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
-  HttpMicrosoftTodoApi({http.Client? httpClient})
-      : _http = httpClient ?? http.Client();
+  HttpMicrosoftTodoApi({
+    http.Client? httpClient,
+    Future<void> Function(Duration)? delayFn,
+  })  : _http = httpClient ?? http.Client(),
+        _delay = delayFn ?? Future<void>.delayed;
+
+  static const _userAgent = 'Microsoft To-Do/Android/2.178.8840.00.beta';
+  static const _requestTimeout = Duration(seconds: 60);
+  static const _maxDeltaPages = 200;
+  static const _ownRequestHistoryLimit = 200;
 
   final http.Client _http;
+  final Future<void> Function(Duration) _delay;
+  final String _cvPrefix = generateUuidV4().substring(0, 16);
+  int _cvCounter = 0;
 
-  static const _baseUrl = '${MicrosoftAuthConfig.graphBaseUrl}/me/todo';
+  final Queue<String> _ownRequestOrder = Queue<String>();
+  final Set<String> _ownRequestSet = <String>{};
 
-  Map<String, String> _headers(String accessToken, {bool jsonBody = false}) {
-    return {
-      'Authorization': 'Bearer $accessToken',
-      if (jsonBody) 'Content-Type': 'application/json',
+  String _nextRequestId() {
+    final id = generateUuidV4();
+    _ownRequestOrder.addLast(id);
+    _ownRequestSet.add(id);
+    while (_ownRequestOrder.length > _ownRequestHistoryLimit) {
+      final oldest = _ownRequestOrder.removeFirst();
+      _ownRequestSet.remove(oldest);
+    }
+    return id;
+  }
+
+  String _nextMsCv() {
+    final c = _cvCounter;
+    _cvCounter += 1;
+    return '$_cvPrefix.$c';
+  }
+
+  @override
+  bool isOwnRequestId(String? requestId) {
+    if (requestId == null || requestId.isEmpty) return false;
+    return _ownRequestSet.contains(requestId.trim());
+  }
+
+  Map<String, String> _buildHeaders(
+    SubstrateRequestContext ctx, {
+    bool trackChanges = false,
+    String? ifMatch,
+    bool longPolling = false,
+  }) {
+    final headers = <String, String>{
+      'Authorization': 'Bearer ${ctx.accessToken}',
+      'X-AnchorMailbox': ctx.anchorMailbox,
+      'User-Agent': _userAgent,
+      'X-Todo-Request-Id': _nextRequestId(),
+      'MS-CV': _nextMsCv(),
+      'X-FlaggedListEnabled': 'false',
+      'Prefer': trackChanges
+          ? 'outlook.timezone=UTC, odata.track-changes'
+          : 'outlook.timezone=UTC',
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
     };
-  }
-
-  @override
-  Future<List<RemoteTodoList>> fetchLists(String accessToken) async {
-    final results = <RemoteTodoList>[];
-    String? nextUrl = '$_baseUrl/lists';
-
-    while (nextUrl != null) {
-      final response = await _http.get(
-        Uri.parse(nextUrl),
-        headers: _headers(accessToken),
-      );
-      final body = _parseResponse(response, 'fetchLists');
-      final items = body['value'] as List<dynamic>? ?? const [];
-      for (final item in items) {
-        results.add(RemoteTodoList.fromJson(item as Map<String, dynamic>));
-      }
-      nextUrl = body['@odata.nextLink'] as String?;
+    if (ifMatch != null && ifMatch.isNotEmpty) {
+      headers['If-Match'] = ifMatch;
     }
-    return results;
-  }
-
-  @override
-  Future<RemoteTodoList> createList(
-    String accessToken,
-    String displayName,
-  ) async {
-    final response = await _http.post(
-      Uri.parse('$_baseUrl/lists'),
-      headers: _headers(accessToken, jsonBody: true),
-      body: jsonEncode({'displayName': displayName}),
-    );
-    final body = _parseResponse(response, 'createList');
-    return RemoteTodoList.fromJson(body);
-  }
-
-  @override
-  Future<RemoteTodoList> renameList(
-    String accessToken,
-    String listId,
-    String displayName,
-  ) async {
-    final response = await _http.patch(
-      Uri.parse('$_baseUrl/lists/$listId'),
-      headers: _headers(accessToken, jsonBody: true),
-      body: jsonEncode({'displayName': displayName}),
-    );
-    final body = _parseResponse(response, 'renameList');
-    return RemoteTodoList.fromJson(body);
-  }
-
-  @override
-  Future<void> deleteList(String accessToken, String listId) async {
-    final response = await _http.delete(
-      Uri.parse('$_baseUrl/lists/$listId'),
-      headers: _headers(accessToken),
-    );
-    if (response.statusCode == 404) return;
-    _ensureSuccess(response, 'deleteList');
-  }
-
-  @override
-  Future<List<RemoteTodoTask>> fetchTasks(
-    String accessToken,
-    String listId,
-  ) async {
-    final results = <RemoteTodoTask>[];
-    String? nextUrl = '$_baseUrl/lists/$listId/tasks?\$expand=checklistItems';
-
-    while (nextUrl != null) {
-      final response = await _http.get(
-        Uri.parse(nextUrl),
-        headers: _headers(accessToken),
-      );
-      final body = _parseResponse(response, 'fetchTasks');
-      final items = body['value'] as List<dynamic>? ?? const [];
-      for (final item in items) {
-        results.add(RemoteTodoTask.fromJson(item as Map<String, dynamic>));
-      }
-      nextUrl = body['@odata.nextLink'] as String?;
+    if (longPolling) {
+      headers['Long-Polling'] = 'true';
+      headers['Accept-Encoding'] = 'identity';
     }
-    return results;
+    return headers;
+  }
+
+  Future<http.Response> _sendRequest({
+    required SubstrateRequestContext ctx,
+    required String method,
+    required Uri uri,
+    bool trackChanges = false,
+    String? ifMatch,
+    Object? jsonBody,
+  }) async {
+    Future<http.Response> executeOnce() {
+      final headers = _buildHeaders(
+        ctx,
+        trackChanges: trackChanges,
+        ifMatch: ifMatch,
+      );
+      final encoded = jsonBody == null ? null : jsonEncode(jsonBody);
+      return switch (method) {
+        'GET' => _http.get(uri, headers: headers).timeout(_requestTimeout),
+        'POST' => _http
+            .post(uri, headers: headers, body: encoded)
+            .timeout(_requestTimeout),
+        'PATCH' => _http
+            .patch(uri, headers: headers, body: encoded)
+            .timeout(_requestTimeout),
+        'DELETE' =>
+          _http.delete(uri, headers: headers).timeout(_requestTimeout),
+        _ => throw ArgumentError('Unsupported HTTP method: $method'),
+      };
+    }
+
+    var response = await executeOnce();
+    final retryDelay = _extractThrottleDelay(response);
+    if (retryDelay != null) {
+      await _delay(retryDelay);
+      response = await executeOnce();
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw _buildApiException(response);
+    }
+    return response;
+  }
+
+  Duration? _extractThrottleDelay(http.Response response) {
+    final status = response.statusCode;
+    final retryAfterRaw = _headerCaseInsensitive(response.headers, 'retry-after');
+    final rateRemainingRaw =
+        _headerCaseInsensitive(response.headers, 'rate-limit-remaining');
+
+    final retryAfterSecs =
+        retryAfterRaw != null ? int.tryParse(retryAfterRaw.trim()) : null;
+    final rateRemaining =
+        rateRemainingRaw != null ? int.tryParse(rateRemainingRaw.trim()) : null;
+
+    final throttled = status == 429 ||
+        rateRemaining == 0 ||
+        (status >= 400 && retryAfterSecs != null);
+    if (!throttled) return null;
+
+    if (retryAfterSecs != null && retryAfterSecs > 0) {
+      return Duration(seconds: retryAfterSecs.clamp(1, 60));
+    }
+    return const Duration(seconds: 5);
+  }
+
+  String? _headerCaseInsensitive(Map<String, String> headers, String name) {
+    final target = name.toLowerCase();
+    for (final entry in headers.entries) {
+      if (entry.key.toLowerCase() == target) return entry.value;
+    }
+    return null;
+  }
+
+  SyncApiException _buildApiException(http.Response response) {
+    String? errorCode;
+    String message = 'Substrate request failed (${response.statusCode})';
+
+    if (response.body.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map) {
+          final errObj = decoded['error'] ?? decoded['Error'];
+          if (errObj is Map) {
+            errorCode = (errObj['code'] ?? errObj['Code']) as String?;
+            final msg = (errObj['message'] ?? errObj['Message']) as String?;
+            if (msg != null && msg.isNotEmpty) {
+              message = msg;
+            }
+          } else {
+            errorCode = (decoded['code'] ?? decoded['Code']) as String?;
+            final msg =
+                (decoded['message'] ?? decoded['Message']) as String?;
+            if (msg != null && msg.isNotEmpty) {
+              message = msg;
+            }
+          }
+        }
+      } on FormatException catch (_) {}
+    }
+
+    final retryAfterRaw =
+        _headerCaseInsensitive(response.headers, 'retry-after');
+    final retryAfterSecs =
+        retryAfterRaw != null ? int.tryParse(retryAfterRaw.trim()) : null;
+
+    return SyncApiException(
+      statusCode: response.statusCode,
+      message: message,
+      errorCode: errorCode,
+      responseBody: response.body,
+      retryAfter:
+          retryAfterSecs != null ? Duration(seconds: retryAfterSecs) : null,
+    );
+  }
+
+  Future<Map<String, dynamic>> _getJsonObject({
+    required SubstrateRequestContext ctx,
+    required Uri uri,
+    bool trackChanges = false,
+  }) async {
+    final response = await _sendRequest(
+      ctx: ctx,
+      method: 'GET',
+      uri: uri,
+      trackChanges: trackChanges,
+    );
+    return _decodeJsonMap(response.body);
+  }
+
+  Future<Map<String, dynamic>> _postJsonObject({
+    required SubstrateRequestContext ctx,
+    required Uri uri,
+    required Map<String, dynamic> body,
+  }) async {
+    final response = await _sendRequest(
+      ctx: ctx,
+      method: 'POST',
+      uri: uri,
+      jsonBody: body,
+    );
+    return _decodeJsonMap(response.body);
+  }
+
+  Future<Map<String, dynamic>> _patchJsonObject({
+    required SubstrateRequestContext ctx,
+    required Uri uri,
+    required Map<String, dynamic> body,
+    String? ifMatch,
+  }) async {
+    final response = await _sendRequest(
+      ctx: ctx,
+      method: 'PATCH',
+      uri: uri,
+      ifMatch: ifMatch,
+      jsonBody: body,
+    );
+    return _decodeJsonMap(response.body);
+  }
+
+  Map<String, dynamic> _decodeJsonMap(String body) {
+    if (body.trim().isEmpty) return const {};
+    final decoded = jsonDecode(body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    return const {};
+  }
+
+  Future<DeltaPageResult<T>> _fetchDeltaPages<T>({
+    required SubstrateRequestContext ctx,
+    required Uri initialUri,
+    required T Function(Map<String, dynamic> json) parser,
+    String? deltaLink,
+  }) async {
+    Uri? nextUri = (deltaLink != null && deltaLink.trim().isNotEmpty)
+        ? Uri.parse(deltaLink.trim())
+        : initialUri;
+    final items = <T>[];
+    String? resolvedDeltaLink;
+    var pages = 0;
+
+    while (nextUri != null && pages < _maxDeltaPages) {
+      pages += 1;
+      final page = await _getJsonObject(
+        ctx: ctx,
+        uri: nextUri,
+        trackChanges: true,
+      );
+      final rawList = (page['Value'] ??
+              page['Values'] ??
+              page['value'] ??
+              page['values']) as List<dynamic>? ??
+          const [];
+      for (final raw in rawList) {
+        if (raw is Map) {
+          items.add(parser(Map<String, dynamic>.from(raw)));
+        }
+      }
+      final delta =
+          (page['DeltaLink'] ?? page['@odata.deltaLink']) as String?;
+      if (delta != null && delta.trim().isNotEmpty) {
+        resolvedDeltaLink = delta.trim();
+      }
+      final next = (page['NextLink'] ?? page['@odata.nextLink']) as String?;
+      nextUri =
+          (next != null && next.trim().isNotEmpty) ? Uri.parse(next.trim()) : null;
+    }
+
+    return DeltaPageResult<T>(
+      items: items,
+      deltaLink: resolvedDeltaLink,
+    );
+  }
+
+  @override
+  Future<Map<String, String>> getSettings(SubstrateRequestContext ctx) async {
+    final json = await _getJsonObject(
+      ctx: ctx,
+      uri: ctx.endpointUri('settings'),
+    );
+    final rawList = (json['Value'] ?? json['Values'] ?? json['value'])
+            as List<dynamic>? ??
+        const [];
+    final result = <String, String>{};
+    for (final entry in rawList) {
+      if (entry is Map) {
+        final key = entry['Key'] as String?;
+        final value = entry['Value'];
+        if (key != null && key.isNotEmpty && value != null) {
+          result[key] = value.toString();
+        }
+      }
+    }
+    return result;
+  }
+
+  @override
+  Future<void> patchSetting(
+    SubstrateRequestContext ctx,
+    String key,
+    String value,
+  ) async {
+    await _sendRequest(
+      ctx: ctx,
+      method: 'PATCH',
+      uri: ctx.endpointUri('settings/${Uri.encodeComponent(key)}'),
+      jsonBody: {'Value': value},
+    );
+  }
+
+  @override
+  Future<DeltaPageResult<RemoteFolderGroup>> fetchFolderGroupsDelta(
+    SubstrateRequestContext ctx, {
+    String? deltaLink,
+  }) {
+    return _fetchDeltaPages<RemoteFolderGroup>(
+      ctx: ctx,
+      initialUri: ctx.endpointUri('foldergroups?maxPageSize=50'),
+      deltaLink: deltaLink,
+      parser: RemoteFolderGroup.fromJson,
+    );
+  }
+
+  @override
+  Future<RemoteFolderGroup> createFolderGroup(
+    SubstrateRequestContext ctx, {
+    required String name,
+    required DateTime orderDateTime,
+  }) async {
+    final json = await _postJsonObject(
+      ctx: ctx,
+      uri: ctx.endpointUri('foldergroups'),
+      body: {
+        'Name': name,
+        'OrderDateTime': formatSubstrateUtcTimestamp(orderDateTime),
+      },
+    );
+    return RemoteFolderGroup.fromJson(json);
+  }
+
+  @override
+  Future<RemoteFolderGroup> patchFolderGroup(
+    SubstrateRequestContext ctx,
+    String remoteId,
+    Map<String, dynamic> patch,
+  ) async {
+    final json = await _patchJsonObject(
+      ctx: ctx,
+      uri: ctx.endpointUri('foldergroups/${Uri.encodeComponent(remoteId)}'),
+      body: patch,
+    );
+    return RemoteFolderGroup.fromJson(json);
+  }
+
+  @override
+  Future<void> deleteFolderGroup(
+    SubstrateRequestContext ctx,
+    String remoteId,
+  ) async {
+    await _sendRequest(
+      ctx: ctx,
+      method: 'DELETE',
+      uri: ctx.endpointUri('foldergroups/${Uri.encodeComponent(remoteId)}'),
+    );
+  }
+
+  @override
+  Future<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta(
+    SubstrateRequestContext ctx, {
+    String? deltaLink,
+  }) {
+    return _fetchDeltaPages<RemoteTodoFolder>(
+      ctx: ctx,
+      initialUri: ctx.endpointUri(
+        'taskfolders?\$select=*,AllExtensions/Com_Wunderlist_Import,AllExtensions/Com_Microsoft_Grocery_Configs&maxPageSize=50',
+      ),
+      deltaLink: deltaLink,
+      parser: RemoteTodoFolder.fromJson,
+    );
+  }
+
+  @override
+  Future<RemoteTodoFolder> createFolder(
+    SubstrateRequestContext ctx,
+    Map<String, dynamic> payload,
+  ) async {
+    final json = await _postJsonObject(
+      ctx: ctx,
+      uri: ctx.endpointUri('taskfolders'),
+      body: payload,
+    );
+    return RemoteTodoFolder.fromJson(json);
+  }
+
+  @override
+  Future<RemoteTodoFolder> patchFolder(
+    SubstrateRequestContext ctx,
+    String remoteId,
+    Map<String, dynamic> patch,
+  ) async {
+    final json = await _patchJsonObject(
+      ctx: ctx,
+      uri: ctx.endpointUri(
+        'taskfolders/${Uri.encodeComponent(remoteId)}?\$select=*,AllExtensions/Com_Microsoft_Grocery_Configs',
+      ),
+      body: patch,
+    );
+    return RemoteTodoFolder.fromJson(json);
+  }
+
+  @override
+  Future<void> deleteFolder(
+    SubstrateRequestContext ctx,
+    String remoteId,
+  ) async {
+    await _sendRequest(
+      ctx: ctx,
+      method: 'DELETE',
+      uri: ctx.endpointUri('taskfolders/${Uri.encodeComponent(remoteId)}'),
+    );
+  }
+
+  @override
+  Future<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta(
+    SubstrateRequestContext ctx, {
+    required String folderRemoteId,
+    String? deltaLink,
+  }) {
+    final encodedFolderId = Uri.encodeQueryComponent(folderRemoteId);
+    return _fetchDeltaPages<RemoteTodoTask>(
+      ctx: ctx,
+      initialUri: ctx.endpointUri(
+        'tasks?\$expand=LinkedEntities&parentFolderId=$encodedFolderId&maxPageSize=50',
+      ),
+      deltaLink: deltaLink,
+      parser: RemoteTodoTask.fromJson,
+    );
+  }
+
+  @override
+  Future<RemoteTodoTask> getTask(
+    SubstrateRequestContext ctx,
+    String taskRemoteId,
+  ) async {
+    final json = await _getJsonObject(
+      ctx: ctx,
+      uri: ctx.endpointUri('tasks/${Uri.encodeComponent(taskRemoteId)}'),
+    );
+    return RemoteTodoTask.fromJson(json);
   }
 
   @override
   Future<RemoteTodoTask> createTask(
-    String accessToken,
-    String listId,
-    TaskItem task,
+    SubstrateRequestContext ctx,
+    String folderRemoteId,
+    Map<String, dynamic> payload,
   ) async {
-    final response = await _http.post(
-      Uri.parse('$_baseUrl/lists/$listId/tasks'),
-      headers: _headers(accessToken, jsonBody: true),
-      body: jsonEncode(_taskToGraphPayload(task)),
+    final json = await _postJsonObject(
+      ctx: ctx,
+      uri: ctx.endpointUri(
+        'taskfolders/${Uri.encodeComponent(folderRemoteId)}/tasks',
+      ),
+      body: payload,
     );
-    final body = _parseResponse(response, 'createTask');
-    return RemoteTodoTask.fromJson(body);
+    return RemoteTodoTask.fromJson(json);
   }
 
   @override
-  Future<RemoteTodoTask> updateTask(
-    String accessToken,
-    String listId,
-    String taskId,
-    TaskItem task,
-  ) async {
-    final response = await _http.patch(
-      Uri.parse('$_baseUrl/lists/$listId/tasks/$taskId'),
-      headers: _headers(accessToken, jsonBody: true),
-      body: jsonEncode(_taskToGraphPayload(task)),
+  Future<RemoteTodoTask> patchTask(
+    SubstrateRequestContext ctx,
+    String taskRemoteId,
+    Map<String, dynamic> patch, {
+    String? changeKey,
+  }) async {
+    final json = await _patchJsonObject(
+      ctx: ctx,
+      uri: ctx.endpointUri('tasks/${Uri.encodeComponent(taskRemoteId)}'),
+      body: patch,
+      ifMatch: changeKey,
     );
-    final body = _parseResponse(response, 'updateTask');
-    return RemoteTodoTask.fromJson(body);
+    return RemoteTodoTask.fromJson(json);
   }
 
   @override
   Future<void> deleteTask(
-    String accessToken,
-    String listId,
-    String taskId,
+    SubstrateRequestContext ctx,
+    String taskRemoteId,
   ) async {
-    final response = await _http.delete(
-      Uri.parse('$_baseUrl/lists/$listId/tasks/$taskId'),
-      headers: _headers(accessToken),
+    await _sendRequest(
+      ctx: ctx,
+      method: 'DELETE',
+      uri: ctx.endpointUri('tasks/${Uri.encodeComponent(taskRemoteId)}'),
     );
-    if (response.statusCode == 404) return;
-    _ensureSuccess(response, 'deleteTask');
   }
 
   @override
-  Future<RemoteChecklistItem> createChecklistItem(
-    String accessToken,
-    String listId,
-    String taskId,
-    TaskStep step,
-  ) async {
-    final response = await _http.post(
-      Uri.parse('$_baseUrl/lists/$listId/tasks/$taskId/checklistItems'),
-      headers: _headers(accessToken, jsonBody: true),
-      body: jsonEncode({
-        'displayName': step.title,
-        'isChecked': step.isCompleted,
-      }),
-    );
-    final body = _parseResponse(response, 'createChecklistItem');
-    return RemoteChecklistItem.fromJson(body);
-  }
-
-  @override
-  Future<RemoteChecklistItem> updateChecklistItem(
-    String accessToken,
-    String listId,
-    String taskId,
-    TaskStep step,
-  ) async {
-    final response = await _http.patch(
-      Uri.parse(
-        '$_baseUrl/lists/$listId/tasks/$taskId/checklistItems/${step.remoteId}',
+  Future<RemoteTaskStep> createStep(
+    SubstrateRequestContext ctx,
+    String taskRemoteId, {
+    required String subject,
+    required DateTime orderDateTime,
+  }) async {
+    final json = await _postJsonObject(
+      ctx: ctx,
+      uri: ctx.endpointUri(
+        'tasks/${Uri.encodeComponent(taskRemoteId)}/subtasks',
       ),
-      headers: _headers(accessToken, jsonBody: true),
-      body: jsonEncode({
-        'displayName': step.title,
-        'isChecked': step.isCompleted,
-      }),
+      body: {
+        'Subject': subject,
+        'OrderDateTime': formatSubstrateUtcTimestamp(orderDateTime),
+      },
     );
-    final body = _parseResponse(response, 'updateChecklistItem');
-    return RemoteChecklistItem.fromJson(body);
+    return RemoteTaskStep.fromJson(json);
   }
 
   @override
-  Future<void> deleteChecklistItem(
-    String accessToken,
-    String listId,
-    String taskId,
-    String itemId,
+  Future<RemoteTaskStep> patchStep(
+    SubstrateRequestContext ctx,
+    String taskRemoteId,
+    String stepRemoteId,
+    Map<String, dynamic> patch,
   ) async {
-    final response = await _http.delete(
-      Uri.parse('$_baseUrl/lists/$listId/tasks/$taskId/checklistItems/$itemId'),
-      headers: _headers(accessToken),
+    final json = await _patchJsonObject(
+      ctx: ctx,
+      uri: ctx.endpointUri(
+        'tasks/${Uri.encodeComponent(taskRemoteId)}/subtasks/${Uri.encodeComponent(stepRemoteId)}',
+      ),
+      body: patch,
     );
-    if (response.statusCode == 404) return;
-    _ensureSuccess(response, 'deleteChecklistItem');
+    return RemoteTaskStep.fromJson(json);
   }
 
-  Map<String, dynamic> _taskToGraphPayload(TaskItem task) {
-    final payload = <String, dynamic>{
-      'title': task.title,
-      'status': task.isCompleted ? 'completed' : 'notStarted',
-      'importance': task.isImportant ? 'high' : 'normal',
-      'body': {
-        'content': task.note,
-        'contentType': 'text',
-      },
-      'isReminderOn': task.reminderAt != null,
-    };
+  @override
+  Future<void> deleteStep(
+    SubstrateRequestContext ctx,
+    String taskRemoteId,
+    String stepRemoteId,
+  ) async {
+    await _sendRequest(
+      ctx: ctx,
+      method: 'DELETE',
+      uri: ctx.endpointUri(
+        'tasks/${Uri.encodeComponent(taskRemoteId)}/subtasks/${Uri.encodeComponent(stepRemoteId)}',
+      ),
+    );
+  }
 
-    if (task.dueDate != null) {
-      final d = task.dueDate!;
-      payload['dueDateTime'] = {
-        'dateTime': DateTime.utc(d.year, d.month, d.day).toIso8601String(),
-        'timeZone': 'UTC',
-      };
-    } else {
-      payload['dueDateTime'] = null;
+  @override
+  Stream<RealtimeEvent> connectRealtime(SubstrateRequestContext ctx) async* {
+    final request = http.Request('GET', ctx.endpointUri('realtime'));
+    request.headers.addAll(_buildHeaders(ctx, longPolling: true));
+
+    final streamed = await _http.send(request).timeout(_requestTimeout);
+    if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+      final body = await streamed.stream.bytesToString();
+      throw SyncApiException(
+        statusCode: streamed.statusCode,
+        message: 'Realtime stream failed (${streamed.statusCode})',
+        responseBody: body,
+      );
     }
 
-    if (task.reminderAt != null) {
-      payload['reminderDateTime'] = {
-        'dateTime': task.reminderAt!.toUtc().toIso8601String(),
-        'timeZone': 'UTC',
-      };
-    } else {
-      payload['reminderDateTime'] = null;
-    }
-
-    final recurrencePayload = _recurrenceToGraph(task);
-    payload['recurrence'] = recurrencePayload;
-
-    return payload;
-  }
-
-  Map<String, dynamic>? _recurrenceToGraph(TaskItem task) {
-    if (task.recurrence == RecurrenceType.none) return null;
-    final start = (task.dueDate ?? task.createdAt).toUtc();
-    final startDate =
-        '${start.year.toString().padLeft(4, '0')}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
-
-    final Map<String, dynamic> pattern = switch (task.recurrence) {
-      RecurrenceType.none => const {},
-      RecurrenceType.daily => {'type': 'daily', 'interval': 1},
-      RecurrenceType.weekdays => {
-          'type': 'weekly',
-          'interval': 1,
-          'daysOfWeek': [
-            'monday',
-            'tuesday',
-            'wednesday',
-            'thursday',
-            'friday',
-          ],
-        },
-      RecurrenceType.weekly => {
-          'type': 'weekly',
-          'interval': 1,
-          'daysOfWeek': [_weekdayName(start.weekday)],
-        },
-      RecurrenceType.monthly => {
-          'type': 'absoluteMonthly',
-          'interval': 1,
-          'dayOfMonth': start.day,
-        },
-      RecurrenceType.yearly => {
-          'type': 'absoluteYearly',
-          'interval': 1,
-          'dayOfMonth': start.day,
-          'month': start.month,
-        },
-    };
-
-    return {
-      'pattern': pattern,
-      'range': {
-        'type': 'noEnd',
-        'startDate': startDate,
-      },
-    };
-  }
-
-  String _weekdayName(int weekday) {
-    return switch (weekday) {
-      DateTime.monday => 'monday',
-      DateTime.tuesday => 'tuesday',
-      DateTime.wednesday => 'wednesday',
-      DateTime.thursday => 'thursday',
-      DateTime.friday => 'friday',
-      DateTime.saturday => 'saturday',
-      DateTime.sunday => 'sunday',
-      _ => 'monday',
-    };
-  }
-
-  Map<String, dynamic> _parseResponse(http.Response response, String op) {
-    _ensureSuccess(response, op);
-    if (response.body.trim().isEmpty) return const {};
-    return jsonDecode(response.body) as Map<String, dynamic>;
-  }
-
-  void _ensureSuccess(http.Response response, String op) {
-    if (response.statusCode >= 200 && response.statusCode < 300) return;
-    String message = 'Microsoft To Do $op failed (${response.statusCode})';
-    try {
-      final decoded = jsonDecode(response.body);
-      if (decoded is Map<String, dynamic>) {
-        final error = decoded['error'] as Map<String, dynamic>?;
-        final msg = error?['message'] as String?;
-        if (msg != null && msg.isNotEmpty) {
-          message = msg;
+    final lines =
+        streamed.stream.transform(utf8.decoder).transform(const LineSplitter());
+    await for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+      try {
+        final decoded = jsonDecode(trimmed);
+        if (decoded is Map) {
+          yield RealtimeEvent.fromJson(Map<String, dynamic>.from(decoded));
         }
+      } on FormatException catch (_) {
+        // Ignore non-JSON keepalive / delimiter lines.
       }
-    } catch (_) {}
-    throw MicrosoftAuthException(
-      message,
-      requiresRelogin: response.statusCode == 401,
-    );
+    }
   }
 }

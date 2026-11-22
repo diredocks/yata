@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import '../models/todo_list.dart';
 import '../data/todo_provider.dart';
+import '../sync/todo_wire_codecs.dart';
+import 'home_view_ordering.dart';
 
 /// Presenter for `homeview/HomeViewFragment`, matching `homeview/HomeViewPresenter`.
 class HomeViewPresenter {
@@ -23,6 +25,16 @@ class HomeViewPresenter {
     String? emoji,
     ListThemePhoto? themePhoto,
   }) {
+    final existingOrders = groupId != null
+        ? _state.lists
+            .where((l) => !l.isSmartList && l.groupId == groupId)
+            .map((l) => l.orderDateTime)
+        : [
+            ..._state.lists
+                .where((l) => !l.isSmartList && l.groupId == null)
+                .map((l) => l.orderDateTime),
+            ..._state.groups.map((g) => g.orderDateTime),
+          ];
     final newList = TodoList(
       id: _store.nextId('list'),
       title: title,
@@ -31,8 +43,13 @@ class HomeViewPresenter {
       themeColor: themeColor,
       themePhoto: themePhoto,
       icon: Icons.format_list_bulleted,
+      sortAscending: false,
+      orderDateTime: computeNewOrderDateTime(
+        existingOrders: existingOrders,
+        addToTop: false,
+      ),
     );
-    final updated = [..._state.lists, newList];
+    final updated = sortListsPreservingSmartLists([..._state.lists, newList]);
     _store.commit(
       _state.copyWith(
         lists: updated,
@@ -40,7 +57,7 @@ class HomeViewPresenter {
         clearSelectedTaskId: true,
       ),
     );
-    _store.storage.saveLists(updated);
+    _store.storage.saveLists(_state.lists);
     _store.storage.saveSelectedListId(newList.id);
   }
 
@@ -71,14 +88,24 @@ class HomeViewPresenter {
 
   ListGroup addGroup(String title) {
     final trimmed = title.trim();
+    final existingOrders = [
+      ..._state.lists
+          .where((l) => !l.isSmartList && l.groupId == null)
+          .map((l) => l.orderDateTime),
+      ..._state.groups.map((g) => g.orderDateTime),
+    ];
     final newGroup = ListGroup(
       id: _store.nextId('group'),
       title: _deduplicateGroupTitle(trimmed),
       isExpanded: true,
+      orderDateTime: computeNewOrderDateTime(
+        existingOrders: existingOrders,
+        addToTop: false,
+      ),
     );
-    final updated = [..._state.groups, newGroup];
+    final updated = sortGroupsByOrder([..._state.groups, newGroup]);
     _store.commit(_state.copyWith(groups: updated));
-    _store.storage.saveGroups(updated);
+    _store.storage.saveGroups(_state.groups);
     return newGroup;
   }
 
@@ -132,6 +159,100 @@ class HomeViewPresenter {
     ];
     _store.commit(_state.copyWith(lists: updated));
     _store.storage.saveLists(updated);
+  }
+
+  void reorderTopLevelEntries(
+    List<HomeSidebarEntry> entries,
+    int oldIndex,
+    int newIndex,
+  ) {
+    if (oldIndex < 0 || oldIndex >= entries.length) return;
+    if (newIndex < 0 || newIndex >= entries.length || oldIndex == newIndex) {
+      return;
+    }
+
+    final reordered = [...entries];
+    final moved = reordered.removeAt(oldIndex);
+    reordered.insert(newIndex, moved);
+
+    final newPositions = computeReorderedOrderDateTimes(
+      [for (final e in reordered) e.orderDateTime],
+      newIndex,
+    );
+    final groupOrderUpdates = <String, DateTime>{};
+    final listOrderUpdates = <String, DateTime>{};
+    for (final entry in newPositions.entries) {
+      switch (reordered[entry.key]) {
+        case HomeGroupEntry(:final group):
+          groupOrderUpdates[group.id] = entry.value;
+        case HomeListEntry(:final list):
+          listOrderUpdates[list.id] = entry.value;
+      }
+    }
+
+    final updatedGroups = groupOrderUpdates.isEmpty
+        ? _state.groups
+        : sortGroupsByOrder([
+            for (final group in _state.groups)
+              if (groupOrderUpdates.containsKey(group.id))
+                group.copyWith(orderDateTime: groupOrderUpdates[group.id])
+              else
+                group,
+          ]);
+    final updatedLists = listOrderUpdates.isEmpty
+        ? _state.lists
+        : sortListsPreservingSmartLists([
+            for (final list in _state.lists)
+              if (listOrderUpdates.containsKey(list.id))
+                list.copyWith(orderDateTime: listOrderUpdates[list.id])
+              else
+                list,
+          ]);
+
+    _store.commit(_state.copyWith(groups: updatedGroups, lists: updatedLists));
+    if (groupOrderUpdates.isNotEmpty) {
+      _store.storage.saveGroups(_state.groups);
+    }
+    if (listOrderUpdates.isNotEmpty) {
+      _store.storage.saveLists(_state.lists);
+    }
+  }
+
+  void reorderGroupLists(
+    String groupId,
+    List<TodoList> orderedMembers,
+    int oldIndex,
+    int newIndex,
+  ) {
+    if (oldIndex < 0 || oldIndex >= orderedMembers.length) return;
+    if (newIndex < 0 ||
+        newIndex >= orderedMembers.length ||
+        oldIndex == newIndex) {
+      return;
+    }
+
+    final reordered = [...orderedMembers];
+    final moved = reordered.removeAt(oldIndex);
+    reordered.insert(newIndex, moved);
+
+    final newPositions = computeReorderedOrderDateTimes(
+      [for (final l in reordered) l.orderDateTime],
+      newIndex,
+    );
+    final listOrderUpdates = <String, DateTime>{
+      for (final entry in newPositions.entries)
+        reordered[entry.key].id: entry.value,
+    };
+
+    final updatedLists = sortListsPreservingSmartLists([
+      for (final list in _state.lists)
+        if (listOrderUpdates.containsKey(list.id))
+          list.copyWith(orderDateTime: listOrderUpdates[list.id])
+        else
+          list,
+    ]);
+    _store.commit(_state.copyWith(lists: updatedLists));
+    _store.storage.saveLists(_state.lists);
   }
 }
 

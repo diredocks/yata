@@ -1,175 +1,356 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../account/account_provider.dart';
+import '../auth/microsoft_auth_service.dart';
+import '../data/todo_provider.dart';
 import '../models/account.dart';
 import 'cloud_sync_service.dart';
-import '../auth/microsoft_auth_service.dart';
-import '../account/account_provider.dart';
-import '../data/todo_provider.dart';
+import 'microsoft_todo_api.dart';
+
+/// Allows tests to disable background realtime long-polling streams.
+final realtimeSyncEnabledProvider = Provider<bool>((ref) => true);
 
 final cloudSyncServiceProvider = Provider<CloudSyncService>((ref) {
   return CloudSyncService(
     authClient: ref.watch(microsoftAuthClientProvider),
-    tokenStorage: ref.watch(authTokenStorageProvider),
     todoApi: ref.watch(microsoftTodoApiProvider),
+    tokenStorage: ref.watch(authTokenStorageProvider),
   );
 });
 
-@immutable
+enum SyncStatus {
+  idle,
+  syncing,
+  success,
+  error,
+  requiresRelogin,
+}
+
 class SyncState {
   const SyncState({
-    this.isSyncing = false,
+    this.status = SyncStatus.idle,
+    this.lastSyncedAt,
     this.error,
-    this.requiresRelogin = false,
   });
 
-  final bool isSyncing;
+  final SyncStatus status;
+  final DateTime? lastSyncedAt;
   final String? error;
-  final bool requiresRelogin;
+
+  bool get isSyncing => status == SyncStatus.syncing;
+  bool get requiresRelogin => status == SyncStatus.requiresRelogin;
 
   SyncState copyWith({
-    bool? isSyncing,
+    SyncStatus? status,
+    DateTime? lastSyncedAt,
     String? error,
     bool clearError = false,
-    bool? requiresRelogin,
   }) {
     return SyncState(
-      isSyncing: isSyncing ?? this.isSyncing,
+      status: status ?? this.status,
+      lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
       error: clearError ? null : (error ?? this.error),
-      requiresRelogin: requiresRelogin ?? this.requiresRelogin,
     );
   }
 }
 
 class SyncNotifier extends Notifier<SyncState> {
+  static const _debounceDuration = Duration(milliseconds: 1500);
+  static const _realtimeInitialBackoff = Duration(seconds: 2);
+  static const _realtimeMaxBackoff = Duration(seconds: 60);
+
   Timer? _debounceTimer;
-  Future<void>? _activeSync;
+  Timer? _realtimeReconnectTimer;
+  StreamSubscription<RealtimeEvent>? _realtimeSub;
+
+  bool _disposed = false;
+  bool _syncInFlight = false;
+  bool _syncQueued = false;
+  Duration _realtimeBackoff = _realtimeInitialBackoff;
+  String? _realtimeAccountId;
 
   @override
   SyncState build() {
-    ref.onDispose(() {
-      _debounceTimer?.cancel();
-    });
+    _disposed = false;
+    ref.onDispose(_disposeResources);
 
-    ref.watch(accountProvider.select((s) => s.activeAccount?.id));
+    final accountIdentity = ref.watch(
+      accountProvider.select(
+        (s) => (
+          id: s.activeAccount?.id,
+          isMicrosoft: s.activeAccount is MicrosoftAccount,
+        ),
+      ),
+    );
     final activeAccount = ref.read(accountProvider).activeAccount;
 
-    ref.listen<int>(
-      todoProvider.select((s) => s.mutationVersion),
-      (prev, next) {
-        if (prev != null && next > prev) {
-          scheduleSync();
-        }
-      },
-    );
+    ref.listen<int>(todoProvider.select((s) => s.mutationVersion), (prev, next) {
+      if (prev != null && next > prev) {
+        scheduleDebouncedSync();
+      }
+    });
 
-    if (activeAccount is MicrosoftAccount) {
-      Future.microtask(syncNow);
+    if (!accountIdentity.isMicrosoft || activeAccount is! MicrosoftAccount) {
+      _stopRealtime();
+      _debounceTimer?.cancel();
+      _debounceTimer = null;
+      return const SyncState();
     }
 
-    return SyncState(
-      error: activeAccount is MicrosoftAccount ? activeAccount.syncError : null,
-    );
+    if (ref.watch(realtimeSyncEnabledProvider) &&
+        _realtimeAccountId != activeAccount.id) {
+      _startRealtimeFor(activeAccount);
+    }
+
+    return SyncState(lastSyncedAt: activeAccount.lastSyncedAt);
   }
 
-  void scheduleSync({Duration delay = const Duration(milliseconds: 1500)}) {
+  void _disposeResources() {
+    _disposed = true;
+    _debounceTimer?.cancel();
+    _debounceTimer = null;
+    _stopRealtime();
+  }
+
+  void _stopRealtime() {
+    _realtimeAccountId = null;
+    _realtimeReconnectTimer?.cancel();
+    _realtimeReconnectTimer = null;
+    unawaited(_realtimeSub?.cancel());
+    _realtimeSub = null;
+  }
+
+  void scheduleDebouncedSync({Duration delay = _debounceDuration}) {
+    final active = ref.read(accountProvider).activeAccount;
+    if (_disposed || active is! MicrosoftAccount) return;
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(delay, () {
+      if (!_disposed) {
+        unawaited(syncNow());
+      }
+    });
+  }
+
+  Future<void> syncNow() async {
+    if (_disposed) return;
     final active = ref.read(accountProvider).activeAccount;
     if (active is! MicrosoftAccount) return;
 
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(delay, () {
-      syncNow();
-    });
-  }
-
-  Future<bool> syncNow() async {
-    if (_activeSync != null) {
-      await _activeSync;
-      return state.error == null;
+    if (_syncInFlight) {
+      _syncQueued = true;
+      return;
     }
 
-    final account = ref.read(accountProvider).activeAccount;
-    if (account is! MicrosoftAccount) return true;
-
-    final completer = Completer<void>();
-    _activeSync = completer.future;
-
-    state = state.copyWith(
-      isSyncing: true,
-      clearError: true,
-      requiresRelogin: false,
-    );
+    _syncInFlight = true;
+    state = state.copyWith(status: SyncStatus.syncing, clearError: true);
 
     try {
-      final todoState = ref.read(todoProvider);
-      final storage = ref.read(todoLocalStorageProvider);
       final service = ref.read(cloudSyncServiceProvider);
-      final snapshotLists = todoState.lists;
-      final snapshotTasks = todoState.tasks;
-      final snapshotMutationVersion = todoState.mutationVersion;
-      final pendingDeletedLists = storage.loadPendingDeletedListRemoteIds();
-      final pendingDeletedTasks = storage.loadPendingDeletedTasks();
+      final todoNotifier = ref.read(todoProvider.notifier);
+      final snapshotState = ref.read(todoProvider);
+      final storage = todoNotifier.storage;
 
-      final outcome = await service.sync(
-        account: account,
-        localLists: snapshotLists,
-        localTasks: snapshotTasks,
-        pendingDeletedListRemoteIds: pendingDeletedLists,
-        pendingDeletedTasks: pendingDeletedTasks,
-        addNewTasksOnTop: todoState.addNewTasksOnTop,
+      final outcome = await service.syncAccount(
+        account: active,
+        currentState: snapshotState,
+        storage: storage,
+        idGenerator: todoNotifier.nextId,
       );
 
-      // Ensure we are still on the same account before committing.
-      if (ref.read(accountProvider).activeAccountId == account.id) {
-        await ref.read(todoProvider.notifier).applySyncResult(
-              lists: outcome.lists,
-              tasks: outcome.tasks,
-              snapshotLists: snapshotLists,
-              snapshotTasks: snapshotTasks,
-              processedDeletedListRemoteIds: pendingDeletedLists,
-              processedDeletedTasks: pendingDeletedTasks,
-            );
-        if (ref.read(todoProvider).mutationVersion != snapshotMutationVersion) {
-          scheduleSync();
-        }
+      if (_disposed ||
+          ref.read(accountProvider).activeAccount?.id != active.id) {
+        return;
       }
 
+      await todoNotifier.applySyncResult(
+        groups: outcome.groups,
+        lists: outcome.lists,
+        tasks: outcome.tasks,
+        settingsPatch: outcome.settingsPatch,
+        snapshotGroups: snapshotState.groups,
+        snapshotLists: snapshotState.lists,
+        snapshotTasks: snapshotState.tasks,
+        snapshotState: snapshotState,
+        processedDeletedGroupRemoteIds: outcome.processedDeletedGroupRemoteIds,
+        processedDeletedListRemoteIds: outcome.processedDeletedListRemoteIds,
+        processedDeletedTaskRemoteIds: outcome.processedDeletedTaskRemoteIds,
+        processedDeletedSteps: outcome.processedDeletedSteps,
+        syncedGroupIds: outcome.syncedGroupIds,
+        syncedListIds: outcome.syncedListIds,
+        syncedTaskIds: outcome.syncedTaskIds,
+        syncedSettingKeys: outcome.syncedSettingKeys,
+      );
+
       await ref.read(accountProvider.notifier).updateSyncStatus(
-            account.id,
+            active.id,
             lastSyncedAt: outcome.syncedAt,
             clearSyncError: true,
           );
 
-      state = const SyncState(isSyncing: false);
-      return true;
+      await _refreshProfileIfIncomplete(service, active);
+
+      if (!_disposed) {
+        state = state.copyWith(
+          status: SyncStatus.success,
+          lastSyncedAt: outcome.syncedAt,
+          clearError: true,
+        );
+      }
     } on MicrosoftAuthException catch (e) {
+      if (_disposed) return;
+      final status =
+          e.requiresReauth ? SyncStatus.requiresRelogin : SyncStatus.error;
       await ref.read(accountProvider.notifier).updateSyncStatus(
-            account.id,
+            active.id,
             syncError: e.message,
           );
-      state = SyncState(
-        isSyncing: false,
-        error: e.message,
-        requiresRelogin: e.requiresRelogin,
-      );
-      return false;
-    } catch (e) {
-      final message = e.toString();
+      if (!_disposed) {
+        state = state.copyWith(status: status, error: e.message);
+      }
+    } on SyncApiException catch (e) {
+      if (_disposed) return;
+      final status =
+          e.isAuthError ? SyncStatus.requiresRelogin : SyncStatus.error;
       await ref.read(accountProvider.notifier).updateSyncStatus(
-            account.id,
-            syncError: message,
+            active.id,
+            syncError: e.message,
           );
-      state = SyncState(
-        isSyncing: false,
-        error: message,
-      );
-      return false;
+      if (!_disposed) {
+        state = state.copyWith(status: status, error: e.message);
+      }
+    } catch (e) {
+      if (_disposed) return;
+      await ref.read(accountProvider.notifier).updateSyncStatus(
+            active.id,
+            syncError: e.toString(),
+          );
+      if (!_disposed) {
+        state = state.copyWith(
+          status: SyncStatus.error,
+          error: e.toString(),
+        );
+      }
     } finally {
-      _activeSync = null;
-      completer.complete();
+      _syncInFlight = false;
+      if (_syncQueued && !_disposed) {
+        _syncQueued = false;
+        unawaited(syncNow());
+      }
     }
+  }
+
+  Future<void> _refreshProfileIfIncomplete(
+    CloudSyncService service,
+    MicrosoftAccount account,
+  ) async {
+    final needsName = account.displayName == 'Microsoft Account' ||
+        account.displayName.trim().isEmpty ||
+        (account.email.isNotEmpty && account.displayName == account.email);
+    final needsEmail = account.email.trim().isEmpty;
+    final needsAvatar =
+        account.avatarBase64 == null || account.avatarBase64!.isEmpty;
+    if (!needsName && !needsEmail && !needsAvatar) return;
+
+    try {
+      final tokens = await service.tokenStorage.loadTokens(account.id);
+      if (tokens == null || tokens.refreshToken.isEmpty) return;
+      final cid = tokens.userId.isNotEmpty
+          ? tokens.userId
+          : account.microsoftUserId;
+      final profile = await service.authClient.fetchUserProfile(
+        cid: cid,
+        refreshToken: tokens.refreshToken,
+        fallbackEmail: account.email,
+      );
+      if (_disposed) return;
+
+      final nextName = profile.displayName.trim().isNotEmpty &&
+              profile.displayName != 'Microsoft Account' &&
+              (needsName || profile.displayName != account.displayName)
+          ? profile.displayName
+          : null;
+      final nextEmail = profile.email.trim().isNotEmpty &&
+              (needsEmail || profile.email != account.email)
+          ? profile.email
+          : null;
+      final nextAvatar = (profile.avatarBase64 != null &&
+              profile.avatarBase64!.isNotEmpty &&
+              needsAvatar)
+          ? profile.avatarBase64
+          : null;
+
+      if (nextName == null && nextEmail == null && nextAvatar == null) {
+        return;
+      }
+      await ref.read(accountProvider.notifier).updateMicrosoftProfile(
+            account.id,
+            displayName: nextName,
+            email: nextEmail,
+            avatarBase64: nextAvatar,
+          );
+    } catch (_) {
+      // Best-effort backfill only; never fail sync.
+    }
+  }
+
+  void _startRealtimeFor(MicrosoftAccount account) {
+    _stopRealtime();
+    _realtimeAccountId = account.id;
+    _realtimeBackoff = _realtimeInitialBackoff;
+    unawaited(_connectRealtime(account));
+  }
+
+  Future<void> _connectRealtime(MicrosoftAccount account) async {
+    if (_disposed || _realtimeAccountId != account.id) return;
+    if (!ref.read(realtimeSyncEnabledProvider)) return;
+
+    try {
+      final service = ref.read(cloudSyncServiceProvider);
+      final storage = ref.read(todoProvider.notifier).storage;
+      final ctx = await service.resolveContext(account, storage);
+
+      if (_disposed || _realtimeAccountId != account.id) return;
+
+      final stream = service.todoApi.connectRealtime(ctx);
+      _realtimeSub = stream.listen(
+        (event) {
+          if (_disposed || _realtimeAccountId != account.id) return;
+          _realtimeBackoff = _realtimeInitialBackoff;
+          if (event.isKeepAlive) return;
+          if (service.todoApi.isOwnRequestId(event.requestId)) return;
+          scheduleDebouncedSync(delay: const Duration(milliseconds: 200));
+        },
+        onError: (_) {
+          _scheduleRealtimeReconnect(account);
+        },
+        onDone: () {
+          _scheduleRealtimeReconnect(account);
+        },
+        cancelOnError: true,
+      );
+    } catch (_) {
+      _scheduleRealtimeReconnect(account);
+    }
+  }
+
+  void _scheduleRealtimeReconnect(MicrosoftAccount account) {
+    if (_disposed || _realtimeAccountId != account.id) return;
+    if (!ref.read(realtimeSyncEnabledProvider)) return;
+    _realtimeSub = null;
+    _realtimeReconnectTimer?.cancel();
+    final wait = _realtimeBackoff;
+    final nextSecs = (wait.inSeconds * 2).clamp(
+      _realtimeInitialBackoff.inSeconds,
+      _realtimeMaxBackoff.inSeconds,
+    );
+    _realtimeBackoff = Duration(seconds: nextSecs);
+    _realtimeReconnectTimer = Timer(wait, () {
+      if (!_disposed && _realtimeAccountId == account.id) {
+        unawaited(_connectRealtime(account));
+      }
+    });
   }
 }
 

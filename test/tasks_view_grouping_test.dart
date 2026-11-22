@@ -71,12 +71,34 @@ void main() {
     expect(customSplit.active.map((t) => t.id), ['t3']);
     expect(customSplit.completed.map((t) => t.id), ['t2', 't1']);
 
-    // Custom list with showCompleted=false hides completed bucket
-    final customHidden = customList.copyWith(showCompleted: false);
-    final hiddenSplit =
-        splitTasksForDisplay([older, active, newer], customHidden);
-    expect(hiddenSplit.active.map((t) => t.id), ['t3']);
-    expect(hiddenSplit.completed, isEmpty);
+    // Custom list & Tasks with showCompleted=false still expose completed tasks
+    // for the collapsible Completed pill (showCompleted tracks expansion state)
+    final customCollapsed = customList.copyWith(showCompleted: false);
+    final collapsedSplit =
+        splitTasksForDisplay([older, active, newer], customCollapsed);
+    expect(collapsedSplit.active.map((t) => t.id), ['t3']);
+    expect(collapsedSplit.completed.map((t) => t.id), ['t2', 't1']);
+
+    const tasksCollapsed = TodoList(
+      id: 'tasks',
+      title: 'Tasks',
+      smartType: SmartListType.tasks,
+      showCompleted: false,
+    );
+    final tasksCollapsedSplit =
+        splitTasksForDisplay([older, active, newer], tasksCollapsed);
+    expect(tasksCollapsedSplit.active.map((t) => t.id), ['t3']);
+    expect(tasksCollapsedSplit.completed.map((t) => t.id), ['t2', 't1']);
+
+    // All smart list excludes completed tasks completely
+    const allList = TodoList(
+      id: 'all',
+      title: 'All',
+      smartType: SmartListType.all,
+    );
+    final allSplit = splitTasksForDisplay([older, active, newer], allList);
+    expect(allSplit.active.map((t) => t.id), ['t3']);
+    expect(allSplit.completed, isEmpty);
   });
 
   test('groupPlannedTasks classifies tasks into chronological buckets', () {

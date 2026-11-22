@@ -268,5 +268,21 @@
   "quickAddNotificationBody": "Tap to add a task",
   "notificationPermissionDenied": "Notification permission is disabled. Enable it in system settings to receive reminders.",
   "useDynamicColor": "Use system dynamic color",
-  "useDynamicColorSummary": "Use system colors on pages without a list theme"
+  "useDynamicColorSummary": "Use system colors on pages without a list theme",
+  "msaBrowserSignInTitle": "Sign in with Microsoft",
+  "msaBrowserSignInInstructions": "Complete sign-in in your browser, then paste the redirected address (containing code=...) or the authorization code below:",
+  "msaPasteRedirectHint": "Paste redirect URL or code",
+  "msaOpenBrowserAgain": "Open browser",
+  "msaInvalidCodeError": "Could not find a valid authorization code.",
+  "groupBy": "Group by",
+  "groupByUngroup": "Don't group",
+  "groupByDueDate": "Due date",
+  "groupByList": "List",
+  "filterDueDate": "Filter",
+  "filterAllPlanned": "All planned",
+  "filterOverdue": "Overdue",
+  "filterToday": "Today",
+  "filterTomorrow": "Tomorrow",
+  "filterThisWeek": "This week",
+  "filterLater": "Later"
 }

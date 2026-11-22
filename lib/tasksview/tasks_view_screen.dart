@@ -26,7 +26,15 @@ import 'tasks_view_presenter.dart';
 
 enum _TasksViewMode { browsing, reordering, multiSelecting }
 
-enum _ListMenuAction { rename, sort, reorder, changeTheme, duplicate, delete }
+enum _ListMenuAction {
+  rename,
+  sort,
+  groupBy,
+  reorder,
+  changeTheme,
+  duplicate,
+  delete,
+}
 
 enum _MultiSelectAction { selectOrClearAll, important, move, copy, delete }
 
@@ -266,6 +274,102 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     );
   }
 
+  String _plannedFilterLabel(
+    AppLocalizations l10n,
+    PlannedDueDateFilter filter,
+  ) {
+    return switch (filter) {
+      PlannedDueDateFilter.all => l10n.filterAllPlanned,
+      PlannedDueDateFilter.overdue => l10n.filterOverdue,
+      PlannedDueDateFilter.today => l10n.filterToday,
+      PlannedDueDateFilter.tomorrow => l10n.filterTomorrow,
+      PlannedDueDateFilter.thisWeek => l10n.filterThisWeek,
+      PlannedDueDateFilter.later => l10n.filterLater,
+    };
+  }
+
+  Future<void> _showPlannedGroupSheet(PlannedGroupOption currentOption) async {
+    final l10n = AppLocalizations.of(context);
+    final notifier = ref.read(tasksViewPresenterProvider);
+    final options = <(PlannedGroupOption, String, IconData)>[
+      (PlannedGroupOption.byDueDate, l10n.groupByDueDate, Icons.calendar_today_outlined),
+      (PlannedGroupOption.byList, l10n.groupByList, Icons.format_list_bulleted),
+      (PlannedGroupOption.ungroup, l10n.groupByUngroup, Icons.view_stream_outlined),
+    ];
+
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(
+                l10n.groupBy,
+                style: Theme.of(ctx).textTheme.titleMedium,
+              ),
+            ),
+            const Divider(height: 1),
+            for (final (option, label, icon) in options)
+              ListTile(
+                leading: Icon(icon),
+                title: Text(label),
+                trailing: currentOption == option ? const Icon(Icons.check) : null,
+                onTap: () {
+                  notifier.setPlannedGroupOption(option);
+                  Navigator.pop(ctx);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showPlannedFilterSheet(
+    PlannedDueDateFilter currentFilter,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    final notifier = ref.read(tasksViewPresenterProvider);
+    final options = <(PlannedDueDateFilter, String, IconData)>[
+      (PlannedDueDateFilter.all, l10n.filterAllPlanned, Icons.all_inclusive),
+      (PlannedDueDateFilter.overdue, l10n.filterOverdue, Icons.warning_amber_outlined),
+      (PlannedDueDateFilter.today, l10n.filterToday, Icons.today_outlined),
+      (PlannedDueDateFilter.tomorrow, l10n.filterTomorrow, Icons.wb_twilight_outlined),
+      (PlannedDueDateFilter.thisWeek, l10n.filterThisWeek, Icons.date_range_outlined),
+      (PlannedDueDateFilter.later, l10n.filterLater, Icons.event_outlined),
+    ];
+
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text(
+                l10n.filterDueDate,
+                style: Theme.of(ctx).textTheme.titleMedium,
+              ),
+            ),
+            const Divider(height: 1),
+            for (final (filter, label, icon) in options)
+              ListTile(
+                leading: Icon(icon),
+                title: Text(label),
+                trailing:
+                    currentFilter == filter ? const Icon(Icons.check) : null,
+                onTap: () {
+                  notifier.setPlannedDueDateFilter(filter);
+                  Navigator.pop(ctx);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<bool> _confirmDialog({
     required String title,
     required String content,
@@ -400,9 +504,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   ) async {
     final l10n = AppLocalizations.of(context);
     final notifier = ref.read(tasksViewPresenterProvider);
-    final hasCompleted =
-        currentList.showCompleted &&
-        state.tasks.any((t) => t.listId == currentList.id && t.isCompleted);
+    final hasCompleted = state.tasks.any(
+      (t) => t.listId == currentList.id && t.isCompleted,
+    );
 
     var keepCompleted = false;
     if (hasCompleted) {
@@ -478,7 +582,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final supportsSort =
         isCustom ||
         list.smartType == SmartListType.myDay ||
+        list.smartType == SmartListType.important ||
         list.smartType == SmartListType.all ||
+        list.smartType == SmartListType.completed ||
         list.smartType == SmartListType.tasks;
     final supportsReorder =
         (isCustom ||
@@ -499,6 +605,12 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           value: _ListMenuAction.sort,
           icon: Icons.sort,
           label: l10n.sortBy,
+        ),
+      if (list.smartType == SmartListType.planned)
+        _buildPopupMenuItem(
+          value: _ListMenuAction.groupBy,
+          icon: Icons.view_agenda_outlined,
+          label: l10n.groupBy,
         ),
       if (supportsReorder)
         _buildPopupMenuItem(
@@ -558,6 +670,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         );
       case _ListMenuAction.sort:
         await _showSortSheet(currentList);
+      case _ListMenuAction.groupBy:
+        await _showPlannedGroupSheet(state.plannedGroupOption);
       case _ListMenuAction.reorder:
         if (currentList.sortOption != TaskSortOption.defaultOrder) {
           notifier.setListSortOption(
@@ -1138,6 +1252,56 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     );
   }
 
+  Widget _buildPlannedFilterBanner({
+    required AppLocalizations l10n,
+    required TodoList currentList,
+    required PlannedDueDateFilter currentFilter,
+    required Color headerFg,
+  }) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: InkWell(
+            onTap: () => _showPlannedFilterSheet(currentFilter),
+            borderRadius: BorderRadius.circular(4),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: currentList.themePhoto != null
+                    ? Colors.black.withValues(alpha: 0.35)
+                    : (Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white.withValues(alpha: 0.10)
+                        : (TodoColors.isLightTheme(currentList.themeColor)
+                            ? Colors.white.withValues(alpha: 0.72)
+                            : Colors.black.withValues(alpha: 0.25))),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.filter_list, size: 16, color: headerFg),
+                  const SizedBox(width: 6),
+                  Text(
+                    _plannedFilterLabel(l10n, currentFilter),
+                    style: TextStyle(
+                      color: headerFg,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(Icons.keyboard_arrow_down, size: 16, color: headerFg),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   List<Widget> _buildTaskSlivers({
     required AppLocalizations l10n,
     required TodoState state,
@@ -1162,14 +1326,33 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         )
       else if (currentList.smartType == SmartListType.planned &&
           currentList.sortOption == TaskSortOption.defaultOrder)
-        ..._buildPlannedBucketSlivers(
-          l10n: l10n,
-          state: state,
-          currentList: currentList,
-          activeTasks: activeTasks,
-          accentColor: accentColor,
-          headerFg: headerFg,
-        )
+        ...switch (state.plannedGroupOption) {
+          PlannedGroupOption.byDueDate => _buildPlannedBucketSlivers(
+              l10n: l10n,
+              state: state,
+              currentList: currentList,
+              activeTasks: activeTasks,
+              accentColor: accentColor,
+              headerFg: headerFg,
+            ),
+          PlannedGroupOption.byList => _buildListBucketSlivers(
+              l10n: l10n,
+              state: state,
+              currentList: currentList,
+              activeTasks: activeTasks,
+              accentColor: accentColor,
+              headerFg: headerFg,
+            ),
+          PlannedGroupOption.ungroup => [
+              _buildFlatTaskSliver(
+                l10n: l10n,
+                state: state,
+                currentList: currentList,
+                activeTasks: activeTasks,
+                accentColor: accentColor,
+              ),
+            ],
+        }
       else if ((currentList.smartType == SmartListType.completed ||
               currentList.smartType == SmartListType.all) &&
           currentList.sortOption == TaskSortOption.defaultOrder)
@@ -1707,6 +1890,15 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                     currentList: currentList,
                                     headerFg: headerFg,
                                   ),
+                                if (currentList.smartType ==
+                                        SmartListType.planned &&
+                                    _mode == _TasksViewMode.browsing)
+                                  _buildPlannedFilterBanner(
+                                    l10n: l10n,
+                                    currentList: currentList,
+                                    currentFilter: state.plannedDueDateFilter,
+                                    headerFg: headerFg,
+                                  ),
                                 ..._buildTaskSlivers(
                                   l10n: l10n,
                                   state: state,
@@ -1727,7 +1919,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                 ),
                               ],
                             );
-                            if (!isMicrosoft) return scrollView;
+                            if (!isMicrosoft ||
+                                _mode == _TasksViewMode.reordering) {
+                              return scrollView;
+                            }
                             return RefreshIndicator(
                               onRefresh: () =>
                                   ref.read(syncProvider.notifier).syncNow(),

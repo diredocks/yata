@@ -18,6 +18,7 @@ import '../view/sync_status_label.dart';
 import 'groups/group_dialogs.dart';
 import 'groups/group_header_tile.dart';
 import 'home_list_tile.dart';
+import 'home_view_ordering.dart';
 import 'home_view_presenter.dart';
 
 class HomeViewScreen extends ConsumerStatefulWidget {
@@ -95,9 +96,13 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
     final smartLists = state.lists
         .where((l) => l.isSmartList && state.isSmartListVisible(l))
         .toList();
-    final customLists = state.lists.where((l) => !l.isSmartList).toList();
-    final ungroupedLists =
-        customLists.where((l) => l.groupId == null).toList();
+    final orderedCustomLists = sortCustomListsByOrder(
+      state.lists.where((l) => !l.isSmartList).toList(),
+    );
+    final orderedEntries = buildOrderedHomeSidebarEntries(
+      groups: state.groups,
+      lists: state.lists,
+    );
 
     final collapsedAvatarSize = widget.isSidebar ? 32.0 : 38.0;
 
@@ -411,88 +416,231 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
                           ),
                         ],
                       )
-                    : ListView(
+                    : CustomScrollView(
                         key: const ValueKey('homeview_lists'),
-                        padding: const EdgeInsets.only(bottom: 8),
-                        children: [
-                          for (final list in smartLists)
-                            HomeListTile(
-                              title: _localizedListTitle(l10n, list),
-                              icon: list.icon,
-                              iconColor: TodoColors.accentFor(list.themeColor),
-                              count: state.activeCountForList(list),
-                              isSelected: widget.isSidebar &&
-                                  state.selectedListId == list.id,
-                              onTap: () => widget.onSelectList(list),
+                        slivers: [
+                          SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                                final list = smartLists[index];
+                                return HomeListTile(
+                                  title: _localizedListTitle(l10n, list),
+                                  icon: list.icon,
+                                  iconColor: TodoColors.accentFor(
+                                    list.themeColor,
+                                  ),
+                                  count: state.activeCountForList(list),
+                                  isSelected: widget.isSidebar &&
+                                      state.selectedListId == list.id,
+                                  onTap: () => widget.onSelectList(list),
+                                );
+                              },
+                              childCount: smartLists.length,
                             ),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 12, 0, 12),
-                    child: Divider(height: 1),
-                  ),
-                  for (final group in state.groups) ...[
-                    GroupHeaderTile(
-                      group: group,
-                      onTap: () => notifier.toggleGroupExpanded(group.id),
-                      onModifyLists: () => showGroupListsDialog(
-                        context: context,
-                        group: group,
-                        customLists: customLists
-                            .where(
-                              (l) => l.groupId == null || l.groupId == group.id,
-                            )
-                            .toList(),
-                        onSave: (ids) => notifier.setGroupLists(group.id, ids),
-                      ),
-                      onRename: () => showRenameGroupDialog(
-                        context: context,
-                        initialTitle: group.title,
-                        onRename: (title) =>
-                            notifier.renameGroup(group.id, title),
-                      ),
-                      onUngroup: () => notifier.deleteGroup(group.id),
-                    ),
-                    ClipRect(
-                      child: AnimatedSize(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeOutCubic,
-                        alignment: Alignment.topCenter,
-                        child: group.isExpanded
-                            ? Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  for (final list in state.lists
-                                      .where((l) => l.groupId == group.id))
-                                    HomeListTile(
-                                      title: list.title,
-                                      emoji: list.emoji,
-                                      icon: list.icon,
-                                      iconColor:
-                                          TodoColors.accentFor(list.themeColor),
-                                      count: state.activeCountForList(list),
-                                      isSelected: widget.isSidebar &&
-                                          state.selectedListId == list.id,
-                                      isGrouped: true,
-                                      onTap: () => widget.onSelectList(list),
+                          ),
+                          const SliverToBoxAdapter(
+                            child: Padding(
+                              padding: EdgeInsets.fromLTRB(16, 12, 0, 12),
+                              child: Divider(height: 1),
+                            ),
+                          ),
+                          if (orderedEntries.isNotEmpty)
+                            SliverReorderableList(
+                              itemCount: orderedEntries.length,
+                              proxyDecorator: (child, index, animation) =>
+                                  Material(
+                                elevation: 4,
+                                color: theme.scaffoldBackgroundColor,
+                                borderRadius: BorderRadius.circular(6),
+                                child: child,
+                              ),
+                              onReorderItem: (oldIndex, newIndex) =>
+                                  notifier.reorderTopLevelEntries(
+                                orderedEntries,
+                                oldIndex,
+                                newIndex,
+                              ),
+                              itemBuilder: (context, index) {
+                                final entry = orderedEntries[index];
+                                return switch (entry) {
+                                  HomeListEntry(:final list) =>
+                                    ReorderableDelayedDragStartListener(
+                                      key: ValueKey(entry.stableKey),
+                                      index: index,
+                                      child: HomeListTile(
+                                        title: list.title,
+                                        emoji: list.emoji,
+                                        icon: list.icon,
+                                        iconColor: TodoColors.accentFor(
+                                          list.themeColor,
+                                        ),
+                                        count: state.activeCountForList(list),
+                                        isSelected: widget.isSidebar &&
+                                            state.selectedListId == list.id,
+                                        onTap: () => widget.onSelectList(list),
+                                      ),
                                     ),
-                                ],
-                              )
-                            : const SizedBox(width: double.infinity),
+                                  HomeGroupEntry(
+                                    :final group,
+                                    lists: final memberLists,
+                                  ) =>
+                                    Column(
+                                      key: ValueKey(entry.stableKey),
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ReorderableDelayedDragStartListener(
+                                          index: index,
+                                          child: GroupHeaderTile(
+                                            group: group,
+                                            onTap: () => notifier
+                                                .toggleGroupExpanded(group.id),
+                                            onModifyLists: () =>
+                                                showGroupListsDialog(
+                                              context: context,
+                                              group: group,
+                                              customLists: orderedCustomLists
+                                                  .where(
+                                                    (l) =>
+                                                        l.groupId == null ||
+                                                        l.groupId == group.id,
+                                                  )
+                                                  .toList(),
+                                              onSave: (ids) => notifier
+                                                  .setGroupLists(group.id, ids),
+                                            ),
+                                            onRename: () =>
+                                                showRenameGroupDialog(
+                                              context: context,
+                                              initialTitle: group.title,
+                                              onRename: (title) =>
+                                                  notifier.renameGroup(
+                                                group.id,
+                                                title,
+                                              ),
+                                            ),
+                                            onUngroup: () => notifier
+                                                .deleteGroup(group.id),
+                                          ),
+                                        ),
+                                        ClipRect(
+                                          child: AnimatedSize(
+                                            duration: const Duration(
+                                              milliseconds: 200,
+                                            ),
+                                            curve: Curves.easeOutCubic,
+                                            alignment: Alignment.topCenter,
+                                            child: group.isExpanded
+                                                ? (memberLists.length >= 2
+                                                    ? ReorderableListView
+                                                        .builder(
+                                                        shrinkWrap: true,
+                                                        primary: false,
+                                                        physics:
+                                                            const NeverScrollableScrollPhysics(),
+                                                        buildDefaultDragHandles:
+                                                            false,
+                                                        proxyDecorator: (
+                                                          child,
+                                                          idx,
+                                                          anim,
+                                                        ) =>
+                                                            Material(
+                                                          elevation: 4,
+                                                          color: theme
+                                                              .scaffoldBackgroundColor,
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(6),
+                                                          child: child,
+                                                        ),
+                                                        itemCount:
+                                                            memberLists.length,
+                                                        onReorderItem: (o, n) =>
+                                                            notifier
+                                                                .reorderGroupLists(
+                                                          group.id,
+                                                          memberLists,
+                                                          o,
+                                                          n,
+                                                        ),
+                                                        itemBuilder:
+                                                            (ctx, memberIdx) {
+                                                          final list =
+                                                              memberLists[
+                                                                  memberIdx];
+                                                          return ReorderableDelayedDragStartListener(
+                                                            key: ValueKey(
+                                                              'group_member_${list.id}',
+                                                            ),
+                                                            index: memberIdx,
+                                                            child: HomeListTile(
+                                                              title: list.title,
+                                                              emoji: list.emoji,
+                                                              icon: list.icon,
+                                                              iconColor: TodoColors
+                                                                  .accentFor(
+                                                                list.themeColor,
+                                                              ),
+                                                              count: state
+                                                                  .activeCountForList(
+                                                                list,
+                                                              ),
+                                                              isSelected: widget
+                                                                      .isSidebar &&
+                                                                  state.selectedListId ==
+                                                                      list.id,
+                                                              isGrouped: true,
+                                                              onTap: () => widget
+                                                                  .onSelectList(
+                                                                list,
+                                                              ),
+                                                            ),
+                                                          );
+                                                        },
+                                                      )
+                                                    : Column(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        children: [
+                                                          for (final list
+                                                              in memberLists)
+                                                            HomeListTile(
+                                                              title: list.title,
+                                                              emoji: list.emoji,
+                                                              icon: list.icon,
+                                                              iconColor: TodoColors
+                                                                  .accentFor(
+                                                                list.themeColor,
+                                                              ),
+                                                              count: state
+                                                                  .activeCountForList(
+                                                                list,
+                                                              ),
+                                                              isSelected: widget
+                                                                      .isSidebar &&
+                                                                  state.selectedListId ==
+                                                                      list.id,
+                                                              isGrouped: true,
+                                                              onTap: () => widget
+                                                                  .onSelectList(
+                                                                list,
+                                                              ),
+                                                            ),
+                                                        ],
+                                                      ))
+                                                : const SizedBox(
+                                                    width: double.infinity,
+                                                  ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                };
+                              },
+                            ),
+                          const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                        ],
                       ),
-                    ),
-                  ],
-                  for (final list in ungroupedLists)
-                    HomeListTile(
-                      title: list.title,
-                      emoji: list.emoji,
-                      icon: list.icon,
-                      iconColor: TodoColors.accentFor(list.themeColor),
-                      count: state.activeCountForList(list),
-                      isSelected:
-                          widget.isSidebar && state.selectedListId == list.id,
-                      onTap: () => widget.onSelectList(list),
-                    ),
-                ],
-              ),
               ),
             ),
 

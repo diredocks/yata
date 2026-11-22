@@ -67,6 +67,21 @@ extension TaskSortOptionDefaults on TaskSortOption {
   }
 }
 
+enum PlannedDueDateFilter {
+  overdue,
+  today,
+  tomorrow,
+  thisWeek,
+  later,
+  all,
+}
+
+enum PlannedGroupOption {
+  ungroup,
+  byDueDate,
+  byList,
+}
+
 @immutable
 class TodoList {
   const TodoList({
@@ -82,6 +97,7 @@ class TodoList {
     this.sortAscending = true,
     this.showCompleted = true,
     this.remoteId,
+    this.orderDateTime,
     this.updatedAt,
   });
 
@@ -97,6 +113,7 @@ class TodoList {
   final bool sortAscending;
   final bool showCompleted;
   final String? remoteId;
+  final DateTime? orderDateTime;
   final DateTime? updatedAt;
 
   bool get isSmartList => smartType != null;
@@ -117,6 +134,9 @@ class TodoList {
     bool? sortAscending,
     bool? showCompleted,
     String? remoteId,
+    bool clearRemoteId = false,
+    DateTime? orderDateTime,
+    bool clearOrderDateTime = false,
     DateTime? updatedAt,
   }) {
     return TodoList(
@@ -131,7 +151,9 @@ class TodoList {
       sortOption: sortOption ?? this.sortOption,
       sortAscending: sortAscending ?? this.sortAscending,
       showCompleted: showCompleted ?? this.showCompleted,
-      remoteId: remoteId ?? this.remoteId,
+      remoteId: clearRemoteId ? null : (remoteId ?? this.remoteId),
+      orderDateTime:
+          clearOrderDateTime ? null : (orderDateTime ?? this.orderDateTime),
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
@@ -161,6 +183,7 @@ class TodoList {
       'sortAscending': sortAscending,
       'showCompleted': showCompleted,
       'remoteId': remoteId,
+      'orderDateTime': orderDateTime?.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };
   }
@@ -198,6 +221,9 @@ class TodoList {
       sortAscending: json['sortAscending'] as bool? ?? true,
       showCompleted: json['showCompleted'] as bool? ?? true,
       remoteId: json['remoteId'] as String?,
+      orderDateTime: json['orderDateTime'] != null
+          ? DateTime.parse(json['orderDateTime'] as String)
+          : null,
       updatedAt: json['updatedAt'] != null
           ? DateTime.parse(json['updatedAt'] as String)
           : null,
@@ -211,21 +237,36 @@ class ListGroup {
     required this.id,
     required this.title,
     this.isExpanded = true,
+    this.remoteId,
+    this.orderDateTime,
+    this.updatedAt,
   });
 
   final String id;
   final String title;
   final bool isExpanded;
+  final String? remoteId;
+  final DateTime? orderDateTime;
+  final DateTime? updatedAt;
 
   ListGroup copyWith({
     String? id,
     String? title,
     bool? isExpanded,
+    String? remoteId,
+    bool clearRemoteId = false,
+    DateTime? orderDateTime,
+    bool clearOrderDateTime = false,
+    DateTime? updatedAt,
   }) {
     return ListGroup(
       id: id ?? this.id,
       title: title ?? this.title,
       isExpanded: isExpanded ?? this.isExpanded,
+      remoteId: clearRemoteId ? null : (remoteId ?? this.remoteId),
+      orderDateTime:
+          clearOrderDateTime ? null : (orderDateTime ?? this.orderDateTime),
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -234,6 +275,9 @@ class ListGroup {
       'id': id,
       'title': title,
       'isExpanded': isExpanded,
+      'remoteId': remoteId,
+      'orderDateTime': orderDateTime?.toIso8601String(),
+      'updatedAt': updatedAt?.toIso8601String(),
     };
   }
 
@@ -242,6 +286,13 @@ class ListGroup {
       id: json['id'] as String,
       title: json['title'] as String,
       isExpanded: json['isExpanded'] as bool? ?? true,
+      remoteId: json['remoteId'] as String?,
+      orderDateTime: json['orderDateTime'] != null
+          ? DateTime.parse(json['orderDateTime'] as String)
+          : null,
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'] as String)
+          : null,
     );
   }
 }

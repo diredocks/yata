@@ -1,13 +1,12 @@
 import 'dart:async';
 
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../l10n/app_localizations.dart';
 import '../account/account_provider.dart';
-import '../auth/browser_launcher.dart';
 import '../auth/microsoft_auth_service.dart';
+import '../l10n/app_localizations.dart';
+import '../sync/todo_wire_codecs.dart';
 import '../theme/todo_theme.dart';
 
 class LandingScreen extends ConsumerStatefulWidget {
@@ -24,15 +23,12 @@ class LandingScreen extends ConsumerStatefulWidget {
 
 class _LandingScreenState extends ConsumerState<LandingScreen> {
   final _inputController = TextEditingController();
-  final _clientIdController = TextEditingController();
   bool _isSubmitting = false;
-  bool _showClientIdField = false;
   String? _errorMessage;
 
   @override
   void dispose() {
     _inputController.dispose();
-    _clientIdController.dispose();
     super.dispose();
   }
 
@@ -45,55 +41,64 @@ class _LandingScreenState extends ConsumerState<LandingScreen> {
 
     final l10n = AppLocalizations.of(context);
     final authClient = ref.read(microsoftAuthClientProvider);
-    final customClientId = _clientIdController.text.trim();
-    final clientId = customClientId.isEmpty ? null : customClientId;
-
-    var cancelled = false;
-    var dialogOpen = false;
+    final interactiveClient = ref.read(msaInteractiveSignInProvider);
+    final loginHint = _inputController.text.trim();
+    final uaid = generateUuidV4();
+    final authorizeUrl = authClient.buildAuthorizeUrl(
+      loginHint: loginHint.isEmpty ? null : loginHint,
+      uaid: uaid,
+    );
 
     try {
-      final prompt = await authClient.startDeviceCodeFlow(
-        loginHint: _inputController.text.trim(),
-        clientId: clientId,
+      String? code;
+      final interactiveResult = await interactiveClient.signIn(
+        authorizeUrl: authorizeUrl,
+        redirectUri: MsaAuthConfig.redirectUri,
       );
 
       if (!mounted) return;
 
-      final pollFuture = authClient.pollDeviceCodeToken(
-        prompt,
-        clientId: clientId,
-        isCancelled: () => cancelled,
-      );
-
-      if (prompt.userCode.isNotEmpty) {
-        dialogOpen = true;
-        unawaited(
-          showDialog<void>(
-            context: context,
-            barrierDismissible: false,
-            builder: (ctx) => _DeviceCodeDialog(
-              prompt: prompt,
-              onCancel: () {
-                cancelled = true;
-                dialogOpen = false;
-                Navigator.of(ctx).pop();
-              },
-            ),
-          ).then((_) {
-            dialogOpen = false;
-          }),
+      if (interactiveResult != null) {
+        if (interactiveResult.cancelled) {
+          setState(() => _isSubmitting = false);
+          return;
+        }
+        if (interactiveResult.error != null) {
+          setState(() {
+            _isSubmitting = false;
+            _errorMessage = interactiveResult.error;
+          });
+          return;
+        }
+        code = interactiveResult.code;
+      } else {
+        // Desktop / non-WebView fallback: launch browser and prompt for redirect URL / code.
+        final openUrl = ref.read(externalUrlLauncherProvider);
+        unawaited(openUrl(authorizeUrl));
+        code = await showDialog<String>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => _MsaBrowserCodeDialog(
+            onOpenBrowser: () => openUrl(authorizeUrl),
+            onExtractCode: authClient.extractAuthorizationCode,
+          ),
         );
       }
 
-      final result = await pollFuture;
-
       if (!mounted) return;
-      if (dialogOpen) {
-        dialogOpen = false;
-        Navigator.of(context).pop();
+      if (code == null || code.isEmpty) {
+        setState(() => _isSubmitting = false);
+        return;
       }
 
-      await ref.read(accountProvider.notifier).signInMicrosoft(result);
+      final signInResult = await authClient.completeSignInWithCode(
+        code: code,
+        loginHint: loginHint.isEmpty ? null : loginHint,
+        uaid: uaid,
+      );
+
+      if (!mounted) return;
+      await ref.read(accountProvider.notifier).signInMicrosoft(signInResult);
 
       if (!mounted) return;
       if (widget.isAddingAccount) {
@@ -103,20 +108,12 @@ class _LandingScreenState extends ConsumerState<LandingScreen> {
       }
     } on MicrosoftAuthException catch (e) {
       if (!mounted) return;
-      if (dialogOpen) {
-        dialogOpen = false;
-        Navigator.of(context).pop();
-      }
       setState(() {
         _isSubmitting = false;
-        _errorMessage = e.isCancelled ? null : e.message;
+        _errorMessage = e.message;
       });
     } catch (e) {
       if (!mounted) return;
-      if (dialogOpen) {
-        dialogOpen = false;
-        Navigator.of(context).pop();
-      }
       setState(() {
         _isSubmitting = false;
         _errorMessage = l10n.signInFailed(e.toString());
@@ -217,23 +214,6 @@ class _LandingScreenState extends ConsumerState<LandingScreen> {
                       ),
                     ),
                   ),
-                  if (_showClientIdField) ...[
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: _clientIdController,
-                      decoration: InputDecoration(
-                        labelText: l10n.clientIdLabel,
-                        hintText: MicrosoftAuthConfig.defaultClientId,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 12),
                   FilledButton(
                     onPressed: _isSubmitting ? null : _handleMicrosoftSignIn,
@@ -277,39 +257,14 @@ class _LandingScreenState extends ConsumerState<LandingScreen> {
                     ),
                   ],
                   const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          l10n.landingSubtitle,
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: isDark
-                                ? TodoColors.secondaryTextDark
-                                : TodoColors.secondaryTextLight,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          _showClientIdField
-                              ? Icons.expand_less
-                              : Icons.tune_outlined,
-                          size: 16,
-                          color: isDark
-                              ? TodoColors.secondaryTextDark
-                              : TodoColors.secondaryTextLight,
-                        ),
-                        tooltip: l10n.clientIdLabel,
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () {
-                          setState(() {
-                            _showClientIdField = !_showClientIdField;
-                          });
-                        },
-                      ),
-                    ],
+                  Text(
+                    l10n.landingSubtitle,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: isDark
+                          ? TodoColors.secondaryTextDark
+                          : TodoColors.secondaryTextLight,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Center(
@@ -331,14 +286,42 @@ class _LandingScreenState extends ConsumerState<LandingScreen> {
   }
 }
 
-class _DeviceCodeDialog extends StatelessWidget {
-  const _DeviceCodeDialog({
-    required this.prompt,
-    required this.onCancel,
+class _MsaBrowserCodeDialog extends StatefulWidget {
+  const _MsaBrowserCodeDialog({
+    required this.onOpenBrowser,
+    required this.onExtractCode,
   });
 
-  final MicrosoftDeviceCodePrompt prompt;
-  final VoidCallback onCancel;
+  final Future<bool> Function() onOpenBrowser;
+  final String? Function(String rawInput) onExtractCode;
+
+  @override
+  State<_MsaBrowserCodeDialog> createState() => _MsaBrowserCodeDialogState();
+}
+
+class _MsaBrowserCodeDialogState extends State<_MsaBrowserCodeDialog> {
+  final _codeController = TextEditingController();
+  String? _validationError;
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final l10n = AppLocalizations.of(context);
+    try {
+      final extracted = widget.onExtractCode(_codeController.text);
+      if (extracted == null || extracted.isEmpty) {
+        setState(() => _validationError = l10n.msaInvalidCodeError);
+        return;
+      }
+      Navigator.of(context).pop(extracted);
+    } on MicrosoftAuthException catch (e) {
+      setState(() => _validationError = e.message);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -346,86 +329,46 @@ class _DeviceCodeDialog extends StatelessWidget {
     final theme = Theme.of(context);
 
     return AlertDialog(
-      title: Text(l10n.deviceCodeTitle),
+      title: Text(l10n.msaBrowserSignInTitle),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(l10n.deviceCodeInstructions),
+          Text(l10n.msaBrowserSignInInstructions),
           const SizedBox(height: 12),
-          SelectableText(
-            prompt.verificationUri,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.primary,
-              fontWeight: FontWeight.w500,
+          TextField(
+            controller: _codeController,
+            autofocus: true,
+            maxLines: 2,
+            onSubmitted: (_) => _submit(),
+            decoration: InputDecoration(
+              hintText: l10n.msaPasteRedirectHint,
+              errorText: _validationError,
+              border: const OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: SelectableText(
-                    prompt.userCode,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.copy_outlined),
-                  tooltip: l10n.copyCode,
-                  onPressed: () async {
-                    await Clipboard.setData(
-                      ClipboardData(text: prompt.userCode),
-                    );
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(l10n.codeCopied)),
-                      );
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => unawaited(widget.onOpenBrowser()),
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: Text(
+                l10n.msaOpenBrowserAgain,
+                style: theme.textTheme.labelLarge,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  l10n.waitingForSignIn,
-                  style: theme.textTheme.bodySmall,
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),
       actions: [
         TextButton(
-          onPressed: onCancel,
+          onPressed: () => Navigator.of(context).pop(null),
           child: Text(l10n.cancel),
         ),
-        FilledButton.icon(
-          onPressed: () {
-            launchExternalUrl(prompt.verificationUri);
-          },
-          icon: const Icon(Icons.open_in_new, size: 18),
-          label: Text(l10n.openBrowser),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(l10n.signIn),
         ),
       ],
     );

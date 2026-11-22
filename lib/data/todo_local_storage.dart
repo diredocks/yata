@@ -5,24 +5,24 @@ import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
 import '../account/account_local_storage.dart';
 
-class PendingTaskDeletion {
-  const PendingTaskDeletion({
-    required this.listRemoteId,
+class PendingStepDeletion {
+  const PendingStepDeletion({
     required this.taskRemoteId,
+    required this.stepRemoteId,
   });
 
-  final String listRemoteId;
   final String taskRemoteId;
+  final String stepRemoteId;
 
   Map<String, dynamic> toJson() => {
-        'listRemoteId': listRemoteId,
         'taskRemoteId': taskRemoteId,
+        'stepRemoteId': stepRemoteId,
       };
 
-  factory PendingTaskDeletion.fromJson(Map<String, dynamic> json) {
-    return PendingTaskDeletion(
-      listRemoteId: json['listRemoteId'] as String,
+  factory PendingStepDeletion.fromJson(Map<String, dynamic> json) {
+    return PendingStepDeletion(
       taskRemoteId: json['taskRemoteId'] as String,
+      stepRemoteId: json['stepRemoteId'] as String,
     );
   }
 }
@@ -47,6 +47,8 @@ class TodoSnapshot {
     required this.showSmartListAll,
     required this.showSmartListCompleted,
     required this.autoHideEmptySmartLists,
+    this.plannedDueDateFilter = PlannedDueDateFilter.all,
+    this.plannedGroupOption = PlannedGroupOption.byDueDate,
     this.useDynamicColor = true,
     this.remindersEnabled = true,
     this.pinReminders = false,
@@ -78,6 +80,8 @@ class TodoSnapshot {
   final bool showSmartListAll;
   final bool showSmartListCompleted;
   final bool autoHideEmptySmartLists;
+  final PlannedDueDateFilter plannedDueDateFilter;
+  final PlannedGroupOption plannedGroupOption;
   final bool useDynamicColor;
   final bool remindersEnabled;
   final bool pinReminders;
@@ -138,8 +142,21 @@ class TodoLocalStorage {
       _k('routine_notification_minute');
   String get _quickAddNotificationKey => _k('quick_add_notification_enabled');
   String get _lastMyDayResetKey => _k('last_my_day_reset');
+  String get _plannedDueDateFilterKey => _k('planned_due_date_filter');
+  String get _plannedGroupOptionKey => _k('planned_group_option');
   String get _pendingDeletedListsKey => _k('pending_deleted_lists');
-  String get _pendingDeletedTasksKey => _k('pending_deleted_tasks');
+  String get _pendingDeletedTaskIdsKey => _k('pending_deleted_task_ids');
+  String get _pendingDeletedGroupsKey => _k('pending_deleted_groups');
+  String get _pendingDeletedStepsKey => _k('pending_deleted_steps');
+  String get _dirtyListIdsKey => _k('dirty_list_ids');
+  String get _dirtyGroupIdsKey => _k('dirty_group_ids');
+  String get _dirtyTaskIdsKey => _k('dirty_task_ids');
+  String get _dirtySettingKeysKey => _k('dirty_setting_keys');
+  String get _groupsDeltaLinkKey => _k('groups_delta_link');
+  String get _foldersDeltaLinkKey => _k('folders_delta_link');
+  String get _taskDeltaLinksKey => _k('task_delta_links');
+  String get _cachedEndpointUrlKey => _k('cached_endpoint_url');
+  String get _cachedEndpointFetchedAtKey => _k('cached_endpoint_fetched_at');
 
   static List<TodoList> defaultSmartLists() {
     return const [
@@ -252,6 +269,16 @@ class TodoLocalStorage {
       (e) => e.name == weekStartName,
       orElse: () => WeekStart.system,
     );
+    final plannedFilterName = _prefs.getString(_plannedDueDateFilterKey);
+    final plannedDueDateFilter = PlannedDueDateFilter.values.firstWhere(
+      (e) => e.name == plannedFilterName,
+      orElse: () => PlannedDueDateFilter.all,
+    );
+    final plannedGroupName = _prefs.getString(_plannedGroupOptionKey);
+    final plannedGroupOption = PlannedGroupOption.values.firstWhere(
+      (e) => e.name == plannedGroupName,
+      orElse: () => PlannedGroupOption.byDueDate,
+    );
 
     return TodoSnapshot(
       lists: lists,
@@ -274,6 +301,8 @@ class TodoLocalStorage {
       showSmartListCompleted: _prefs.getBool(_showCompletedListKey) ?? false,
       autoHideEmptySmartLists:
           _prefs.getBool(_autoHideSmartListsKey) ?? false,
+      plannedDueDateFilter: plannedDueDateFilter,
+      plannedGroupOption: plannedGroupOption,
       useDynamicColor: _prefs.getBool(_useDynamicColorKey) ?? true,
       remindersEnabled: _prefs.getBool(_remindersEnabledKey) ?? true,
       pinReminders: _prefs.getBool(_pinRemindersKey) ?? false,
@@ -423,6 +452,12 @@ class TodoLocalStorage {
   Future<void> saveLastMyDayResetDate(String dateKey) =>
       _prefs.setString(_lastMyDayResetKey, dateKey);
 
+  Future<void> savePlannedDueDateFilter(PlannedDueDateFilter filter) =>
+      _prefs.setString(_plannedDueDateFilterKey, filter.name);
+
+  Future<void> savePlannedGroupOption(PlannedGroupOption option) =>
+      _prefs.setString(_plannedGroupOptionKey, option.name);
+
   List<String> loadPendingDeletedListRemoteIds() {
     return _prefs.getStringList(_pendingDeletedListsKey) ?? const [];
   }
@@ -435,23 +470,155 @@ class TodoLocalStorage {
     }
   }
 
-  List<PendingTaskDeletion> loadPendingDeletedTasks() {
-    final raw = _prefs.getString(_pendingDeletedTasksKey);
-    if (raw == null) return const [];
+  List<String> loadPendingDeletedTaskRemoteIds() {
+    return _prefs.getStringList(_pendingDeletedTaskIdsKey) ?? const [];
+  }
+
+  Future<void> savePendingDeletedTaskRemoteIds(List<String> ids) async {
+    if (ids.isEmpty) {
+      await _prefs.remove(_pendingDeletedTaskIdsKey);
+    } else {
+      await _prefs.setStringList(_pendingDeletedTaskIdsKey, ids);
+    }
+  }
+
+  List<String> loadPendingDeletedGroupRemoteIds() {
+    return _prefs.getStringList(_pendingDeletedGroupsKey) ?? const [];
+  }
+
+  Future<void> savePendingDeletedGroupRemoteIds(List<String> ids) async {
+    if (ids.isEmpty) {
+      await _prefs.remove(_pendingDeletedGroupsKey);
+    } else {
+      await _prefs.setStringList(_pendingDeletedGroupsKey, ids);
+    }
+  }
+
+  List<PendingStepDeletion> loadPendingDeletedSteps() {
+    final raw = _prefs.getString(_pendingDeletedStepsKey);
+    if (raw == null || raw.isEmpty) return const [];
     final decoded = jsonDecode(raw) as List<dynamic>;
     return decoded
-        .map((e) => PendingTaskDeletion.fromJson(e as Map<String, dynamic>))
+        .map((e) => PendingStepDeletion.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
-  Future<void> savePendingDeletedTasks(List<PendingTaskDeletion> items) async {
+  Future<void> savePendingDeletedSteps(List<PendingStepDeletion> items) async {
     if (items.isEmpty) {
-      await _prefs.remove(_pendingDeletedTasksKey);
+      await _prefs.remove(_pendingDeletedStepsKey);
     } else {
       await _prefs.setString(
-        _pendingDeletedTasksKey,
+        _pendingDeletedStepsKey,
         jsonEncode(items.map((e) => e.toJson()).toList()),
       );
     }
+  }
+
+  Set<String> loadDirtyListIds() =>
+      (_prefs.getStringList(_dirtyListIdsKey) ?? const []).toSet();
+
+  Future<void> saveDirtyListIds(Set<String> ids) =>
+      _saveStringSet(_dirtyListIdsKey, ids);
+
+  Set<String> loadDirtyGroupIds() =>
+      (_prefs.getStringList(_dirtyGroupIdsKey) ?? const []).toSet();
+
+  Future<void> saveDirtyGroupIds(Set<String> ids) =>
+      _saveStringSet(_dirtyGroupIdsKey, ids);
+
+  Set<String> loadDirtyTaskIds() =>
+      (_prefs.getStringList(_dirtyTaskIdsKey) ?? const []).toSet();
+
+  Future<void> saveDirtyTaskIds(Set<String> ids) =>
+      _saveStringSet(_dirtyTaskIdsKey, ids);
+
+  Set<String> loadDirtySettingKeys() =>
+      (_prefs.getStringList(_dirtySettingKeysKey) ?? const []).toSet();
+
+  Future<void> saveDirtySettingKeys(Set<String> keys) =>
+      _saveStringSet(_dirtySettingKeysKey, keys);
+
+  Future<void> _saveStringSet(String key, Set<String> values) async {
+    if (values.isEmpty) {
+      await _prefs.remove(key);
+    } else {
+      await _prefs.setStringList(key, values.toList());
+    }
+  }
+
+  String? loadGroupsDeltaLink() => _prefs.getString(_groupsDeltaLinkKey);
+
+  Future<void> saveGroupsDeltaLink(String? deltaLink) async {
+    if (deltaLink == null || deltaLink.isEmpty) {
+      await _prefs.remove(_groupsDeltaLinkKey);
+    } else {
+      await _prefs.setString(_groupsDeltaLinkKey, deltaLink);
+    }
+  }
+
+  String? loadFoldersDeltaLink() => _prefs.getString(_foldersDeltaLinkKey);
+
+  Future<void> saveFoldersDeltaLink(String? deltaLink) async {
+    if (deltaLink == null || deltaLink.isEmpty) {
+      await _prefs.remove(_foldersDeltaLinkKey);
+    } else {
+      await _prefs.setString(_foldersDeltaLinkKey, deltaLink);
+    }
+  }
+
+  Map<String, String> loadTaskDeltaLinks() {
+    final raw = _prefs.getString(_taskDeltaLinksKey);
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      return {
+        for (final entry in decoded.entries)
+          if (entry.value is String && (entry.value as String).isNotEmpty)
+            entry.key: entry.value as String,
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<void> saveTaskDeltaLinks(Map<String, String> links) async {
+    if (links.isEmpty) {
+      await _prefs.remove(_taskDeltaLinksKey);
+    } else {
+      await _prefs.setString(_taskDeltaLinksKey, jsonEncode(links));
+    }
+  }
+
+  Future<void> clearAllDeltaLinks() async {
+    await _prefs.remove(_groupsDeltaLinkKey);
+    await _prefs.remove(_foldersDeltaLinkKey);
+    await _prefs.remove(_taskDeltaLinksKey);
+  }
+
+  String? loadCachedEndpointUrl({
+    Duration maxAge = const Duration(hours: 12),
+  }) {
+    final url = _prefs.getString(_cachedEndpointUrlKey);
+    final fetchedRaw = _prefs.getString(_cachedEndpointFetchedAtKey);
+    if (url == null || url.isEmpty || fetchedRaw == null) return null;
+    final fetchedAt = DateTime.tryParse(fetchedRaw);
+    if (fetchedAt == null) return null;
+    if (DateTime.now().toUtc().difference(fetchedAt.toUtc()) > maxAge) {
+      return null;
+    }
+    return url;
+  }
+
+  Future<void> saveCachedEndpointUrl(String url) async {
+    await _prefs.setString(_cachedEndpointUrlKey, url);
+    await _prefs.setString(
+      _cachedEndpointFetchedAtKey,
+      DateTime.now().toUtc().toIso8601String(),
+    );
+  }
+
+  Future<void> clearCachedEndpointUrl() async {
+    await _prefs.remove(_cachedEndpointUrlKey);
+    await _prefs.remove(_cachedEndpointFetchedAtKey);
   }
 }

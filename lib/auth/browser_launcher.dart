@@ -6,7 +6,9 @@ const _browserChannel = MethodChannel('top.clickfling.yata/browser');
 
 /// Opens [url] in the system browser on desktop and Android.
 Future<bool> launchExternalUrl(String url) async {
-  if (kIsWeb) return false;
+  if (kIsWeb || Platform.environment.containsKey('FLUTTER_TEST')) {
+    return false;
+  }
   try {
     if (Platform.isAndroid) {
       final result = await _browserChannel.invokeMethod<bool>(

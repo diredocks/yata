@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/task_item.dart';
 import '../data/todo_provider.dart';
+import '../sync/todo_wire_codecs.dart';
 
 /// Batch action presenter matching `tasksview/TasksActionPresenter`.
 class TasksActionPresenter {
@@ -34,11 +35,22 @@ class TasksActionPresenter {
 
   void batchSetMyDay(Set<String> taskIds, bool value) {
     final now = DateTime.now();
+    final committedOrder = value
+        ? computeNewOrderDateTime(
+            existingOrders: _state.tasks
+                .where((t) => t.isInMyDay)
+                .map((t) => t.committedOrder),
+            addToTop: _state.addNewTasksOnTop,
+            fallbackNow: now,
+          )
+        : null;
     _mapSelectedTasks(taskIds, (task) {
       return TodoNotifier.syncMyDayFlag(
         task.copyWith(
           myDayDate: value ? now : null,
           clearMyDayDate: !value,
+          committedOrder: committedOrder,
+          clearCommittedOrder: !value,
           postponedDay: !value &&
                   task.dueDate != null &&
                   TodoNotifier.isSameDay(task.dueDate!, now)
@@ -66,13 +78,55 @@ class TasksActionPresenter {
   void batchSetImportant(Set<String> taskIds, bool value) {
     final movedToTop = <TaskItem>[];
     final rest = <TaskItem>[];
+    final maxOrderByList = <String, DateTime>{};
+    DateTime? maxCommittedOrder;
+
+    for (final t in _state.tasks) {
+      if (t.orderDateTime != null) {
+        final prev = maxOrderByList[t.listId];
+        if (prev == null || t.orderDateTime!.isAfter(prev)) {
+          maxOrderByList[t.listId] = t.orderDateTime!;
+        }
+      }
+      if (t.isInMyDay && t.committedOrder != null) {
+        if (maxCommittedOrder == null ||
+            t.committedOrder!.isAfter(maxCommittedOrder)) {
+          maxCommittedOrder = t.committedOrder!;
+        }
+      }
+    }
+
+    var bumpIndex = 0;
     for (final task in _state.tasks) {
       if (!taskIds.contains(task.id)) {
         rest.add(task);
         continue;
       }
-      final next = task.copyWith(isImportant: value);
+      var next = task.copyWith(isImportant: value);
       if (value && _state.moveStarredTasksToTop && !task.isImportant) {
+        bumpIndex += 1;
+        final existingListMax = maxOrderByList[task.listId];
+        final bumpedOrder = computeNewOrderDateTime(
+          existingOrders: [existingListMax],
+          addToTop: true,
+        ).add(Duration(milliseconds: 1000 * (taskIds.length - bumpIndex + 1)));
+        maxOrderByList[task.listId] = bumpedOrder;
+
+        var bumpedCommitted = next.committedOrder;
+        if (task.isInMyDay) {
+          bumpedCommitted = computeNewOrderDateTime(
+            existingOrders: [maxCommittedOrder],
+            addToTop: true,
+          ).add(
+            Duration(milliseconds: 1000 * (taskIds.length - bumpIndex + 1)),
+          );
+          maxCommittedOrder = bumpedCommitted;
+        }
+
+        next = next.copyWith(
+          orderDateTime: bumpedOrder,
+          committedOrder: bumpedCommitted,
+        );
         movedToTop.add(next);
       } else {
         rest.add(next);
@@ -94,22 +148,42 @@ class TasksActionPresenter {
 
   void batchCopyToList(Set<String> taskIds, String targetListId) {
     final now = DateTime.now();
+    final baseOrder = computeNewOrderDateTime(
+      existingOrders: _state.tasks
+          .where((t) => t.listId == targetListId)
+          .map((t) => t.orderDateTime),
+      addToTop: _state.addNewTasksOnTop,
+      fallbackNow: now,
+    );
+    var copyIndex = 0;
     final copies = <TaskItem>[
       for (final task in _state.tasks)
         if (taskIds.contains(task.id))
-          task.copyWith(
-            id: _store.nextId('task'),
-            listId: targetListId,
-            createdAt: now,
-            steps: [
-              for (final step in task.steps)
-                TaskStep(
-                  id: _store.nextId('step'),
-                  title: step.title,
-                  isCompleted: step.isCompleted,
-                ),
-            ],
-          ),
+          () {
+            final stepOffset = Duration(seconds: copyIndex++);
+            final order = _state.addNewTasksOnTop
+                ? baseOrder.add(stepOffset)
+                : baseOrder.subtract(stepOffset);
+            return task.copyWith(
+              id: _store.nextId('task'),
+              listId: targetListId,
+              createdAt: now,
+              clearRemoteId: true,
+              clearRemoteParentFolderId: true,
+              clearChangeKey: true,
+              orderDateTime: order,
+              clearCommittedOrder: true,
+              steps: [
+                for (final step in task.steps)
+                  TaskStep(
+                    id: _store.nextId('step'),
+                    title: step.title,
+                    isCompleted: step.isCompleted,
+                    orderDateTime: step.orderDateTime,
+                  ),
+              ],
+            );
+          }(),
     ];
     if (copies.isEmpty) return;
     final updated = _state.addNewTasksOnTop

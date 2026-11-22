@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/task_item.dart';
 import '../data/todo_provider.dart';
+import '../sync/todo_wire_codecs.dart';
 import '../tasksview/tasks_view_presenter.dart';
 import 'recurrence/task_pickers.dart';
 
@@ -48,10 +49,21 @@ class DetailViewPresenter {
       final adding = !task.isInMyDay;
       final dueToday =
           task.dueDate != null && TodoNotifier.isSameDay(task.dueDate!, now);
+      final committedOrder = adding
+          ? computeNewOrderDateTime(
+              existingOrders: _state.tasks
+                  .where((t) => t.isInMyDay)
+                  .map((t) => t.committedOrder),
+              addToTop: _state.addNewTasksOnTop,
+              fallbackNow: now,
+            )
+          : null;
       return TodoNotifier.syncMyDayFlag(
         task.copyWith(
           myDayDate: adding ? now : null,
           clearMyDayDate: !adding,
+          committedOrder: committedOrder,
+          clearCommittedOrder: !adding,
           postponedDay: !adding && dueToday ? now : task.postponedDay,
           clearPostponedDay: adding,
         ),
@@ -146,10 +158,21 @@ class DetailViewPresenter {
   void addStep(String taskId, String title) {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return;
-    final newStep = TaskStep(id: _store.nextId('step'), title: trimmed);
     _updateTaskById(
       taskId,
-      (task) => task.copyWith(steps: [...task.steps, newStep]),
+      (task) => task.copyWith(
+        steps: [
+          ...task.steps,
+          TaskStep(
+            id: _store.nextId('step'),
+            title: trimmed,
+            orderDateTime: computeNewOrderDateTime(
+              existingOrders: task.steps.map((s) => s.orderDateTime),
+              addToTop: false,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -207,11 +230,19 @@ class DetailViewPresenter {
         updated.add(task);
         continue;
       }
+      final now = DateTime.now();
       promoted = TaskItem(
         id: _store.nextId('task'),
         listId: task.listId,
         title: step.title,
-        createdAt: DateTime.now(),
+        createdAt: now,
+        orderDateTime: computeNewOrderDateTime(
+          existingOrders: _state.tasks
+              .where((t) => t.listId == task.listId)
+              .map((t) => t.orderDateTime),
+          addToTop: _state.addNewTasksOnTop,
+          fallbackNow: now,
+        ),
         isCompleted: false,
       );
       updated.add(

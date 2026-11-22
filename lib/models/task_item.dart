@@ -16,24 +16,31 @@ class TaskStep {
     required this.title,
     this.isCompleted = false,
     this.remoteId,
+    this.orderDateTime,
   });
 
   final String id;
   final String title;
   final bool isCompleted;
   final String? remoteId;
+  final DateTime? orderDateTime;
 
   TaskStep copyWith({
     String? id,
     String? title,
     bool? isCompleted,
     String? remoteId,
+    bool clearRemoteId = false,
+    DateTime? orderDateTime,
+    bool clearOrderDateTime = false,
   }) {
     return TaskStep(
       id: id ?? this.id,
       title: title ?? this.title,
       isCompleted: isCompleted ?? this.isCompleted,
-      remoteId: remoteId ?? this.remoteId,
+      remoteId: clearRemoteId ? null : (remoteId ?? this.remoteId),
+      orderDateTime:
+          clearOrderDateTime ? null : (orderDateTime ?? this.orderDateTime),
     );
   }
 
@@ -43,6 +50,7 @@ class TaskStep {
       'title': title,
       'isCompleted': isCompleted,
       'remoteId': remoteId,
+      'orderDateTime': orderDateTime?.toIso8601String(),
     };
   }
 
@@ -52,6 +60,9 @@ class TaskStep {
       title: json['title'] as String,
       isCompleted: json['isCompleted'] as bool? ?? false,
       remoteId: json['remoteId'] as String?,
+      orderDateTime: json['orderDateTime'] != null
+          ? DateTime.parse(json['orderDateTime'] as String)
+          : null,
     );
   }
 }
@@ -76,6 +87,10 @@ class TaskItem {
     this.completedAt,
     this.steps = const [],
     this.remoteId,
+    this.remoteParentFolderId,
+    this.orderDateTime,
+    this.committedOrder,
+    this.changeKey,
     this.updatedAt,
   });
 
@@ -96,6 +111,10 @@ class TaskItem {
   final DateTime? completedAt;
   final List<TaskStep> steps;
   final String? remoteId;
+  final String? remoteParentFolderId;
+  final DateTime? orderDateTime;
+  final DateTime? committedOrder;
+  final String? changeKey;
   final DateTime? updatedAt;
 
   int get completedStepsCount =>
@@ -132,6 +151,15 @@ class TaskItem {
     bool clearCompletedAt = false,
     List<TaskStep>? steps,
     String? remoteId,
+    bool clearRemoteId = false,
+    String? remoteParentFolderId,
+    bool clearRemoteParentFolderId = false,
+    DateTime? orderDateTime,
+    bool clearOrderDateTime = false,
+    DateTime? committedOrder,
+    bool clearCommittedOrder = false,
+    String? changeKey,
+    bool clearChangeKey = false,
     DateTime? updatedAt,
   }) {
     return TaskItem(
@@ -152,7 +180,15 @@ class TaskItem {
       noteUpdatedAt: noteUpdatedAt ?? this.noteUpdatedAt,
       completedAt: clearCompletedAt ? null : (completedAt ?? this.completedAt),
       steps: steps ?? this.steps,
-      remoteId: remoteId ?? this.remoteId,
+      remoteId: clearRemoteId ? null : (remoteId ?? this.remoteId),
+      remoteParentFolderId: clearRemoteParentFolderId
+          ? null
+          : (remoteParentFolderId ?? this.remoteParentFolderId),
+      orderDateTime:
+          clearOrderDateTime ? null : (orderDateTime ?? this.orderDateTime),
+      committedOrder:
+          clearCommittedOrder ? null : (committedOrder ?? this.committedOrder),
+      changeKey: clearChangeKey ? null : (changeKey ?? this.changeKey),
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
@@ -176,6 +212,10 @@ class TaskItem {
       'completedAt': completedAt?.toIso8601String(),
       'steps': steps.map((s) => s.toJson()).toList(),
       'remoteId': remoteId,
+      'remoteParentFolderId': remoteParentFolderId,
+      'orderDateTime': orderDateTime?.toIso8601String(),
+      'committedOrder': committedOrder?.toIso8601String(),
+      'changeKey': changeKey,
       'updatedAt': updatedAt?.toIso8601String(),
     };
   }
@@ -220,6 +260,14 @@ class TaskItem {
           .map((e) => TaskStep.fromJson(e as Map<String, dynamic>))
           .toList(),
       remoteId: json['remoteId'] as String?,
+      remoteParentFolderId: json['remoteParentFolderId'] as String?,
+      orderDateTime: json['orderDateTime'] != null
+          ? DateTime.parse(json['orderDateTime'] as String)
+          : null,
+      committedOrder: json['committedOrder'] != null
+          ? DateTime.parse(json['committedOrder'] as String)
+          : null,
+      changeKey: json['changeKey'] as String?,
       updatedAt: json['updatedAt'] != null
           ? DateTime.parse(json['updatedAt'] as String)
           : null,
