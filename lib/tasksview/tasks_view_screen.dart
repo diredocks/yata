@@ -64,6 +64,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   _TasksViewMode _mode = _TasksViewMode.browsing;
   bool _completedExpanded = true;
   double _scrollOffset = 0.0;
+  bool _isSnappingHeader = false;
+  final ScrollController _scrollController = ScrollController();
   final Set<String> _multiSelectedIds = {};
   final Set<String> _collapsedPlannedBuckets = {};
   final Set<String> _collapsedCompletedListBuckets = {};
@@ -79,8 +81,38 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _completionController.flushAndDispose(_presenter.setTaskCompleted);
     super.dispose();
+  }
+
+  void _snapHeaderIfNeeded(double collapseDelta) {
+    if (_mode != _TasksViewMode.browsing ||
+        _isSnappingHeader ||
+        collapseDelta <= 0 ||
+        !_scrollController.hasClients) {
+      return;
+    }
+    final offset = _scrollController.offset;
+    if (offset <= 0.5 || offset >= collapseDelta - 0.5) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final target = (offset >= collapseDelta / 2 ? collapseDelta : 0.0)
+        .clamp(0.0, maxScroll);
+    if ((target - offset).abs() <= 0.5) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients || _isSnappingHeader) {
+        return;
+      }
+      _isSnappingHeader = true;
+      _scrollController
+          .animateTo(
+            target,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+          )
+          .whenComplete(() => _isSnappingHeader = false);
+    });
   }
 
   void _enterReordering() {
@@ -1396,25 +1428,37 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     ];
   }
 
-  Widget _buildRuledLinesSliver(TodoList currentList, bool isDark) {
+  Widget _buildRuledLinesSliver(
+    TodoList currentList,
+    bool isDark, {
+    required double collapseDelta,
+  }) {
     final useLightLines = currentList.themePhoto == null &&
         TodoColors.isLightTheme(currentList.themeColor) &&
         !isDark;
-    return SliverFillRemaining(
-      hasScrollBody: false,
-      fillOverscroll: true,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 84),
-        child: CustomPaint(
-          painter: RuledLinesPainter(
-            lineColor: useLightLines
-                ? TodoColors.taskViewDividerLight
-                : TodoColors.taskViewDividerDark,
-            rowHeight: 54.0,
-            horizontalInset: 8.0,
+    return SliverLayoutBuilder(
+      builder: (context, constraints) {
+        final minHeight = (constraints.viewportMainAxisExtent +
+                collapseDelta -
+                constraints.precedingScrollExtent)
+            .clamp(84.0, double.infinity);
+        return SliverFillRemaining(
+          hasScrollBody: false,
+          fillOverscroll: true,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: CustomPaint(
+              painter: RuledLinesPainter(
+                lineColor: useLightLines
+                    ? TodoColors.taskViewDividerLight
+                    : TodoColors.taskViewDividerDark,
+                rowHeight: 54.0,
+                horizontalInset: 8.0,
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -1547,9 +1591,15 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 children: [
                   NotificationListener<ScrollNotification>(
                     onNotification: (notification) {
+                      if (notification.depth != 0) return false;
                       final offset = notification.metrics.pixels;
                       if ((offset - _scrollOffset).abs() > 0.5) {
                         setState(() => _scrollOffset = offset);
+                      }
+                      if (notification is ScrollEndNotification) {
+                        final collapseDelta =
+                            (subtitle != null ? 144.0 : 116.0) - kToolbarHeight;
+                        _snapHeaderIfNeeded(collapseDelta);
                       }
                       return false;
                     },
@@ -1561,6 +1611,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                           ),
                         );
                         final scrollView = CustomScrollView(
+                          controller: _scrollController,
                           physics: isMicrosoft
                               ? const AlwaysScrollableScrollPhysics()
                               : null,
@@ -1633,7 +1684,14 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                               accentColor: accentColor,
                               headerFg: headerFg,
                             ),
-                            _buildRuledLinesSliver(currentList, isDark),
+                            _buildRuledLinesSliver(
+                              currentList,
+                              isDark,
+                              collapseDelta: _mode == _TasksViewMode.browsing
+                                  ? ((subtitle != null ? 144.0 : 116.0) -
+                                      kToolbarHeight)
+                                  : 0.0,
+                            ),
                           ],
                         );
                         if (!isMicrosoft) return scrollView;

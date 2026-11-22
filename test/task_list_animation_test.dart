@@ -137,4 +137,90 @@ void main() {
     expect(find.text('Done task'), findsNothing);
     expect(find.text('Completed'), findsOneWidget);
   });
+
+  testWidgets(
+      'Empty or short task list still scrolls enough to collapse SliverAppBar',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({
+      'yata.accounts':
+          '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.active_account_id': 'test',
+    });
+    final prefs = await SharedPreferences.getInstance();
+
+    tester.view.physicalSize = const Size(412, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+        child: const YataApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Open My Day (first list on mobile Landing -> HomeViewScreen -> My Day).
+    if (find.text('My Day').evaluate().isNotEmpty) {
+      await tester.tap(find.text('My Day').first);
+      await tester.pumpAndSettle();
+    }
+
+    final scrollViewFinder = find.byType(CustomScrollView);
+    expect(scrollViewFinder, findsOneWidget);
+
+    // Drag up to collapse the header even with 0 tasks.
+    await tester.drag(scrollViewFinder, const Offset(0, -200));
+    await tester.pumpAndSettle();
+
+    final appBarSliver = tester.renderObject(find.byType(SliverAppBar).first);
+    expect(
+      (appBarSliver as dynamic).geometry.paintExtent,
+      closeTo(kToolbarHeight, 1.0),
+    );
+  });
+
+  testWidgets(
+      'Partially collapsed SliverAppBar snaps to expanded or collapsed on scroll end',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({
+      'yata.accounts':
+          '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.active_account_id': 'test',
+    });
+    final prefs = await SharedPreferences.getInstance();
+
+    tester.view.physicalSize = const Size(412, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+        child: const YataApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    if (find.text('My Day').evaluate().isNotEmpty) {
+      await tester.tap(find.text('My Day').first);
+      await tester.pumpAndSettle();
+    }
+
+    final scrollViewFinder = find.byType(CustomScrollView);
+    final appBarSliver = tester.renderObject(find.byType(SliverAppBar).first);
+
+    // Drag up slightly (< half of 88px collapseDelta) -> snaps back to expanded (144).
+    await tester.drag(scrollViewFinder, const Offset(0, -25));
+    await tester.pumpAndSettle();
+    expect((appBarSliver as dynamic).geometry.paintExtent, closeTo(144.0, 1.0));
+
+    // Drag up past half (>= 44px) -> snaps to collapsed (56).
+    await tester.drag(scrollViewFinder, const Offset(0, -55));
+    await tester.pumpAndSettle();
+    expect(
+      (appBarSliver as dynamic).geometry.paintExtent,
+      closeTo(kToolbarHeight, 1.0),
+    );
+  });
 }
