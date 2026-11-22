@@ -12,9 +12,7 @@ class SearchPresenter {
   List<TaskItem> search(String query, {bool showCompleted = true}) {
     final trimmed = query.trim().toLowerCase();
     if (trimmed.isEmpty) return const [];
-    final tokens =
-        trimmed.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
-    if (tokens.isEmpty) return const [];
+    final tokens = trimmed.split(RegExp(r'\s+'));
 
     bool matchesAll(String text) {
       final lower = text.toLowerCase();
@@ -29,7 +27,7 @@ class SearchPresenter {
       final stepMatch = task.steps.any(
         (s) => (showCompleted || !s.isCompleted) && matchesAll(s.title),
       );
-      final noteMatch = task.note.isNotEmpty && matchesAll(task.note);
+      final noteMatch = matchesAll(task.note);
       if (titleMatch || stepMatch || noteMatch) {
         final sortTime = (titleMatch || stepMatch)
             ? task.createdAt

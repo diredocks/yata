@@ -19,7 +19,7 @@ class PersonaAvatar extends StatelessWidget {
 
   String get _initials {
     final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.isEmpty || parts.first.isEmpty) return 'U';
+    if (parts.first.isEmpty) return 'U';
     if (parts.length == 1) return parts.first[0].toUpperCase();
     return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
   }
@@ -29,16 +29,12 @@ class PersonaAvatar extends StatelessWidget {
     if (raw == null || raw.isEmpty) return null;
     final cached = _imageCache[raw];
     if (cached != null) return cached;
-    try {
-      final decoded = MemoryImage(base64Decode(raw));
-      if (_imageCache.length >= 16) {
-        _imageCache.remove(_imageCache.keys.first);
-      }
-      _imageCache[raw] = decoded;
-      return decoded;
-    } catch (_) {
-      return null;
+    final decoded = MemoryImage(base64Decode(raw));
+    if (_imageCache.length >= 16) {
+      _imageCache.remove(_imageCache.keys.first);
     }
+    _imageCache[raw] = decoded;
+    return decoded;
   }
 
   @override

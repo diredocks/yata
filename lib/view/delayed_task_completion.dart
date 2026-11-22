@@ -34,9 +34,7 @@ class DelayedTaskCompletionController {
       if (existing != null) {
         onStateChanged();
       }
-      if (task.isCompleted || instant) {
-        onCommit(task.id, completed: !task.isCompleted);
-      }
+      onCommit(task.id, completed: !task.isCompleted);
       return;
     }
 
@@ -58,7 +56,6 @@ class DelayedTaskCompletionController {
   void flushAndDispose(
     void Function(String taskId, {required bool completed}) onCommit,
   ) {
-    if (_pendingTimers.isEmpty) return;
     final pendingIds = _pendingTimers.keys.toList(growable: false);
     for (final id in pendingIds) {
       _pendingTimers.remove(id)?.cancel();

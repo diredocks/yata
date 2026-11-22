@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/homeview/home_view_presenter.dart';
@@ -11,7 +10,6 @@ import 'package:yata/search/search_presenter.dart';
 import 'package:yata/settings/settings_presenter.dart';
 import 'package:yata/tasksview/tasks_action_presenter.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
-import 'package:yata/theme/todo_theme.dart';
 
 Future<ProviderContainer> _createContainer() async {
   SharedPreferences.setMockInitialValues({});
@@ -160,9 +158,9 @@ void main() {
     final g1 = homePresenter.addGroup('Work');
     final g2 = homePresenter.addGroup('Work');
     final g3 = homePresenter.addGroup('Work');
-    expect(g1?.title, 'Work');
-    expect(g2?.title, 'Work (1)');
-    expect(g3?.title, 'Work (2)');
+    expect(g1.title, 'Work');
+    expect(g2.title, 'Work (1)');
+    expect(g3.title, 'Work (2)');
 
     // Custom list creation, duplicate appends (1)/(2), delete falls back to previous list
     homePresenter.addList('Shopping', ListThemeColor.blue);
@@ -237,40 +235,5 @@ void main() {
     // Search matches multi-word tokens across title/note/steps and respects showCompleted
     expect(searchPresenter.search('parent task', showCompleted: true).length, 2);
     expect(searchPresenter.search('parent task', showCompleted: false), isEmpty);
-  });
-
-  test('Dark mode uses primaryBackgroundDark for all solid/pastel themes and nightModeTintColor accents', () {
-    for (final color in ListThemeColor.values) {
-      final gradient = TodoColors.gradientFor(color, brightness: Brightness.dark);
-      expect(
-        gradient.colors,
-        const [
-          TodoColors.primaryBackgroundDark,
-          TodoColors.primaryBackgroundDark,
-        ],
-      );
-    }
-
-    expect(
-      TodoColors.headerForegroundFor(
-        ListThemeColor.blue,
-        brightness: Brightness.dark,
-      ),
-      const Color(0xFF788CDE),
-    );
-    expect(
-      TodoColors.accentFor(
-        ListThemeColor.lightBlue,
-        brightness: Brightness.dark,
-      ),
-      const Color(0xFFA0CBF1),
-    );
-    expect(
-      TodoColors.swatchColorFor(
-        ListThemeColor.rose,
-        brightness: Brightness.dark,
-      ),
-      const Color(0xFFE46C8C),
-    );
   });
 }

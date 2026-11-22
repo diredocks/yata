@@ -408,14 +408,10 @@ class TodoLocalStorage {
   List<PendingTaskDeletion> loadPendingDeletedTasks() {
     final raw = _prefs.getString(_pendingDeletedTasksKey);
     if (raw == null) return const [];
-    try {
-      final decoded = jsonDecode(raw) as List<dynamic>;
-      return decoded
-          .map((e) => PendingTaskDeletion.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } catch (_) {
-      return const [];
-    }
+    final decoded = jsonDecode(raw) as List<dynamic>;
+    return decoded
+        .map((e) => PendingTaskDeletion.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<void> savePendingDeletedTasks(List<PendingTaskDeletion> items) async {

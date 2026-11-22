@@ -32,7 +32,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   @override
   void initState() {
     super.initState();
-    _showCompleted = true;
     _presenter = ref.read(searchPresenterProvider);
   }
 
@@ -52,9 +51,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     final trimmed = _query.trim().toLowerCase();
-    final results = trimmed.isEmpty
-        ? const <TaskItem>[]
-        : notifier.search(_query, showCompleted: _showCompleted);
+    final results = notifier.search(_query, showCompleted: _showCompleted);
 
     final bodyBg = theme.scaffoldBackgroundColor;
     final secondaryText =

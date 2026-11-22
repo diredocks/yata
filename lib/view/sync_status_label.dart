@@ -7,14 +7,14 @@ import '../sync/sync_provider.dart';
 String formatAccountSyncStatus({
   required AppLocalizations l10n,
   required Account account,
-  SyncState? syncState,
+  required SyncState syncState,
   bool isActive = false,
 }) {
   switch (account) {
     case LocalAccount():
       return l10n.localAccount;
     case MicrosoftAccount():
-      if (isActive && syncState != null) {
+      if (isActive) {
         if (syncState.isSyncing) return l10n.syncing;
         if (syncState.requiresRelogin) return l10n.reloginRequired;
         if (syncState.error != null) return l10n.unableToSync;

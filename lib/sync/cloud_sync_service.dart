@@ -248,9 +248,8 @@ class CloudSyncService {
     final newRemoteTasks = <TaskItem>[];
     for (final entry in localToRemoteListId.entries) {
       final localListId = entry.key;
-      final remoteTasks = remoteTasksByLocalList[localListId] ?? const [];
-      final matchedRemoteTaskIds =
-          matchedRemoteTaskIdsPerList[localListId] ?? const <String>{};
+      final remoteTasks = remoteTasksByLocalList[localListId]!;
+      final matchedRemoteTaskIds = matchedRemoteTaskIdsPerList[localListId]!;
       for (final remoteTask in remoteTasks) {
         if (matchedRemoteTaskIds.contains(remoteTask.id)) continue;
         if (deletedTaskRemoteIds.contains(remoteTask.id)) continue;

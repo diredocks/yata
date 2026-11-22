@@ -160,11 +160,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Open My Day (first list on mobile Landing -> HomeViewScreen -> My Day).
-    if (find.text('My Day').evaluate().isNotEmpty) {
-      await tester.tap(find.text('My Day').first);
-      await tester.pumpAndSettle();
-    }
+    await tester.tap(find.text('My Day').first);
+    await tester.pumpAndSettle();
 
     final scrollViewFinder = find.byType(CustomScrollView);
     expect(scrollViewFinder, findsOneWidget);
@@ -202,10 +199,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    if (find.text('My Day').evaluate().isNotEmpty) {
-      await tester.tap(find.text('My Day').first);
-      await tester.pumpAndSettle();
-    }
+    await tester.tap(find.text('My Day').first);
+    await tester.pumpAndSettle();
 
     final scrollViewFinder = find.byType(CustomScrollView);
     final appBarSliver = tester.renderObject(find.byType(SliverAppBar).first);
@@ -248,10 +243,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    if (find.text('Important').evaluate().isNotEmpty) {
-      await tester.tap(find.text('Important').first);
-      await tester.pumpAndSettle();
-    }
+    await tester.tap(find.text('Important').first);
+    await tester.pumpAndSettle();
 
     final bgFinder = find.descendant(
       of: find.byKey(const ValueKey('bg_color')),

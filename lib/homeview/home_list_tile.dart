@@ -60,7 +60,7 @@ class HomeListTile extends StatelessWidget {
                       color: theme.dividerColor,
                     ),
                   ],
-                  if (emoji != null && emoji!.isNotEmpty)
+                  if (emoji != null)
                     SizedBox(
                       width: 22,
                       child: Center(

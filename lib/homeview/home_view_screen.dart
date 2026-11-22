@@ -570,7 +570,6 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
                       context: context,
                       onCreate: (title) async {
                         final created = notifier.addGroup(title);
-                        if (created == null || !context.mounted) return;
                         final eligible = ref
                             .read(todoProvider)
                             .lists

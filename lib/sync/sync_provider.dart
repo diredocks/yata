@@ -53,9 +53,7 @@ class SyncNotifier extends Notifier<SyncState> {
       _debounceTimer?.cancel();
     });
 
-    final activeAccountId = ref.watch(
-      accountProvider.select((s) => s.activeAccount?.id),
-    );
+    ref.watch(accountProvider.select((s) => s.activeAccount?.id));
     final activeAccount = ref.read(accountProvider).activeAccount;
 
     ref.listen<int>(
@@ -67,7 +65,7 @@ class SyncNotifier extends Notifier<SyncState> {
       },
     );
 
-    if (activeAccountId != null && activeAccount is MicrosoftAccount) {
+    if (activeAccount is MicrosoftAccount) {
       Future.microtask(syncNow);
     }
 

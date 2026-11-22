@@ -23,11 +23,9 @@ class HomeViewPresenter {
     String? emoji,
     ListThemePhoto? themePhoto,
   }) {
-    final trimmed = title.trim();
-    if (trimmed.isEmpty) return;
     final newList = TodoList(
       id: _store.nextId('list'),
-      title: trimmed,
+      title: title,
       groupId: groupId,
       emoji: emoji,
       themeColor: themeColor,
@@ -71,9 +69,8 @@ class HomeViewPresenter {
     return '$title ($index)';
   }
 
-  ListGroup? addGroup(String title) {
+  ListGroup addGroup(String title) {
     final trimmed = title.trim();
-    if (trimmed.isEmpty) return null;
     final newGroup = ListGroup(
       id: _store.nextId('group'),
       title: _deduplicateGroupTitle(trimmed),
@@ -87,7 +84,6 @@ class HomeViewPresenter {
 
   void renameGroup(String groupId, String newTitle) {
     final trimmed = newTitle.trim();
-    if (trimmed.isEmpty) return;
     final deduped = _deduplicateGroupTitle(trimmed, excludeGroupId: groupId);
     final updated = [
       for (final group in _state.groups)

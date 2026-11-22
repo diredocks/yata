@@ -993,8 +993,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 final collapsedHeight = kToolbarHeight + topPadding;
                 final expandedHeight =
                     (subtitle != null ? 144.0 : 116.0) + topPadding;
-                final denom =
-                    (expandedHeight - collapsedHeight).clamp(1.0, 200.0);
+                final denom = expandedHeight - collapsedHeight;
                 final t = ((expandedHeight - constraints.maxHeight) / denom)
                     .clamp(0.0, 1.0);
                 final startPad =

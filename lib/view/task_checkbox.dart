@@ -61,7 +61,7 @@ class _TaskCheckboxState extends State<TaskCheckbox>
       vsync: this,
       duration: _confettiDefaultDuration,
     )..addStatusListener((status) {
-        if (status == AnimationStatus.completed && mounted) {
+        if (status == AnimationStatus.completed) {
           setState(() => _showConfetti = false);
         }
       });
