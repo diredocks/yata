@@ -188,5 +188,7 @@
       "time": {"type": "String"}
     }
   },
-  "clearAll": "Clear all"
+  "clearAll": "Clear all",
+  "taskDeleted": "Task deleted",
+  "undo": "Undo"
 }

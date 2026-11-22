@@ -257,6 +257,17 @@ class TasksViewPresenter {
     _commitTasks(updated);
   }
 
+  void restoreTask(TaskItem task, {int? index}) {
+    if (_state.tasks.any((t) => t.id == task.id)) return;
+    final updated = [..._state.tasks];
+    if (index != null && index >= 0 && index <= updated.length) {
+      updated.insert(index, task);
+    } else {
+      updated.add(task);
+    }
+    _commitTasks(updated);
+  }
+
   void reorderActiveTasks(
     List<TaskItem> visibleActiveTasks,
     int oldIndex,

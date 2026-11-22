@@ -10,6 +10,7 @@ import '../providers/todo_provider.dart';
 import '../theme/todo_theme.dart';
 import '../view/delayed_task_completion.dart';
 import 'recyclerview/ruled_lines_painter.dart';
+import 'recyclerview/swipeable_task_card.dart';
 import 'recyclerview/task_list_tile.dart';
 import 'renamelist/list_editor_dialog.dart';
 import 'richentry/task_entry_sheet.dart';
@@ -587,6 +588,24 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     }
   }
 
+  void _swipeDeleteTask(TaskItem task, List<TaskItem> allStateTasks) {
+    final l10n = AppLocalizations.of(context);
+    final presenter = ref.read(tasksViewPresenterProvider);
+    final originalIndex = allStateTasks.indexWhere((t) => t.id == task.id);
+    ref.read(tasksActionPresenterProvider).batchDeleteTasks({task.id});
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(l10n.taskDeleted),
+        action: SnackBarAction(
+          label: l10n.undo,
+          onPressed: () => presenter.restoreTask(task, index: originalIndex),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTaskTile({
     required TaskItem task,
     required TodoState state,
@@ -595,35 +614,44 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     String? originListName,
   }) {
     final notifier = ref.read(tasksViewPresenterProvider);
+    final actionPresenter = ref.read(tasksActionPresenterProvider);
     final displayTask = _completionController.effectiveTask(task);
     final isCompletedSmartList =
         state.selectedList.smartType == SmartListType.completed;
-    return TaskListTile(
+    return SwipeableTaskCard(
       key: ValueKey('task_${task.id}'),
-      task: displayTask,
-      listName: originListName,
-      showMyDayBadge: showMyDayBadge,
+      enabled: _mode == _TasksViewMode.browsing,
+      isInMyDay: task.isInMyDay,
       accentColor: accentColor,
-      isSelected: state.selectedTaskId == task.id,
-      isMultiSelecting: _mode == _TasksViewMode.multiSelecting,
-      isMultiSelected: _multiSelectedIds.contains(task.id),
-      onTap: () {
-        if (_mode == _TasksViewMode.multiSelecting) {
-          _toggleSelection(task.id);
-        } else {
-          widget.onOpenTask(task);
-        }
-      },
-      onLongPress: () => _toggleSelection(task.id),
-      onToggleCompleted: () => _completionController.toggle(
-        task,
-        instant: isCompletedSmartList,
-        onCommit: notifier.setTaskCompleted,
-        onStateChanged: () {
-          if (mounted) setState(() {});
+      onSwipeRight: () =>
+          actionPresenter.batchSetMyDay({task.id}, !task.isInMyDay),
+      onSwipeLeft: () => _swipeDeleteTask(task, state.tasks),
+      child: TaskListTile(
+        task: displayTask,
+        listName: originListName,
+        showMyDayBadge: showMyDayBadge,
+        accentColor: accentColor,
+        isSelected: state.selectedTaskId == task.id,
+        isMultiSelecting: _mode == _TasksViewMode.multiSelecting,
+        isMultiSelected: _multiSelectedIds.contains(task.id),
+        onTap: () {
+          if (_mode == _TasksViewMode.multiSelecting) {
+            _toggleSelection(task.id);
+          } else {
+            widget.onOpenTask(task);
+          }
         },
+        onLongPress: () => _toggleSelection(task.id),
+        onToggleCompleted: () => _completionController.toggle(
+          task,
+          instant: isCompletedSmartList,
+          onCommit: notifier.setTaskCompleted,
+          onStateChanged: () {
+            if (mounted) setState(() {});
+          },
+        ),
+        onToggleImportant: () => notifier.toggleTaskImportant(task.id),
       ),
-      onToggleImportant: () => notifier.toggleTaskImportant(task.id),
     );
   }
 
