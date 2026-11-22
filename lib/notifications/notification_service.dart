@@ -61,7 +61,7 @@ class NotificationStrings {
   static NotificationStrings fallbackEnglish() {
     return NotificationStrings(
       completeActionLabel: 'Complete',
-      snoozeActionLabel: 'Snooze 15m',
+      snoozeActionLabel: 'Snooze',
       dueTodaySingleTitle: 'You have a task due today',
       dueTodayMultipleTitleBuilder: (count) =>
           'You have $count tasks due today',
@@ -330,7 +330,7 @@ class NotificationService {
   static const quickAddNotificationId = 1003;
 
   static const completeActionId = 'complete';
-  static const snoozeActionId = 'snooze_15';
+  static const snoozeActionId = 'snooze';
 
   final NotificationTransport _transport;
   final DateTime Function() _clock;

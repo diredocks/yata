@@ -251,7 +251,15 @@
   "quickAddNotification": "Quick add notification",
   "quickAddNotificationSummary": "Add your tasks from the notification bar",
   "notificationCompleteAction": "Complete",
-  "notificationSnoozeAction": "Snooze 15m",
+  "notificationSnoozeAction": "Snooze",
+  "snoozeReminderTitle": "Snooze reminder",
+  "snoozeMinutes": "{minutes} minutes",
+  "@snoozeMinutes": {
+    "placeholders": {
+      "minutes": {"type": "int"}
+    }
+  },
+  "snoozeOneHour": "1 hour",
   "dueTodayNotificationSingleTitle": "You have a task due today",
   "dueTodayNotificationMultipleTitle": "You have {count} tasks due today",
   "@dueTodayNotificationMultipleTitle": {

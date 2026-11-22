@@ -9,6 +9,7 @@ import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
 import '../../data/todo_provider.dart';
 import '../../notifications/notification_service.dart';
+import '../../notifications/snooze_reminder_sheet.dart';
 import '../../search/search_screen.dart';
 import '../../settings/settings_screen.dart';
 import '../../tasksview/richentry/task_entry_sheet.dart';
@@ -46,7 +47,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     super.dispose();
   }
 
-  void _handleNotificationAction(NotificationActionEvent event) {
+  Future<void> _handleNotificationAction(NotificationActionEvent event) async {
     if (!mounted) return;
     final state = ref.read(todoProvider);
     final isWide = MediaQuery.sizeOf(context).width >= 600;
@@ -62,10 +63,22 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
         }
       case NotificationActionType.snoozeTask:
         final taskId = event.taskId;
-        if (taskId != null) {
+        if (taskId == null) return;
+        TaskItem? matchedTask;
+        for (final task in state.tasks) {
+          if (task.id == taskId) {
+            matchedTask = task;
+            break;
+          }
+        }
+        final duration = await showSnoozeReminderSheet(
+          context,
+          taskTitle: matchedTask?.title,
+        );
+        if (duration != null && mounted) {
           ref.read(detailViewPresenterProvider).setTaskReminder(
                 taskId,
-                DateTime.now().add(const Duration(minutes: 15)),
+                DateTime.now().add(duration),
               );
         }
       case NotificationActionType.openTask:

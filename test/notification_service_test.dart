@@ -9,6 +9,7 @@ import 'package:yata/data/todo_provider.dart';
 import 'package:yata/l10n/app_localizations.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/notifications/notification_service.dart';
+import 'package:yata/notifications/snooze_reminder_sheet.dart';
 import 'package:yata/settings/settings_screen.dart';
 
 class _FakeTransport implements NotificationTransport {
@@ -367,5 +368,48 @@ void main() {
     // Verify persistence in TodoLocalStorage.
     final reloaded = TodoLocalStorage(prefs).load();
     expect(reloaded.dueTodayNotificationsEnabled, isTrue);
+  });
+
+  testWidgets('showSnoozeReminderSheet shows all 5 options and returns chosen duration',
+      (WidgetTester tester) async {
+    Duration? chosen;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: ElevatedButton(
+                onPressed: () async {
+                  chosen = await showSnoozeReminderSheet(
+                    context,
+                    taskTitle: 'Call doctor',
+                  );
+                },
+                child: const Text('Open Snooze'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open Snooze'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Snooze reminder'), findsOneWidget);
+    expect(find.text('Call doctor'), findsOneWidget);
+    expect(find.text('5 minutes'), findsOneWidget);
+    expect(find.text('10 minutes'), findsOneWidget);
+    expect(find.text('15 minutes'), findsOneWidget);
+    expect(find.text('30 minutes'), findsOneWidget);
+    expect(find.text('1 hour'), findsOneWidget);
+
+    await tester.tap(find.text('30 minutes'));
+    await tester.pumpAndSettle();
+
+    expect(chosen, const Duration(minutes: 30));
   });
 }
