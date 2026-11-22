@@ -1,6 +1,6 @@
 {
   "@@locale": "zh",
-  "appTitle": "YATA",
+  "appTitle": "Yata",
   "myDay": "我的一天",
   "important": "重要",
   "planned": "已计划",
@@ -177,8 +177,8 @@
   "dueTodayNotificationSingleTitle": "你有今天到期的任务",
   "dueTodayNotificationMultipleTitle": "你有今天到期的任务",
   "routineNotificationTitle": "你今天将处理哪些工作？",
-  "routineNotificationBody": "你今天的目标是什么？使用 YATA 制订计划。",
-  "quickAddNotificationTitle": "YATA 快速添加",
+  "routineNotificationBody": "你今天的目标是什么？使用 Yata 制订计划。",
+  "quickAddNotificationTitle": "Yata 快速添加",
   "quickAddNotificationBody": "点击以添加任务",
   "notificationPermissionDenied": "通知权限未开启，请在系统设置中允许通知以接收提醒。"
 }

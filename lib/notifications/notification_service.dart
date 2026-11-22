@@ -65,8 +65,8 @@ class NotificationStrings {
       dueTodaySingleTitle: 'You have a task due today',
       dueTodayMultipleTitle: 'You have tasks due today',
       routineTitle: 'What will you do today?',
-      routineBody: 'What do you want to accomplish today? Plan it with YATA.',
-      quickAddTitle: 'YATA Quick Add',
+      routineBody: 'What do you want to accomplish today? Plan it with Yata.',
+      quickAddTitle: 'Yata Quick Add',
       quickAddBody: 'Tap to add a task',
       defaultTasksListName: 'Tasks',
     );
@@ -153,7 +153,7 @@ class FlutterLocalNotificationTransport implements NotificationTransport {
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
     const linuxSettings = LinuxInitializationSettings(
-      defaultActionName: 'Open YATA',
+      defaultActionName: 'Open Yata',
     );
     const darwinSettings = DarwinInitializationSettings();
     const settings = InitializationSettings(

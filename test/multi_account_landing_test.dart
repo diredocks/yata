@@ -27,7 +27,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // 1. Fresh install shows LandingScreen
-    expect(find.text('Welcome to YATA'), findsOneWidget);
+    expect(find.text('Welcome to Yata'), findsOneWidget);
     expect(find.text('Sign in'), findsOneWidget);
     expect(find.text('Use a local account'), findsOneWidget);
 
@@ -59,7 +59,7 @@ void main() {
     await tester.tap(find.text('Add account'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Welcome to YATA'), findsOneWidget);
+    expect(find.text('Welcome to Yata'), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'bob@example.com');
     await tester.tap(find.text('Use a local account'));
     await tester.pumpAndSettle();
@@ -108,7 +108,7 @@ void main() {
     await tester.tap(find.text('Yes, sign out'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Welcome to YATA'), findsOneWidget);
+    expect(find.text('Welcome to Yata'), findsOneWidget);
     expect(container.read(accountProvider).accounts, isEmpty);
   });
 }

@@ -368,7 +368,7 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
           ..statusCode = HttpStatus.ok
           ..headers.contentType = ContentType.html
           ..write(
-            '<html><body><h3>Signed in to YATA</h3><p>You can close this window and return to the app.</p></body></html>',
+            '<html><body><h3>Signed in to Yata</h3><p>You can close this window and return to the app.</p></body></html>',
           );
         await request.response.close();
         break;

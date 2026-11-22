@@ -1,6 +1,6 @@
 {
   "@@locale": "en",
-  "appTitle": "YATA",
+  "appTitle": "Yata",
   "myDay": "My Day",
   "important": "Important",
   "planned": "Planned",
@@ -242,7 +242,7 @@
   "remindersEnabled": "Enable Reminders",
   "remindersEnabledSummary": "Notify when a task reminder time is reached",
   "pinReminders": "Pin Reminders",
-  "pinRemindersSummary": "Pins YATA reminders to your notification bar until you view, complete, or snooze a task.",
+  "pinRemindersSummary": "Pins Yata reminders to your notification bar until you view, complete, or snooze a task.",
   "dueTodayNotifications": "Due Today notifications",
   "dueTodayNotificationTime": "Time of Due Today notifications",
   "routineNotifications": "Plan your day reminders",
@@ -263,8 +263,8 @@
   "dueTodayNotificationSingleTitle": "You have a task due today",
   "dueTodayNotificationMultipleTitle": "You have tasks due today",
   "routineNotificationTitle": "What will you do today?",
-  "routineNotificationBody": "What do you want to accomplish today? Plan it with YATA.",
-  "quickAddNotificationTitle": "YATA Quick Add",
+  "routineNotificationBody": "What do you want to accomplish today? Plan it with Yata.",
+  "quickAddNotificationTitle": "Yata Quick Add",
   "quickAddNotificationBody": "Tap to add a task",
   "notificationPermissionDenied": "Notification permission is disabled. Enable it in system settings to receive reminders."
 }
