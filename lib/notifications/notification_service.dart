@@ -12,6 +12,7 @@ import '../data/todo_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
+import '../theme/todo_theme.dart';
 
 /// Action triggered when the user interacts with a notification or its buttons.
 enum NotificationActionType {
@@ -172,9 +173,12 @@ class FlutterLocalNotificationTransport implements NotificationTransport {
   Future<T?> _guardPlatform<T>(Future<T> Function() action) async {
     try {
       return await action();
-    } catch (_) {
+    } on MissingPluginException {
       // In headless widget tests (no plugin registrant) or unsupported hosts,
       // FlutterLocalNotificationsPlatform.instance is uninitialized.
+      return null;
+    } catch (e, st) {
+      debugPrint('[NotificationTransport] error: $e\n$st');
       return null;
     }
   }
@@ -186,9 +190,7 @@ class FlutterLocalNotificationTransport implements NotificationTransport {
     if (_initialized || kIsWeb) return;
     _initialized = true;
 
-    const androidSettings = AndroidInitializationSettings(
-      '@mipmap/ic_launcher',
-    );
+    const androidSettings = AndroidInitializationSettings('ic_todo_24');
     const linuxSettings = LinuxInitializationSettings(
       defaultActionName: 'Open Yata',
     );
@@ -304,6 +306,8 @@ class FlutterLocalNotificationTransport implements NotificationTransport {
     final androidDetails = AndroidNotificationDetails(
       channelId,
       channelName,
+      icon: 'ic_todo_24',
+      color: TodoColors.attentionLight,
       importance: highPriority
           ? Importance.high
           : (ongoing ? Importance.low : Importance.defaultImportance),
