@@ -10,10 +10,26 @@
     android:paddingEnd="20dp"
     android:paddingBottom="10dp">
 
+    <ImageView
+        android:id="@+id/widget_folder_icon"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:contentDescription="@null"
+        android:src="@drawable/ic_widget_list_default" />
+
+    <TextView
+        android:id="@+id/widget_folder_emoji"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:gravity="center"
+        android:textSize="17sp"
+        android:visibility="gone" />
+
     <TextView
         android:id="@+id/widget_folder_title"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
         android:layout_weight="1"
         android:ellipsize="end"
         android:maxLines="1"
