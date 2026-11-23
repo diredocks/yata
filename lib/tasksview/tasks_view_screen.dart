@@ -45,7 +45,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   double _scrollOffset = 0.0;
   bool _isSnappingHeader = false;
   final ScrollController _scrollController = ScrollController();
-  final Set<String> _multiSelectedIds = {};
+  final ValueNotifier<Set<String>> _selectionNotifier = ValueNotifier(const {});
+  Set<String> get _multiSelectedIds => _selectionNotifier.value;
   String? _draggingTaskId;
   int? _dragStartIndex;
   double? _dragPointerStartY;
@@ -64,13 +65,13 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _selectionNotifier.dispose();
     _completionController.flushAndDispose(_presenter.setTaskCompleted);
     super.dispose();
   }
 
   void _snapHeaderIfNeeded(double collapseDelta) {
-    if (_mode != TasksViewMode.browsing ||
-        _isSnappingHeader ||
+    if (_isSnappingHeader ||
         collapseDelta <= 0 ||
         !_scrollController.hasClients) {
       return;
@@ -115,9 +116,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   }
 
   void _enterReordering() {
+    _selectionNotifier.value = const {};
     setState(() {
       _mode = TasksViewMode.reordering;
-      _multiSelectedIds.clear();
     });
   }
 
@@ -126,27 +127,31 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   }
 
   void _toggleSelection(String taskId) {
+    final next = Set<String>.from(_multiSelectedIds);
+    if (!next.remove(taskId)) {
+      next.add(taskId);
+    }
+    _selectionNotifier.value = Set<String>.unmodifiable(next);
     setState(() {
-      if (!_multiSelectedIds.remove(taskId)) {
-        _multiSelectedIds.add(taskId);
-      }
-      _mode = _multiSelectedIds.isEmpty
+      _mode = next.isEmpty
           ? TasksViewMode.browsing
           : TasksViewMode.multiSelecting;
     });
   }
 
   void _clearSelection() {
+    _selectionNotifier.value = const {};
     setState(() {
-      _multiSelectedIds.clear();
       _mode = TasksViewMode.browsing;
     });
   }
 
   void _selectAll(List<TaskItem> tasks) {
+    final next = Set<String>.from(_multiSelectedIds)
+      ..addAll(tasks.map((t) => t.id));
+    _selectionNotifier.value = Set<String>.unmodifiable(next);
     setState(() {
-      _multiSelectedIds.addAll(tasks.map((t) => t.id));
-      _mode = _multiSelectedIds.isEmpty
+      _mode = next.isEmpty
           ? TasksViewMode.browsing
           : TasksViewMode.multiSelecting;
     });
@@ -771,12 +776,30 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         sliver: AnimatedReorderableTaskSliver(
           key: ValueKey('flat_reorder_${currentList.id}'),
           tasks: activeTasks,
-          proxyDecorator: (child, index, animation) => Material(
-            elevation: 4,
-            color: Colors.transparent,
-            borderRadius: BorderRadius.circular(4),
-            child: child,
-          ),
+          proxyDecorator: (child, index, animation) {
+            final task = activeTasks[index];
+            return ValueListenableBuilder<Set<String>>(
+              valueListenable: _selectionNotifier,
+              builder: (context, selectedIds, _) => Material(
+                elevation: 4,
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(4),
+                child: HeroMode(
+                  enabled: false,
+                  child: _buildTaskTile(
+                    task: task,
+                    state: state,
+                    accentColor: accentColor,
+                    showMyDayBadge: !isMyDay,
+                    originListName: showOriginList
+                        ? resolveOriginListName(l10n, state.lists, task.listId)
+                        : null,
+                    enableLongPress: false,
+                  ),
+                ),
+              ),
+            );
+          },
           onReorderStart: (index) {
             final taskId = activeTasks[index].id;
             _draggingTaskId = taskId;
@@ -1182,43 +1205,52 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                           TasksViewMode.multiSelecting ||
                                       _mode == TasksViewMode.reordering)
                                     SliverToBoxAdapter(
-                                      child: Padding(
-                                        padding: const EdgeInsets.fromLTRB(
-                                          16,
-                                          12,
-                                          16,
-                                          12,
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          mainAxisSize: MainAxisSize.min,
+                                      child: SizedBox(
+                                        height: subtitle != null ? 88.0 : 60.0,
+                                        child: Stack(
                                           children: [
-                                            Text(
-                                              listTitle,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                color: headerFg,
-                                                fontWeight: FontWeight.w500,
-                                                fontSize: 30,
-                                              ),
-                                            ),
-                                            if (subtitle != null) ...[
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                subtitle,
+                                            PositionedDirectional(
+                                              start:
+                                                  widget.onBackPressed != null
+                                                  ? 16.0
+                                                  : 15.0,
+                                              end: 56,
+                                              bottom: subtitle != null
+                                                  ? 42.0
+                                                  : 16.0,
+                                              child: Text(
+                                                listTitle,
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
                                                 style: TextStyle(
-                                                  color: headerFg.withValues(
-                                                    alpha: 0.92,
-                                                  ),
-                                                  fontSize: 20,
-                                                  fontWeight: FontWeight.w400,
+                                                  color: headerFg,
+                                                  fontWeight: FontWeight.w500,
+                                                  fontSize: 30,
                                                 ),
                                               ),
-                                            ],
+                                            ),
+                                            if (subtitle != null)
+                                              PositionedDirectional(
+                                                start:
+                                                    widget.onBackPressed != null
+                                                    ? 16.0
+                                                    : 15.0,
+                                                end: 56,
+                                                bottom: 10.0,
+                                                child: Text(
+                                                  subtitle,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    color: headerFg.withValues(
+                                                      alpha: 0.92,
+                                                    ),
+                                                    fontSize: 20,
+                                                    fontWeight: FontWeight.w400,
+                                                  ),
+                                                ),
+                                              ),
                                           ],
                                         ),
                                       ),
@@ -1269,10 +1301,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                     currentList,
                                     isDark,
                                     collapseDelta:
-                                        _mode == TasksViewMode.browsing
-                                        ? ((subtitle != null ? 144.0 : 116.0) -
-                                              kToolbarHeight)
-                                        : 0.0,
+                                        (subtitle != null ? 144.0 : 116.0) -
+                                        kToolbarHeight,
                                   ),
                                   ],
                                 ),

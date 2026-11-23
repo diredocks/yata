@@ -60,11 +60,13 @@ void main() {
       await tester.pump(kLongPressTimeout + const Duration(milliseconds: 100));
       await tester.pump();
 
-      // Long-press enters multi-select immediately before dragging
+      // Long-press enters multi-select immediately before dragging and shows dot
       expect(
         find.descendant(of: find.byType(AppBar), matching: find.text('1')),
         findsOneWidget,
       );
+      expect(find.byKey(const ValueKey('selected_dot')), findsOneWidget);
+      expect(find.byKey(const ValueKey('checked')), findsNothing);
 
       await gesture.moveTo(Offset(firstCenter.dx, thirdCenter.dy + 40));
       await tester.pump();
@@ -94,9 +96,11 @@ void main() {
   );
 
   testWidgets(
-    'Long-press without dragging enters multi-select mode',
+    'Long-press without dragging enters multi-select mode without header height jump',
     (WidgetTester tester) async {
       await pumpAppWithTasks(tester);
+
+      final beforeTopY = tester.getTopLeft(find.text('Third task')).dy;
 
       await tester.longPress(find.text('Second task'));
       await tester.pumpAndSettle();
@@ -105,6 +109,44 @@ void main() {
         find.descendant(of: find.byType(AppBar), matching: find.text('1')),
         findsOneWidget,
       );
+      final afterTopY = tester.getTopLeft(find.text('Third task')).dy;
+      expect(afterTopY, beforeTopY);
+    },
+  );
+
+  testWidgets(
+    'Collapsed header stays collapsed when long-pressing to enter multi-select',
+    (WidgetTester tester) async {
+      await pumpAppWithTasks(tester);
+
+      // Collapse the header by scrolling down
+      await tester.drag(
+        find.byType(CustomScrollView).last,
+        const Offset(0, -120),
+      );
+      await tester.pumpAndSettle();
+
+      final collapsedTopY = tester.getTopLeft(find.text('Third task')).dy;
+
+      await tester.longPress(find.text('Second task'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(of: find.byType(AppBar), matching: find.text('1')),
+        findsOneWidget,
+      );
+      expect(tester.getTopLeft(find.text('Third task')).dy, collapsedTopY);
+
+      // Partial scroll back in multi-select mode snaps header open
+      await tester.drag(
+        find.byType(CustomScrollView).last,
+        const Offset(0, 60),
+      );
+      await tester.pumpAndSettle();
+      final scrollView = tester.widget<CustomScrollView>(
+        find.byType(CustomScrollView).last,
+      );
+      expect(scrollView.controller!.offset, 0.0);
     },
   );
 
