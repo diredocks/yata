@@ -862,7 +862,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 lineColor: useLightLines
                     ? TodoColors.taskViewDividerLight
                     : TodoColors.taskViewDividerDark,
-                rowHeight: 54.0,
+                rowHeight: 66.0,
                 horizontalInset: 8.0,
               ),
             ),

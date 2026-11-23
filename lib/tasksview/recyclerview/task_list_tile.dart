@@ -193,7 +193,7 @@ class TaskListTile extends StatelessWidget {
               onLongPress: onLongPress,
               borderRadius: BorderRadius.circular(4),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 52),
+                constraints: const BoxConstraints(minHeight: 64),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 6,
