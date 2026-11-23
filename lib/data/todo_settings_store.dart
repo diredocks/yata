@@ -1,52 +1,72 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:result_dart/result_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../account/account_local_storage.dart';
-import '../core/result/app_result.dart';
 import '../models/todo_list.dart';
 import '../sync/todo_wire_codecs.dart';
 
-part 'todo_settings_store.freezed.dart';
-
 /// Per-account settings that live in [SharedPreferences].
-@freezed
-abstract class TodoSettings with _$TodoSettings {
-  const factory TodoSettings({
-    @Default('my_day') String selectedListId,
-    @Default(ThemeMode.system) ThemeMode themeMode,
-    @Default(true) bool addNewTasksOnTop,
-    @Default(true) bool moveStarredTasksToTop,
-    @Default(true) bool playCompletionSound,
-    @Default(true) bool confirmBeforeDeleting,
-    @Default(true) bool showDueTodayInMyDay,
-    @Default(WeekStart.system) WeekStart startOfWeek,
-    @Default(true) bool showSmartListImportant,
-    @Default(true) bool showSmartListPlanned,
-    @Default(false) bool showSmartListAll,
-    @Default(false) bool showSmartListCompleted,
-    @Default(false) bool autoHideEmptySmartLists,
-    @Default(PlannedDueDateFilter.all)
-    PlannedDueDateFilter plannedDueDateFilter,
-    @Default(PlannedGroupOption.byDueDate)
-    PlannedGroupOption plannedGroupOption,
-    @Default(true) bool useDynamicColor,
-    @Default(true) bool remindersEnabled,
-    @Default(false) bool pinReminders,
-    @Default(false) bool dueTodayNotificationsEnabled,
-    @Default(9) int dueTodayNotificationHour,
-    @Default(0) int dueTodayNotificationMinute,
-    @Default(false) bool routineNotificationEnabled,
-    @Default(8) int routineNotificationHour,
-    @Default(30) int routineNotificationMinute,
-    @Default(false) bool quickAddNotificationEnabled,
-    @Default(<String, bool>{}) Map<String, bool> completedExpandedByList,
-    String? lastMyDayResetDate,
-  }) = _TodoSettings;
+class TodoSettings {
+  const TodoSettings({
+    this.selectedListId = 'my_day',
+    this.themeMode = ThemeMode.system,
+    this.addNewTasksOnTop = true,
+    this.moveStarredTasksToTop = true,
+    this.playCompletionSound = true,
+    this.confirmBeforeDeleting = true,
+    this.showDueTodayInMyDay = true,
+    this.startOfWeek = WeekStart.system,
+    this.showSmartListImportant = true,
+    this.showSmartListPlanned = true,
+    this.showSmartListAll = false,
+    this.showSmartListCompleted = false,
+    this.autoHideEmptySmartLists = false,
+    this.plannedDueDateFilter = PlannedDueDateFilter.all,
+    this.plannedGroupOption = PlannedGroupOption.byDueDate,
+    this.useDynamicColor = true,
+    this.remindersEnabled = true,
+    this.pinReminders = false,
+    this.dueTodayNotificationsEnabled = false,
+    this.dueTodayNotificationHour = 9,
+    this.dueTodayNotificationMinute = 0,
+    this.routineNotificationEnabled = false,
+    this.routineNotificationHour = 8,
+    this.routineNotificationMinute = 30,
+    this.quickAddNotificationEnabled = false,
+    this.completedExpandedByList = const <String, bool>{},
+    this.lastMyDayResetDate,
+  });
+
+  final String selectedListId;
+  final ThemeMode themeMode;
+  final bool addNewTasksOnTop;
+  final bool moveStarredTasksToTop;
+  final bool playCompletionSound;
+  final bool confirmBeforeDeleting;
+  final bool showDueTodayInMyDay;
+  final WeekStart startOfWeek;
+  final bool showSmartListImportant;
+  final bool showSmartListPlanned;
+  final bool showSmartListAll;
+  final bool showSmartListCompleted;
+  final bool autoHideEmptySmartLists;
+  final PlannedDueDateFilter plannedDueDateFilter;
+  final PlannedGroupOption plannedGroupOption;
+  final bool useDynamicColor;
+  final bool remindersEnabled;
+  final bool pinReminders;
+  final bool dueTodayNotificationsEnabled;
+  final int dueTodayNotificationHour;
+  final int dueTodayNotificationMinute;
+  final bool routineNotificationEnabled;
+  final int routineNotificationHour;
+  final int routineNotificationMinute;
+  final bool quickAddNotificationEnabled;
+  final Map<String, bool> completedExpandedByList;
+  final String? lastMyDayResetDate;
 }
 
 /// Owns every `SharedPreferences` key: user settings and sync bookkeeping.
@@ -117,41 +137,46 @@ class TodoSettingsStore {
   String get _cachedEndpointUrlKey => _k('cached_endpoint_url');
   String get _cachedEndpointFetchedAtKey => _k('cached_endpoint_fetched_at');
 
-  AppResult<TodoSettings> load() =>
-      guardSync(_buildSettings, operation: 'loadTodoSettings');
+  T _loadEnum<T extends Enum>(String key, List<T> values, T fallback) {
+    final name = _prefs.getString(key);
+    for (final value in values) {
+      if (value.name == name) return value;
+    }
+    return fallback;
+  }
 
-  TodoSettings _buildSettings() {
-    final themeName = _prefs.getString(_themeModeKey);
-    final weekStartName = _prefs.getString(_startOfWeekKey);
-    final plannedFilterName = _prefs.getString(_plannedDueDateFilterKey);
-    final plannedGroupName = _prefs.getString(_plannedGroupOptionKey);
+  Future<void> _setOrRemoveString(String key, String? value) async {
+    if (value == null || value.isEmpty) {
+      await _prefs.remove(key);
+    } else {
+      await _prefs.setString(key, value);
+    }
+  }
+
+  TodoSettings load() {
     return TodoSettings(
       selectedListId: _prefs.getString(_selectedListIdKey) ?? 'my_day',
-      themeMode: ThemeMode.values.firstWhere(
-        (e) => e.name == themeName,
-        orElse: () => ThemeMode.system,
-      ),
+      themeMode: _loadEnum(_themeModeKey, ThemeMode.values, ThemeMode.system),
       addNewTasksOnTop: _prefs.getBool(_addNewTasksOnTopKey) ?? true,
       moveStarredTasksToTop: _prefs.getBool(_moveStarredToTopKey) ?? true,
       playCompletionSound: _prefs.getBool(_playCompletionSoundKey) ?? true,
       confirmBeforeDeleting: _prefs.getBool(_confirmBeforeDeletingKey) ?? true,
       showDueTodayInMyDay: _prefs.getBool(_showDueTodayInMyDayKey) ?? true,
-      startOfWeek: WeekStart.values.firstWhere(
-        (e) => e.name == weekStartName,
-        orElse: () => WeekStart.system,
-      ),
+      startOfWeek: _loadEnum(_startOfWeekKey, WeekStart.values, WeekStart.system),
       showSmartListImportant: _prefs.getBool(_showImportantKey) ?? true,
       showSmartListPlanned: _prefs.getBool(_showPlannedKey) ?? true,
       showSmartListAll: _prefs.getBool(_showAllKey) ?? false,
       showSmartListCompleted: _prefs.getBool(_showCompletedListKey) ?? false,
       autoHideEmptySmartLists: _prefs.getBool(_autoHideSmartListsKey) ?? false,
-      plannedDueDateFilter: PlannedDueDateFilter.values.firstWhere(
-        (e) => e.name == plannedFilterName,
-        orElse: () => PlannedDueDateFilter.all,
+      plannedDueDateFilter: _loadEnum(
+        _plannedDueDateFilterKey,
+        PlannedDueDateFilter.values,
+        PlannedDueDateFilter.all,
       ),
-      plannedGroupOption: PlannedGroupOption.values.firstWhere(
-        (e) => e.name == plannedGroupName,
-        orElse: () => PlannedGroupOption.byDueDate,
+      plannedGroupOption: _loadEnum(
+        _plannedGroupOptionKey,
+        PlannedGroupOption.values,
+        PlannedGroupOption.byDueDate,
       ),
       useDynamicColor: _prefs.getBool(_useDynamicColorKey) ?? true,
       remindersEnabled: _prefs.getBool(_remindersEnabledKey) ?? true,
@@ -177,167 +202,124 @@ class TodoSettingsStore {
   Map<String, bool> _parseCompletedExpandedByList() {
     final raw = _prefs.getString(_completedExpandedByListKey);
     if (raw == null) return const {};
-    final decoded = jsonDecode(raw) as Map<String, dynamic>;
-    return {
-      for (final entry in decoded.entries)
-        if (entry.value is bool) entry.key: entry.value as bool,
-    };
+    try {
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      return {
+        for (final entry in decoded.entries)
+          if (entry.value is bool) entry.key: entry.value as bool,
+      };
+    } catch (_) {
+      return const {};
+    }
   }
 
-  AsyncAppResult<Unit> saveSelectedListId(String listId) => guardAsyncUnit(
-    () => _prefs.setString(_selectedListIdKey, listId),
-    operation: 'saveSelectedListId',
-  );
+  Future<void> saveSelectedListId(String listId) =>
+      _prefs.setString(_selectedListIdKey, listId);
 
   String? loadLastEnteredListId() => _prefs.getString(_lastEnteredListIdKey);
 
-  AsyncAppResult<Unit> saveLastEnteredListId(String? listId) =>
-      guardAsyncUnit(() async {
-        if (listId == null) {
-          await _prefs.remove(_lastEnteredListIdKey);
-        } else {
-          await _prefs.setString(_lastEnteredListIdKey, listId);
-        }
-      }, operation: 'saveLastEnteredListId');
+  Future<void> saveLastEnteredListId(String? listId) =>
+      _setOrRemoveString(_lastEnteredListIdKey, listId);
 
-  AsyncAppResult<Unit> saveCompletedExpandedByList(Map<String, bool> value) =>
-      guardAsyncUnit(() async {
-        if (value.isEmpty) {
-          await _prefs.remove(_completedExpandedByListKey);
-        } else {
-          await _prefs.setString(
-            _completedExpandedByListKey,
-            jsonEncode(value),
-          );
-        }
-      }, operation: 'saveCompletedExpandedByList');
-
-  AsyncAppResult<Unit> saveThemeMode(ThemeMode mode) => guardAsyncUnit(
-    () => _prefs.setString(_themeModeKey, mode.name),
-    operation: 'saveThemeMode',
-  );
-
-  AsyncAppResult<Unit> saveBoolSetting(String key, bool value) =>
-      guardAsyncUnit(
-        () => _prefs.setBool(key, value),
-        operation: 'saveBoolSetting',
+  Future<void> saveCompletedExpandedByList(Map<String, bool> value) =>
+      _setOrRemoveString(
+        _completedExpandedByListKey,
+        value.isEmpty ? null : jsonEncode(value),
       );
 
-  AsyncAppResult<Unit> saveAddNewTasksOnTop(bool value) =>
-      saveBoolSetting(_addNewTasksOnTopKey, value);
+  Future<void> saveThemeMode(ThemeMode mode) =>
+      _prefs.setString(_themeModeKey, mode.name);
 
-  AsyncAppResult<Unit> saveMoveStarredTasksToTop(bool value) =>
-      saveBoolSetting(_moveStarredToTopKey, value);
+  Future<void> saveAddNewTasksOnTop(bool value) =>
+      _prefs.setBool(_addNewTasksOnTopKey, value);
 
-  AsyncAppResult<Unit> savePlayCompletionSound(bool value) =>
-      saveBoolSetting(_playCompletionSoundKey, value);
+  Future<void> saveMoveStarredTasksToTop(bool value) =>
+      _prefs.setBool(_moveStarredToTopKey, value);
 
-  AsyncAppResult<Unit> saveConfirmBeforeDeleting(bool value) =>
-      saveBoolSetting(_confirmBeforeDeletingKey, value);
+  Future<void> savePlayCompletionSound(bool value) =>
+      _prefs.setBool(_playCompletionSoundKey, value);
 
-  AsyncAppResult<Unit> saveShowDueTodayInMyDay(bool value) =>
-      saveBoolSetting(_showDueTodayInMyDayKey, value);
+  Future<void> saveConfirmBeforeDeleting(bool value) =>
+      _prefs.setBool(_confirmBeforeDeletingKey, value);
 
-  AsyncAppResult<Unit> saveStartOfWeek(WeekStart value) => guardAsyncUnit(
-    () => _prefs.setString(_startOfWeekKey, value.name),
-    operation: 'saveStartOfWeek',
-  );
+  Future<void> saveShowDueTodayInMyDay(bool value) =>
+      _prefs.setBool(_showDueTodayInMyDayKey, value);
 
-  AsyncAppResult<Unit> saveShowSmartListImportant(bool value) =>
-      saveBoolSetting(_showImportantKey, value);
+  Future<void> saveStartOfWeek(WeekStart value) =>
+      _prefs.setString(_startOfWeekKey, value.name);
 
-  AsyncAppResult<Unit> saveShowSmartListPlanned(bool value) =>
-      saveBoolSetting(_showPlannedKey, value);
+  Future<void> saveShowSmartListImportant(bool value) =>
+      _prefs.setBool(_showImportantKey, value);
 
-  AsyncAppResult<Unit> saveShowSmartListAll(bool value) =>
-      saveBoolSetting(_showAllKey, value);
+  Future<void> saveShowSmartListPlanned(bool value) =>
+      _prefs.setBool(_showPlannedKey, value);
 
-  AsyncAppResult<Unit> saveShowSmartListCompleted(bool value) =>
-      saveBoolSetting(_showCompletedListKey, value);
+  Future<void> saveShowSmartListAll(bool value) =>
+      _prefs.setBool(_showAllKey, value);
 
-  AsyncAppResult<Unit> saveAutoHideEmptySmartLists(bool value) =>
-      saveBoolSetting(_autoHideSmartListsKey, value);
+  Future<void> saveShowSmartListCompleted(bool value) =>
+      _prefs.setBool(_showCompletedListKey, value);
 
-  AsyncAppResult<Unit> saveUseDynamicColor(bool value) =>
-      saveBoolSetting(_useDynamicColorKey, value);
+  Future<void> saveAutoHideEmptySmartLists(bool value) =>
+      _prefs.setBool(_autoHideSmartListsKey, value);
 
-  AsyncAppResult<Unit> saveRemindersEnabled(bool value) =>
-      saveBoolSetting(_remindersEnabledKey, value);
+  Future<void> saveUseDynamicColor(bool value) =>
+      _prefs.setBool(_useDynamicColorKey, value);
 
-  AsyncAppResult<Unit> savePinReminders(bool value) =>
-      saveBoolSetting(_pinRemindersKey, value);
+  Future<void> saveRemindersEnabled(bool value) =>
+      _prefs.setBool(_remindersEnabledKey, value);
 
-  AsyncAppResult<Unit> saveDueTodayNotificationsEnabled(bool value) =>
-      saveBoolSetting(_dueTodayNotificationsKey, value);
+  Future<void> savePinReminders(bool value) =>
+      _prefs.setBool(_pinRemindersKey, value);
 
-  AsyncAppResult<Unit> saveDueTodayNotificationTime(int hour, int minute) =>
-      guardAsyncUnit(() async {
-        await _prefs.setInt(_dueTodayNotificationHourKey, hour);
-        await _prefs.setInt(_dueTodayNotificationMinuteKey, minute);
-      }, operation: 'saveDueTodayNotificationTime');
+  Future<void> saveDueTodayNotificationsEnabled(bool value) =>
+      _prefs.setBool(_dueTodayNotificationsKey, value);
 
-  AsyncAppResult<Unit> saveRoutineNotificationEnabled(bool value) =>
-      saveBoolSetting(_routineNotificationKey, value);
+  Future<void> saveDueTodayNotificationTime(int hour, int minute) async {
+    await _prefs.setInt(_dueTodayNotificationHourKey, hour);
+    await _prefs.setInt(_dueTodayNotificationMinuteKey, minute);
+  }
 
-  AsyncAppResult<Unit> saveRoutineNotificationTime(int hour, int minute) =>
-      guardAsyncUnit(() async {
-        await _prefs.setInt(_routineNotificationHourKey, hour);
-        await _prefs.setInt(_routineNotificationMinuteKey, minute);
-      }, operation: 'saveRoutineNotificationTime');
+  Future<void> saveRoutineNotificationEnabled(bool value) =>
+      _prefs.setBool(_routineNotificationKey, value);
 
-  AsyncAppResult<Unit> saveQuickAddNotificationEnabled(bool value) =>
-      saveBoolSetting(_quickAddNotificationKey, value);
+  Future<void> saveRoutineNotificationTime(int hour, int minute) async {
+    await _prefs.setInt(_routineNotificationHourKey, hour);
+    await _prefs.setInt(_routineNotificationMinuteKey, minute);
+  }
 
-  AsyncAppResult<Unit> saveLastMyDayResetDate(String dateKey) => guardAsyncUnit(
-    () => _prefs.setString(_lastMyDayResetKey, dateKey),
-    operation: 'saveLastMyDayResetDate',
-  );
+  Future<void> saveQuickAddNotificationEnabled(bool value) =>
+      _prefs.setBool(_quickAddNotificationKey, value);
 
-  AsyncAppResult<Unit> savePlannedDueDateFilter(PlannedDueDateFilter filter) =>
-      guardAsyncUnit(
-        () => _prefs.setString(_plannedDueDateFilterKey, filter.name),
-        operation: 'savePlannedDueDateFilter',
-      );
+  Future<void> saveLastMyDayResetDate(String dateKey) =>
+      _prefs.setString(_lastMyDayResetKey, dateKey);
 
-  AsyncAppResult<Unit> savePlannedGroupOption(PlannedGroupOption option) =>
-      guardAsyncUnit(
-        () => _prefs.setString(_plannedGroupOptionKey, option.name),
-        operation: 'savePlannedGroupOption',
-      );
+  Future<void> savePlannedDueDateFilter(PlannedDueDateFilter filter) =>
+      _prefs.setString(_plannedDueDateFilterKey, filter.name);
+
+  Future<void> savePlannedGroupOption(PlannedGroupOption option) =>
+      _prefs.setString(_plannedGroupOptionKey, option.name);
 
   Set<String> loadDirtySettingKeys() =>
       (_prefs.getStringList(_dirtySettingKeysKey) ?? const []).toSet();
 
-  AsyncAppResult<Unit> saveDirtySettingKeys(Set<String> keys) =>
-      guardAsyncUnit(() async {
-        if (keys.isEmpty) {
-          await _prefs.remove(_dirtySettingKeysKey);
-        } else {
-          await _prefs.setStringList(_dirtySettingKeysKey, keys.toList());
-        }
-      }, operation: 'saveDirtySettingKeys');
+  Future<void> saveDirtySettingKeys(Set<String> keys) async {
+    if (keys.isEmpty) {
+      await _prefs.remove(_dirtySettingKeysKey);
+    } else {
+      await _prefs.setStringList(_dirtySettingKeysKey, keys.toList());
+    }
+  }
 
   String? loadGroupsDeltaLink() => _prefs.getString(_groupsDeltaLinkKey);
 
-  AsyncAppResult<Unit> saveGroupsDeltaLink(String? deltaLink) =>
-      guardAsyncUnit(() async {
-        if (deltaLink == null || deltaLink.isEmpty) {
-          await _prefs.remove(_groupsDeltaLinkKey);
-        } else {
-          await _prefs.setString(_groupsDeltaLinkKey, deltaLink);
-        }
-      }, operation: 'saveGroupsDeltaLink');
+  Future<void> saveGroupsDeltaLink(String? deltaLink) =>
+      _setOrRemoveString(_groupsDeltaLinkKey, deltaLink);
 
   String? loadFoldersDeltaLink() => _prefs.getString(_foldersDeltaLinkKey);
 
-  AsyncAppResult<Unit> saveFoldersDeltaLink(String? deltaLink) =>
-      guardAsyncUnit(() async {
-        if (deltaLink == null || deltaLink.isEmpty) {
-          await _prefs.remove(_foldersDeltaLinkKey);
-        } else {
-          await _prefs.setString(_foldersDeltaLinkKey, deltaLink);
-        }
-      }, operation: 'saveFoldersDeltaLink');
+  Future<void> saveFoldersDeltaLink(String? deltaLink) =>
+      _setOrRemoveString(_foldersDeltaLinkKey, deltaLink);
 
   Map<String, String> loadTaskDeltaLinks() {
     final raw = _prefs.getString(_taskDeltaLinksKey);
@@ -354,14 +336,11 @@ class TodoSettingsStore {
     }
   }
 
-  AsyncAppResult<Unit> saveTaskDeltaLinks(Map<String, String> links) =>
-      guardAsyncUnit(() async {
-        if (links.isEmpty) {
-          await _prefs.remove(_taskDeltaLinksKey);
-        } else {
-          await _prefs.setString(_taskDeltaLinksKey, jsonEncode(links));
-        }
-      }, operation: 'saveTaskDeltaLinks');
+  Future<void> saveTaskDeltaLinks(Map<String, String> links) =>
+      _setOrRemoveString(
+        _taskDeltaLinksKey,
+        links.isEmpty ? null : jsonEncode(links),
+      );
 
   String? loadCachedEndpointUrl({Duration maxAge = const Duration(hours: 12)}) {
     final url = _prefs.getString(_cachedEndpointUrlKey);
@@ -375,12 +354,11 @@ class TodoSettingsStore {
     return url;
   }
 
-  AsyncAppResult<Unit> saveCachedEndpointUrl(String url) =>
-      guardAsyncUnit(() async {
-        await _prefs.setString(_cachedEndpointUrlKey, url);
-        await _prefs.setString(
-          _cachedEndpointFetchedAtKey,
-          DateTime.now().toUtc().toIso8601String(),
-        );
-      }, operation: 'saveCachedEndpointUrl');
+  Future<void> saveCachedEndpointUrl(String url) async {
+    await _prefs.setString(_cachedEndpointUrlKey, url);
+    await _prefs.setString(
+      _cachedEndpointFetchedAtKey,
+      DateTime.now().toUtc().toIso8601String(),
+    );
+  }
 }

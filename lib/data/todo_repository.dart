@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:result_dart/result_dart.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/result/app_result.dart';
 import '../models/pending_step_deletion.dart';
@@ -40,15 +41,16 @@ class TodoRepository {
     scopeKey: settings.scopeKey,
   );
 
+  factory TodoRepository.forAccount(
+    SharedPreferences prefs, {
+    String? accountId,
+    TodoDatabase? database,
+  }) => TodoRepository.forSession(
+    database ?? sharedFallbackTodoDatabase,
+    TodoSettingsStore(prefs, accountId: accountId),
+  );
+
   static const _deletedStepKind = 'deleted_step';
-  static const _preloadedMutationKinds = [
-    'deleted_list',
-    'deleted_task',
-    'deleted_group',
-    'dirty_list',
-    'dirty_group',
-    'dirty_task',
-  ];
 
   /// Cache buckets are shared by every repository over the same database, so a
   /// second instance for the same session sees the same data.
@@ -81,26 +83,32 @@ class TodoRepository {
         final listRows = await _db.selectTodoListRecords(accountKey);
         final groupRows = await _db.selectListGroupRecords(accountKey);
         final taskRows = await _db.selectTaskItemRecords(accountKey);
-        final mutationRows = <String, List<String>>{};
-        for (final kind in _preloadedMutationKinds) {
-          final rows = await _db.selectSyncMutationRecords(
-            accountKey,
-            kind: kind,
-          );
-          mutationRows[kind] = [for (final row in rows) row.itemKey];
-        }
-        final stepRows = await _db.selectSyncMutationRecords(
-          accountKey,
-          kind: _deletedStepKind,
-        );
+        final allMutations = await _db.selectSyncMutationRecords(accountKey);
 
         // Decode first: a corrupt payload must not clobber the cache.
-        final lists = _decodeTodoLists(listRows);
-        final groups = _decodeListGroups(groupRows);
-        final tasks = _decodeTaskItems(taskRows);
-        final steps = [
-          for (final row in stepRows) _decodePendingStepDeletion(row),
+        final lists = [
+          for (final row in listRows)
+            TodoList.fromJson(_decodePayload(row.payloadJson)),
         ];
+        final groups = [
+          for (final row in groupRows)
+            ListGroup.fromJson(_decodePayload(row.payloadJson)),
+        ];
+        final tasks = [
+          for (final row in taskRows)
+            TaskItem.fromJson(_decodePayload(row.payloadJson)),
+        ];
+        final mutationRows = <String, List<String>>{};
+        final steps = <PendingStepDeletion>[];
+        for (final row in allMutations) {
+          if (row.kind == _deletedStepKind) {
+            steps.add(
+              PendingStepDeletion.fromJson(_decodePayload(row.payloadJson)),
+            );
+          } else {
+            (mutationRows[row.kind] ??= <String>[]).add(row.itemKey);
+          }
+        }
 
         final cache = _cache;
         cache.lists = lists.isEmpty ? null : List<TodoList>.unmodifiable(lists);
@@ -123,7 +131,15 @@ class TodoRepository {
   AsyncAppResult<Unit> saveLists(List<TodoList> lists) {
     return guardDbCall(() async {
       if (_db.persistToSqlite) {
-        await _db.replaceTodoListRecords(accountKey, _encodeTodoLists(lists));
+        await _db.replaceTodoListRecords(accountKey, [
+          for (var i = 0; i < lists.length; i++)
+            TodoListRecordsCompanion.insert(
+              accountKey: accountKey,
+              id: lists[i].id,
+              position: i,
+              payloadJson: jsonEncode(lists[i].toJson()),
+            ),
+        ]);
       }
       _cache.lists = List<TodoList>.unmodifiable(lists);
       return unit;
@@ -133,10 +149,15 @@ class TodoRepository {
   AsyncAppResult<Unit> saveGroups(List<ListGroup> groups) {
     return guardDbCall(() async {
       if (_db.persistToSqlite) {
-        await _db.replaceListGroupRecords(
-          accountKey,
-          _encodeListGroups(groups),
-        );
+        await _db.replaceListGroupRecords(accountKey, [
+          for (var i = 0; i < groups.length; i++)
+            ListGroupRecordsCompanion.insert(
+              accountKey: accountKey,
+              id: groups[i].id,
+              position: i,
+              payloadJson: jsonEncode(groups[i].toJson()),
+            ),
+        ]);
       }
       _cache.groups = List<ListGroup>.unmodifiable(groups);
       return unit;
@@ -146,7 +167,16 @@ class TodoRepository {
   AsyncAppResult<Unit> saveTasks(List<TaskItem> tasks) {
     return guardDbCall(() async {
       if (_db.persistToSqlite) {
-        await _db.replaceTaskItemRecords(accountKey, _encodeTaskItems(tasks));
+        await _db.replaceTaskItemRecords(accountKey, [
+          for (var i = 0; i < tasks.length; i++)
+            TaskItemRecordsCompanion.insert(
+              accountKey: accountKey,
+              id: tasks[i].id,
+              listId: tasks[i].listId,
+              position: i,
+              payloadJson: jsonEncode(tasks[i].toJson()),
+            ),
+        ]);
       }
       _cache.tasks = List<TaskItem>.unmodifiable(tasks);
       return unit;
@@ -252,65 +282,10 @@ class TodoRepository {
   AsyncAppResult<Unit> saveDirtyTaskIds(Set<String> ids) =>
       saveMutationKeys('dirty_task', ids);
 
-  List<TodoList> _decodeTodoLists(List<TodoListRecord> rows) => [
-    for (final row in rows) _decodeTodoList(row),
-  ];
-
-  List<ListGroup> _decodeListGroups(List<ListGroupRecord> rows) => [
-    for (final row in rows) _decodeListGroup(row),
-  ];
-
-  List<TaskItem> _decodeTaskItems(List<TaskItemRecord> rows) => [
-    for (final row in rows) _decodeTaskItem(row),
-  ];
-
-  TodoList _decodeTodoList(TodoListRecord row) =>
-      TodoList.fromJson(_decodePayload(row.payloadJson));
-
-  ListGroup _decodeListGroup(ListGroupRecord row) =>
-      ListGroup.fromJson(_decodePayload(row.payloadJson));
-
-  TaskItem _decodeTaskItem(TaskItemRecord row) =>
-      TaskItem.fromJson(_decodePayload(row.payloadJson));
-
-  PendingStepDeletion _decodePendingStepDeletion(SyncMutationRecord row) =>
-      PendingStepDeletion.fromJson(_decodePayload(row.payloadJson));
-
   Map<String, dynamic> _decodePayload(String payloadJson) {
     final decoded = jsonDecode(payloadJson);
     if (decoded is Map<String, dynamic>) return decoded;
     if (decoded is Map) return Map<String, dynamic>.from(decoded);
     throw FormatException('Expected a JSON object payload.', payloadJson);
   }
-
-  List<TodoListRecordsCompanion> _encodeTodoLists(List<TodoList> lists) => [
-    for (var i = 0; i < lists.length; i++)
-      TodoListRecordsCompanion.insert(
-        accountKey: accountKey,
-        id: lists[i].id,
-        position: i,
-        payloadJson: jsonEncode(lists[i].toJson()),
-      ),
-  ];
-
-  List<ListGroupRecordsCompanion> _encodeListGroups(List<ListGroup> groups) => [
-    for (var i = 0; i < groups.length; i++)
-      ListGroupRecordsCompanion.insert(
-        accountKey: accountKey,
-        id: groups[i].id,
-        position: i,
-        payloadJson: jsonEncode(groups[i].toJson()),
-      ),
-  ];
-
-  List<TaskItemRecordsCompanion> _encodeTaskItems(List<TaskItem> tasks) => [
-    for (var i = 0; i < tasks.length; i++)
-      TaskItemRecordsCompanion.insert(
-        accountKey: accountKey,
-        id: tasks[i].id,
-        listId: tasks[i].listId,
-        position: i,
-        payloadJson: jsonEncode(tasks[i].toJson()),
-      ),
-  ];
 }

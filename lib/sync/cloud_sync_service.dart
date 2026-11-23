@@ -114,41 +114,42 @@ class CloudSyncService {
     required TodoRepository repository,
     required TodoSettingsStore settings,
     required String Function(String prefix) idGenerator,
-  }) {
-    Future<AppResult<SyncOutcome>> run(SubstrateRequestContext ctx) =>
-        guardApiCall(
-          () => _executeSyncPhases(
-            ctx: ctx,
-            currentState: currentState,
-            repository: repository,
-            settings: settings,
-            idGenerator: idGenerator,
-          ),
-          operation: 'syncPhases',
-        );
+  }) async {
+    Future<AppResult<SyncOutcome>> runAttempt({
+      required bool forceRefreshToken,
+    }) => resolveContext(
+      account,
+      settings,
+      forceRefreshToken: forceRefreshToken,
+    ).flatMap(
+      (ctx) => guardApiCall(
+        () => _executeSyncPhases(
+          ctx: ctx,
+          currentState: currentState,
+          repository: repository,
+          settings: settings,
+          idGenerator: idGenerator,
+        ),
+        operation: 'syncPhases',
+      ),
+    );
 
-    return resolveContext(account, settings).flatMap(run).recover((
-      error,
-    ) async {
-      if (error is! AuthError) return Failure<SyncOutcome, AppError>(error);
+    final firstAttempt = await runAttempt(forceRefreshToken: false);
+    if (firstAttempt.exceptionOrNull() is! AuthError) {
+      return firstAttempt;
+    }
 
-      // 401: force a token refresh and retry once.
-      final retried = resolveContext(
-        account,
-        settings,
-        forceRefreshToken: true,
-      ).flatMap(run);
-      return retried.mapError(
-        (retryError) => switch (retryError) {
-          AuthError(:final message, :final code) => AppError.auth(
-            message: message,
-            code: code,
-            requiresReauth: true,
-          ),
-          _ => retryError,
-        },
-      );
-    });
+    // 401: force a token refresh and retry once.
+    final retried = await runAttempt(forceRefreshToken: true);
+    return retried.mapError(
+      (error) => error is AuthError
+          ? AppError.auth(
+              message: error.message,
+              code: error.code,
+              requiresReauth: true,
+            )
+          : error,
+    );
   }
 
   Future<SyncOutcome> _executeSyncPhases({

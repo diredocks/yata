@@ -3,10 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:result_dart/result_dart.dart';
 
 import '../account/account_provider.dart';
-import '../core/result/app_result.dart';
 import '../homeview/home_view_ordering.dart';
 import '../models/default_lists.dart';
 import '../models/pending_step_deletion.dart';
@@ -88,10 +86,7 @@ class TodoNotifier extends Notifier<TodoState> {
   TodoState build() {
     final repository = ref.watch(todoRepositoryProvider);
     final settingsStore = ref.watch(todoSettingsStoreProvider);
-    final settings = settingsStore.load().fold(
-      (settings) => settings,
-      (_) => const TodoSettings(),
-    );
+    final settings = settingsStore.load();
     final now = DateTime.now();
     final todayKey = _todayKey(now);
     var changed = false;
@@ -535,7 +530,7 @@ class TodoNotifier extends Notifier<TodoState> {
         : [...existingAndLocal, ...newRemoteTasks];
   }
 
-  AsyncAppResult<Unit> applySyncResult({
+  Future<void> applySyncResult({
     List<ListGroup>? groups,
     required List<TodoList> lists,
     required List<TaskItem> tasks,
@@ -727,7 +722,6 @@ class TodoNotifier extends Notifier<TodoState> {
       selectedListId: validSelectedListId,
       completedExpandedByList: nextExpanded,
     );
-    return const Success(unit);
   }
 
   void selectList(String listId) {

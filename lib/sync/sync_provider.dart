@@ -2,11 +2,9 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:result_dart/result_dart.dart';
 
 import '../account/account_provider.dart';
 import '../core/error/app_error.dart';
-import '../core/result/app_result.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
 import 'cloud_sync_service.dart';
@@ -165,80 +163,65 @@ class SyncNotifier extends Notifier<SyncState> {
     final service = ref.read(cloudSyncServiceProvider);
     final todoNotifier = ref.read(todoProvider.notifier);
     final snapshotState = ref.read(todoProvider);
-    final repository = todoNotifier.repository;
-    final settings = todoNotifier.settings;
 
-    final result = await service
-        .syncAccount(
-          account: active,
-          currentState: snapshotState,
-          repository: repository,
-          settings: settings,
-          idGenerator: todoNotifier.nextId,
-        )
-        .flatMap((outcome) async {
-          if (_disposed ||
-              ref.read(accountProvider).activeAccount?.id != active.id) {
-            return Success<SyncOutcome, AppError>(outcome);
-          }
-          return todoNotifier
-              .applySyncResult(
-                groups: outcome.groups,
-                lists: outcome.lists,
-                tasks: outcome.tasks,
-                settingsPatch: outcome.settingsPatch,
-                snapshotGroups: snapshotState.groups,
-                snapshotLists: snapshotState.lists,
-                snapshotTasks: snapshotState.tasks,
-                snapshotState: snapshotState,
-                processedDeletedGroupRemoteIds:
-                    outcome.processedDeletedGroupRemoteIds,
-                processedDeletedListRemoteIds:
-                    outcome.processedDeletedListRemoteIds,
-                processedDeletedTaskRemoteIds:
-                    outcome.processedDeletedTaskRemoteIds,
-                processedDeletedSteps: outcome.processedDeletedSteps,
-                syncedGroupIds: outcome.syncedGroupIds,
-                syncedListIds: outcome.syncedListIds,
-                syncedTaskIds: outcome.syncedTaskIds,
-                syncedSettingKeys: outcome.syncedSettingKeys,
-              )
-              .map((_) => outcome);
-        })
-        .flatMap(
-          (outcome) => guardAsyncUnit(() async {
-            await ref
-                .read(accountProvider.notifier)
-                .updateSyncStatus(
-                  active.id,
-                  lastSyncedAt: outcome.syncedAt,
-                  clearSyncError: true,
-                );
-            await _refreshProfileIfIncomplete(service, active);
-          }, operation: 'updateSyncStatus').map((_) => outcome),
-        );
+    final result = await service.syncAccount(
+      account: active,
+      currentState: snapshotState,
+      repository: todoNotifier.repository,
+      settings: todoNotifier.settings,
+      idGenerator: todoNotifier.nextId,
+    );
 
     if (_disposed) return;
 
     await result.fold(
       (outcome) async {
-        state = state.copyWith(
-          status: SyncStatus.success,
-          lastSyncedAt: outcome.syncedAt,
-          error: null,
-        );
+        if (ref.read(accountProvider).activeAccount?.id == active.id) {
+          await todoNotifier.applySyncResult(
+            groups: outcome.groups,
+            lists: outcome.lists,
+            tasks: outcome.tasks,
+            settingsPatch: outcome.settingsPatch,
+            snapshotGroups: snapshotState.groups,
+            snapshotLists: snapshotState.lists,
+            snapshotTasks: snapshotState.tasks,
+            snapshotState: snapshotState,
+            processedDeletedGroupRemoteIds:
+                outcome.processedDeletedGroupRemoteIds,
+            processedDeletedListRemoteIds:
+                outcome.processedDeletedListRemoteIds,
+            processedDeletedTaskRemoteIds:
+                outcome.processedDeletedTaskRemoteIds,
+            processedDeletedSteps: outcome.processedDeletedSteps,
+            syncedGroupIds: outcome.syncedGroupIds,
+            syncedListIds: outcome.syncedListIds,
+            syncedTaskIds: outcome.syncedTaskIds,
+            syncedSettingKeys: outcome.syncedSettingKeys,
+          );
+        }
+        await ref
+            .read(accountProvider.notifier)
+            .updateSyncStatus(
+              active.id,
+              lastSyncedAt: outcome.syncedAt,
+              clearSyncError: true,
+            );
+        await _refreshProfileIfIncomplete(service, active);
+        if (!_disposed) {
+          state = state.copyWith(
+            status: SyncStatus.success,
+            lastSyncedAt: outcome.syncedAt,
+            error: null,
+          );
+        }
       },
       (error) async {
         final status = switch (error) {
-          AuthError(:final requiresReauth) =>
-            requiresReauth ? SyncStatus.requiresRelogin : SyncStatus.error,
-          NetworkError() => SyncStatus.error,
-          DatabaseError() => SyncStatus.error,
-          NotFoundError() => SyncStatus.error,
-          ValidationError() => SyncStatus.error,
-          UnknownError() => SyncStatus.error,
+          AuthError(:final requiresReauth) when requiresReauth =>
+            SyncStatus.requiresRelogin,
+          _ => SyncStatus.error,
         };
-        final message = error.describe();
+        final message = error.userMessage;
         await ref
             .read(accountProvider.notifier)
             .updateSyncStatus(active.id, syncError: message);

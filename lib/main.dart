@@ -7,7 +7,6 @@ import 'account/account_local_storage.dart';
 import 'account/account_provider.dart';
 import 'data/todo_provider.dart';
 import 'data/todo_repository.dart';
-import 'data/todo_settings_store.dart';
 import 'l10n/app_localizations.dart';
 import 'onboarding/landing_screen.dart';
 import 'theme/todo_theme.dart';
@@ -19,9 +18,10 @@ Future<void> main() async {
   final database = TodoDatabase();
   final accountSnapshot = AccountLocalStorage(prefs).load();
   for (final account in accountSnapshot.accounts) {
-    await TodoRepository.forSession(
-      database,
-      TodoSettingsStore(prefs, accountId: account.id),
+    await TodoRepository.forAccount(
+      prefs,
+      accountId: account.id,
+      database: database,
     ).preload();
   }
 

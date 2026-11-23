@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
-import 'package:yata/core/error/app_error.dart';
 import 'package:yata/data/todo_settings_store.dart';
 import 'package:yata/models/default_lists.dart';
 import 'package:yata/data/todo_provider.dart';
@@ -367,10 +366,7 @@ void main() {
     expect(transport.permissionRequested, isTrue);
 
     // Verify persistence in TodoSettingsStore.
-    final reloaded = TodoSettingsStore(prefs).load().fold(
-      (snapshot) => snapshot,
-      (error) => fail('local snapshot load failed: ${error.describe()}'),
-    );
+    final reloaded = TodoSettingsStore(prefs).load();
     expect(reloaded.dueTodayNotificationsEnabled, isTrue);
   });
 

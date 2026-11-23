@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:yata/core/error/app_error.dart';
 import 'package:yata/data/todo_repository.dart';
 import 'package:yata/data/todo_settings_store.dart';
 import 'package:yata/data/todo_provider.dart';
@@ -71,10 +70,7 @@ void main() {
     await tester.tap(find.text('Use system dynamic color'));
     await tester.pumpAndSettle();
 
-    final reloaded = TodoSettingsStore(prefs).load().fold(
-      (snapshot) => snapshot,
-      (error) => fail('local snapshot load failed: ${error.describe()}'),
-    );
+    final reloaded = TodoSettingsStore(prefs).load();
     expect(reloaded.useDynamicColor, isFalse);
   });
 
@@ -83,10 +79,7 @@ void main() {
     (WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
-      final repository = TodoRepository.forSession(
-        sharedFallbackTodoDatabase,
-        TodoSettingsStore(prefs),
-      );
+      final repository = TodoRepository.forAccount(prefs);
       final task = TaskItem(
         id: 't_detail',
         listId: 'tasks',

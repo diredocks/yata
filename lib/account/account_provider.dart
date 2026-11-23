@@ -8,7 +8,6 @@ import '../auth/microsoft_auth_service.dart';
 import '../auth/msa_webview_launcher.dart';
 import '../data/todo_provider.dart';
 import '../data/todo_repository.dart';
-import '../data/todo_settings_store.dart';
 import '../models/account.dart';
 import '../sync/microsoft_todo_api.dart';
 
@@ -194,12 +193,10 @@ class AccountNotifier extends Notifier<AccountState> {
     await _storage.saveAccounts(nextAccounts);
   }
 
-  TodoRepository _repositoryFor(String accountId) => TodoRepository.forSession(
-    ref.read(todoDatabaseProvider) ?? sharedFallbackTodoDatabase,
-    TodoSettingsStore(
-      ref.read(sharedPreferencesProvider),
-      accountId: accountId,
-    ),
+  TodoRepository _repositoryFor(String accountId) => TodoRepository.forAccount(
+    ref.read(sharedPreferencesProvider),
+    accountId: accountId,
+    database: ref.read(todoDatabaseProvider),
   );
 
   Future<void> switchAccount(String accountId) async {
