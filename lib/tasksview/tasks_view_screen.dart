@@ -1165,6 +1165,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                             return RefreshIndicator(
                               onRefresh: () =>
                                   ref.read(syncProvider.notifier).syncNow(),
+                              color: accentColor,
+                              backgroundColor: isDark
+                                  ? TodoColors.primaryBackgroundDark
+                                  : TodoColors.primaryBackgroundLight,
                               child: scrollView,
                             );
                           },
