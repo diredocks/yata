@@ -13,11 +13,8 @@ class RoutineSettingsScreen extends ConsumerWidget {
   const RoutineSettingsScreen({super.key});
 
   List<int> _orderedWeekdays(WeekStart startOfWeek) {
-    return switch (startOfWeek) {
-      WeekStart.sunday => const [7, 1, 2, 3, 4, 5, 6],
-      WeekStart.saturday => const [6, 7, 1, 2, 3, 4, 5],
-      WeekStart.monday || WeekStart.system => const [1, 2, 3, 4, 5, 6, 7],
-    };
+    final first = startOfWeek.resolvedWeekday;
+    return List.generate(7, (i) => ((first - 1 + i) % 7) + 1);
   }
 
   String _weekdayLabel(MaterialLocalizations localizations, int weekday) {

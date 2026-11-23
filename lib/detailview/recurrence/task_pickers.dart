@@ -95,11 +95,7 @@ DateTime? defaultDueDateForRecurrence(
 /// Computes the first day of next week respecting [startOfWeek].
 DateTime computeNextWeekDate(DateTime from, WeekStart startOfWeek) {
   final today = DateTime(from.year, from.month, from.day);
-  final targetWeekday = switch (startOfWeek) {
-    WeekStart.sunday => DateTime.sunday,
-    WeekStart.monday || WeekStart.system => DateTime.monday,
-    WeekStart.saturday => DateTime.saturday,
-  };
+  final targetWeekday = startOfWeek.resolvedWeekday;
   var daysAhead = (targetWeekday - today.weekday + 7) % 7;
   if (daysAhead == 0) daysAhead = 7;
   return today.add(Duration(days: daysAhead));

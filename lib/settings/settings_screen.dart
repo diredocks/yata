@@ -180,6 +180,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
       WeekStart.system => l10n.weekStartSystem,
       WeekStart.sunday => l10n.weekStartSunday,
       WeekStart.monday => l10n.weekStartMonday,
+      WeekStart.tuesday => l10n.weekStartTuesday,
+      WeekStart.wednesday => l10n.weekStartWednesday,
+      WeekStart.thursday => l10n.weekStartThursday,
+      WeekStart.friday => l10n.weekStartFriday,
       WeekStart.saturday => l10n.weekStartSaturday,
     };
   }

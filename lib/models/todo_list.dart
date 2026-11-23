@@ -6,7 +6,32 @@ part 'todo_list.g.dart';
 
 enum SmartListType { myDay, important, planned, all, completed, tasks }
 
-enum WeekStart { system, sunday, monday, saturday }
+enum WeekStart {
+  system,
+  sunday,
+  monday,
+  tuesday,
+  wednesday,
+  thursday,
+  friday,
+  saturday,
+}
+
+extension WeekStartX on WeekStart {
+  /// Resolves this [WeekStart] to a `DateTime` weekday (`1` = Monday .. `7` = Sunday).
+  ///
+  /// [WeekStart.system] defaults to [DateTime.monday] when no platform locale
+  /// override is supplied.
+  int get resolvedWeekday => switch (this) {
+    WeekStart.system || WeekStart.monday => DateTime.monday,
+    WeekStart.tuesday => DateTime.tuesday,
+    WeekStart.wednesday => DateTime.wednesday,
+    WeekStart.thursday => DateTime.thursday,
+    WeekStart.friday => DateTime.friday,
+    WeekStart.saturday => DateTime.saturday,
+    WeekStart.sunday => DateTime.sunday,
+  };
+}
 
 enum ListThemeColor {
   blue,

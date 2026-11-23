@@ -391,15 +391,19 @@ PlannedGroupOption decodePlannedGroupOption(
   fallback: fallback,
 );
 
-/// Encodes [WeekStart] to Substrate `start_week_from` (`0, 1, 2, 7`).
+/// Encodes [WeekStart] to Substrate `start_week_from` (`0..7`).
 int encodeWeekStart(WeekStart weekStart) => switch (weekStart) {
   WeekStart.system => 0,
   WeekStart.sunday => 1,
   WeekStart.monday => 2,
+  WeekStart.tuesday => 3,
+  WeekStart.wednesday => 4,
+  WeekStart.thursday => 5,
+  WeekStart.friday => 6,
   WeekStart.saturday => 7,
 };
 
-/// Decodes Substrate `start_week_from` (`0, 1, 2, 7` or name) into [WeekStart].
+/// Decodes Substrate `start_week_from` (`0..7` or name) into [WeekStart].
 WeekStart decodeWeekStart(
   dynamic raw, {
   WeekStart fallback = WeekStart.system,
@@ -409,6 +413,10 @@ WeekStart decodeWeekStart(
     0: WeekStart.system,
     1: WeekStart.sunday,
     2: WeekStart.monday,
+    3: WeekStart.tuesday,
+    4: WeekStart.wednesday,
+    5: WeekStart.thursday,
+    6: WeekStart.friday,
     7: WeekStart.saturday,
   },
   byString: {for (final v in WeekStart.values) v.name: v},
@@ -662,8 +670,12 @@ Map<String, dynamic>? encodeSubstrateRecurrence(
 }) {
   if (type == RecurrenceType.none) return null;
   final firstDay = switch (firstDayOfWeek) {
+    WeekStart.system || WeekStart.monday => 'Monday',
+    WeekStart.tuesday => 'Tuesday',
+    WeekStart.wednesday => 'Wednesday',
+    WeekStart.thursday => 'Thursday',
+    WeekStart.friday => 'Friday',
     WeekStart.saturday => 'Saturday',
-    WeekStart.monday || WeekStart.system => 'Monday',
     WeekStart.sunday => 'Sunday',
   };
   return switch (type) {

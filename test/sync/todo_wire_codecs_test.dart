@@ -169,15 +169,23 @@ void main() {
       }
     });
 
-    test('encodes and decodes start_week_from 0, 1, 2, 7', () {
+    test('encodes and decodes start_week_from 0..7', () {
       expect(encodeWeekStart(WeekStart.system), 0);
       expect(encodeWeekStart(WeekStart.sunday), 1);
       expect(encodeWeekStart(WeekStart.monday), 2);
+      expect(encodeWeekStart(WeekStart.tuesday), 3);
+      expect(encodeWeekStart(WeekStart.wednesday), 4);
+      expect(encodeWeekStart(WeekStart.thursday), 5);
+      expect(encodeWeekStart(WeekStart.friday), 6);
       expect(encodeWeekStart(WeekStart.saturday), 7);
 
       expect(decodeWeekStart(0), WeekStart.system);
       expect(decodeWeekStart('1'), WeekStart.sunday);
       expect(decodeWeekStart(2), WeekStart.monday);
+      expect(decodeWeekStart('3'), WeekStart.tuesday);
+      expect(decodeWeekStart(4), WeekStart.wednesday);
+      expect(decodeWeekStart('5'), WeekStart.thursday);
+      expect(decodeWeekStart(6), WeekStart.friday);
       expect(decodeWeekStart('7'), WeekStart.saturday);
     });
 

@@ -100,11 +100,7 @@ abstract class TodoState with _$TodoState {
     final today = DateTime(now.year, now.month, now.day);
     final targetDay = DateTime(target.year, target.month, target.day);
 
-    final firstWeekday = switch (startOfWeek) {
-      WeekStart.sunday => DateTime.sunday,
-      WeekStart.saturday => DateTime.saturday,
-      WeekStart.monday || WeekStart.system => DateTime.monday,
-    };
+    final firstWeekday = startOfWeek.resolvedWeekday;
     final offsetFromWeekStart = (today.weekday - firstWeekday + 7) % 7;
     final weekStart = today.subtract(Duration(days: offsetFromWeekStart));
     final weekEndInclusive = weekStart.add(const Duration(days: 6));
