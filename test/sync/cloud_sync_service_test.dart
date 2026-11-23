@@ -785,8 +785,8 @@ void main() {
 
       // Now test unrecoverable refresh -> SyncStatus.requiresRelogin
       final failingAuth = FakeAuthClient(
-        onRefreshTokens: (_) async => throw const MicrosoftAuthException(
-          'Token revoked',
+        onRefreshTokens: (_) async => throw const AppError.auth(
+          message: 'Token revoked',
           code: 'invalid_grant',
           requiresReauth: true,
         ),

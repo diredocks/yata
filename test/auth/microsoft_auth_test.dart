@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/account/account_provider.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/auth/msa_webview_launcher.dart';
+import 'package:yata/core/error/app_error.dart';
 import 'package:yata/l10n/app_localizations.dart';
 import 'package:yata/models/account.dart';
 import 'package:yata/onboarding/landing_screen.dart';
@@ -40,23 +41,32 @@ void main() {
       expect(url.queryParameters['username'], 'user@outlook.com');
 
       expect(
-        client.extractAuthorizationCode(
-          'https://login.live.com/oauth20_desktop.srf?code=M.C509_ABC&state=ProjectCheshire&lc=1033',
-        ),
+        client
+            .extractAuthorizationCode(
+              'https://login.live.com/oauth20_desktop.srf?code=M.C509_ABC&state=ProjectCheshire&lc=1033',
+            )
+            .getOrThrow(),
         'M.C509_ABC',
       );
-      expect(client.extractAuthorizationCode('M.RAW_CODE'), 'M.RAW_CODE');
       expect(
-        () => client.extractAuthorizationCode(
-          'https://login.live.com/oauth20_desktop.srf?code=X&state=WrongState',
-        ),
-        throwsA(isA<MicrosoftAuthException>()),
+        client.extractAuthorizationCode('M.RAW_CODE').getOrThrow(),
+        'M.RAW_CODE',
       );
       expect(
-        () => client.extractAuthorizationCode(
-          'https://login.live.com/oauth20_desktop.srf?error=access_denied&error_description=User+cancelled',
-        ),
-        throwsA(isA<MicrosoftAuthException>()),
+        client
+            .extractAuthorizationCode(
+              'https://login.live.com/oauth20_desktop.srf?code=X&state=WrongState',
+            )
+            .exceptionOrNull(),
+        isA<AuthError>(),
+      );
+      expect(
+        client
+            .extractAuthorizationCode(
+              'https://login.live.com/oauth20_desktop.srf?error=access_denied&error_description=User+cancelled',
+            )
+            .exceptionOrNull(),
+        isA<AuthError>(),
       );
     });
 
@@ -128,10 +138,10 @@ void main() {
       });
 
       final client = HttpMicrosoftAuthClient(httpClient: mockClient);
-      final signIn = await client.completeSignInWithCode(
+      final signIn = (await client.completeSignInWithCode(
         code: 'code-1',
         uaid: 'uaid-1',
-      );
+      )).getOrThrow();
       expect(signIn.profile.id, 'abcdef123456');
       expect(signIn.profile.displayName, 'Alice Lee');
       expect(signIn.profile.email, 'alice@outlook.com');
@@ -206,7 +216,9 @@ void main() {
       });
 
       final client = HttpMicrosoftAuthClient(httpClient: mockClient);
-      final signIn = await client.completeSignInWithCode(code: 'code-fallback');
+      final signIn = (await client.completeSignInWithCode(
+        code: 'code-fallback',
+      )).getOrThrow();
       expect(signIn.profile.id, 'abcdef123456');
       expect(signIn.profile.displayName, 'Alice Lee');
       expect(signIn.profile.email, 'alice@outlook.com');
@@ -237,10 +249,10 @@ void main() {
         });
 
         final client = HttpMicrosoftAuthClient(httpClient: mockClient);
-        final signIn = await client.completeSignInWithCode(
+        final signIn = (await client.completeSignInWithCode(
           code: 'code-x',
           loginHint: 'bob@hotmail.com',
-        );
+        )).getOrThrow();
         expect(signIn.profile.id, 'cid999');
         expect(signIn.profile.displayName, 'bob@hotmail.com');
         expect(signIn.profile.email, 'bob@hotmail.com');

@@ -64,47 +64,55 @@ class CloudSyncService {
     MicrosoftAccount account,
     TodoSettingsStore settings, {
     bool forceRefreshToken = false,
-  }) {
-    return guardApiCall(() async {
-      MicrosoftAuthTokens tokens;
-      if (forceRefreshToken) {
-        final stored = await tokenStorage.loadTokens(account.id);
-        if (stored == null || stored.refreshToken.isEmpty) {
-          throw const MicrosoftAuthException(
-            'Refresh token unavailable; please sign in again.',
+  }) async {
+    final AppResult<MicrosoftAuthTokens> tokensResult;
+    if (forceRefreshToken) {
+      final stored = await tokenStorage.loadTokens(account.id);
+      if (stored == null || stored.refreshToken.isEmpty) {
+        return const Failure(
+          AppError.auth(
+            message: 'Refresh token unavailable; please sign in again.',
             code: 'no_refresh_token',
             requiresReauth: true,
-          );
-        }
-        tokens = await authClient.refreshTokens(
-          refreshToken: stored.refreshToken,
-          fallbackUserId: stored.userId.isNotEmpty
-              ? stored.userId
-              : account.microsoftUserId,
-        );
-        await tokenStorage.saveTokens(account.id, tokens);
-      } else {
-        tokens = await authClient.ensureValidTokens(
-          accountId: account.id,
-          storage: tokenStorage,
-          fallbackCid: account.microsoftUserId,
+          ),
         );
       }
+      tokensResult = await authClient.refreshTokens(
+        refreshToken: stored.refreshToken,
+        fallbackUserId: stored.userId.isNotEmpty
+            ? stored.userId
+            : account.microsoftUserId,
+      );
+      if (tokensResult.isSuccess()) {
+        await tokenStorage.saveTokens(account.id, tokensResult.getOrThrow());
+      }
+    } else {
+      tokensResult = await authClient.ensureValidTokens(
+        accountId: account.id,
+        storage: tokenStorage,
+        fallbackCid: account.microsoftUserId,
+      );
+    }
 
-      final cid = tokens.userId.isNotEmpty
-          ? tokens.userId
-          : account.microsoftUserId;
-      var baseUrl = settings.loadCachedEndpointUrl();
-      if (baseUrl == null) {
-        baseUrl = await authClient.discoverTodoEndpoint(cid);
-        await settings.saveCachedEndpointUrl(baseUrl);
-      }
-      return SubstrateRequestContext(
+    if (tokensResult.isError()) {
+      return Failure(tokensResult.exceptionOrNull()!);
+    }
+    final tokens = tokensResult.getOrThrow();
+    final cid = tokens.userId.isNotEmpty
+        ? tokens.userId
+        : account.microsoftUserId;
+    var baseUrl = settings.loadCachedEndpointUrl();
+    if (baseUrl == null) {
+      baseUrl = await authClient.discoverTodoEndpoint(cid);
+      await settings.saveCachedEndpointUrl(baseUrl);
+    }
+    return Success(
+      SubstrateRequestContext(
         baseUrl: baseUrl,
         accessToken: tokens.accessToken,
         cid: cid,
-      );
-    }, operation: 'resolveContext');
+      ),
+    );
   }
 
   /// Runs all 10 Substrate v1 sync phases for [account] and [currentState].

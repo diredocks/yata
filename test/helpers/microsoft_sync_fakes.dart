@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:result_dart/result_dart.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/auth/msa_webview_launcher.dart';
+import 'package:yata/core/error/app_error.dart';
 import 'package:yata/core/result/app_result.dart';
 import 'package:yata/sync/microsoft_todo_api.dart';
 import 'package:yata/sync/sync_guard.dart';
@@ -42,54 +43,59 @@ class FakeAuthClient implements MicrosoftAuthClient {
       'https://login.live.com/oauth20_authorize.srf?client_id=000000004C18365E';
 
   @override
-  String? extractAuthorizationCode(String rawInput) =>
+  AppResult<String> extractAuthorizationCode(String rawInput) =>
       HttpMicrosoftAuthClient().extractAuthorizationCode(rawInput);
 
   @override
-  Future<MicrosoftAuthTokens> exchangeAuthorizationCode({
+  AsyncAppResult<MicrosoftAuthTokens> exchangeAuthorizationCode({
     required String code,
     String? uaid,
   }) async {
-    return MicrosoftAuthTokens(
-      accessToken: 'access-1',
-      refreshToken: 'refresh-1',
-      expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
-      userId: 'cid12345',
+    return Success(
+      MicrosoftAuthTokens(
+        accessToken: 'access-1',
+        refreshToken: 'refresh-1',
+        expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+        userId: 'cid12345',
+      ),
     );
   }
 
   @override
-  Future<MicrosoftAuthTokens> refreshTokens({
+  AsyncAppResult<MicrosoftAuthTokens> refreshTokens({
     required String refreshToken,
     String? scope,
     String? fallbackUserId,
     String? uaid,
-  }) async {
-    if (onRefreshTokens != null) {
-      return onRefreshTokens!(refreshToken);
-    }
-    return MicrosoftAuthTokens(
-      accessToken: 'refreshed-access',
-      refreshToken: 'refreshed-rt',
-      expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
-      userId: fallbackUserId ?? 'cid12345',
-    );
+  }) {
+    return guardApiCall(() async {
+      if (onRefreshTokens != null) {
+        return onRefreshTokens!(refreshToken);
+      }
+      return MicrosoftAuthTokens(
+        accessToken: 'refreshed-access',
+        refreshToken: 'refreshed-rt',
+        expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+        userId: fallbackUserId ?? 'cid12345',
+      );
+    });
   }
 
   @override
-  Future<MicrosoftSignInResult> completeSignInWithCode({
+  AsyncAppResult<MicrosoftSignInResult> completeSignInWithCode({
     required String code,
     String? loginHint,
     String? uaid,
-  }) async {
-    final tokens = await exchangeAuthorizationCode(code: code, uaid: uaid);
-    return MicrosoftSignInResult(
-      profile: MicrosoftUserProfile(
-        id: tokens.userId,
-        displayName: 'Alice Lee',
-        email: loginHint ?? 'alice@outlook.com',
+  }) {
+    return exchangeAuthorizationCode(code: code, uaid: uaid).map(
+      (tokens) => MicrosoftSignInResult(
+        profile: MicrosoftUserProfile(
+          id: tokens.userId,
+          displayName: 'Alice Lee',
+          email: loginHint ?? 'alice@outlook.com',
+        ),
+        tokens: tokens,
       ),
-      tokens: tokens,
     );
   }
 
@@ -116,23 +122,27 @@ class FakeAuthClient implements MicrosoftAuthClient {
   }
 
   @override
-  Future<MicrosoftAuthTokens> ensureValidTokens({
+  AsyncAppResult<MicrosoftAuthTokens> ensureValidTokens({
     required String accountId,
     required AuthTokenStorage storage,
     String? fallbackCid,
   }) async {
     final stored = await storage.loadTokens(accountId);
     if (stored == null) {
-      throw const MicrosoftAuthException('Not signed in', requiresReauth: true);
+      return const Failure(
+        AppError.auth(message: 'Not signed in', requiresReauth: true),
+      );
     }
     if (!stored.isExpired && stored.accessToken.isNotEmpty) {
-      return stored;
+      return Success(stored);
     }
     final refreshed = await refreshTokens(
       refreshToken: stored.refreshToken,
       fallbackUserId: stored.userId.isNotEmpty ? stored.userId : fallbackCid,
     );
-    await storage.saveTokens(accountId, refreshed);
+    if (refreshed.isSuccess()) {
+      await storage.saveTokens(accountId, refreshed.getOrThrow());
+    }
     return refreshed;
   }
 }

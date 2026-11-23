@@ -5,6 +5,8 @@ import 'package:material_ui/material_ui.dart';
 
 import '../account/account_provider.dart';
 import '../auth/microsoft_auth_service.dart';
+import '../core/error/app_error.dart';
+import '../core/result/app_result.dart';
 import '../l10n/app_localizations.dart';
 import '../sync/todo_wire_codecs.dart';
 import '../theme/todo_theme.dart';
@@ -88,14 +90,25 @@ class _LandingScreenState extends ConsumerState<LandingScreen> {
         return;
       }
 
-      final signInResult = await authClient.completeSignInWithCode(
+      final signInOutcome = await authClient.completeSignInWithCode(
         code: code,
         loginHint: loginHint.isEmpty ? null : loginHint,
         uaid: uaid,
       );
 
       if (!mounted) return;
-      await ref.read(accountProvider.notifier).signInMicrosoft(signInResult);
+      final error = signInOutcome.exceptionOrNull();
+      if (error != null) {
+        setState(() {
+          _isSubmitting = false;
+          _errorMessage = error.userMessage;
+        });
+        return;
+      }
+
+      await ref
+          .read(accountProvider.notifier)
+          .signInMicrosoft(signInOutcome.getOrThrow());
 
       if (!mounted) return;
       if (widget.isAddingAccount) {
@@ -103,12 +116,6 @@ class _LandingScreenState extends ConsumerState<LandingScreen> {
       } else {
         setState(() => _isSubmitting = false);
       }
-    } on MicrosoftAuthException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isSubmitting = false;
-        _errorMessage = e.message;
-      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -292,7 +299,7 @@ class _MsaBrowserCodeDialog extends StatefulWidget {
   });
 
   final Future<bool> Function() onOpenBrowser;
-  final String? Function(String rawInput) onExtractCode;
+  final AppResult<String> Function(String rawInput) onExtractCode;
 
   @override
   State<_MsaBrowserCodeDialog> createState() => _MsaBrowserCodeDialogState();
@@ -310,16 +317,14 @@ class _MsaBrowserCodeDialogState extends State<_MsaBrowserCodeDialog> {
 
   void _submit() {
     final l10n = AppLocalizations.of(context);
-    try {
-      final extracted = widget.onExtractCode(_codeController.text);
-      if (extracted == null || extracted.isEmpty) {
-        setState(() => _validationError = l10n.msaInvalidCodeError);
-        return;
-      }
-      Navigator.of(context).pop(extracted);
-    } on MicrosoftAuthException catch (e) {
-      setState(() => _validationError = e.message);
-    }
+    widget.onExtractCode(_codeController.text).fold(
+      (code) => Navigator.of(context).pop(code),
+      (error) => setState(
+        () => _validationError = error is ValidationError
+            ? l10n.msaInvalidCodeError
+            : error.userMessage,
+      ),
+    );
   }
 
   @override

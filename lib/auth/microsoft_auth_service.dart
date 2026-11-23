@@ -1,13 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:result_dart/result_dart.dart';
 
+import '../core/error/app_error.dart';
+import '../core/result/app_result.dart';
 import '../sync/todo_wire_codecs.dart';
+import 'auth_token_storage.dart';
+import 'msa_profile_parser.dart';
+
+export 'auth_token_storage.dart';
 
 /// Fixed personal Microsoft Account (MSA) OAuth2 constants extracted from
 /// Microsoft To Do 2.178 (`MsaSignInActivity` / `UserProfileProvider`).
@@ -146,21 +149,21 @@ class MicrosoftSignInResult {
   final MicrosoftAuthTokens tokens;
 }
 
-class MicrosoftAuthException implements Exception {
-  const MicrosoftAuthException(
-    this.message, {
-    this.code,
-    this.requiresReauth = false,
-  });
+AppError _mapAuthError(Object error) => switch (error) {
+  AppError() => error,
+  http.ClientException() => AppError.network(
+    message: 'The network request failed: ${error.message}',
+  ),
+  TimeoutException() => const AppError.network(
+    message: 'The request timed out. Please try again.',
+  ),
+  _ => AppError.auth(message: error.toString()),
+};
 
-  final String message;
-  final String? code;
-  final bool requiresReauth;
-
-  @override
-  String toString() =>
-      code == null ? message : 'MicrosoftAuthException($code): $message';
-}
+Future<AppResult<T>> _guardAuthCall<T extends Object>(
+  FutureOr<T> Function() call, {
+  String? operation,
+}) => guardAsync(call, operation: operation, onError: _mapAuthError);
 
 /// Interface for personal MSA OAuth2, Substrate profile & To Do autodiscovery.
 abstract class MicrosoftAuthClient {
@@ -169,16 +172,16 @@ abstract class MicrosoftAuthClient {
 
   /// Extracts an authorization `code` from a pasted `oauth20_desktop.srf` URL
   /// or directly pasted code string.
-  String? extractAuthorizationCode(String rawInput);
+  AppResult<String> extractAuthorizationCode(String rawInput);
 
   /// Exchanges an authorization [code] for To Do Substrate tokens (`user_id` = CID).
-  Future<MicrosoftAuthTokens> exchangeAuthorizationCode({
+  AsyncAppResult<MicrosoftAuthTokens> exchangeAuthorizationCode({
     required String code,
     String? uaid,
   });
 
   /// Refreshes tokens using [refreshToken], optionally requesting [scope].
-  Future<MicrosoftAuthTokens> refreshTokens({
+  AsyncAppResult<MicrosoftAuthTokens> refreshTokens({
     required String refreshToken,
     String? scope,
     String? fallbackUserId,
@@ -187,7 +190,7 @@ abstract class MicrosoftAuthClient {
 
   /// Completes sign-in from an authorization [code]: exchanges tokens and does
   /// a best-effort profile + avatar fetch without failing sign-in if profile fails.
-  Future<MicrosoftSignInResult> completeSignInWithCode({
+  AsyncAppResult<MicrosoftSignInResult> completeSignInWithCode({
     required String code,
     String? loginHint,
     String? uaid,
@@ -205,7 +208,7 @@ abstract class MicrosoftAuthClient {
   Future<String> discoverTodoEndpoint(String cid);
 
   /// Ensures tokens in [storage] for [accountId] are valid, refreshing if expired.
-  Future<MicrosoftAuthTokens> ensureValidTokens({
+  AsyncAppResult<MicrosoftAuthTokens> ensureValidTokens({
     required String accountId,
     required AuthTokenStorage storage,
     String? fallbackCid,
@@ -218,8 +221,12 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
 
   final http.Client _http;
 
+  static String _resolveUaid(String? uaid) =>
+      (uaid != null && uaid.isNotEmpty) ? uaid : MsaAuthConfig.generateMsaUaid();
+
   @override
   String buildAuthorizeUrl({String? loginHint, String? uaid}) {
+    final trimmedHint = loginHint?.trim();
     final params = <String, String>{
       'lw': '1',
       'client_id': MsaAuthConfig.clientId,
@@ -229,23 +236,26 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
       'state': MsaAuthConfig.state,
       'display': 'touch',
       'noauthcancel': '1',
-      'uaid': (uaid != null && uaid.isNotEmpty)
-          ? uaid
-          : MsaAuthConfig.generateMsaUaid(),
+      'uaid': _resolveUaid(uaid),
+      if (trimmedHint != null && trimmedHint.isNotEmpty)
+        'username': trimmedHint,
     };
-    final trimmedHint = loginHint?.trim();
-    if (trimmedHint != null && trimmedHint.isNotEmpty) {
-      params['username'] = trimmedHint;
-    }
     return Uri.parse(MsaAuthConfig.authorizeEndpoint)
         .replace(queryParameters: params)
         .toString();
   }
 
   @override
-  String? extractAuthorizationCode(String rawInput) {
+  AppResult<String> extractAuthorizationCode(String rawInput) {
     final trimmed = rawInput.trim();
-    if (trimmed.isEmpty) return null;
+    if (trimmed.isEmpty) {
+      return const Failure(
+        AppError.validation(
+          message: 'Authorization code cannot be empty.',
+          field: 'code',
+        ),
+      );
+    }
 
     if (trimmed.contains('://') || trimmed.startsWith('?')) {
       final uri = Uri.tryParse(
@@ -261,150 +271,165 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
         final error = params['error'];
         if (error != null && error.isNotEmpty) {
           final desc = params['error_description'];
-          throw MicrosoftAuthException(
-            desc != null && desc.isNotEmpty ? desc : error,
-            code: error,
+          return Failure(
+            AppError.auth(
+              message: desc != null && desc.isNotEmpty ? desc : error,
+              code: error,
+            ),
           );
         }
         final state = params['state'];
         if (state != null && state.isNotEmpty && state != MsaAuthConfig.state) {
-          throw const MicrosoftAuthException(
-            'OAuth state mismatch in redirect URL.',
-            code: 'invalid_state',
+          return const Failure(
+            AppError.auth(
+              message: 'OAuth state mismatch in redirect URL.',
+              code: 'invalid_state',
+            ),
           );
         }
         final code = params['code']?.trim();
         if (code != null && code.isNotEmpty) {
-          return code;
+          return Success(code);
         }
       }
-      return null;
+      return const Failure(
+        AppError.validation(
+          message: 'Redirect URL does not contain an authorization code.',
+          field: 'code',
+        ),
+      );
     }
 
-    // Raw code pasted directly.
     if (trimmed.contains(RegExp(r'\s'))) {
-      return null;
+      return const Failure(
+        AppError.validation(
+          message: 'Invalid authorization code format.',
+          field: 'code',
+        ),
+      );
     }
-    return trimmed;
+    return Success(trimmed);
   }
 
   @override
-  Future<MicrosoftAuthTokens> exchangeAuthorizationCode({
+  AsyncAppResult<MicrosoftAuthTokens> exchangeAuthorizationCode({
     required String code,
     String? uaid,
-  }) async {
-    return _postTokenRequest({
-      'client_id': MsaAuthConfig.clientId,
-      'client_secret': MsaAuthConfig.clientSecret,
-      'code': code.trim(),
-      'redirect_uri': MsaAuthConfig.redirectUri,
-      'grant_type': 'authorization_code',
-      'uaid': (uaid != null && uaid.isNotEmpty)
-          ? uaid
-          : MsaAuthConfig.generateMsaUaid(),
-    });
-  }
+  }) => _postTokenRequest({
+    'client_id': MsaAuthConfig.clientId,
+    'client_secret': MsaAuthConfig.clientSecret,
+    'code': code.trim(),
+    'redirect_uri': MsaAuthConfig.redirectUri,
+    'grant_type': 'authorization_code',
+    'uaid': _resolveUaid(uaid),
+  }, operation: 'exchangeAuthorizationCode');
 
   @override
-  Future<MicrosoftAuthTokens> refreshTokens({
+  AsyncAppResult<MicrosoftAuthTokens> refreshTokens({
     required String refreshToken,
     String? scope,
     String? fallbackUserId,
     String? uaid,
-  }) async {
-    return _postTokenRequest(
-      {
-        'client_id': MsaAuthConfig.clientId,
-        'client_secret': MsaAuthConfig.clientSecret,
-        'scope': scope ?? MsaAuthConfig.todoScope,
-        'refresh_token': refreshToken,
-        'grant_type': 'refresh_token',
-        'uaid': (uaid != null && uaid.isNotEmpty)
-            ? uaid
-            : MsaAuthConfig.generateMsaUaid(),
-      },
-      fallbackRefreshToken: refreshToken,
-      fallbackUserId: fallbackUserId,
-    );
-  }
+  }) => _postTokenRequest(
+    {
+      'client_id': MsaAuthConfig.clientId,
+      'client_secret': MsaAuthConfig.clientSecret,
+      'scope': scope ?? MsaAuthConfig.todoScope,
+      'refresh_token': refreshToken,
+      'grant_type': 'refresh_token',
+      'uaid': _resolveUaid(uaid),
+    },
+    fallbackRefreshToken: refreshToken,
+    fallbackUserId: fallbackUserId,
+    operation: 'refreshTokens',
+  );
 
-  Future<MicrosoftAuthTokens> _postTokenRequest(
+  AsyncAppResult<MicrosoftAuthTokens> _postTokenRequest(
     Map<String, String> body, {
     String? fallbackRefreshToken,
     String? fallbackUserId,
-  }) async {
-    final response = await _http
-        .post(
-          Uri.parse(MsaAuthConfig.tokenEndpoint),
-          headers: const {'Content-Type': 'application/x-www-form-urlencoded'},
-          body: body,
-        )
-        .timeout(const Duration(seconds: 20));
+    required String operation,
+  }) {
+    return _guardAuthCall(() async {
+      final response = await _http
+          .post(
+            Uri.parse(MsaAuthConfig.tokenEndpoint),
+            headers: const {
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: body,
+          )
+          .timeout(const Duration(seconds: 20));
 
-    final decoded = _decodeJsonMap(response.body);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final error = decoded['error'] as String?;
-      final desc = decoded['error_description'] as String?;
-      final requiresReauth =
-          error == 'invalid_grant' ||
-          error == 'interaction_required' ||
-          error == 'bad_refresh_token' ||
-          response.statusCode == 401;
-      throw MicrosoftAuthException(
-        desc ?? error ?? 'Token request failed (${response.statusCode})',
-        code: error,
-        requiresReauth: requiresReauth,
+      final decoded = _decodeJsonMap(response.body);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final error = decoded['error'] as String?;
+        final desc = decoded['error_description'] as String?;
+        final requiresReauth =
+            error == 'invalid_grant' ||
+            error == 'interaction_required' ||
+            error == 'bad_refresh_token' ||
+            response.statusCode == 401;
+        throw AppError.auth(
+          message:
+              desc ?? error ?? 'Token request failed (${response.statusCode})',
+          code: error,
+          requiresReauth: requiresReauth,
+        );
+      }
+
+      final accessToken = decoded['access_token'] as String?;
+      final refreshToken =
+          (decoded['refresh_token'] as String?) ?? fallbackRefreshToken ?? '';
+      final rawUserId = (decoded['user_id'] as String?) ?? fallbackUserId ?? '';
+      final expiresIn = (decoded['expires_in'] as num?)?.toInt() ?? 3600;
+
+      if (accessToken == null || accessToken.isEmpty) {
+        throw const AppError.auth(
+          message: 'Token response missing access_token',
+        );
+      }
+      final normalizedCid = MsaAuthConfig.normalizeCid(rawUserId);
+      if (normalizedCid.isEmpty) {
+        throw const AppError.auth(
+          message: 'Token response missing MSA user_id (CID)',
+        );
+      }
+
+      return MicrosoftAuthTokens(
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+        expiresAt: DateTime.now().toUtc().add(Duration(seconds: expiresIn)),
+        userId: normalizedCid,
       );
-    }
-
-    final accessToken = decoded['access_token'] as String?;
-    final refreshToken =
-        (decoded['refresh_token'] as String?) ?? fallbackRefreshToken ?? '';
-    final rawUserId = (decoded['user_id'] as String?) ?? fallbackUserId ?? '';
-    final expiresIn = (decoded['expires_in'] as num?)?.toInt() ?? 3600;
-
-    if (accessToken == null || accessToken.isEmpty) {
-      throw const MicrosoftAuthException('Token response missing access_token');
-    }
-    final normalizedCid = MsaAuthConfig.normalizeCid(rawUserId);
-    if (normalizedCid.isEmpty) {
-      throw const MicrosoftAuthException(
-        'Token response missing MSA user_id (CID)',
-      );
-    }
-
-    return MicrosoftAuthTokens(
-      accessToken: accessToken,
-      refreshToken: refreshToken,
-      expiresAt: DateTime.now().toUtc().add(Duration(seconds: expiresIn)),
-      userId: normalizedCid,
-    );
+    }, operation: operation);
   }
 
   @override
-  Future<MicrosoftSignInResult> completeSignInWithCode({
+  AsyncAppResult<MicrosoftSignInResult> completeSignInWithCode({
     required String code,
     String? loginHint,
     String? uaid,
-  }) async {
-    final effectiveUaid = (uaid != null && uaid.isNotEmpty)
-        ? uaid
-        : MsaAuthConfig.generateMsaUaid();
-    var tokens = await exchangeAuthorizationCode(
-      code: code,
-      uaid: effectiveUaid,
-    );
-    final resolved = await _resolveProfileAndAvatar(
-      cid: tokens.userId,
-      refreshToken: tokens.refreshToken,
-      fallbackEmail: loginHint,
-      uaid: effectiveUaid,
-    );
-    if (resolved.latestRefreshToken != null &&
-        resolved.latestRefreshToken!.isNotEmpty) {
-      tokens = tokens.copyWith(refreshToken: resolved.latestRefreshToken);
-    }
-    return MicrosoftSignInResult(profile: resolved.profile, tokens: tokens);
+  }) {
+    final effectiveUaid = _resolveUaid(uaid);
+    return exchangeAuthorizationCode(code: code, uaid: effectiveUaid).flatMap((
+      initialTokens,
+    ) async {
+      final resolved = await _resolveProfileAndAvatar(
+        cid: initialTokens.userId,
+        refreshToken: initialTokens.refreshToken,
+        fallbackEmail: loginHint,
+        uaid: effectiveUaid,
+      );
+      final tokens =
+          (resolved.latestRefreshToken != null &&
+              resolved.latestRefreshToken!.isNotEmpty)
+          ? initialTokens.copyWith(refreshToken: resolved.latestRefreshToken)
+          : initialTokens;
+      return Success(
+        MicrosoftSignInResult(profile: resolved.profile, tokens: tokens),
+      );
+    });
   }
 
   @override
@@ -437,87 +462,71 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
     var activeRefreshToken = refreshToken;
     String? rotatedRefreshToken;
 
-    // 1. Primary path matching MS To Do 2.178 default (`yp/n0.f0 == true`):
-    //    Graph `User.Read` -> `/beta/me` -> `/v1.0/me` + `/photo/$value`.
-    if (activeRefreshToken.isNotEmpty) {
-      try {
-        final graphTokens = await refreshTokens(
-          refreshToken: activeRefreshToken,
-          scope: MsaAuthConfig.graphProfileScope,
-          fallbackUserId: normalizedCid,
-          uaid: uaid,
-        );
-        if (graphTokens.refreshToken.isNotEmpty) {
-          activeRefreshToken = graphTokens.refreshToken;
-          rotatedRefreshToken = graphTokens.refreshToken;
-        }
-        final graphHeaders = {
-          'Authorization': 'Bearer ${graphTokens.accessToken}',
-          'X-AnchorMailbox': MsaAuthConfig.anchorMailboxForCid(normalizedCid),
-          'Accept': 'application/json',
-        };
-
-        for (final endpoint in const [
-          MsaAuthConfig.graphMeBetaEndpoint,
-          MsaAuthConfig.graphMeV1Endpoint,
-        ]) {
-          final parsed = await _tryFetchProfileJson(
-            endpoint: endpoint,
-            headers: graphHeaders,
-          );
-          if (parsed == null) continue;
-          resolvedName ??= _extractProfileDisplayName(parsed);
-          final candidateEmail = _extractProfileEmail(parsed);
-          if (candidateEmail != null && candidateEmail.isNotEmpty) {
-            resolvedEmail = candidateEmail;
-          }
-          if (resolvedName != null && resolvedEmail != null) break;
-        }
-
-        avatarBase64 ??= await _tryFetchImageBase64(
-          MsaAuthConfig.graphPhotoBetaEndpoint,
-          headers: {'Authorization': 'Bearer ${graphTokens.accessToken}'},
-        );
-        avatarBase64 ??= await _tryFetchImageBase64(
-          MsaAuthConfig.graphPhotoV1Endpoint,
-          headers: {'Authorization': 'Bearer ${graphTokens.accessToken}'},
-        );
-      } catch (_) {
-        // Non-fatal: fall through to Substrate profile & Live avatar fallback.
+    Future<MicrosoftAuthTokens?> refreshForScope(String scope) async {
+      if (activeRefreshToken.isEmpty) return null;
+      final tokens = (await refreshTokens(
+        refreshToken: activeRefreshToken,
+        scope: scope,
+        fallbackUserId: normalizedCid,
+        uaid: uaid,
+      )).getOrNull();
+      if (tokens != null && tokens.refreshToken.isNotEmpty) {
+        activeRefreshToken = tokens.refreshToken;
+        rotatedRefreshToken = tokens.refreshToken;
       }
+      return tokens;
+    }
+
+    Map<String, String> authHeaders(String accessToken) => {
+      'Authorization': 'Bearer $accessToken',
+      'X-AnchorMailbox': MsaAuthConfig.anchorMailboxForCid(normalizedCid),
+      'Accept': 'application/json',
+    };
+
+    // 1. Primary path: Graph `User.Read` -> `/beta/me` -> `/v1.0/me` + `/photo/$value`.
+    final graphTokens = await refreshForScope(MsaAuthConfig.graphProfileScope);
+    if (graphTokens != null) {
+      final headers = authHeaders(graphTokens.accessToken);
+      for (final endpoint in const [
+        MsaAuthConfig.graphMeBetaEndpoint,
+        MsaAuthConfig.graphMeV1Endpoint,
+      ]) {
+        final parsed = await _tryFetchProfileJson(
+          endpoint: endpoint,
+          headers: headers,
+        );
+        if (parsed == null) continue;
+        resolvedName ??= extractMsaProfileDisplayName(parsed);
+        final candidateEmail = extractMsaProfileEmail(parsed);
+        if (candidateEmail != null && candidateEmail.isNotEmpty) {
+          resolvedEmail = candidateEmail;
+        }
+        if (resolvedName != null && resolvedEmail != null) break;
+      }
+
+      final photoAuth = {'Authorization': 'Bearer ${graphTokens.accessToken}'};
+      avatarBase64 ??= await _tryFetchImageBase64(
+        MsaAuthConfig.graphPhotoBetaEndpoint,
+        headers: photoAuth,
+      );
+      avatarBase64 ??= await _tryFetchImageBase64(
+        MsaAuthConfig.graphPhotoV1Endpoint,
+        headers: photoAuth,
+      );
     }
 
     // 2. Fallback path: Substrate `User-Internal.ReadWrite` -> `/profile/v1.0/me/profile`.
-    if ((resolvedName == null || resolvedEmail == null) &&
-        activeRefreshToken.isNotEmpty) {
-      try {
-        final subTokens = await refreshTokens(
-          refreshToken: activeRefreshToken,
-          scope: MsaAuthConfig.profileScope,
-          fallbackUserId: normalizedCid,
-          uaid: uaid,
-        );
-        if (subTokens.refreshToken.isNotEmpty) {
-          activeRefreshToken = subTokens.refreshToken;
-          rotatedRefreshToken = subTokens.refreshToken;
-        }
+    if (resolvedName == null || resolvedEmail == null) {
+      final subTokens = await refreshForScope(MsaAuthConfig.profileScope);
+      if (subTokens != null) {
         final parsed = await _tryFetchProfileJson(
           endpoint: MsaAuthConfig.profileEndpoint,
-          headers: {
-            'Authorization': 'Bearer ${subTokens.accessToken}',
-            'X-AnchorMailbox': MsaAuthConfig.anchorMailboxForCid(normalizedCid),
-            'Accept': 'application/json',
-          },
+          headers: authHeaders(subTokens.accessToken),
         );
         if (parsed != null) {
-          resolvedName ??= _extractProfileDisplayName(parsed);
-          final candidateEmail = _extractProfileEmail(parsed);
-          if (candidateEmail != null && candidateEmail.isNotEmpty) {
-            resolvedEmail ??= candidateEmail;
-          }
+          resolvedName ??= extractMsaProfileDisplayName(parsed);
+          resolvedEmail ??= extractMsaProfileEmail(parsed);
         }
-      } catch (_) {
-        // Non-fatal per UserProfileProvider.java.
       }
     }
 
@@ -558,101 +567,6 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
     return null;
   }
 
-  String? _extractProfileDisplayName(Map<String, dynamic> json) {
-    final direct = (json['displayName'] ?? json['DisplayName']) as String?;
-    if (direct != null &&
-        direct.trim().isNotEmpty &&
-        direct.trim().toLowerCase() != 'null') {
-      return direct.trim();
-    }
-
-    final topGiven =
-        ((json['givenName'] ?? json['GivenName']) as String?)?.trim() ?? '';
-    final topFamily =
-        ((json['surname'] ?? json['Surname'] ?? json['lastName']) as String?)
-            ?.trim() ??
-        '';
-    final topJoined = '$topGiven $topFamily'.trim();
-    if (topJoined.isNotEmpty) return topJoined;
-
-    final names = (json['names'] ?? json['Names']) as List<dynamic>?;
-    if (names != null && names.isNotEmpty && names.first is Map) {
-      final first = Map<String, dynamic>.from(names.first as Map);
-      final formatted =
-          (first['displayName'] ?? first['DisplayName']) as String?;
-      if (formatted != null &&
-          formatted.trim().isNotEmpty &&
-          formatted.trim().toLowerCase() != 'null') {
-        return formatted.trim();
-      }
-      final given =
-          ((first['givenName'] ?? first['First']) as String?)?.trim() ?? '';
-      final family =
-          ((first['lastName'] ?? first['surname'] ?? first['Last']) as String?)
-              ?.trim() ??
-          '';
-      final joined = '$given $family'.trim();
-      if (joined.isNotEmpty) return joined;
-    }
-    return null;
-  }
-
-  String? _extractProfileEmail(Map<String, dynamic> json) {
-    for (final key in const [
-      'mail',
-      'Mail',
-      'userPrincipalName',
-      'UserPrincipalName',
-      'EmailAddress',
-      'email',
-    ]) {
-      final val = json[key] as String?;
-      if (val != null &&
-          val.trim().isNotEmpty &&
-          val.trim().toLowerCase() != 'null') {
-        return val.trim();
-      }
-    }
-    final accounts = (json['accounts'] ?? json['Accounts']) as List<dynamic>?;
-    if (accounts != null && accounts.isNotEmpty && accounts.first is Map) {
-      final first = Map<String, dynamic>.from(accounts.first as Map);
-      for (final key in const [
-        'passportMemberName',
-        'userPrincipalName',
-        'emailAddress',
-        'EmailAddress',
-      ]) {
-        final val = first[key] as String?;
-        if (val != null &&
-            val.trim().isNotEmpty &&
-            val.trim().toLowerCase() != 'null') {
-          return val.trim();
-        }
-      }
-    }
-    for (final listKey in const ['EmailAddresses', 'Emails', 'emails']) {
-      final list = json[listKey] as List<dynamic>?;
-      if (list != null && list.isNotEmpty) {
-        final item = list.first;
-        if (item is Map) {
-          final addr =
-              (item['Address'] ?? item['address'] ?? item['EmailAddress'])
-                  as String?;
-          if (addr != null &&
-              addr.trim().isNotEmpty &&
-              addr.trim().toLowerCase() != 'null') {
-            return addr.trim();
-          }
-        } else if (item is String &&
-            item.trim().isNotEmpty &&
-            item.trim().toLowerCase() != 'null') {
-          return item.trim();
-        }
-      }
-    }
-    return null;
-  }
-
   Future<String?> _tryFetchImageBase64(
     String url, {
     Map<String, String>? headers,
@@ -661,54 +575,11 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
       final resp = await _http
           .get(Uri.parse(url), headers: headers)
           .timeout(const Duration(seconds: 6));
-      if (_isValidImageResponse(resp)) {
+      if (isValidImageResponse(resp)) {
         return base64Encode(resp.bodyBytes);
       }
     } catch (_) {}
     return null;
-  }
-
-  static bool _isValidImageResponse(http.Response resp) {
-    if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) return false;
-    final contentType = resp.headers['content-type']?.toLowerCase() ?? '';
-    if (contentType.startsWith('image/')) return true;
-    final bytes = resp.bodyBytes;
-    // JPEG (FF D8 FF)
-    if (bytes.length >= 3 &&
-        bytes[0] == 0xFF &&
-        bytes[1] == 0xD8 &&
-        bytes[2] == 0xFF) {
-      return true;
-    }
-    // PNG (89 50 4E 47)
-    if (bytes.length >= 4 &&
-        bytes[0] == 0x89 &&
-        bytes[1] == 0x50 &&
-        bytes[2] == 0x4E &&
-        bytes[3] == 0x47) {
-      return true;
-    }
-    // GIF ("GIF8")
-    if (bytes.length >= 4 &&
-        bytes[0] == 0x47 &&
-        bytes[1] == 0x49 &&
-        bytes[2] == 0x46 &&
-        bytes[3] == 0x38) {
-      return true;
-    }
-    // WebP ("RIFF....WEBP")
-    if (bytes.length >= 12 &&
-        bytes[0] == 0x52 &&
-        bytes[1] == 0x49 &&
-        bytes[2] == 0x46 &&
-        bytes[3] == 0x46 &&
-        bytes[8] == 0x57 &&
-        bytes[9] == 0x45 &&
-        bytes[10] == 0x42 &&
-        bytes[11] == 0x50) {
-      return true;
-    }
-    return false;
   }
 
   @override
@@ -746,35 +617,41 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
   }
 
   @override
-  Future<MicrosoftAuthTokens> ensureValidTokens({
+  AsyncAppResult<MicrosoftAuthTokens> ensureValidTokens({
     required String accountId,
     required AuthTokenStorage storage,
     String? fallbackCid,
   }) async {
     final stored = await storage.loadTokens(accountId);
     if (stored == null) {
-      throw const MicrosoftAuthException(
-        'Not signed in to Microsoft account.',
-        code: 'no_tokens',
-        requiresReauth: true,
+      return const Failure(
+        AppError.auth(
+          message: 'Not signed in to Microsoft account.',
+          code: 'no_tokens',
+          requiresReauth: true,
+        ),
       );
     }
     if (!stored.isExpired && stored.accessToken.isNotEmpty) {
-      return stored;
+      return Success(stored);
     }
     if (stored.refreshToken.isEmpty) {
-      throw const MicrosoftAuthException(
-        'Refresh token unavailable; please sign in again.',
-        code: 'no_refresh_token',
-        requiresReauth: true,
+      return const Failure(
+        AppError.auth(
+          message: 'Refresh token unavailable; please sign in again.',
+          code: 'no_refresh_token',
+          requiresReauth: true,
+        ),
       );
     }
-    final refreshed = await refreshTokens(
+    final refreshedResult = await refreshTokens(
       refreshToken: stored.refreshToken,
       fallbackUserId: stored.userId.isNotEmpty ? stored.userId : fallbackCid,
     );
-    await storage.saveTokens(accountId, refreshed);
-    return refreshed;
+    if (refreshedResult.isSuccess()) {
+      await storage.saveTokens(accountId, refreshedResult.getOrThrow());
+    }
+    return refreshedResult;
   }
 
   Map<String, dynamic> _decodeJsonMap(String body) {
@@ -785,63 +662,5 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
       if (decoded is Map) return Map<String, dynamic>.from(decoded);
     } on FormatException catch (_) {}
     return const {};
-  }
-}
-
-/// Persists personal MSA OAuth2 tokens in encrypted OS storage via
-/// [FlutterSecureStorage], with fallback in headless test environments.
-class AuthTokenStorage {
-  const AuthTokenStorage(this._prefs, {this.secureStorage});
-
-  final SharedPreferences _prefs;
-  final FlutterSecureStorage? secureStorage;
-
-  static const FlutterSecureStorage _defaultSecureStorage =
-      FlutterSecureStorage();
-
-  static String _keyFor(String accountId) => 'yata.msa.tokens.$accountId';
-
-  FlutterSecureStorage? get _effectiveSecureStorage {
-    if (secureStorage != null) return secureStorage;
-    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
-      return null;
-    }
-    return _defaultSecureStorage;
-  }
-
-  Future<void> saveTokens(String accountId, MicrosoftAuthTokens tokens) async {
-    final key = _keyFor(accountId);
-    final encoded = jsonEncode(tokens.toJson());
-    final secure = _effectiveSecureStorage;
-    if (secure != null) {
-      await secure.write(key: key, value: encoded);
-      return;
-    }
-    await _prefs.setString(key, encoded);
-  }
-
-  Future<MicrosoftAuthTokens?> loadTokens(String accountId) async {
-    final key = _keyFor(accountId);
-    final secure = _effectiveSecureStorage;
-    final raw = secure != null
-        ? await secure.read(key: key)
-        : _prefs.getString(key);
-    if (raw == null || raw.isEmpty) return null;
-    try {
-      final map = jsonDecode(raw) as Map<String, dynamic>;
-      return MicrosoftAuthTokens.fromJson(map);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<void> clearTokens(String accountId) async {
-    final key = _keyFor(accountId);
-    final secure = _effectiveSecureStorage;
-    if (secure != null) {
-      await secure.delete(key: key);
-      return;
-    }
-    await _prefs.remove(key);
   }
 }

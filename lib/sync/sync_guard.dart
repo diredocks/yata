@@ -2,13 +2,11 @@ import 'dart:async';
 
 import 'package:http/http.dart' as http;
 
-import '../auth/microsoft_auth_service.dart';
 import '../core/error/app_error.dart';
 import '../core/result/app_result.dart';
 
 AppError appErrorFromSyncException(Object error) => switch (error) {
   AppError() => error,
-  MicrosoftAuthException() => appErrorFromAuthException(error),
   http.ClientException() => AppError.network(
     message: 'The network request failed: ${error.message}',
   ),
@@ -46,13 +44,6 @@ AppError appErrorFromHttpStatus({
     isRetryable: statusCode >= 500 || statusCode == 429,
   );
 }
-
-AppError appErrorFromAuthException(MicrosoftAuthException error) =>
-    AppError.auth(
-      message: error.message,
-      code: error.code,
-      requiresReauth: error.requiresReauth,
-    );
 
 /// Boundary for HTTP/auth clients.
 Future<AppResult<T>> guardApiCall<T extends Object>(
