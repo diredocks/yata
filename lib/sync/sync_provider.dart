@@ -16,6 +16,12 @@ part 'sync_provider.freezed.dart';
 /// Allows tests to disable background realtime long-polling streams.
 final realtimeSyncEnabledProvider = Provider<bool>((ref) => true);
 
+/// Allows tests to disable foreground periodic sync timers.
+final periodicSyncEnabledProvider = Provider<bool>((ref) => true);
+
+/// Allows tests to disable automatic cold-start sync on shell mount.
+final startupSyncEnabledProvider = Provider<bool>((ref) => true);
+
 final cloudSyncServiceProvider = Provider<CloudSyncService>((ref) {
   return CloudSyncService(
     authClient: ref.watch(microsoftAuthClientProvider),
@@ -42,14 +48,18 @@ abstract class SyncState with _$SyncState {
 
 class SyncNotifier extends Notifier<SyncState> {
   static const _debounceDuration = Duration(milliseconds: 1500);
+  static const _foregroundDebounceDuration = Duration(milliseconds: 500);
+  static const _periodicSyncInterval = Duration(seconds: 120);
   static const _realtimeInitialBackoff = Duration(seconds: 2);
   static const _realtimeMaxBackoff = Duration(seconds: 60);
 
   Timer? _debounceTimer;
+  Timer? _periodicTimer;
   Timer? _realtimeReconnectTimer;
   StreamSubscription<RealtimeEvent>? _realtimeSub;
 
   bool _disposed = false;
+  bool _isForeground = true;
   Future<void>? _activeSync;
   bool _syncQueued = false;
   Duration _realtimeBackoff = _realtimeInitialBackoff;
@@ -81,14 +91,22 @@ class SyncNotifier extends Notifier<SyncState> {
 
     if (!accountIdentity.isMicrosoft || activeAccount is! MicrosoftAccount) {
       _stopRealtime();
+      _stopPeriodicSync();
       _debounceTimer?.cancel();
       _debounceTimer = null;
       return const SyncState();
     }
 
-    if (ref.watch(realtimeSyncEnabledProvider) &&
-        _realtimeAccountId != activeAccount.id) {
-      _startRealtimeFor(activeAccount);
+    if (_isForeground) {
+      if (ref.watch(realtimeSyncEnabledProvider) &&
+          _realtimeAccountId != activeAccount.id) {
+        _startRealtimeFor(activeAccount);
+      }
+      if (ref.watch(periodicSyncEnabledProvider)) {
+        _startPeriodicSync();
+      } else {
+        _stopPeriodicSync();
+      }
     }
 
     return SyncState(lastSyncedAt: activeAccount.lastSyncedAt);
@@ -98,7 +116,49 @@ class SyncNotifier extends Notifier<SyncState> {
     _disposed = true;
     _debounceTimer?.cancel();
     _debounceTimer = null;
+    _stopPeriodicSync();
     _stopRealtime();
+  }
+
+  void _startPeriodicSync() {
+    if (_disposed || !_isForeground || _periodicTimer != null) return;
+    _periodicTimer = Timer.periodic(_periodicSyncInterval, (_) {
+      if (!_disposed && _isForeground) {
+        unawaited(syncNow());
+      }
+    });
+  }
+
+  void _stopPeriodicSync() {
+    _periodicTimer?.cancel();
+    _periodicTimer = null;
+  }
+
+  /// Pauses foreground-only sync channels (realtime long-polling and periodic
+  /// timer) when the app moves to the background.
+  void onAppPaused() {
+    if (_disposed || !_isForeground) return;
+    _isForeground = false;
+    _stopPeriodicSync();
+    _stopRealtime();
+  }
+
+  /// Resumes foreground sync channels and triggers a debounced sync when the
+  /// app returns to the foreground.
+  void onAppResumed() {
+    if (_disposed) return;
+    _isForeground = true;
+    final active = ref.read(accountProvider).activeAccount;
+    if (active is! MicrosoftAccount) return;
+
+    if (ref.read(realtimeSyncEnabledProvider) &&
+        _realtimeAccountId != active.id) {
+      _startRealtimeFor(active);
+    }
+    if (ref.read(periodicSyncEnabledProvider)) {
+      _startPeriodicSync();
+    }
+    scheduleDebouncedSync(delay: _foregroundDebounceDuration);
   }
 
   void _stopRealtime() {

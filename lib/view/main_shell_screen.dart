@@ -79,8 +79,16 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      unawaited(_reloadIfWidgetMutated());
+      unawaited(_onAppResumed());
+    } else if (state == AppLifecycleState.paused) {
+      ref.read(syncProvider.notifier).onAppPaused();
     }
+  }
+
+  Future<void> _onAppResumed() async {
+    await _reloadIfWidgetMutated();
+    if (!mounted) return;
+    ref.read(syncProvider.notifier).onAppResumed();
   }
 
   Future<void> _reloadIfWidgetMutated() async {
@@ -183,9 +191,9 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
   }
 
   void _startSyncForActiveAccount({bool accountChanged = false}) {
+    if (!accountChanged && !ref.read(startupSyncEnabledProvider)) return;
     final account = ref.read(accountProvider).activeAccount;
     if (account is! MicrosoftAccount) return;
-    if (!accountChanged && account.lastSyncedAt != null) return;
     unawaited(ref.read(syncProvider.notifier).syncNow());
   }
 

@@ -116,6 +116,7 @@ void main() {
               microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
               microsoftTodoApiProvider.overrideWithValue(fakeApi),
               realtimeSyncEnabledProvider.overrideWithValue(false),
+              startupSyncEnabledProvider.overrideWithValue(false),
             ],
             child: const YataApp(),
           ),
@@ -244,6 +245,7 @@ void main() {
               microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
               microsoftTodoApiProvider.overrideWithValue(fakeApi),
               realtimeSyncEnabledProvider.overrideWithValue(false),
+              startupSyncEnabledProvider.overrideWithValue(false),
             ],
             child: const YataApp(),
           ),
@@ -284,6 +286,7 @@ void main() {
               microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
               microsoftTodoApiProvider.overrideWithValue(fakeApi),
               realtimeSyncEnabledProvider.overrideWithValue(false),
+              startupSyncEnabledProvider.overrideWithValue(false),
             ],
             child: const YataApp(),
           ),
@@ -644,6 +647,7 @@ void main() {
               microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
               microsoftTodoApiProvider.overrideWithValue(fakeApi),
               realtimeSyncEnabledProvider.overrideWithValue(false),
+              startupSyncEnabledProvider.overrideWithValue(false),
             ],
             child: const YataApp(),
           ),
@@ -732,6 +736,7 @@ void main() {
               microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
               microsoftTodoApiProvider.overrideWithValue(fakeApi),
               realtimeSyncEnabledProvider.overrideWithValue(false),
+              startupSyncEnabledProvider.overrideWithValue(false),
             ],
             child: const YataApp(),
           ),
@@ -1166,5 +1171,110 @@ void main() {
         expect(container.read(todoProvider).lists, isNotEmpty);
       },
     );
+
+    testWidgets(
+      'auto-syncs on cold start even when account already has lastSyncedAt',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        await AuthTokenStorage(prefs).saveTokens(
+          'acct_cold_start',
+          MicrosoftAuthTokens(
+            accessToken: 'tok-1',
+            refreshToken: 'rt-1',
+            expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+            userId: 'cid1',
+          ),
+        );
+        final account = MicrosoftAccount(
+          id: 'acct_cold_start',
+          displayName: 'Alice',
+          email: 'alice@outlook.com',
+          createdAt: DateTime(2026, 11, 22),
+          lastSyncedAt: DateTime(2026, 11, 22, 12, 0),
+          microsoftUserId: 'cid1',
+        );
+        await AccountLocalStorage(prefs).saveAccounts([account]);
+        await AccountLocalStorage(prefs).saveActiveAccountId(account.id);
+
+        final fakeApi = FakeSubstrateApi();
+        final container = ProviderContainer(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+            microsoftTodoApiProvider.overrideWithValue(fakeApi),
+            realtimeSyncEnabledProvider.overrideWithValue(false),
+            periodicSyncEnabledProvider.overrideWithValue(false),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: const YataApp(),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(container.read(syncProvider).status, SyncStatus.success);
+        expect(
+          fakeApi.callLog.where((c) => c.startsWith('GET foldergroups')).length,
+          greaterThanOrEqualTo(1),
+        );
+      },
+    );
+
+    test('onAppResumed triggers debounced sync after onAppPaused', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      await AuthTokenStorage(prefs).saveTokens(
+        'acct_lifecycle',
+        MicrosoftAuthTokens(
+          accessToken: 'tok-1',
+          refreshToken: 'rt-1',
+          expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+          userId: 'cid1',
+        ),
+      );
+      final account = MicrosoftAccount(
+        id: 'acct_lifecycle',
+        displayName: 'Alice',
+        email: 'alice@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        lastSyncedAt: DateTime(2026, 11, 22, 12, 0),
+        microsoftUserId: 'cid1',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId(account.id);
+
+      final fakeApi = FakeSubstrateApi();
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+          microsoftTodoApiProvider.overrideWithValue(fakeApi),
+          realtimeSyncEnabledProvider.overrideWithValue(false),
+          periodicSyncEnabledProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(syncProvider);
+      expect(
+        fakeApi.callLog.where((c) => c.startsWith('GET foldergroups')).length,
+        0,
+      );
+
+      container.read(syncProvider.notifier).onAppPaused();
+      container.read(syncProvider.notifier).onAppResumed();
+
+      await Future<void>.delayed(const Duration(milliseconds: 650));
+      expect(container.read(syncProvider).status, SyncStatus.success);
+      expect(
+        fakeApi.callLog.where((c) => c.startsWith('GET foldergroups')).length,
+        1,
+      );
+    });
   });
 }
