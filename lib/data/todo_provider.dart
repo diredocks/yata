@@ -3,13 +3,16 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:result_dart/result_dart.dart';
 
 import '../account/account_provider.dart';
+import '../core/result/app_result.dart';
 import '../homeview/home_view_ordering.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import 'todo_database.dart';
 import 'todo_local_storage.dart';
+import 'todo_repository.dart';
 import 'todo_settings_sync.dart';
 import 'todo_state.dart';
 
@@ -27,16 +30,21 @@ final todoDatabaseProvider = Provider<TodoDatabase?>((ref) {
   return db;
 });
 
+final todoRepositoryProvider = Provider<TodoRepository?>((ref) {
+  final database = ref.watch(todoDatabaseProvider);
+  return database == null ? null : TodoRepository(database);
+});
+
 final todoLocalStorageProvider = Provider<TodoLocalStorage>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
-  final database = ref.watch(todoDatabaseProvider);
+  final repository = ref.watch(todoRepositoryProvider);
   final activeAccountId = ref.watch(
     accountProvider.select((s) => s.activeAccountId),
   );
   return TodoLocalStorage(
     prefs,
     accountId: activeAccountId,
-    database: database,
+    repository: repository,
   );
 });
 
@@ -79,7 +87,10 @@ class TodoNotifier extends Notifier<TodoState> {
   @override
   TodoState build() {
     final storage = ref.watch(todoLocalStorageProvider);
-    final snapshot = storage.load();
+    final snapshot = storage.load().fold(
+      (snapshot) => snapshot,
+      (_) => TodoLocalStorage.fallbackSnapshot(),
+    );
     final now = DateTime.now();
     final todayKey = _todayKey(now);
     var changed = false;
@@ -131,7 +142,10 @@ class TodoNotifier extends Notifier<TodoState> {
       routineNotificationHour: snapshot.routineNotificationHour,
       routineNotificationMinute: snapshot.routineNotificationMinute,
       quickAddNotificationEnabled: snapshot.quickAddNotificationEnabled,
-      completedExpandedByList: storage.loadCompletedExpandedByList(),
+      completedExpandedByList: storage.loadCompletedExpandedByList().fold(
+        (expanded) => expanded,
+        (_) => const <String, bool>{},
+      ),
     );
   }
 
@@ -523,7 +537,7 @@ class TodoNotifier extends Notifier<TodoState> {
         : [...existingAndLocal, ...newRemoteTasks];
   }
 
-  Future<void> applySyncResult({
+  AsyncAppResult<Unit> applySyncResult({
     List<ListGroup>? groups,
     required List<TodoList> lists,
     required List<TaskItem> tasks,
@@ -715,6 +729,7 @@ class TodoNotifier extends Notifier<TodoState> {
       selectedListId: validSelectedListId,
       completedExpandedByList: nextExpanded,
     );
+    return const Success(unit);
   }
 
   void selectList(String listId) {

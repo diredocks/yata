@@ -7,6 +7,7 @@ import 'account/account_local_storage.dart';
 import 'account/account_provider.dart';
 import 'data/todo_local_storage.dart';
 import 'data/todo_provider.dart';
+import 'data/todo_repository.dart';
 import 'l10n/app_localizations.dart';
 import 'onboarding/landing_screen.dart';
 import 'theme/todo_theme.dart';
@@ -17,11 +18,12 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   final database = TodoDatabase();
   final accountSnapshot = AccountLocalStorage(prefs).load();
+  final repository = TodoRepository(database);
   for (final account in accountSnapshot.accounts) {
     await TodoLocalStorage(
       prefs,
       accountId: account.id,
-      database: database,
+      repository: repository,
     ).hydrateFromDatabase();
   }
 
@@ -30,6 +32,7 @@ Future<void> main() async {
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
         todoDatabaseProvider.overrideWithValue(database),
+        todoRepositoryProvider.overrideWithValue(repository),
       ],
       child: const YataApp(),
     ),

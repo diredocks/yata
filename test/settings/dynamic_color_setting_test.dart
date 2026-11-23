@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:yata/core/error/app_error.dart';
 import 'package:yata/data/todo_local_storage.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/detailview/detail_view_screen.dart';
@@ -69,7 +70,10 @@ void main() {
     await tester.tap(find.text('Use system dynamic color'));
     await tester.pumpAndSettle();
 
-    final reloaded = TodoLocalStorage(prefs).load();
+    final reloaded = TodoLocalStorage(prefs).load().fold(
+      (snapshot) => snapshot,
+      (error) => fail('local snapshot load failed: ${error.describe()}'),
+    );
     expect(reloaded.useDynamicColor, isFalse);
   });
 

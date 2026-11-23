@@ -3,9 +3,11 @@ import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:result_dart/result_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/account/account_local_storage.dart';
 import 'package:yata/account/account_provider.dart';
+import 'package:yata/core/error/app_error.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/data/todo_local_storage.dart';
 import 'package:yata/data/todo_provider.dart';
@@ -764,12 +766,17 @@ void main() {
       );
       addTearDown(notifierContainer.dispose);
 
-      final outcome = await service.syncAccount(
-        account: account,
-        currentState: notifierContainer.read(todoProvider),
-        storage: storage,
-        idGenerator: notifierContainer.read(todoProvider.notifier).nextId,
-      );
+      final outcome = await service
+          .syncAccount(
+            account: account,
+            currentState: notifierContainer.read(todoProvider),
+            storage: storage,
+            idGenerator: notifierContainer.read(todoProvider.notifier).nextId,
+          )
+          .fold(
+            (outcome) => outcome,
+            (error) => fail('unexpected sync failure: ${error.describe()}'),
+          );
       expect(attempts, 2);
       expect(outcome.syncedAt, isNotNull);
 

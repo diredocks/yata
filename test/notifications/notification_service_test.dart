@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
+import 'package:yata/core/error/app_error.dart';
 import 'package:yata/data/todo_local_storage.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/l10n/app_localizations.dart';
@@ -365,7 +366,10 @@ void main() {
     expect(transport.permissionRequested, isTrue);
 
     // Verify persistence in TodoLocalStorage.
-    final reloaded = TodoLocalStorage(prefs).load();
+    final reloaded = TodoLocalStorage(prefs).load().fold(
+      (snapshot) => snapshot,
+      (error) => fail('local snapshot load failed: ${error.describe()}'),
+    );
     expect(reloaded.dueTodayNotificationsEnabled, isTrue);
   });
 

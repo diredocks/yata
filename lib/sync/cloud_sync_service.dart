@@ -1,4 +1,8 @@
+import 'package:result_dart/result_dart.dart';
+
 import '../auth/microsoft_auth_service.dart';
+import '../core/error/app_error.dart';
+import '../core/result/app_result.dart';
 import '../data/todo_local_storage.dart';
 import '../data/todo_provider.dart';
 import '../homeview/home_view_ordering.dart';
@@ -6,6 +10,7 @@ import '../models/account.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import 'microsoft_todo_api.dart';
+import 'sync_guard.dart';
 import 'todo_wire_codecs.dart';
 
 /// Result returned by a full 10-phase Substrate sync pass.
@@ -53,94 +58,91 @@ class CloudSyncService {
   final AuthTokenStorage tokenStorage;
 
   /// Resolves valid MSA bearer token, CID, and discovered Substrate base URL.
-  Future<SubstrateRequestContext> resolveContext(
+  AsyncAppResult<SubstrateRequestContext> resolveContext(
     MicrosoftAccount account,
     TodoLocalStorage storage, {
     bool forceRefreshToken = false,
-  }) async {
-    MicrosoftAuthTokens tokens;
-    if (forceRefreshToken) {
-      final stored = await tokenStorage.loadTokens(account.id);
-      if (stored == null || stored.refreshToken.isEmpty) {
-        throw const MicrosoftAuthException(
-          'Refresh token unavailable; please sign in again.',
-          code: 'no_refresh_token',
-          requiresReauth: true,
+  }) {
+    return guardApiCall(() async {
+      MicrosoftAuthTokens tokens;
+      if (forceRefreshToken) {
+        final stored = await tokenStorage.loadTokens(account.id);
+        if (stored == null || stored.refreshToken.isEmpty) {
+          throw const MicrosoftAuthException(
+            'Refresh token unavailable; please sign in again.',
+            code: 'no_refresh_token',
+            requiresReauth: true,
+          );
+        }
+        tokens = await authClient.refreshTokens(
+          refreshToken: stored.refreshToken,
+          fallbackUserId: stored.userId.isNotEmpty
+              ? stored.userId
+              : account.microsoftUserId,
+        );
+        await tokenStorage.saveTokens(account.id, tokens);
+      } else {
+        tokens = await authClient.ensureValidTokens(
+          accountId: account.id,
+          storage: tokenStorage,
+          fallbackCid: account.microsoftUserId,
         );
       }
-      tokens = await authClient.refreshTokens(
-        refreshToken: stored.refreshToken,
-        fallbackUserId: stored.userId.isNotEmpty
-            ? stored.userId
-            : account.microsoftUserId,
-      );
-      await tokenStorage.saveTokens(account.id, tokens);
-    } else {
-      tokens = await authClient.ensureValidTokens(
-        accountId: account.id,
-        storage: tokenStorage,
-        fallbackCid: account.microsoftUserId,
-      );
-    }
 
-    final cid = tokens.userId.isNotEmpty
-        ? tokens.userId
-        : account.microsoftUserId;
-    var baseUrl = storage.loadCachedEndpointUrl();
-    if (baseUrl == null) {
-      baseUrl = await authClient.discoverTodoEndpoint(cid);
-      await storage.saveCachedEndpointUrl(baseUrl);
-    }
-    return SubstrateRequestContext(
-      baseUrl: baseUrl,
-      accessToken: tokens.accessToken,
-      cid: cid,
-    );
+      final cid = tokens.userId.isNotEmpty
+          ? tokens.userId
+          : account.microsoftUserId;
+      var baseUrl = storage.loadCachedEndpointUrl();
+      if (baseUrl == null) {
+        baseUrl = await authClient.discoverTodoEndpoint(cid);
+        await storage.saveCachedEndpointUrl(baseUrl);
+      }
+      return SubstrateRequestContext(
+        baseUrl: baseUrl,
+        accessToken: tokens.accessToken,
+        cid: cid,
+      );
+    }, operation: 'resolveContext');
   }
 
   /// Runs all 10 Substrate v1 sync phases for [account] and [currentState].
-  Future<SyncOutcome> syncAccount({
+  AsyncAppResult<SyncOutcome> syncAccount({
     required MicrosoftAccount account,
     required TodoState currentState,
     required TodoLocalStorage storage,
     required String Function(String prefix) idGenerator,
-  }) async {
-    Future<T> withAuthRetry<T>(
-      Future<T> Function(SubstrateRequestContext ctx) run,
-    ) async {
-      final ctx = await resolveContext(account, storage);
-      try {
-        return await run(ctx);
-      } on SyncApiException catch (e) {
-        if (!e.isAuthError) rethrow;
-        final refreshedCtx = await resolveContext(
-          account,
-          storage,
-          forceRefreshToken: true,
+  }) {
+    Future<AppResult<SyncOutcome>> run(SubstrateRequestContext ctx) =>
+        guardApiCall(
+          () => _executeSyncPhases(
+            ctx: ctx,
+            currentState: currentState,
+            storage: storage,
+            idGenerator: idGenerator,
+          ),
+          operation: 'syncPhases',
         );
-        try {
-          return await run(refreshedCtx);
-        } on SyncApiException catch (retryErr) {
-          if (retryErr.isAuthError) {
-            throw MicrosoftAuthException(
-              retryErr.message,
-              code: retryErr.errorCode,
-              requiresReauth: true,
-            );
-          }
-          rethrow;
-        }
-      }
-    }
 
-    return withAuthRetry(
-      (ctx) => _executeSyncPhases(
-        ctx: ctx,
-        currentState: currentState,
-        storage: storage,
-        idGenerator: idGenerator,
-      ),
-    );
+    return resolveContext(account, storage).flatMap(run).recover((error) async {
+      if (error is! AuthError) return Failure<SyncOutcome, AppError>(error);
+
+      // 401: force a token refresh and retry once.
+      final retried = resolveContext(
+        account,
+        storage,
+        forceRefreshToken: true,
+      ).flatMap(run);
+      return retried.mapError(
+        (retryError) => switch (retryError) {
+          AuthError(:final message, :final code) => AppError.auth(
+            message: message,
+            code: code,
+            requiresReauth: true,
+          ),
+          _ => retryError,
+        },
+      );
+    });
   }
 
   Future<SyncOutcome> _executeSyncPhases({

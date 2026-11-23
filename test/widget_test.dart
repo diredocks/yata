@@ -132,7 +132,9 @@ void main() {
       await tester.tapAt(const Offset(10, 10));
       await tester.pumpAndSettle();
 
-      // Add a recurring task and complete it -> next occurrence is generated
+      // Keep the due date relative to "now": the task must land in My Day.
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
       final container = ProviderScope.containerOf(
         tester.element(find.byType(YataApp)),
       );
@@ -141,7 +143,7 @@ void main() {
           .addTask(
             title: 'Daily standup',
             recurrence: RecurrenceType.daily,
-            dueDate: DateTime(2026, 11, 22),
+            dueDate: today,
           );
       await tester.pumpAndSettle();
 

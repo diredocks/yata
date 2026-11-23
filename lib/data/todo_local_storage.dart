@@ -3,27 +3,21 @@ import 'dart:convert';
 
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:result_dart/result_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../account/account_local_storage.dart';
+import '../core/result/app_result.dart';
+import '../models/pending_step_deletion.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../sync/todo_wire_codecs.dart';
 import 'todo_database.dart';
+import 'todo_repository.dart';
+
+export '../models/pending_step_deletion.dart';
 
 part 'todo_local_storage.freezed.dart';
-part 'todo_local_storage.g.dart';
-
-@freezed
-abstract class PendingStepDeletion with _$PendingStepDeletion {
-  const factory PendingStepDeletion({
-    required String taskRemoteId,
-    required String stepRemoteId,
-  }) = _PendingStepDeletion;
-
-  factory PendingStepDeletion.fromJson(Map<String, dynamic> json) =>
-      _$PendingStepDeletionFromJson(json);
-}
 
 @freezed
 abstract class TodoSnapshot with _$TodoSnapshot {
@@ -63,15 +57,26 @@ abstract class TodoSnapshot with _$TodoSnapshot {
 }
 
 class TodoLocalStorage {
-  TodoLocalStorage(this._prefs, {this.accountId, TodoDatabase? database})
-    : _database = database ?? _sharedFallbackDb;
+  TodoLocalStorage(
+    this._prefs, {
+    this.accountId,
+    TodoDatabase? database,
+    TodoRepository? repository,
+  }) : _repository =
+           repository ??
+           ((database == null || identical(database, _sharedFallbackDb))
+               ? _sharedFallbackRepository
+               : TodoRepository(database));
 
   static final TodoDatabase _sharedFallbackDb = TodoDatabase();
+  static final TodoRepository _sharedFallbackRepository = TodoRepository(
+    _sharedFallbackDb,
+  );
   static const String _sessionKey = 'yata._db_session_id';
 
   final SharedPreferences _prefs;
   final String? accountId;
-  final TodoDatabase _database;
+  final TodoRepository _repository;
 
   String get _accountKey =>
       (accountId == null || accountId!.isEmpty) ? 'default' : accountId!;
@@ -86,12 +91,12 @@ class TodoLocalStorage {
   }
 
   /// Preloads this account's rows from the Drift SQLite database into memory.
-  Future<void> hydrateFromDatabase() =>
-      _database.preloadAccount(_accountKey, scopeKey: _scopeKey);
+  AsyncAppResult<Unit> hydrateFromDatabase() =>
+      _repository.preloadAccount(_accountKey, scopeKey: _scopeKey);
 
   /// Deletes all Drift records for this account.
-  Future<void> clearAccountRecords() =>
-      _database.deleteAccountRecords(_accountKey, scopeKey: _scopeKey);
+  AsyncAppResult<Unit> clearAccountRecords() =>
+      _repository.deleteAccountRecords(_accountKey, scopeKey: _scopeKey);
 
   String _k(String suffix) {
     final id = accountId;
@@ -186,8 +191,31 @@ class TodoLocalStorage {
     ];
   }
 
-  TodoSnapshot load() {
-    final cachedLists = _database.readCachedLists(_scopeKey);
+  /// Snapshot used when the persisted payload cannot be decoded.
+  static TodoSnapshot fallbackSnapshot() => TodoSnapshot(
+    lists: defaultSmartLists(),
+    groups: const [],
+    tasks: const [],
+    selectedListId: 'my_day',
+    themeMode: ThemeMode.system,
+    addNewTasksOnTop: true,
+    moveStarredTasksToTop: true,
+    playCompletionSound: true,
+    confirmBeforeDeleting: true,
+    showDueTodayInMyDay: true,
+    startOfWeek: WeekStart.system,
+    showSmartListImportant: true,
+    showSmartListPlanned: true,
+    showSmartListAll: false,
+    showSmartListCompleted: false,
+    autoHideEmptySmartLists: false,
+  );
+
+  AppResult<TodoSnapshot> load() =>
+      guardSync(_buildSnapshot, operation: 'loadTodoSnapshot');
+
+  TodoSnapshot _buildSnapshot() {
+    final cachedLists = _repository.readCachedLists(_scopeKey);
     var lists = cachedLists != null ? [...cachedLists] : defaultSmartLists();
 
     if (lists.isEmpty) {
@@ -214,8 +242,8 @@ class TodoLocalStorage {
           list,
     ];
 
-    final groups = [..._database.readCachedGroups(_scopeKey)];
-    final tasks = [..._database.readCachedTasks(_scopeKey)];
+    final groups = [..._repository.readCachedGroups(_scopeKey)];
+    final tasks = [..._repository.readCachedTasks(_scopeKey)];
 
     final selectedListId = _prefs.getString(_selectedListIdKey) ?? 'my_day';
     final themeName = _prefs.getString(_themeModeKey);
@@ -278,29 +306,35 @@ class TodoLocalStorage {
     );
   }
 
-  Future<void> saveLists(List<TodoList> lists) =>
-      _database.writeLists(_accountKey, lists, scopeKey: _scopeKey);
+  AsyncAppResult<Unit> saveLists(List<TodoList> lists) =>
+      _repository.writeLists(_accountKey, lists, scopeKey: _scopeKey);
 
-  Future<void> saveGroups(List<ListGroup> groups) =>
-      _database.writeGroups(_accountKey, groups, scopeKey: _scopeKey);
+  AsyncAppResult<Unit> saveGroups(List<ListGroup> groups) =>
+      _repository.writeGroups(_accountKey, groups, scopeKey: _scopeKey);
 
-  Future<void> saveTasks(List<TaskItem> tasks) =>
-      _database.writeTasks(_accountKey, tasks, scopeKey: _scopeKey);
+  AsyncAppResult<Unit> saveTasks(List<TaskItem> tasks) =>
+      _repository.writeTasks(_accountKey, tasks, scopeKey: _scopeKey);
 
-  Future<void> saveSelectedListId(String listId) =>
-      _prefs.setString(_selectedListIdKey, listId);
+  AsyncAppResult<Unit> saveSelectedListId(String listId) => guardAsyncUnit(
+    () => _prefs.setString(_selectedListIdKey, listId),
+    operation: 'saveSelectedListId',
+  );
 
   String? loadLastEnteredListId() => _prefs.getString(_lastEnteredListIdKey);
 
-  Future<void> saveLastEnteredListId(String? listId) async {
-    if (listId == null) {
-      await _prefs.remove(_lastEnteredListIdKey);
-    } else {
-      await _prefs.setString(_lastEnteredListIdKey, listId);
-    }
-  }
+  AsyncAppResult<Unit> saveLastEnteredListId(String? listId) =>
+      guardAsyncUnit(() async {
+        if (listId == null) {
+          await _prefs.remove(_lastEnteredListIdKey);
+        } else {
+          await _prefs.setString(_lastEnteredListIdKey, listId);
+        }
+      }, operation: 'saveLastEnteredListId');
 
-  Map<String, bool> loadCompletedExpandedByList() {
+  AppResult<Map<String, bool>> loadCompletedExpandedByList() =>
+      guardSync(_parseCompletedExpandedByList, operation: 'loadExpandedState');
+
+  Map<String, bool> _parseCompletedExpandedByList() {
     final raw = _prefs.getString(_completedExpandedByListKey);
     if (raw == null) return const {};
     final decoded = jsonDecode(raw) as Map<String, dynamic>;
@@ -310,107 +344,138 @@ class TodoLocalStorage {
     };
   }
 
-  Future<void> saveCompletedExpandedByList(Map<String, bool> value) async {
-    if (value.isEmpty) {
-      await _prefs.remove(_completedExpandedByListKey);
-    } else {
-      await _prefs.setString(_completedExpandedByListKey, jsonEncode(value));
-    }
-  }
+  AsyncAppResult<Unit> saveCompletedExpandedByList(Map<String, bool> value) =>
+      guardAsyncUnit(() async {
+        if (value.isEmpty) {
+          await _prefs.remove(_completedExpandedByListKey);
+        } else {
+          await _prefs.setString(
+            _completedExpandedByListKey,
+            jsonEncode(value),
+          );
+        }
+      }, operation: 'saveCompletedExpandedByList');
 
-  Future<void> saveThemeMode(ThemeMode mode) =>
-      _prefs.setString(_themeModeKey, mode.name);
+  AsyncAppResult<Unit> saveThemeMode(ThemeMode mode) => guardAsyncUnit(
+    () => _prefs.setString(_themeModeKey, mode.name),
+    operation: 'saveThemeMode',
+  );
 
-  Future<void> saveBoolSetting(String key, bool value) =>
-      _prefs.setBool(key, value);
+  AsyncAppResult<Unit> saveBoolSetting(String key, bool value) =>
+      guardAsyncUnit(
+        () => _prefs.setBool(key, value),
+        operation: 'saveBoolSetting',
+      );
 
-  Future<void> saveAddNewTasksOnTop(bool value) =>
+  AsyncAppResult<Unit> saveAddNewTasksOnTop(bool value) =>
       saveBoolSetting(_addNewTasksOnTopKey, value);
 
-  Future<void> saveMoveStarredTasksToTop(bool value) =>
+  AsyncAppResult<Unit> saveMoveStarredTasksToTop(bool value) =>
       saveBoolSetting(_moveStarredToTopKey, value);
 
-  Future<void> savePlayCompletionSound(bool value) =>
+  AsyncAppResult<Unit> savePlayCompletionSound(bool value) =>
       saveBoolSetting(_playCompletionSoundKey, value);
 
-  Future<void> saveConfirmBeforeDeleting(bool value) =>
+  AsyncAppResult<Unit> saveConfirmBeforeDeleting(bool value) =>
       saveBoolSetting(_confirmBeforeDeletingKey, value);
 
-  Future<void> saveShowDueTodayInMyDay(bool value) =>
+  AsyncAppResult<Unit> saveShowDueTodayInMyDay(bool value) =>
       saveBoolSetting(_showDueTodayInMyDayKey, value);
 
-  Future<void> saveStartOfWeek(WeekStart value) =>
-      _prefs.setString(_startOfWeekKey, value.name);
+  AsyncAppResult<Unit> saveStartOfWeek(WeekStart value) => guardAsyncUnit(
+    () => _prefs.setString(_startOfWeekKey, value.name),
+    operation: 'saveStartOfWeek',
+  );
 
-  Future<void> saveShowSmartListImportant(bool value) =>
+  AsyncAppResult<Unit> saveShowSmartListImportant(bool value) =>
       saveBoolSetting(_showImportantKey, value);
 
-  Future<void> saveShowSmartListPlanned(bool value) =>
+  AsyncAppResult<Unit> saveShowSmartListPlanned(bool value) =>
       saveBoolSetting(_showPlannedKey, value);
 
-  Future<void> saveShowSmartListAll(bool value) =>
+  AsyncAppResult<Unit> saveShowSmartListAll(bool value) =>
       saveBoolSetting(_showAllKey, value);
 
-  Future<void> saveShowSmartListCompleted(bool value) =>
+  AsyncAppResult<Unit> saveShowSmartListCompleted(bool value) =>
       saveBoolSetting(_showCompletedListKey, value);
 
-  Future<void> saveAutoHideEmptySmartLists(bool value) =>
+  AsyncAppResult<Unit> saveAutoHideEmptySmartLists(bool value) =>
       saveBoolSetting(_autoHideSmartListsKey, value);
 
-  Future<void> saveUseDynamicColor(bool value) =>
+  AsyncAppResult<Unit> saveUseDynamicColor(bool value) =>
       saveBoolSetting(_useDynamicColorKey, value);
 
-  Future<void> saveRemindersEnabled(bool value) =>
+  AsyncAppResult<Unit> saveRemindersEnabled(bool value) =>
       saveBoolSetting(_remindersEnabledKey, value);
 
-  Future<void> savePinReminders(bool value) =>
+  AsyncAppResult<Unit> savePinReminders(bool value) =>
       saveBoolSetting(_pinRemindersKey, value);
 
-  Future<void> saveDueTodayNotificationsEnabled(bool value) =>
+  AsyncAppResult<Unit> saveDueTodayNotificationsEnabled(bool value) =>
       saveBoolSetting(_dueTodayNotificationsKey, value);
 
-  Future<void> saveDueTodayNotificationTime(int hour, int minute) async {
-    await _prefs.setInt(_dueTodayNotificationHourKey, hour);
-    await _prefs.setInt(_dueTodayNotificationMinuteKey, minute);
-  }
+  AsyncAppResult<Unit> saveDueTodayNotificationTime(int hour, int minute) =>
+      guardAsyncUnit(() async {
+        await _prefs.setInt(_dueTodayNotificationHourKey, hour);
+        await _prefs.setInt(_dueTodayNotificationMinuteKey, minute);
+      }, operation: 'saveDueTodayNotificationTime');
 
-  Future<void> saveRoutineNotificationEnabled(bool value) =>
+  AsyncAppResult<Unit> saveRoutineNotificationEnabled(bool value) =>
       saveBoolSetting(_routineNotificationKey, value);
 
-  Future<void> saveRoutineNotificationTime(int hour, int minute) async {
-    await _prefs.setInt(_routineNotificationHourKey, hour);
-    await _prefs.setInt(_routineNotificationMinuteKey, minute);
-  }
+  AsyncAppResult<Unit> saveRoutineNotificationTime(int hour, int minute) =>
+      guardAsyncUnit(() async {
+        await _prefs.setInt(_routineNotificationHourKey, hour);
+        await _prefs.setInt(_routineNotificationMinuteKey, minute);
+      }, operation: 'saveRoutineNotificationTime');
 
-  Future<void> saveQuickAddNotificationEnabled(bool value) =>
+  AsyncAppResult<Unit> saveQuickAddNotificationEnabled(bool value) =>
       saveBoolSetting(_quickAddNotificationKey, value);
 
-  Future<void> saveLastMyDayResetDate(String dateKey) =>
-      _prefs.setString(_lastMyDayResetKey, dateKey);
+  AsyncAppResult<Unit> saveLastMyDayResetDate(String dateKey) => guardAsyncUnit(
+    () => _prefs.setString(_lastMyDayResetKey, dateKey),
+    operation: 'saveLastMyDayResetDate',
+  );
 
-  Future<void> savePlannedDueDateFilter(PlannedDueDateFilter filter) =>
-      _prefs.setString(_plannedDueDateFilterKey, filter.name);
+  AsyncAppResult<Unit> savePlannedDueDateFilter(PlannedDueDateFilter filter) =>
+      guardAsyncUnit(
+        () => _prefs.setString(_plannedDueDateFilterKey, filter.name),
+        operation: 'savePlannedDueDateFilter',
+      );
 
-  Future<void> savePlannedGroupOption(PlannedGroupOption option) =>
-      _prefs.setString(_plannedGroupOptionKey, option.name);
+  AsyncAppResult<Unit> savePlannedGroupOption(PlannedGroupOption option) =>
+      guardAsyncUnit(
+        () => _prefs.setString(_plannedGroupOptionKey, option.name),
+        operation: 'savePlannedGroupOption',
+      );
 
   List<String> loadPendingDeletedListRemoteIds() =>
-      _database.readCachedMutationKeys(_scopeKey, 'deleted_list');
+      _repository.readCachedMutationKeys(_scopeKey, 'deleted_list');
 
-  Future<void> savePendingDeletedListRemoteIds(List<String> ids) => _database
-      .writeMutationKeys(_accountKey, 'deleted_list', ids, scopeKey: _scopeKey);
+  AsyncAppResult<Unit> savePendingDeletedListRemoteIds(List<String> ids) =>
+      _repository.writeMutationKeys(
+        _accountKey,
+        'deleted_list',
+        ids,
+        scopeKey: _scopeKey,
+      );
 
   List<String> loadPendingDeletedTaskRemoteIds() =>
-      _database.readCachedMutationKeys(_scopeKey, 'deleted_task');
+      _repository.readCachedMutationKeys(_scopeKey, 'deleted_task');
 
-  Future<void> savePendingDeletedTaskRemoteIds(List<String> ids) => _database
-      .writeMutationKeys(_accountKey, 'deleted_task', ids, scopeKey: _scopeKey);
+  AsyncAppResult<Unit> savePendingDeletedTaskRemoteIds(List<String> ids) =>
+      _repository.writeMutationKeys(
+        _accountKey,
+        'deleted_task',
+        ids,
+        scopeKey: _scopeKey,
+      );
 
   List<String> loadPendingDeletedGroupRemoteIds() =>
-      _database.readCachedMutationKeys(_scopeKey, 'deleted_group');
+      _repository.readCachedMutationKeys(_scopeKey, 'deleted_group');
 
-  Future<void> savePendingDeletedGroupRemoteIds(List<String> ids) =>
-      _database.writeMutationKeys(
+  AsyncAppResult<Unit> savePendingDeletedGroupRemoteIds(List<String> ids) =>
+      _repository.writeMutationKeys(
         _accountKey,
         'deleted_group',
         ids,
@@ -418,71 +483,67 @@ class TodoLocalStorage {
       );
 
   List<PendingStepDeletion> loadPendingDeletedSteps() =>
-      _database.readCachedPendingDeletedSteps(_scopeKey);
+      _repository.readCachedPendingDeletedSteps(_scopeKey);
 
-  Future<void> savePendingDeletedSteps(List<PendingStepDeletion> items) =>
-      _database.writePendingDeletedSteps(
-        _accountKey,
-        items,
-        scopeKey: _scopeKey,
-      );
-
-  Set<String> loadDirtyListIds() =>
-      _database.readCachedMutationKeys(_scopeKey, 'dirty_list').toSet();
-
-  Future<void> saveDirtyListIds(Set<String> ids) => _database.writeMutationKeys(
+  AsyncAppResult<Unit> savePendingDeletedSteps(
+    List<PendingStepDeletion> items,
+  ) => _repository.writePendingDeletedSteps(
     _accountKey,
-    'dirty_list',
-    ids,
+    items,
     scopeKey: _scopeKey,
   );
 
-  Set<String> loadDirtyGroupIds() =>
-      _database.readCachedMutationKeys(_scopeKey, 'dirty_group').toSet();
+  Set<String> loadDirtyListIds() =>
+      _repository.readCachedMutationKeys(_scopeKey, 'dirty_list').toSet();
 
-  Future<void> saveDirtyGroupIds(Set<String> ids) => _database
+  AsyncAppResult<Unit> saveDirtyListIds(Set<String> ids) => _repository
+      .writeMutationKeys(_accountKey, 'dirty_list', ids, scopeKey: _scopeKey);
+
+  Set<String> loadDirtyGroupIds() =>
+      _repository.readCachedMutationKeys(_scopeKey, 'dirty_group').toSet();
+
+  AsyncAppResult<Unit> saveDirtyGroupIds(Set<String> ids) => _repository
       .writeMutationKeys(_accountKey, 'dirty_group', ids, scopeKey: _scopeKey);
 
   Set<String> loadDirtyTaskIds() =>
-      _database.readCachedMutationKeys(_scopeKey, 'dirty_task').toSet();
+      _repository.readCachedMutationKeys(_scopeKey, 'dirty_task').toSet();
 
-  Future<void> saveDirtyTaskIds(Set<String> ids) => _database.writeMutationKeys(
-    _accountKey,
-    'dirty_task',
-    ids,
-    scopeKey: _scopeKey,
-  );
+  AsyncAppResult<Unit> saveDirtyTaskIds(Set<String> ids) => _repository
+      .writeMutationKeys(_accountKey, 'dirty_task', ids, scopeKey: _scopeKey);
 
   Set<String> loadDirtySettingKeys() =>
       (_prefs.getStringList(_dirtySettingKeysKey) ?? const []).toSet();
 
-  Future<void> saveDirtySettingKeys(Set<String> keys) async {
-    if (keys.isEmpty) {
-      await _prefs.remove(_dirtySettingKeysKey);
-    } else {
-      await _prefs.setStringList(_dirtySettingKeysKey, keys.toList());
-    }
-  }
+  AsyncAppResult<Unit> saveDirtySettingKeys(Set<String> keys) =>
+      guardAsyncUnit(() async {
+        if (keys.isEmpty) {
+          await _prefs.remove(_dirtySettingKeysKey);
+        } else {
+          await _prefs.setStringList(_dirtySettingKeysKey, keys.toList());
+        }
+      }, operation: 'saveDirtySettingKeys');
 
   String? loadGroupsDeltaLink() => _prefs.getString(_groupsDeltaLinkKey);
 
-  Future<void> saveGroupsDeltaLink(String? deltaLink) async {
-    if (deltaLink == null || deltaLink.isEmpty) {
-      await _prefs.remove(_groupsDeltaLinkKey);
-    } else {
-      await _prefs.setString(_groupsDeltaLinkKey, deltaLink);
-    }
-  }
+  AsyncAppResult<Unit> saveGroupsDeltaLink(String? deltaLink) =>
+      guardAsyncUnit(() async {
+        if (deltaLink == null || deltaLink.isEmpty) {
+          await _prefs.remove(_groupsDeltaLinkKey);
+        } else {
+          await _prefs.setString(_groupsDeltaLinkKey, deltaLink);
+        }
+      }, operation: 'saveGroupsDeltaLink');
 
   String? loadFoldersDeltaLink() => _prefs.getString(_foldersDeltaLinkKey);
 
-  Future<void> saveFoldersDeltaLink(String? deltaLink) async {
-    if (deltaLink == null || deltaLink.isEmpty) {
-      await _prefs.remove(_foldersDeltaLinkKey);
-    } else {
-      await _prefs.setString(_foldersDeltaLinkKey, deltaLink);
-    }
-  }
+  AsyncAppResult<Unit> saveFoldersDeltaLink(String? deltaLink) =>
+      guardAsyncUnit(() async {
+        if (deltaLink == null || deltaLink.isEmpty) {
+          await _prefs.remove(_foldersDeltaLinkKey);
+        } else {
+          await _prefs.setString(_foldersDeltaLinkKey, deltaLink);
+        }
+      }, operation: 'saveFoldersDeltaLink');
 
   Map<String, String> loadTaskDeltaLinks() {
     final raw = _prefs.getString(_taskDeltaLinksKey);
@@ -499,13 +560,14 @@ class TodoLocalStorage {
     }
   }
 
-  Future<void> saveTaskDeltaLinks(Map<String, String> links) async {
-    if (links.isEmpty) {
-      await _prefs.remove(_taskDeltaLinksKey);
-    } else {
-      await _prefs.setString(_taskDeltaLinksKey, jsonEncode(links));
-    }
-  }
+  AsyncAppResult<Unit> saveTaskDeltaLinks(Map<String, String> links) =>
+      guardAsyncUnit(() async {
+        if (links.isEmpty) {
+          await _prefs.remove(_taskDeltaLinksKey);
+        } else {
+          await _prefs.setString(_taskDeltaLinksKey, jsonEncode(links));
+        }
+      }, operation: 'saveTaskDeltaLinks');
 
   String? loadCachedEndpointUrl({Duration maxAge = const Duration(hours: 12)}) {
     final url = _prefs.getString(_cachedEndpointUrlKey);
@@ -519,11 +581,12 @@ class TodoLocalStorage {
     return url;
   }
 
-  Future<void> saveCachedEndpointUrl(String url) async {
-    await _prefs.setString(_cachedEndpointUrlKey, url);
-    await _prefs.setString(
-      _cachedEndpointFetchedAtKey,
-      DateTime.now().toUtc().toIso8601String(),
-    );
-  }
+  AsyncAppResult<Unit> saveCachedEndpointUrl(String url) =>
+      guardAsyncUnit(() async {
+        await _prefs.setString(_cachedEndpointUrlKey, url);
+        await _prefs.setString(
+          _cachedEndpointFetchedAtKey,
+          DateTime.now().toUtc().toIso8601String(),
+        );
+      }, operation: 'saveCachedEndpointUrl');
 }

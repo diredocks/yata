@@ -2,13 +2,16 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:result_dart/result_dart.dart';
 
 import '../account/account_provider.dart';
-import '../auth/microsoft_auth_service.dart';
+import '../core/error/app_error.dart';
+import '../core/result/app_result.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
 import 'cloud_sync_service.dart';
 import 'microsoft_todo_api.dart';
+import 'sync_guard.dart';
 
 part 'sync_provider.freezed.dart';
 
@@ -159,91 +162,89 @@ class SyncNotifier extends Notifier<SyncState> {
     final active = ref.read(accountProvider).activeAccount;
     if (_disposed || active is! MicrosoftAccount) return;
 
-    try {
-      final service = ref.read(cloudSyncServiceProvider);
-      final todoNotifier = ref.read(todoProvider.notifier);
-      final snapshotState = ref.read(todoProvider);
-      final storage = todoNotifier.storage;
+    final service = ref.read(cloudSyncServiceProvider);
+    final todoNotifier = ref.read(todoProvider.notifier);
+    final snapshotState = ref.read(todoProvider);
+    final storage = todoNotifier.storage;
 
-      final outcome = await service.syncAccount(
-        account: active,
-        currentState: snapshotState,
-        storage: storage,
-        idGenerator: todoNotifier.nextId,
-      );
+    final result = await service
+        .syncAccount(
+          account: active,
+          currentState: snapshotState,
+          storage: storage,
+          idGenerator: todoNotifier.nextId,
+        )
+        .flatMap((outcome) async {
+          if (_disposed ||
+              ref.read(accountProvider).activeAccount?.id != active.id) {
+            return Success<SyncOutcome, AppError>(outcome);
+          }
+          return todoNotifier
+              .applySyncResult(
+                groups: outcome.groups,
+                lists: outcome.lists,
+                tasks: outcome.tasks,
+                settingsPatch: outcome.settingsPatch,
+                snapshotGroups: snapshotState.groups,
+                snapshotLists: snapshotState.lists,
+                snapshotTasks: snapshotState.tasks,
+                snapshotState: snapshotState,
+                processedDeletedGroupRemoteIds:
+                    outcome.processedDeletedGroupRemoteIds,
+                processedDeletedListRemoteIds:
+                    outcome.processedDeletedListRemoteIds,
+                processedDeletedTaskRemoteIds:
+                    outcome.processedDeletedTaskRemoteIds,
+                processedDeletedSteps: outcome.processedDeletedSteps,
+                syncedGroupIds: outcome.syncedGroupIds,
+                syncedListIds: outcome.syncedListIds,
+                syncedTaskIds: outcome.syncedTaskIds,
+                syncedSettingKeys: outcome.syncedSettingKeys,
+              )
+              .map((_) => outcome);
+        })
+        .flatMap(
+          (outcome) => guardAsyncUnit(() async {
+            await ref
+                .read(accountProvider.notifier)
+                .updateSyncStatus(
+                  active.id,
+                  lastSyncedAt: outcome.syncedAt,
+                  clearSyncError: true,
+                );
+            await _refreshProfileIfIncomplete(service, active);
+          }, operation: 'updateSyncStatus').map((_) => outcome),
+        );
 
-      if (_disposed ||
-          ref.read(accountProvider).activeAccount?.id != active.id) {
-        return;
-      }
+    if (_disposed) return;
 
-      await todoNotifier.applySyncResult(
-        groups: outcome.groups,
-        lists: outcome.lists,
-        tasks: outcome.tasks,
-        settingsPatch: outcome.settingsPatch,
-        snapshotGroups: snapshotState.groups,
-        snapshotLists: snapshotState.lists,
-        snapshotTasks: snapshotState.tasks,
-        snapshotState: snapshotState,
-        processedDeletedGroupRemoteIds: outcome.processedDeletedGroupRemoteIds,
-        processedDeletedListRemoteIds: outcome.processedDeletedListRemoteIds,
-        processedDeletedTaskRemoteIds: outcome.processedDeletedTaskRemoteIds,
-        processedDeletedSteps: outcome.processedDeletedSteps,
-        syncedGroupIds: outcome.syncedGroupIds,
-        syncedListIds: outcome.syncedListIds,
-        syncedTaskIds: outcome.syncedTaskIds,
-        syncedSettingKeys: outcome.syncedSettingKeys,
-      );
-
-      await ref
-          .read(accountProvider.notifier)
-          .updateSyncStatus(
-            active.id,
-            lastSyncedAt: outcome.syncedAt,
-            clearSyncError: true,
-          );
-
-      await _refreshProfileIfIncomplete(service, active);
-
-      if (!_disposed) {
+    await result.fold(
+      (outcome) async {
         state = state.copyWith(
           status: SyncStatus.success,
           lastSyncedAt: outcome.syncedAt,
           error: null,
         );
-      }
-    } on MicrosoftAuthException catch (e) {
-      if (_disposed) return;
-      final status = e.requiresReauth
-          ? SyncStatus.requiresRelogin
-          : SyncStatus.error;
-      await ref
-          .read(accountProvider.notifier)
-          .updateSyncStatus(active.id, syncError: e.message);
-      if (!_disposed) {
-        state = state.copyWith(status: status, error: e.message);
-      }
-    } on SyncApiException catch (e) {
-      if (_disposed) return;
-      final status = e.isAuthError
-          ? SyncStatus.requiresRelogin
-          : SyncStatus.error;
-      await ref
-          .read(accountProvider.notifier)
-          .updateSyncStatus(active.id, syncError: e.message);
-      if (!_disposed) {
-        state = state.copyWith(status: status, error: e.message);
-      }
-    } catch (e) {
-      if (_disposed) return;
-      await ref
-          .read(accountProvider.notifier)
-          .updateSyncStatus(active.id, syncError: e.toString());
-      if (!_disposed) {
-        state = state.copyWith(status: SyncStatus.error, error: e.toString());
-      }
-    }
+      },
+      (error) async {
+        final status = switch (error) {
+          AuthError(:final requiresReauth) =>
+            requiresReauth ? SyncStatus.requiresRelogin : SyncStatus.error,
+          NetworkError() => SyncStatus.error,
+          DatabaseError() => SyncStatus.error,
+          NotFoundError() => SyncStatus.error,
+          ValidationError() => SyncStatus.error,
+          UnknownError() => SyncStatus.error,
+        };
+        final message = error.describe();
+        await ref
+            .read(accountProvider.notifier)
+            .updateSyncStatus(active.id, syncError: message);
+        if (!_disposed) {
+          state = state.copyWith(status: status, error: message);
+        }
+      },
+    );
   }
 
   Future<void> _refreshProfileIfIncomplete(
@@ -259,7 +260,7 @@ class SyncNotifier extends Notifier<SyncState> {
         account.avatarBase64 == null || account.avatarBase64!.isEmpty;
     if (!needsName && !needsEmail && !needsAvatar) return;
 
-    try {
+    await guardApiCall(() async {
       final tokens = await service.tokenStorage.loadTokens(account.id);
       if (tokens == null || tokens.refreshToken.isEmpty) return;
       final cid = tokens.userId.isNotEmpty
@@ -301,9 +302,9 @@ class SyncNotifier extends Notifier<SyncState> {
             email: nextEmail,
             avatarBase64: nextAvatar,
           );
-    } catch (_) {
-      // Best-effort backfill only; never fail sync.
-    }
+    }, operation: 'refreshProfile');
+
+    // Best-effort; failures are logged by the guard.
   }
 
   void _startRealtimeFor(MicrosoftAccount account) {
@@ -317,33 +318,35 @@ class SyncNotifier extends Notifier<SyncState> {
     if (_disposed || _realtimeAccountId != account.id) return;
     if (!ref.read(realtimeSyncEnabledProvider)) return;
 
-    try {
-      final service = ref.read(cloudSyncServiceProvider);
-      final storage = ref.read(todoProvider.notifier).storage;
-      final ctx = await service.resolveContext(account, storage);
+    final service = ref.read(cloudSyncServiceProvider);
+    final storage = ref.read(todoProvider.notifier).storage;
+    final ctxResult = await service.resolveContext(account, storage);
 
-      if (_disposed || _realtimeAccountId != account.id) return;
+    if (_disposed || _realtimeAccountId != account.id) return;
 
-      final stream = service.todoApi.connectRealtime(ctx);
-      _realtimeSub = stream.listen(
-        (event) {
-          if (_disposed || _realtimeAccountId != account.id) return;
-          _realtimeBackoff = _realtimeInitialBackoff;
-          if (event.isKeepAlive) return;
-          if (service.todoApi.isOwnRequestId(event.requestId)) return;
-          scheduleDebouncedSync(delay: const Duration(milliseconds: 200));
-        },
-        onError: (_) {
-          _scheduleRealtimeReconnect(account);
-        },
-        onDone: () {
-          _scheduleRealtimeReconnect(account);
-        },
-        cancelOnError: true,
-      );
-    } catch (_) {
+    final ctx = ctxResult.fold((ctx) => ctx, (_) => null);
+    if (ctx == null) {
       _scheduleRealtimeReconnect(account);
+      return;
     }
+
+    final stream = service.todoApi.connectRealtime(ctx);
+    _realtimeSub = stream.listen(
+      (event) {
+        if (_disposed || _realtimeAccountId != account.id) return;
+        _realtimeBackoff = _realtimeInitialBackoff;
+        if (event.isKeepAlive) return;
+        if (service.todoApi.isOwnRequestId(event.requestId)) return;
+        scheduleDebouncedSync(delay: const Duration(milliseconds: 200));
+      },
+      onError: (_) {
+        _scheduleRealtimeReconnect(account);
+      },
+      onDone: () {
+        _scheduleRealtimeReconnect(account);
+      },
+      cancelOnError: true,
+    );
   }
 
   void _scheduleRealtimeReconnect(MicrosoftAccount account) {

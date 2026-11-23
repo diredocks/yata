@@ -1,6 +1,6 @@
 // GENERATED CODE - DO NOT MODIFY BY HAND
 
-part of 'todo_local_storage.dart';
+part of 'pending_step_deletion.dart';
 
 // **************************************************************************
 // JsonSerializableGenerator

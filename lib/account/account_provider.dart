@@ -200,7 +200,7 @@ class AccountNotifier extends Notifier<AccountState> {
     await TodoLocalStorage(
       ref.read(sharedPreferencesProvider),
       accountId: accountId,
-      database: ref.read(todoDatabaseProvider),
+      repository: ref.read(todoRepositoryProvider),
     ).hydrateFromDatabase();
     state = state.copyWith(activeAccountId: accountId);
     await _storage.saveActiveAccountId(accountId);
@@ -212,7 +212,7 @@ class AccountNotifier extends Notifier<AccountState> {
     await TodoLocalStorage(
       ref.read(sharedPreferencesProvider),
       accountId: accountId,
-      database: ref.read(todoDatabaseProvider),
+      repository: ref.read(todoRepositoryProvider),
     ).clearAccountRecords();
     final remaining = state.accounts.where((a) => a.id != accountId).toList();
     final nextActiveId = state.activeAccountId == accountId
