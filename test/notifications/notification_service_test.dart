@@ -5,7 +5,8 @@ import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:yata/core/error/app_error.dart';
-import 'package:yata/data/todo_local_storage.dart';
+import 'package:yata/data/todo_settings_store.dart';
+import 'package:yata/models/default_lists.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/l10n/app_localizations.dart';
 import 'package:yata/models/task_item.dart';
@@ -139,7 +140,7 @@ TodoState _makeState({
   bool quickAddNotificationEnabled = false,
 }) {
   return TodoState(
-    lists: TodoLocalStorage.defaultSmartLists(),
+    lists: defaultSmartLists(),
     groups: const [],
     tasks: tasks,
     selectedListId: 'my_day',
@@ -365,8 +366,8 @@ void main() {
     expect(find.text('Time of Due Today notifications'), findsOneWidget);
     expect(transport.permissionRequested, isTrue);
 
-    // Verify persistence in TodoLocalStorage.
-    final reloaded = TodoLocalStorage(prefs).load().fold(
+    // Verify persistence in TodoSettingsStore.
+    final reloaded = TodoSettingsStore(prefs).load().fold(
       (snapshot) => snapshot,
       (error) => fail('local snapshot load failed: ${error.describe()}'),
     );

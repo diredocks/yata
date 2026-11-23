@@ -7,6 +7,10 @@ import '../models/pending_step_deletion.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import 'todo_database.dart';
+import 'todo_settings_store.dart';
+
+/// Database used when none is registered (widget tests / web bootstrapping).
+final TodoDatabase sharedFallbackTodoDatabase = TodoDatabase();
 
 class _AccountCache {
   List<TodoList>? lists;
@@ -17,8 +21,24 @@ class _AccountCache {
 }
 
 /// Drift <-> freezed mapping, in-memory cache and guarded DB access.
+///
+/// A repository instance is bound to one account/prefs session, so callers
+/// never pass account or scope keys around.
 class TodoRepository {
-  TodoRepository(this._db);
+  TodoRepository(
+    this._db, {
+    this.accountKey = 'default',
+    this.scopeKey = 'default',
+  });
+
+  factory TodoRepository.forSession(
+    TodoDatabase database,
+    TodoSettingsStore settings,
+  ) => TodoRepository(
+    database,
+    accountKey: settings.accountKey,
+    scopeKey: settings.scopeKey,
+  );
 
   static const _deletedStepKind = 'deleted_step';
   static const _preloadedMutationKinds = [
@@ -30,29 +50,32 @@ class TodoRepository {
     'dirty_task',
   ];
 
+  /// Cache buckets are shared by every repository over the same database, so a
+  /// second instance for the same session sees the same data.
+  static final Expando<Map<String, _AccountCache>> _caches = Expando();
+
   final TodoDatabase _db;
-  final Map<String, _AccountCache> _cacheByScope = {};
+  final String accountKey;
+  final String scopeKey;
+
+  _AccountCache get _cache {
+    final perDb = _caches[_db] ??= <String, _AccountCache>{};
+    return perDb.putIfAbsent(scopeKey, _AccountCache.new);
+  }
 
   bool get persistToSqlite => _db.persistToSqlite;
 
-  _AccountCache _cacheFor(String scopeKey) =>
-      _cacheByScope.putIfAbsent(scopeKey, _AccountCache.new);
+  List<TodoList>? readCachedLists() => _cache.lists;
 
-  List<TodoList>? readCachedLists(String scopeKey) => _cacheFor(scopeKey).lists;
+  List<ListGroup> readCachedGroups() => _cache.groups;
 
-  List<ListGroup> readCachedGroups(String scopeKey) =>
-      _cacheFor(scopeKey).groups;
+  List<TaskItem> readCachedTasks() => _cache.tasks;
 
-  List<TaskItem> readCachedTasks(String scopeKey) => _cacheFor(scopeKey).tasks;
+  List<PendingStepDeletion> readCachedPendingDeletedSteps() =>
+      _cache.pendingDeletedSteps;
 
-  List<String> readCachedMutationKeys(String scopeKey, String kind) =>
-      _cacheFor(scopeKey).mutationKeys[kind] ?? const [];
-
-  List<PendingStepDeletion> readCachedPendingDeletedSteps(String scopeKey) =>
-      _cacheFor(scopeKey).pendingDeletedSteps;
-
-  /// Loads an account's rows from SQLite into the in-memory cache.
-  AsyncAppResult<Unit> preloadAccount(String accountKey, {String? scopeKey}) {
+  /// Loads this account's rows from SQLite into the in-memory cache.
+  AsyncAppResult<Unit> preload() {
     return guardDbCall(() async {
       if (_db.persistToSqlite) {
         final listRows = await _db.selectTodoListRecords(accountKey);
@@ -79,7 +102,7 @@ class TodoRepository {
           for (final row in stepRows) _decodePendingStepDeletion(row),
         ];
 
-        final cache = _cacheFor(scopeKey ?? accountKey);
+        final cache = _cache;
         cache.lists = lists.isEmpty ? null : List<TodoList>.unmodifiable(lists);
         cache.groups = List<ListGroup>.unmodifiable(groups);
         cache.tasks = List<TaskItem>.unmodifiable(tasks);
@@ -97,69 +120,40 @@ class TodoRepository {
     }, operation: 'preloadAccount');
   }
 
-  AsyncAppResult<Unit> writeLists(
-    String accountKey,
-    List<TodoList> lists, {
-    String? scopeKey,
-  }) {
+  AsyncAppResult<Unit> saveLists(List<TodoList> lists) {
     return guardDbCall(() async {
       if (_db.persistToSqlite) {
-        await _db.replaceTodoListRecords(
-          accountKey,
-          _encodeTodoLists(accountKey, lists),
-        );
+        await _db.replaceTodoListRecords(accountKey, _encodeTodoLists(lists));
       }
-      _cacheFor(scopeKey ?? accountKey).lists = List<TodoList>.unmodifiable(
-        lists,
-      );
+      _cache.lists = List<TodoList>.unmodifiable(lists);
       return unit;
-    }, operation: 'writeLists');
+    }, operation: 'saveLists');
   }
 
-  AsyncAppResult<Unit> writeGroups(
-    String accountKey,
-    List<ListGroup> groups, {
-    String? scopeKey,
-  }) {
+  AsyncAppResult<Unit> saveGroups(List<ListGroup> groups) {
     return guardDbCall(() async {
       if (_db.persistToSqlite) {
         await _db.replaceListGroupRecords(
           accountKey,
-          _encodeListGroups(accountKey, groups),
+          _encodeListGroups(groups),
         );
       }
-      _cacheFor(scopeKey ?? accountKey).groups = List<ListGroup>.unmodifiable(
-        groups,
-      );
+      _cache.groups = List<ListGroup>.unmodifiable(groups);
       return unit;
-    }, operation: 'writeGroups');
+    }, operation: 'saveGroups');
   }
 
-  AsyncAppResult<Unit> writeTasks(
-    String accountKey,
-    List<TaskItem> tasks, {
-    String? scopeKey,
-  }) {
+  AsyncAppResult<Unit> saveTasks(List<TaskItem> tasks) {
     return guardDbCall(() async {
       if (_db.persistToSqlite) {
-        await _db.replaceTaskItemRecords(
-          accountKey,
-          _encodeTaskItems(accountKey, tasks),
-        );
+        await _db.replaceTaskItemRecords(accountKey, _encodeTaskItems(tasks));
       }
-      _cacheFor(scopeKey ?? accountKey).tasks = List<TaskItem>.unmodifiable(
-        tasks,
-      );
+      _cache.tasks = List<TaskItem>.unmodifiable(tasks);
       return unit;
-    }, operation: 'writeTasks');
+    }, operation: 'saveTasks');
   }
 
-  AsyncAppResult<Unit> writeMutationKeys(
-    String accountKey,
-    String kind,
-    Iterable<String> keys, {
-    String? scopeKey,
-  }) {
+  AsyncAppResult<Unit> saveMutationKeys(String kind, Iterable<String> keys) {
     return guardDbCall(() async {
       final list = List<String>.unmodifiable(keys);
       if (_db.persistToSqlite) {
@@ -178,16 +172,14 @@ class TodoRepository {
           ],
         );
       }
-      _cacheFor(scopeKey ?? accountKey).mutationKeys[kind] = list;
+      _cache.mutationKeys[kind] = list;
       return unit;
-    }, operation: 'writeMutationKeys($kind)');
+    }, operation: 'saveMutationKeys($kind)');
   }
 
-  AsyncAppResult<Unit> writePendingDeletedSteps(
-    String accountKey,
-    List<PendingStepDeletion> items, {
-    String? scopeKey,
-  }) {
+  AsyncAppResult<Unit> savePendingDeletedSteps(
+    List<PendingStepDeletion> items,
+  ) {
     return guardDbCall(() async {
       final list = List<PendingStepDeletion>.unmodifiable(items);
       if (_db.persistToSqlite) {
@@ -206,23 +198,59 @@ class TodoRepository {
           ],
         );
       }
-      _cacheFor(scopeKey ?? accountKey).pendingDeletedSteps = list;
+      _cache.pendingDeletedSteps = list;
       return unit;
-    }, operation: 'writePendingDeletedSteps');
+    }, operation: 'savePendingDeletedSteps');
   }
 
-  AsyncAppResult<Unit> deleteAccountRecords(
-    String accountKey, {
-    String? scopeKey,
-  }) {
+  AsyncAppResult<Unit> deleteAccountRecords() {
     return guardDbCall(() async {
       if (_db.persistToSqlite) {
         await _db.deleteAllAccountRecords(accountKey);
       }
-      _cacheByScope.remove(scopeKey ?? accountKey);
+      _caches[_db]?.remove(scopeKey);
       return unit;
     }, operation: 'deleteAccountRecords');
   }
+
+  List<String> _readMutationKeys(String kind) =>
+      _cache.mutationKeys[kind] ?? const [];
+
+  List<String> loadPendingDeletedListRemoteIds() =>
+      _readMutationKeys('deleted_list');
+
+  AsyncAppResult<Unit> savePendingDeletedListRemoteIds(List<String> ids) =>
+      saveMutationKeys('deleted_list', ids);
+
+  List<String> loadPendingDeletedTaskRemoteIds() =>
+      _readMutationKeys('deleted_task');
+
+  AsyncAppResult<Unit> savePendingDeletedTaskRemoteIds(List<String> ids) =>
+      saveMutationKeys('deleted_task', ids);
+
+  List<String> loadPendingDeletedGroupRemoteIds() =>
+      _readMutationKeys('deleted_group');
+
+  AsyncAppResult<Unit> savePendingDeletedGroupRemoteIds(List<String> ids) =>
+      saveMutationKeys('deleted_group', ids);
+
+  List<PendingStepDeletion> loadPendingDeletedSteps() =>
+      readCachedPendingDeletedSteps();
+
+  Set<String> loadDirtyListIds() => _readMutationKeys('dirty_list').toSet();
+
+  AsyncAppResult<Unit> saveDirtyListIds(Set<String> ids) =>
+      saveMutationKeys('dirty_list', ids);
+
+  Set<String> loadDirtyGroupIds() => _readMutationKeys('dirty_group').toSet();
+
+  AsyncAppResult<Unit> saveDirtyGroupIds(Set<String> ids) =>
+      saveMutationKeys('dirty_group', ids);
+
+  Set<String> loadDirtyTaskIds() => _readMutationKeys('dirty_task').toSet();
+
+  AsyncAppResult<Unit> saveDirtyTaskIds(Set<String> ids) =>
+      saveMutationKeys('dirty_task', ids);
 
   List<TodoList> _decodeTodoLists(List<TodoListRecord> rows) => [
     for (final row in rows) _decodeTodoList(row),
@@ -255,10 +283,7 @@ class TodoRepository {
     throw FormatException('Expected a JSON object payload.', payloadJson);
   }
 
-  List<TodoListRecordsCompanion> _encodeTodoLists(
-    String accountKey,
-    List<TodoList> lists,
-  ) => [
+  List<TodoListRecordsCompanion> _encodeTodoLists(List<TodoList> lists) => [
     for (var i = 0; i < lists.length; i++)
       TodoListRecordsCompanion.insert(
         accountKey: accountKey,
@@ -268,10 +293,7 @@ class TodoRepository {
       ),
   ];
 
-  List<ListGroupRecordsCompanion> _encodeListGroups(
-    String accountKey,
-    List<ListGroup> groups,
-  ) => [
+  List<ListGroupRecordsCompanion> _encodeListGroups(List<ListGroup> groups) => [
     for (var i = 0; i < groups.length; i++)
       ListGroupRecordsCompanion.insert(
         accountKey: accountKey,
@@ -281,10 +303,7 @@ class TodoRepository {
       ),
   ];
 
-  List<TaskItemRecordsCompanion> _encodeTaskItems(
-    String accountKey,
-    List<TaskItem> tasks,
-  ) => [
+  List<TaskItemRecordsCompanion> _encodeTaskItems(List<TaskItem> tasks) => [
     for (var i = 0; i < tasks.length; i++)
       TaskItemRecordsCompanion.insert(
         accountKey: accountKey,

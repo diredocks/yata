@@ -3,7 +3,9 @@ import 'package:result_dart/result_dart.dart';
 import '../auth/microsoft_auth_service.dart';
 import '../core/error/app_error.dart';
 import '../core/result/app_result.dart';
-import '../data/todo_local_storage.dart';
+import '../data/todo_repository.dart';
+import '../data/todo_settings_store.dart';
+import '../models/pending_step_deletion.dart';
 import '../data/todo_provider.dart';
 import '../homeview/home_view_ordering.dart';
 import '../models/account.dart';
@@ -60,7 +62,7 @@ class CloudSyncService {
   /// Resolves valid MSA bearer token, CID, and discovered Substrate base URL.
   AsyncAppResult<SubstrateRequestContext> resolveContext(
     MicrosoftAccount account,
-    TodoLocalStorage storage, {
+    TodoSettingsStore settings, {
     bool forceRefreshToken = false,
   }) {
     return guardApiCall(() async {
@@ -92,10 +94,10 @@ class CloudSyncService {
       final cid = tokens.userId.isNotEmpty
           ? tokens.userId
           : account.microsoftUserId;
-      var baseUrl = storage.loadCachedEndpointUrl();
+      var baseUrl = settings.loadCachedEndpointUrl();
       if (baseUrl == null) {
         baseUrl = await authClient.discoverTodoEndpoint(cid);
-        await storage.saveCachedEndpointUrl(baseUrl);
+        await settings.saveCachedEndpointUrl(baseUrl);
       }
       return SubstrateRequestContext(
         baseUrl: baseUrl,
@@ -109,7 +111,8 @@ class CloudSyncService {
   AsyncAppResult<SyncOutcome> syncAccount({
     required MicrosoftAccount account,
     required TodoState currentState,
-    required TodoLocalStorage storage,
+    required TodoRepository repository,
+    required TodoSettingsStore settings,
     required String Function(String prefix) idGenerator,
   }) {
     Future<AppResult<SyncOutcome>> run(SubstrateRequestContext ctx) =>
@@ -117,19 +120,22 @@ class CloudSyncService {
           () => _executeSyncPhases(
             ctx: ctx,
             currentState: currentState,
-            storage: storage,
+            repository: repository,
+            settings: settings,
             idGenerator: idGenerator,
           ),
           operation: 'syncPhases',
         );
 
-    return resolveContext(account, storage).flatMap(run).recover((error) async {
+    return resolveContext(account, settings).flatMap(run).recover((
+      error,
+    ) async {
       if (error is! AuthError) return Failure<SyncOutcome, AppError>(error);
 
       // 401: force a token refresh and retry once.
       final retried = resolveContext(
         account,
-        storage,
+        settings,
         forceRefreshToken: true,
       ).flatMap(run);
       return retried.mapError(
@@ -148,7 +154,8 @@ class CloudSyncService {
   Future<SyncOutcome> _executeSyncPhases({
     required SubstrateRequestContext ctx,
     required TodoState currentState,
-    required TodoLocalStorage storage,
+    required TodoRepository repository,
+    required TodoSettingsStore settings,
     required String Function(String prefix) idGenerator,
   }) async {
     final nowUtc = DateTime.now().toUtc();
@@ -156,10 +163,10 @@ class CloudSyncService {
     var workingLists = [...currentState.lists];
     var workingTasks = [...currentState.tasks];
 
-    final dirtySettingKeys = storage.loadDirtySettingKeys().toSet();
-    final dirtyGroupIds = storage.loadDirtyGroupIds().toSet();
-    final dirtyListIds = storage.loadDirtyListIds().toSet();
-    final dirtyTaskIds = storage.loadDirtyTaskIds().toSet();
+    final dirtySettingKeys = settings.loadDirtySettingKeys().toSet();
+    final dirtyGroupIds = repository.loadDirtyGroupIds().toSet();
+    final dirtyListIds = repository.loadDirtyListIds().toSet();
+    final dirtyTaskIds = repository.loadDirtyTaskIds().toSet();
 
     final syncedSettingKeys = <String>{};
     final syncedGroupIds = <String>{};
@@ -181,7 +188,7 @@ class CloudSyncService {
     }
 
     // Phase 3: Push step, task, and folder deletions.
-    for (final stepDel in storage.loadPendingDeletedSteps()) {
+    for (final stepDel in repository.loadPendingDeletedSteps()) {
       try {
         await todoApi.deleteStep(
           ctx,
@@ -198,7 +205,7 @@ class CloudSyncService {
       }
     }
 
-    for (final taskRemoteId in storage.loadPendingDeletedTaskRemoteIds()) {
+    for (final taskRemoteId in repository.loadPendingDeletedTaskRemoteIds()) {
       try {
         await todoApi.deleteTask(ctx, taskRemoteId);
         processedDeletedTaskRemoteIds.add(taskRemoteId);
@@ -211,7 +218,7 @@ class CloudSyncService {
       }
     }
 
-    for (final listRemoteId in storage.loadPendingDeletedListRemoteIds()) {
+    for (final listRemoteId in repository.loadPendingDeletedListRemoteIds()) {
       try {
         await todoApi.deleteFolder(ctx, listRemoteId);
         processedDeletedListRemoteIds.add(listRemoteId);
@@ -351,7 +358,7 @@ class CloudSyncService {
     }
 
     // Phase 6: Delete pending folder groups (after ungrouping member folders).
-    for (final groupRemoteId in storage.loadPendingDeletedGroupRemoteIds()) {
+    for (final groupRemoteId in repository.loadPendingDeletedGroupRemoteIds()) {
       try {
         await todoApi.deleteFolderGroup(ctx, groupRemoteId);
         processedDeletedGroupRemoteIds.add(groupRemoteId);
@@ -378,12 +385,12 @@ class CloudSyncService {
 
     // Phase 8: Pull folder groups delta (with 410 full-resync recovery).
     final groupsDeltaResult = await _fetchWithDeltaRecovery(
-      deltaLink: storage.loadGroupsDeltaLink(),
-      clearDeltaLink: () => storage.saveGroupsDeltaLink(null),
+      deltaLink: settings.loadGroupsDeltaLink(),
+      clearDeltaLink: () => settings.saveGroupsDeltaLink(null),
       fetch: (dl) => todoApi.fetchFolderGroupsDelta(ctx, deltaLink: dl),
     );
     if (groupsDeltaResult.deltaLink != null) {
-      await storage.saveGroupsDeltaLink(groupsDeltaResult.deltaLink);
+      await settings.saveGroupsDeltaLink(groupsDeltaResult.deltaLink);
     }
     final remainingDirtyGroups = dirtyGroupIds.difference(syncedGroupIds);
     workingGroups = _mergeFolderGroupsDelta(
@@ -395,12 +402,12 @@ class CloudSyncService {
 
     // Phase 9: Pull folders delta (with 410 full-resync recovery).
     final foldersDeltaResult = await _fetchWithDeltaRecovery(
-      deltaLink: storage.loadFoldersDeltaLink(),
-      clearDeltaLink: () => storage.saveFoldersDeltaLink(null),
+      deltaLink: settings.loadFoldersDeltaLink(),
+      clearDeltaLink: () => settings.saveFoldersDeltaLink(null),
       fetch: (dl) => todoApi.fetchFoldersDelta(ctx, deltaLink: dl),
     );
     if (foldersDeltaResult.deltaLink != null) {
-      await storage.saveFoldersDeltaLink(foldersDeltaResult.deltaLink);
+      await settings.saveFoldersDeltaLink(foldersDeltaResult.deltaLink);
     }
     final remainingDirtyLists = dirtyListIds.difference(syncedListIds);
     final groupLocalIdByRemoteId = {
@@ -485,7 +492,7 @@ class CloudSyncService {
 
     // Phase 10b: Pull per-folder tasks delta (with 410 recovery + move safety).
     final taskDeltaLinks = Map<String, String>.from(
-      storage.loadTaskDeltaLinks(),
+      settings.loadTaskDeltaLinks(),
     );
     final remainingDirtyTasks = dirtyTaskIds.difference(syncedTaskIds);
     final localListIdByFolderRemoteId = {
@@ -510,7 +517,7 @@ class CloudSyncService {
         deltaLink: taskDeltaLinks[folderRemoteId],
         clearDeltaLink: () async {
           taskDeltaLinks.remove(folderRemoteId);
-          await storage.saveTaskDeltaLinks(taskDeltaLinks);
+          await settings.saveTaskDeltaLinks(taskDeltaLinks);
         },
         fetch: (dl) => todoApi.fetchTasksDelta(
           ctx,
@@ -591,7 +598,7 @@ class CloudSyncService {
       tasksById.remove(localId);
     }
 
-    await storage.saveTaskDeltaLinks(taskDeltaLinks);
+    await settings.saveTaskDeltaLinks(taskDeltaLinks);
 
     final mergedTasks = tasksById.values.toList();
     return SyncOutcome(

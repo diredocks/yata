@@ -3,7 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/core/error/app_error.dart';
-import 'package:yata/data/todo_local_storage.dart';
+import 'package:yata/data/todo_repository.dart';
+import 'package:yata/data/todo_settings_store.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/detailview/detail_view_screen.dart';
 import 'package:yata/detailview/details/detail_cards.dart';
@@ -70,7 +71,7 @@ void main() {
     await tester.tap(find.text('Use system dynamic color'));
     await tester.pumpAndSettle();
 
-    final reloaded = TodoLocalStorage(prefs).load().fold(
+    final reloaded = TodoSettingsStore(prefs).load().fold(
       (snapshot) => snapshot,
       (error) => fail('local snapshot load failed: ${error.describe()}'),
     );
@@ -82,14 +83,17 @@ void main() {
     (WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
-      final storage = TodoLocalStorage(prefs);
+      final repository = TodoRepository.forSession(
+        sharedFallbackTodoDatabase,
+        TodoSettingsStore(prefs),
+      );
       final task = TaskItem(
         id: 't_detail',
         listId: 'tasks',
         title: 'Check detail layout',
         createdAt: DateTime(2026, 11, 22),
       );
-      await storage.saveTasks([task]);
+      await repository.saveTasks([task]);
 
       final dynamicLight = ColorScheme.fromSeed(
         seedColor: const Color(0xFF00897B),

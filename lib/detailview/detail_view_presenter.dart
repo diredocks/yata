@@ -25,7 +25,7 @@ class DetailViewPresenter {
         selectedTaskId: clearSelectedTaskId ? null : _state.selectedTaskId,
       ),
     );
-    _store.storage.saveTasks(updated);
+    _store.repository.saveTasks(updated);
   }
 
   void _updateTaskById(

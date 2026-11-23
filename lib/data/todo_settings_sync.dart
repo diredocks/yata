@@ -2,7 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../models/todo_list.dart';
 import '../sync/todo_wire_codecs.dart';
-import 'todo_local_storage.dart';
+import 'todo_settings_store.dart';
 import 'todo_state.dart';
 
 class SmartListSettingKeys {
@@ -223,7 +223,7 @@ Set<String> detectGlobalSettingChanges(TodoState prev, TodoState next) {
 }
 
 Future<({TodoState state, List<TodoList> lists})> applySyncedSettingsPatch({
-  required TodoLocalStorage storage,
+  required TodoSettingsStore settings,
   required TodoState current,
   required TodoState? snapshot,
   required SyncedSettingsPatch patch,
@@ -241,44 +241,44 @@ Future<({TodoState state, List<TodoList> lists})> applySyncedSettingsPatch({
   if (patch.confirmBeforeDeleting != null &&
       canApplySetting(TodoSettingKeys.confirmOnDelete)) {
     next = next.copyWith(confirmBeforeDeleting: patch.confirmBeforeDeleting!);
-    await storage.saveConfirmBeforeDeleting(next.confirmBeforeDeleting);
+    await settings.saveConfirmBeforeDeleting(next.confirmBeforeDeleting);
   }
   if (patch.playCompletionSound != null &&
       canApplySetting(TodoSettingKeys.soundOnCompletion)) {
     next = next.copyWith(playCompletionSound: patch.playCompletionSound!);
-    await storage.savePlayCompletionSound(next.playCompletionSound);
+    await settings.savePlayCompletionSound(next.playCompletionSound);
   }
   if (patch.showDueTodayInMyDay != null &&
       canApplySetting(TodoSettingKeys.myDayShowDueTasks)) {
     next = next.copyWith(showDueTodayInMyDay: patch.showDueTodayInMyDay!);
-    await storage.saveShowDueTodayInMyDay(next.showDueTodayInMyDay);
+    await settings.saveShowDueTodayInMyDay(next.showDueTodayInMyDay);
   }
   if (patch.addNewTasksOnTop != null &&
       canApplySetting(TodoSettingKeys.addTasksToTop)) {
     next = next.copyWith(addNewTasksOnTop: patch.addNewTasksOnTop!);
-    await storage.saveAddNewTasksOnTop(next.addNewTasksOnTop);
+    await settings.saveAddNewTasksOnTop(next.addNewTasksOnTop);
   }
   if (patch.moveStarredTasksToTop != null &&
       canApplySetting(TodoSettingKeys.moveStarredTasksToTop)) {
     next = next.copyWith(moveStarredTasksToTop: patch.moveStarredTasksToTop!);
-    await storage.saveMoveStarredTasksToTop(next.moveStarredTasksToTop);
+    await settings.saveMoveStarredTasksToTop(next.moveStarredTasksToTop);
   }
   if (patch.startOfWeek != null &&
       canApplySetting(TodoSettingKeys.startWeekFrom)) {
     next = next.copyWith(startOfWeek: patch.startOfWeek!);
-    await storage.saveStartOfWeek(next.startOfWeek);
+    await settings.saveStartOfWeek(next.startOfWeek);
   }
   if (patch.remindersEnabled != null &&
       canApplySetting(TodoSettingKeys.reminderNotifications)) {
     next = next.copyWith(remindersEnabled: patch.remindersEnabled!);
-    await storage.saveRemindersEnabled(next.remindersEnabled);
+    await settings.saveRemindersEnabled(next.remindersEnabled);
   }
   if (patch.dueTodayNotificationsEnabled != null &&
       canApplySetting(TodoSettingKeys.dueDateNotifications)) {
     next = next.copyWith(
       dueTodayNotificationsEnabled: patch.dueTodayNotificationsEnabled!,
     );
-    await storage.saveDueTodayNotificationsEnabled(
+    await settings.saveDueTodayNotificationsEnabled(
       next.dueTodayNotificationsEnabled,
     );
   }
@@ -289,19 +289,19 @@ Future<({TodoState state, List<TodoList> lists})> applySyncedSettingsPatch({
       dueTodayNotificationHour: t.hour,
       dueTodayNotificationMinute: t.minute,
     );
-    await storage.saveDueTodayNotificationTime(t.hour, t.minute);
+    await settings.saveDueTodayNotificationTime(t.hour, t.minute);
   }
   if (patch.pinReminders != null &&
       canApplySetting(TodoSettingKeys.pinReminders)) {
     next = next.copyWith(pinReminders: patch.pinReminders!);
-    await storage.savePinReminders(next.pinReminders);
+    await settings.savePinReminders(next.pinReminders);
   }
   if (patch.routineNotificationEnabled != null &&
       canApplySetting(TodoSettingKeys.routineNotification)) {
     next = next.copyWith(
       routineNotificationEnabled: patch.routineNotificationEnabled!,
     );
-    await storage.saveRoutineNotificationEnabled(
+    await settings.saveRoutineNotificationEnabled(
       next.routineNotificationEnabled,
     );
   }
@@ -312,44 +312,44 @@ Future<({TodoState state, List<TodoList> lists})> applySyncedSettingsPatch({
       routineNotificationHour: t.hour,
       routineNotificationMinute: t.minute,
     );
-    await storage.saveRoutineNotificationTime(t.hour, t.minute);
+    await settings.saveRoutineNotificationTime(t.hour, t.minute);
   }
   if (patch.showSmartListImportant != null &&
       canApplySetting(TodoSettingKeys.smartListStarredEnabled)) {
     next = next.copyWith(showSmartListImportant: patch.showSmartListImportant!);
-    await storage.saveShowSmartListImportant(next.showSmartListImportant);
+    await settings.saveShowSmartListImportant(next.showSmartListImportant);
   }
   if (patch.showSmartListPlanned != null &&
       canApplySetting(TodoSettingKeys.smartListPlannedEnabled)) {
     next = next.copyWith(showSmartListPlanned: patch.showSmartListPlanned!);
-    await storage.saveShowSmartListPlanned(next.showSmartListPlanned);
+    await settings.saveShowSmartListPlanned(next.showSmartListPlanned);
   }
   if (patch.showSmartListAll != null &&
       canApplySetting(TodoSettingKeys.smartListAllEnabled)) {
     next = next.copyWith(showSmartListAll: patch.showSmartListAll!);
-    await storage.saveShowSmartListAll(next.showSmartListAll);
+    await settings.saveShowSmartListAll(next.showSmartListAll);
   }
   if (patch.showSmartListCompleted != null &&
       canApplySetting(TodoSettingKeys.smartListCompletedEnabled)) {
     next = next.copyWith(showSmartListCompleted: patch.showSmartListCompleted!);
-    await storage.saveShowSmartListCompleted(next.showSmartListCompleted);
+    await settings.saveShowSmartListCompleted(next.showSmartListCompleted);
   }
   if (patch.autoHideEmptySmartLists != null &&
       canApplySetting(TodoSettingKeys.smartListsAutoHide)) {
     next = next.copyWith(
       autoHideEmptySmartLists: patch.autoHideEmptySmartLists!,
     );
-    await storage.saveAutoHideEmptySmartLists(next.autoHideEmptySmartLists);
+    await settings.saveAutoHideEmptySmartLists(next.autoHideEmptySmartLists);
   }
   if (patch.plannedDueDateFilter != null &&
       canApplySetting(TodoSettingKeys.smartListPlannedDueDateFilter)) {
     next = next.copyWith(plannedDueDateFilter: patch.plannedDueDateFilter!);
-    await storage.savePlannedDueDateFilter(next.plannedDueDateFilter);
+    await settings.savePlannedDueDateFilter(next.plannedDueDateFilter);
   }
   if (patch.plannedGroupOption != null &&
       canApplySetting(TodoSettingKeys.smartListPlannedGroupType)) {
     next = next.copyWith(plannedGroupOption: patch.plannedGroupOption!);
-    await storage.savePlannedGroupOption(next.plannedGroupOption);
+    await settings.savePlannedGroupOption(next.plannedGroupOption);
   }
 
   if (patch.smartListPatches.isEmpty) {

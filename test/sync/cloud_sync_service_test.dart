@@ -9,7 +9,9 @@ import 'package:yata/account/account_local_storage.dart';
 import 'package:yata/account/account_provider.dart';
 import 'package:yata/core/error/app_error.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
-import 'package:yata/data/todo_local_storage.dart';
+import 'package:yata/data/todo_repository.dart';
+import 'package:yata/data/todo_settings_store.dart';
+import 'package:yata/models/default_lists.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/homeview/home_view_presenter.dart';
 import 'package:yata/models/account.dart';
@@ -33,7 +35,7 @@ void main() {
   group('CloudSyncService', () {
     test('pulls remote groups, emoji/theme folders, tasks, HTML notes, MyDay, recurrence, settings and deletes via delta', () async {
       final prefs = await SharedPreferences.getInstance();
-      final storage = TodoLocalStorage(prefs, accountId: 'acct_1');
+      final storage = _session(prefs, 'acct_1');
       final tokenStorage = AuthTokenStorage(prefs);
       await tokenStorage.saveTokens(
         'acct_1',
@@ -237,7 +239,7 @@ void main() {
       expect(milk.steps.single.isCompleted, isTrue);
 
       // Sync #2: Delta folder deletion removes 'rf-shop' using saved DeltaLink
-      expect(storage.loadFoldersDeltaLink(), 'dl-folders-v1');
+      expect(storage.settings.loadFoldersDeltaLink(), 'dl-folders-v1');
       await container.read(syncProvider.notifier).syncNow();
       expect(fakeApi.callLog, contains('GET taskfolders(dl-folders-v1)'));
       state = container.read(todoProvider);
@@ -269,12 +271,12 @@ void main() {
         await AccountLocalStorage(prefs).saveAccounts([account]);
         await AccountLocalStorage(prefs).saveActiveAccountId('acct_1');
 
-        final storage = TodoLocalStorage(prefs, accountId: 'acct_1');
-        await storage.saveGroups(const [
+        final storage = _session(prefs, 'acct_1');
+        await storage.repository.saveGroups(const [
           ListGroup(id: 'grp_1', title: 'Work', remoteId: 'rg-1'),
         ]);
-        await storage.saveLists([
-          ...TodoLocalStorage.defaultSmartLists().map(
+        await storage.repository.saveLists([
+          ...defaultSmartLists().map(
             (l) => l.smartType == SmartListType.tasks
                 ? l.copyWith(remoteId: 'rf-default')
                 : l,
@@ -352,16 +354,16 @@ void main() {
       await AccountLocalStorage(prefs).saveAccounts([account]);
       await AccountLocalStorage(prefs).saveActiveAccountId('acct_1');
 
-      final storage = TodoLocalStorage(prefs, accountId: 'acct_1');
-      await storage.saveLists([
-        ...TodoLocalStorage.defaultSmartLists().map(
+      final storage = _session(prefs, 'acct_1');
+      await storage.repository.saveLists([
+        ...defaultSmartLists().map(
           (l) => l.smartType == SmartListType.tasks
               ? l.copyWith(remoteId: 'rf-a')
               : l,
         ),
         const TodoList(id: 'list_b', title: 'List B', remoteId: 'rf-b'),
       ]);
-      await storage.saveTasks([
+      await storage.repository.saveTasks([
         TaskItem(
           id: 't_1',
           listId: 'tasks',
@@ -371,7 +373,7 @@ void main() {
           changeKey: 'ck-stale',
         ),
       ]);
-      await storage.saveTaskDeltaLinks({'rf-a': 'dl-expired'});
+      await storage.settings.saveTaskDeltaLinks({'rf-a': 'dl-expired'});
 
       final fakeApi = FakeSubstrateApi();
       fakeApi.onFetchFoldersDelta = (dl) => const DeltaPageResult(
@@ -469,7 +471,7 @@ void main() {
       expect(fakeApi.callLog, contains('GET tasks/rt-1'));
       // 410 recovered full sync
       expect(fakeApi.callLog, contains('GET tasks(rf-a,null)'));
-      expect(storage.loadTaskDeltaLinks()['rf-a'], 'dl-a-fresh');
+      expect(storage.settings.loadTaskDeltaLinks()['rf-a'], 'dl-a-fresh');
 
       // Moved task MUST survive and belong to 'list_b'
       final tasks = container.read(todoProvider).tasks;
@@ -500,9 +502,9 @@ void main() {
       await AccountLocalStorage(prefs).saveAccounts([account]);
       await AccountLocalStorage(prefs).saveActiveAccountId('acct_1');
 
-      final storage = TodoLocalStorage(prefs, accountId: 'acct_1');
-      await storage.saveLists([
-        ...TodoLocalStorage.defaultSmartLists().map(
+      final storage = _session(prefs, 'acct_1');
+      await storage.repository.saveLists([
+        ...defaultSmartLists().map(
           (l) => l.smartType == SmartListType.tasks
               ? l.copyWith(remoteId: 'rf-default')
               : l,
@@ -510,7 +512,7 @@ void main() {
       ]);
       final tOld = DateTime.utc(2026, 11, 22, 10);
       final tNew = DateTime.utc(2026, 11, 22, 12);
-      await storage.saveTasks([
+      await storage.repository.saveTasks([
         TaskItem(
           id: 't_1',
           listId: 'tasks',
@@ -601,7 +603,7 @@ void main() {
           .firstWhere((t) => t.id == 't_1');
       expect(updatedT1.title, 'Edited Mid-Sync');
       expect(updatedT1.changeKey, 'ck-patched');
-      expect(storage.loadDirtyTaskIds(), contains('t_1'));
+      expect(storage.repository.loadDirtyTaskIds(), contains('t_1'));
     });
 
     test('realtime ignores KeepAlive and own RequestId, triggers sync on remote event, and handles settings/copy/reorder', () async {
@@ -721,7 +723,7 @@ void main() {
 
     test('retries 401 with refreshed token and reports requiresRelogin when refresh fails', () async {
       final prefs = await SharedPreferences.getInstance();
-      final storage = TodoLocalStorage(prefs, accountId: 'acct_1');
+      final storage = _session(prefs, 'acct_1');
       final tokenStorage = AuthTokenStorage(prefs);
       await tokenStorage.saveTokens(
         'acct_1',
@@ -770,7 +772,8 @@ void main() {
           .syncAccount(
             account: account,
             currentState: notifierContainer.read(todoProvider),
-            storage: storage,
+            repository: storage.repository,
+            settings: storage.settings,
             idGenerator: notifierContainer.read(todoProvider.notifier).nextId,
           )
           .fold(
@@ -871,4 +874,15 @@ void main() {
       },
     );
   });
+}
+
+({TodoRepository repository, TodoSettingsStore settings}) _session(
+  SharedPreferences prefs,
+  String accountId,
+) {
+  final settings = TodoSettingsStore(prefs, accountId: accountId);
+  return (
+    repository: TodoRepository.forSession(sharedFallbackTodoDatabase, settings),
+    settings: settings,
+  );
 }

@@ -58,8 +58,8 @@ class HomeViewPresenter {
         selectedTaskId: null,
       ),
     );
-    _store.storage.saveLists(_state.lists);
-    _store.storage.saveSelectedListId(newList.id);
+    _store.repository.saveLists(_state.lists);
+    _store.settings.saveSelectedListId(newList.id);
   }
 
   void toggleGroupExpanded(String groupId) {
@@ -71,7 +71,7 @@ class HomeViewPresenter {
           group,
     ];
     _store.commit(_state.copyWith(groups: updated));
-    _store.storage.saveGroups(updated);
+    _store.repository.saveGroups(updated);
   }
 
   String _deduplicateGroupTitle(String title, {String? excludeGroupId}) {
@@ -106,7 +106,7 @@ class HomeViewPresenter {
     );
     final updated = sortGroupsByOrder([..._state.groups, newGroup]);
     _store.commit(_state.copyWith(groups: updated));
-    _store.storage.saveGroups(_state.groups);
+    _store.repository.saveGroups(_state.groups);
     return newGroup;
   }
 
@@ -118,7 +118,7 @@ class HomeViewPresenter {
         if (group.id == groupId) group.copyWith(title: deduped) else group,
     ];
     _store.commit(_state.copyWith(groups: updated));
-    _store.storage.saveGroups(updated);
+    _store.repository.saveGroups(updated);
   }
 
   void deleteGroup(String groupId) {
@@ -128,8 +128,8 @@ class HomeViewPresenter {
         if (list.groupId == groupId) list.copyWith(groupId: null) else list,
     ];
     _store.commit(_state.copyWith(groups: updatedGroups, lists: updatedLists));
-    _store.storage.saveGroups(updatedGroups);
-    _store.storage.saveLists(updatedLists);
+    _store.repository.saveGroups(updatedGroups);
+    _store.repository.saveLists(updatedLists);
   }
 
   void setGroupLists(String groupId, Set<String> memberListIds) {
@@ -143,7 +143,7 @@ class HomeViewPresenter {
           list,
     ];
     _store.commit(_state.copyWith(lists: updated));
-    _store.storage.saveLists(updated);
+    _store.repository.saveLists(updated);
   }
 
   void reorderTopLevelEntries(
@@ -195,10 +195,10 @@ class HomeViewPresenter {
 
     _store.commit(_state.copyWith(groups: updatedGroups, lists: updatedLists));
     if (groupOrderUpdates.isNotEmpty) {
-      _store.storage.saveGroups(_state.groups);
+      _store.repository.saveGroups(_state.groups);
     }
     if (listOrderUpdates.isNotEmpty) {
-      _store.storage.saveLists(_state.lists);
+      _store.repository.saveLists(_state.lists);
     }
   }
 
@@ -235,7 +235,7 @@ class HomeViewPresenter {
           list,
     ]);
     _store.commit(_state.copyWith(lists: updatedLists));
-    _store.storage.saveLists(_state.lists);
+    _store.repository.saveLists(_state.lists);
   }
 }
 

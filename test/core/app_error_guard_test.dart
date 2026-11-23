@@ -101,10 +101,15 @@ void main() {
   group('TodoRepository', () {
     late TodoDatabase database;
     late TodoRepository repository;
+    var scope = 0;
 
     setUp(() {
       database = TodoDatabase(NativeDatabase.memory());
-      repository = TodoRepository(database);
+      repository = TodoRepository(
+        database,
+        accountKey: 'acct',
+        scopeKey: 'scope-${scope++}',
+      );
     });
 
     tearDown(() async {
@@ -113,15 +118,15 @@ void main() {
 
     test('round-trips Drift DataClass rows to freezed models', () async {
       const list = TodoList(id: 'list_1', title: 'Work');
-      final write = await repository.writeLists('acct', const [list]);
+      final write = await repository.saveLists(const [list]);
       expect(write.isSuccess(), isTrue);
 
       final rows = await database.selectTodoListRecords('acct');
       expect(rows.single.id, 'list_1');
 
-      final reloaded = await repository.preloadAccount('acct');
+      final reloaded = await repository.preload();
       expect(reloaded.isSuccess(), isTrue);
-      expect(repository.readCachedLists('acct')!.single.title, 'Work');
+      expect(repository.readCachedLists()!.single.title, 'Work');
     });
 
     test('returns DatabaseError when a stored payload is corrupted', () async {
@@ -136,7 +141,7 @@ void main() {
             ),
           );
 
-      final result = await repository.preloadAccount('acct');
+      final result = await repository.preload();
       final error = result.exceptionOrNull();
       expect(error, isA<DatabaseError>());
       expect(
@@ -146,15 +151,13 @@ void main() {
     });
 
     test('deleteAccountRecords clears rows and cache', () async {
-      await repository.writeLists('acct', const [
-        TodoList(id: 'list_1', title: 'Work'),
-      ]);
-      expect(repository.readCachedLists('acct'), isNotNull);
+      await repository.saveLists(const [TodoList(id: 'list_1', title: 'Work')]);
+      expect(repository.readCachedLists(), isNotNull);
 
-      final cleared = await repository.deleteAccountRecords('acct');
+      final cleared = await repository.deleteAccountRecords();
       expect(cleared.isSuccess(), isTrue);
       expect(await database.selectTodoListRecords('acct'), isEmpty);
-      expect(repository.readCachedLists('acct'), isNull);
+      expect(repository.readCachedLists(), isNull);
     });
   });
 }

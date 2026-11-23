@@ -165,13 +165,15 @@ class SyncNotifier extends Notifier<SyncState> {
     final service = ref.read(cloudSyncServiceProvider);
     final todoNotifier = ref.read(todoProvider.notifier);
     final snapshotState = ref.read(todoProvider);
-    final storage = todoNotifier.storage;
+    final repository = todoNotifier.repository;
+    final settings = todoNotifier.settings;
 
     final result = await service
         .syncAccount(
           account: active,
           currentState: snapshotState,
-          storage: storage,
+          repository: repository,
+          settings: settings,
           idGenerator: todoNotifier.nextId,
         )
         .flatMap((outcome) async {
@@ -319,8 +321,8 @@ class SyncNotifier extends Notifier<SyncState> {
     if (!ref.read(realtimeSyncEnabledProvider)) return;
 
     final service = ref.read(cloudSyncServiceProvider);
-    final storage = ref.read(todoProvider.notifier).storage;
-    final ctxResult = await service.resolveContext(account, storage);
+    final settings = ref.read(todoProvider.notifier).settings;
+    final ctxResult = await service.resolveContext(account, settings);
 
     if (_disposed || _realtimeAccountId != account.id) return;
 

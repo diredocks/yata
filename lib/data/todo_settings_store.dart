@@ -8,36 +8,28 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../account/account_local_storage.dart';
 import '../core/result/app_result.dart';
-import '../models/pending_step_deletion.dart';
-import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../sync/todo_wire_codecs.dart';
-import 'todo_database.dart';
-import 'todo_repository.dart';
 
-export '../models/pending_step_deletion.dart';
+part 'todo_settings_store.freezed.dart';
 
-part 'todo_local_storage.freezed.dart';
-
+/// Per-account settings that live in [SharedPreferences].
 @freezed
-abstract class TodoSnapshot with _$TodoSnapshot {
-  const factory TodoSnapshot({
-    required List<TodoList> lists,
-    required List<ListGroup> groups,
-    required List<TaskItem> tasks,
-    required String selectedListId,
-    required ThemeMode themeMode,
-    required bool addNewTasksOnTop,
-    required bool moveStarredTasksToTop,
-    required bool playCompletionSound,
-    required bool confirmBeforeDeleting,
-    required bool showDueTodayInMyDay,
-    required WeekStart startOfWeek,
-    required bool showSmartListImportant,
-    required bool showSmartListPlanned,
-    required bool showSmartListAll,
-    required bool showSmartListCompleted,
-    required bool autoHideEmptySmartLists,
+abstract class TodoSettings with _$TodoSettings {
+  const factory TodoSettings({
+    @Default('my_day') String selectedListId,
+    @Default(ThemeMode.system) ThemeMode themeMode,
+    @Default(true) bool addNewTasksOnTop,
+    @Default(true) bool moveStarredTasksToTop,
+    @Default(true) bool playCompletionSound,
+    @Default(true) bool confirmBeforeDeleting,
+    @Default(true) bool showDueTodayInMyDay,
+    @Default(WeekStart.system) WeekStart startOfWeek,
+    @Default(true) bool showSmartListImportant,
+    @Default(true) bool showSmartListPlanned,
+    @Default(false) bool showSmartListAll,
+    @Default(false) bool showSmartListCompleted,
+    @Default(false) bool autoHideEmptySmartLists,
     @Default(PlannedDueDateFilter.all)
     PlannedDueDateFilter plannedDueDateFilter,
     @Default(PlannedGroupOption.byDueDate)
@@ -52,51 +44,34 @@ abstract class TodoSnapshot with _$TodoSnapshot {
     @Default(8) int routineNotificationHour,
     @Default(30) int routineNotificationMinute,
     @Default(false) bool quickAddNotificationEnabled,
+    @Default(<String, bool>{}) Map<String, bool> completedExpandedByList,
     String? lastMyDayResetDate,
-  }) = _TodoSnapshot;
+  }) = _TodoSettings;
 }
 
-class TodoLocalStorage {
-  TodoLocalStorage(
-    this._prefs, {
-    this.accountId,
-    TodoDatabase? database,
-    TodoRepository? repository,
-  }) : _repository =
-           repository ??
-           ((database == null || identical(database, _sharedFallbackDb))
-               ? _sharedFallbackRepository
-               : TodoRepository(database));
+/// Owns every `SharedPreferences` key: user settings and sync bookkeeping.
+///
+/// It also derives the repository cache scope, so one prefs session cannot read
+/// data cached by another.
+class TodoSettingsStore {
+  TodoSettingsStore(this._prefs, {this.accountId});
 
-  static final TodoDatabase _sharedFallbackDb = TodoDatabase();
-  static final TodoRepository _sharedFallbackRepository = TodoRepository(
-    _sharedFallbackDb,
-  );
   static const String _sessionKey = 'yata._db_session_id';
 
   final SharedPreferences _prefs;
   final String? accountId;
-  final TodoRepository _repository;
 
-  String get _accountKey =>
+  String get accountKey =>
       (accountId == null || accountId!.isEmpty) ? 'default' : accountId!;
 
-  String get _scopeKey {
+  String get scopeKey {
     var session = _prefs.getString(_sessionKey);
     if (session == null || session.isEmpty) {
       session = generateUuidV4();
       unawaited(_prefs.setString(_sessionKey, session));
     }
-    return '$session::$_accountKey';
+    return '$session::$accountKey';
   }
-
-  /// Preloads this account's rows from the Drift SQLite database into memory.
-  AsyncAppResult<Unit> hydrateFromDatabase() =>
-      _repository.preloadAccount(_accountKey, scopeKey: _scopeKey);
-
-  /// Deletes all Drift records for this account.
-  AsyncAppResult<Unit> clearAccountRecords() =>
-      _repository.deleteAccountRecords(_accountKey, scopeKey: _scopeKey);
 
   String _k(String suffix) {
     final id = accountId;
@@ -142,150 +117,42 @@ class TodoLocalStorage {
   String get _cachedEndpointUrlKey => _k('cached_endpoint_url');
   String get _cachedEndpointFetchedAtKey => _k('cached_endpoint_fetched_at');
 
-  static List<TodoList> defaultSmartLists() {
-    return const [
-      TodoList(
-        id: 'my_day',
-        title: 'My Day',
-        smartType: SmartListType.myDay,
-        themeColor: ListThemeColor.blue,
-        icon: Icons.wb_sunny_outlined,
-      ),
-      TodoList(
-        id: 'important',
-        title: 'Important',
-        smartType: SmartListType.important,
-        themeColor: ListThemeColor.rose,
-        icon: Icons.star_outline,
-        showCompleted: false,
-      ),
-      TodoList(
-        id: 'planned',
-        title: 'Planned',
-        smartType: SmartListType.planned,
-        themeColor: ListThemeColor.teal,
-        icon: Icons.calendar_today_outlined,
-      ),
-      TodoList(
-        id: 'all',
-        title: 'All',
-        smartType: SmartListType.all,
-        themeColor: ListThemeColor.green,
-        icon: Icons.all_inclusive,
-        showCompleted: false,
-      ),
-      TodoList(
-        id: 'completed',
-        title: 'Completed',
-        smartType: SmartListType.completed,
-        themeColor: ListThemeColor.grey,
-        icon: Icons.check_circle_outline,
-      ),
-      TodoList(
-        id: 'tasks',
-        title: 'Tasks',
-        smartType: SmartListType.tasks,
-        themeColor: ListThemeColor.blue,
-        icon: Icons.home_outlined,
-      ),
-    ];
-  }
+  AppResult<TodoSettings> load() =>
+      guardSync(_buildSettings, operation: 'loadTodoSettings');
 
-  /// Snapshot used when the persisted payload cannot be decoded.
-  static TodoSnapshot fallbackSnapshot() => TodoSnapshot(
-    lists: defaultSmartLists(),
-    groups: const [],
-    tasks: const [],
-    selectedListId: 'my_day',
-    themeMode: ThemeMode.system,
-    addNewTasksOnTop: true,
-    moveStarredTasksToTop: true,
-    playCompletionSound: true,
-    confirmBeforeDeleting: true,
-    showDueTodayInMyDay: true,
-    startOfWeek: WeekStart.system,
-    showSmartListImportant: true,
-    showSmartListPlanned: true,
-    showSmartListAll: false,
-    showSmartListCompleted: false,
-    autoHideEmptySmartLists: false,
-  );
-
-  AppResult<TodoSnapshot> load() =>
-      guardSync(_buildSnapshot, operation: 'loadTodoSnapshot');
-
-  TodoSnapshot _buildSnapshot() {
-    final cachedLists = _repository.readCachedLists(_scopeKey);
-    var lists = cachedLists != null ? [...cachedLists] : defaultSmartLists();
-
-    if (lists.isEmpty) {
-      lists = defaultSmartLists();
-    } else if (!lists.any((l) => l.smartType == SmartListType.completed)) {
-      final idx = lists.indexWhere((l) => l.smartType == SmartListType.tasks);
-      final completedList = defaultSmartLists().firstWhere(
-        (l) => l.smartType == SmartListType.completed,
-      );
-      if (idx >= 0) {
-        lists.insert(idx, completedList);
-      } else {
-        lists.add(completedList);
-      }
-    }
-    lists = [
-      for (final list in lists)
-        if (list.smartType == SmartListType.all && list.showCompleted)
-          list.copyWith(showCompleted: false)
-        else if (list.smartType == SmartListType.completed &&
-            !list.showCompleted)
-          list.copyWith(showCompleted: true)
-        else
-          list,
-    ];
-
-    final groups = [..._repository.readCachedGroups(_scopeKey)];
-    final tasks = [..._repository.readCachedTasks(_scopeKey)];
-
-    final selectedListId = _prefs.getString(_selectedListIdKey) ?? 'my_day';
+  TodoSettings _buildSettings() {
     final themeName = _prefs.getString(_themeModeKey);
-    final themeMode = ThemeMode.values.firstWhere(
-      (e) => e.name == themeName,
-      orElse: () => ThemeMode.system,
-    );
     final weekStartName = _prefs.getString(_startOfWeekKey);
-    final startOfWeek = WeekStart.values.firstWhere(
-      (e) => e.name == weekStartName,
-      orElse: () => WeekStart.system,
-    );
     final plannedFilterName = _prefs.getString(_plannedDueDateFilterKey);
-    final plannedDueDateFilter = PlannedDueDateFilter.values.firstWhere(
-      (e) => e.name == plannedFilterName,
-      orElse: () => PlannedDueDateFilter.all,
-    );
     final plannedGroupName = _prefs.getString(_plannedGroupOptionKey);
-    final plannedGroupOption = PlannedGroupOption.values.firstWhere(
-      (e) => e.name == plannedGroupName,
-      orElse: () => PlannedGroupOption.byDueDate,
-    );
-
-    return TodoSnapshot(
-      lists: lists,
-      groups: groups,
-      tasks: tasks,
-      selectedListId: selectedListId,
-      themeMode: themeMode,
+    return TodoSettings(
+      selectedListId: _prefs.getString(_selectedListIdKey) ?? 'my_day',
+      themeMode: ThemeMode.values.firstWhere(
+        (e) => e.name == themeName,
+        orElse: () => ThemeMode.system,
+      ),
       addNewTasksOnTop: _prefs.getBool(_addNewTasksOnTopKey) ?? true,
       moveStarredTasksToTop: _prefs.getBool(_moveStarredToTopKey) ?? true,
       playCompletionSound: _prefs.getBool(_playCompletionSoundKey) ?? true,
       confirmBeforeDeleting: _prefs.getBool(_confirmBeforeDeletingKey) ?? true,
       showDueTodayInMyDay: _prefs.getBool(_showDueTodayInMyDayKey) ?? true,
-      startOfWeek: startOfWeek,
+      startOfWeek: WeekStart.values.firstWhere(
+        (e) => e.name == weekStartName,
+        orElse: () => WeekStart.system,
+      ),
       showSmartListImportant: _prefs.getBool(_showImportantKey) ?? true,
       showSmartListPlanned: _prefs.getBool(_showPlannedKey) ?? true,
       showSmartListAll: _prefs.getBool(_showAllKey) ?? false,
       showSmartListCompleted: _prefs.getBool(_showCompletedListKey) ?? false,
       autoHideEmptySmartLists: _prefs.getBool(_autoHideSmartListsKey) ?? false,
-      plannedDueDateFilter: plannedDueDateFilter,
-      plannedGroupOption: plannedGroupOption,
+      plannedDueDateFilter: PlannedDueDateFilter.values.firstWhere(
+        (e) => e.name == plannedFilterName,
+        orElse: () => PlannedDueDateFilter.all,
+      ),
+      plannedGroupOption: PlannedGroupOption.values.firstWhere(
+        (e) => e.name == plannedGroupName,
+        orElse: () => PlannedGroupOption.byDueDate,
+      ),
       useDynamicColor: _prefs.getBool(_useDynamicColorKey) ?? true,
       remindersEnabled: _prefs.getBool(_remindersEnabledKey) ?? true,
       pinReminders: _prefs.getBool(_pinRemindersKey) ?? false,
@@ -302,18 +169,20 @@ class TodoLocalStorage {
           _prefs.getInt(_routineNotificationMinuteKey) ?? 30,
       quickAddNotificationEnabled:
           _prefs.getBool(_quickAddNotificationKey) ?? false,
+      completedExpandedByList: _parseCompletedExpandedByList(),
       lastMyDayResetDate: _prefs.getString(_lastMyDayResetKey),
     );
   }
 
-  AsyncAppResult<Unit> saveLists(List<TodoList> lists) =>
-      _repository.writeLists(_accountKey, lists, scopeKey: _scopeKey);
-
-  AsyncAppResult<Unit> saveGroups(List<ListGroup> groups) =>
-      _repository.writeGroups(_accountKey, groups, scopeKey: _scopeKey);
-
-  AsyncAppResult<Unit> saveTasks(List<TaskItem> tasks) =>
-      _repository.writeTasks(_accountKey, tasks, scopeKey: _scopeKey);
+  Map<String, bool> _parseCompletedExpandedByList() {
+    final raw = _prefs.getString(_completedExpandedByListKey);
+    if (raw == null) return const {};
+    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    return {
+      for (final entry in decoded.entries)
+        if (entry.value is bool) entry.key: entry.value as bool,
+    };
+  }
 
   AsyncAppResult<Unit> saveSelectedListId(String listId) => guardAsyncUnit(
     () => _prefs.setString(_selectedListIdKey, listId),
@@ -330,19 +199,6 @@ class TodoLocalStorage {
           await _prefs.setString(_lastEnteredListIdKey, listId);
         }
       }, operation: 'saveLastEnteredListId');
-
-  AppResult<Map<String, bool>> loadCompletedExpandedByList() =>
-      guardSync(_parseCompletedExpandedByList, operation: 'loadExpandedState');
-
-  Map<String, bool> _parseCompletedExpandedByList() {
-    final raw = _prefs.getString(_completedExpandedByListKey);
-    if (raw == null) return const {};
-    final decoded = jsonDecode(raw) as Map<String, dynamic>;
-    return {
-      for (final entry in decoded.entries)
-        if (entry.value is bool) entry.key: entry.value as bool,
-    };
-  }
 
   AsyncAppResult<Unit> saveCompletedExpandedByList(Map<String, bool> value) =>
       guardAsyncUnit(() async {
@@ -448,68 +304,6 @@ class TodoLocalStorage {
         () => _prefs.setString(_plannedGroupOptionKey, option.name),
         operation: 'savePlannedGroupOption',
       );
-
-  List<String> loadPendingDeletedListRemoteIds() =>
-      _repository.readCachedMutationKeys(_scopeKey, 'deleted_list');
-
-  AsyncAppResult<Unit> savePendingDeletedListRemoteIds(List<String> ids) =>
-      _repository.writeMutationKeys(
-        _accountKey,
-        'deleted_list',
-        ids,
-        scopeKey: _scopeKey,
-      );
-
-  List<String> loadPendingDeletedTaskRemoteIds() =>
-      _repository.readCachedMutationKeys(_scopeKey, 'deleted_task');
-
-  AsyncAppResult<Unit> savePendingDeletedTaskRemoteIds(List<String> ids) =>
-      _repository.writeMutationKeys(
-        _accountKey,
-        'deleted_task',
-        ids,
-        scopeKey: _scopeKey,
-      );
-
-  List<String> loadPendingDeletedGroupRemoteIds() =>
-      _repository.readCachedMutationKeys(_scopeKey, 'deleted_group');
-
-  AsyncAppResult<Unit> savePendingDeletedGroupRemoteIds(List<String> ids) =>
-      _repository.writeMutationKeys(
-        _accountKey,
-        'deleted_group',
-        ids,
-        scopeKey: _scopeKey,
-      );
-
-  List<PendingStepDeletion> loadPendingDeletedSteps() =>
-      _repository.readCachedPendingDeletedSteps(_scopeKey);
-
-  AsyncAppResult<Unit> savePendingDeletedSteps(
-    List<PendingStepDeletion> items,
-  ) => _repository.writePendingDeletedSteps(
-    _accountKey,
-    items,
-    scopeKey: _scopeKey,
-  );
-
-  Set<String> loadDirtyListIds() =>
-      _repository.readCachedMutationKeys(_scopeKey, 'dirty_list').toSet();
-
-  AsyncAppResult<Unit> saveDirtyListIds(Set<String> ids) => _repository
-      .writeMutationKeys(_accountKey, 'dirty_list', ids, scopeKey: _scopeKey);
-
-  Set<String> loadDirtyGroupIds() =>
-      _repository.readCachedMutationKeys(_scopeKey, 'dirty_group').toSet();
-
-  AsyncAppResult<Unit> saveDirtyGroupIds(Set<String> ids) => _repository
-      .writeMutationKeys(_accountKey, 'dirty_group', ids, scopeKey: _scopeKey);
-
-  Set<String> loadDirtyTaskIds() =>
-      _repository.readCachedMutationKeys(_scopeKey, 'dirty_task').toSet();
-
-  AsyncAppResult<Unit> saveDirtyTaskIds(Set<String> ids) => _repository
-      .writeMutationKeys(_accountKey, 'dirty_task', ids, scopeKey: _scopeKey);
 
   Set<String> loadDirtySettingKeys() =>
       (_prefs.getStringList(_dirtySettingKeysKey) ?? const []).toSet();

@@ -7,7 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/account/account_local_storage.dart';
 import 'package:yata/account/account_provider.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
-import 'package:yata/data/todo_local_storage.dart';
+import 'package:yata/data/todo_repository.dart';
+import 'package:yata/data/todo_settings_store.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/homeview/home_view_ordering.dart';
@@ -140,9 +141,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('Done default task'), findsOneWidget);
         expect(
-          TodoLocalStorage(
-            prefs,
-            accountId: 'acct_tasks_done',
+          TodoRepository.forSession(
+            sharedFallbackTodoDatabase,
+            TodoSettingsStore(prefs, accountId: 'acct_tasks_done'),
           ).loadDirtyListIds(),
           contains('tasks'),
         );

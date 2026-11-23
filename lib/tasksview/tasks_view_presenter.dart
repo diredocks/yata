@@ -22,13 +22,13 @@ class TasksViewPresenter {
   void setPlannedDueDateFilter(PlannedDueDateFilter filter) {
     if (_state.plannedDueDateFilter == filter) return;
     _store.commit(_state.copyWith(plannedDueDateFilter: filter));
-    _store.storage.savePlannedDueDateFilter(filter);
+    _store.settings.savePlannedDueDateFilter(filter);
   }
 
   void setPlannedGroupOption(PlannedGroupOption option) {
     if (_state.plannedGroupOption == option) return;
     _store.commit(_state.copyWith(plannedGroupOption: option));
-    _store.storage.savePlannedGroupOption(option);
+    _store.settings.savePlannedGroupOption(option);
   }
 
   void _updateListById(
@@ -40,12 +40,12 @@ class TasksViewPresenter {
         if (list.id == listId) transform(list) else list,
     ];
     _store.commit(_state.copyWith(lists: updated));
-    _store.storage.saveLists(updated);
+    _store.repository.saveLists(updated);
   }
 
   void _commitTasks(List<TaskItem> updated) {
     _store.commit(_state.copyWith(tasks: updated));
-    _store.storage.saveTasks(updated);
+    _store.repository.saveTasks(updated);
   }
 
   void setListSortOption(
@@ -193,10 +193,10 @@ class TasksViewPresenter {
         selectedTaskId: null,
       ),
     );
-    _store.storage.saveLists(updatedLists);
-    _store.storage.saveTasks(updatedTasks);
-    _store.storage.saveSelectedListId(newListId);
-    if (_store.storage.loadLastEnteredListId() != null) {
+    _store.repository.saveLists(updatedLists);
+    _store.repository.saveTasks(updatedTasks);
+    _store.settings.saveSelectedListId(newListId);
+    if (_store.settings.loadLastEnteredListId() != null) {
       _store.setLastEnteredListId(newListId);
     }
   }
@@ -224,9 +224,9 @@ class TasksViewPresenter {
         selectedTaskId: null,
       ),
     );
-    _store.storage.saveLists(updatedLists);
-    _store.storage.saveTasks(updatedTasks);
-    _store.storage.saveSelectedListId(nextSelected);
+    _store.repository.saveLists(updatedLists);
+    _store.repository.saveTasks(updatedTasks);
+    _store.settings.saveSelectedListId(nextSelected);
   }
 
   void addTask({
@@ -354,8 +354,8 @@ class TasksViewPresenter {
           list,
     ];
     _store.commit(_state.copyWith(lists: updatedLists, tasks: updated));
-    _store.storage.saveLists(_state.lists);
-    _store.storage.saveTasks(_state.tasks);
+    _store.repository.saveLists(_state.lists);
+    _store.repository.saveTasks(_state.tasks);
   }
 
   DateTime _nextDueDate(DateTime base, RecurrenceType recurrence) {

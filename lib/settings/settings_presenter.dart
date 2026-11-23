@@ -15,32 +15,32 @@ class SettingsPresenter {
 
   void setThemeMode(ThemeMode mode) {
     _store.commit(_state.copyWith(themeMode: mode));
-    _store.storage.saveThemeMode(mode);
+    _store.settings.saveThemeMode(mode);
   }
 
   void setUseDynamicColor(bool value) {
     _store.commit(_state.copyWith(useDynamicColor: value));
-    _store.storage.saveUseDynamicColor(value);
+    _store.settings.saveUseDynamicColor(value);
   }
 
   void setAddNewTasksOnTop(bool value) {
     _store.commit(_state.copyWith(addNewTasksOnTop: value));
-    _store.storage.saveAddNewTasksOnTop(value);
+    _store.settings.saveAddNewTasksOnTop(value);
   }
 
   void setMoveStarredTasksToTop(bool value) {
     _store.commit(_state.copyWith(moveStarredTasksToTop: value));
-    _store.storage.saveMoveStarredTasksToTop(value);
+    _store.settings.saveMoveStarredTasksToTop(value);
   }
 
   void setPlayCompletionSound(bool value) {
     _store.commit(_state.copyWith(playCompletionSound: value));
-    _store.storage.savePlayCompletionSound(value);
+    _store.settings.savePlayCompletionSound(value);
   }
 
   void setConfirmBeforeDeleting(bool value) {
     _store.commit(_state.copyWith(confirmBeforeDeleting: value));
-    _store.storage.saveConfirmBeforeDeleting(value);
+    _store.settings.saveConfirmBeforeDeleting(value);
   }
 
   void setShowDueTodayInMyDay(bool value) {
@@ -67,54 +67,54 @@ class SettingsPresenter {
       ),
     );
     if (changed) {
-      _store.storage.saveTasks(updatedTasks);
+      _store.repository.saveTasks(updatedTasks);
     }
-    _store.storage.saveShowDueTodayInMyDay(value);
+    _store.settings.saveShowDueTodayInMyDay(value);
   }
 
   void setStartOfWeek(WeekStart value) {
     _store.commit(_state.copyWith(startOfWeek: value));
-    _store.storage.saveStartOfWeek(value);
+    _store.settings.saveStartOfWeek(value);
   }
 
   void setShowSmartListImportant(bool value) {
     _store.commit(_state.copyWith(showSmartListImportant: value));
-    _store.storage.saveShowSmartListImportant(value);
+    _store.settings.saveShowSmartListImportant(value);
   }
 
   void setShowSmartListPlanned(bool value) {
     _store.commit(_state.copyWith(showSmartListPlanned: value));
-    _store.storage.saveShowSmartListPlanned(value);
+    _store.settings.saveShowSmartListPlanned(value);
   }
 
   void setShowSmartListAll(bool value) {
     _store.commit(_state.copyWith(showSmartListAll: value));
-    _store.storage.saveShowSmartListAll(value);
+    _store.settings.saveShowSmartListAll(value);
   }
 
   void setShowSmartListCompleted(bool value) {
     _store.commit(_state.copyWith(showSmartListCompleted: value));
-    _store.storage.saveShowSmartListCompleted(value);
+    _store.settings.saveShowSmartListCompleted(value);
   }
 
   void setAutoHideEmptySmartLists(bool value) {
     _store.commit(_state.copyWith(autoHideEmptySmartLists: value));
-    _store.storage.saveAutoHideEmptySmartLists(value);
+    _store.settings.saveAutoHideEmptySmartLists(value);
   }
 
   void setRemindersEnabled(bool value) {
     _store.commit(_state.copyWith(remindersEnabled: value));
-    _store.storage.saveRemindersEnabled(value);
+    _store.settings.saveRemindersEnabled(value);
   }
 
   void setPinReminders(bool value) {
     _store.commit(_state.copyWith(pinReminders: value));
-    _store.storage.savePinReminders(value);
+    _store.settings.savePinReminders(value);
   }
 
   void setDueTodayNotificationsEnabled(bool value) {
     _store.commit(_state.copyWith(dueTodayNotificationsEnabled: value));
-    _store.storage.saveDueTodayNotificationsEnabled(value);
+    _store.settings.saveDueTodayNotificationsEnabled(value);
   }
 
   void setDueTodayNotificationTime(int hour, int minute) {
@@ -124,12 +124,12 @@ class SettingsPresenter {
         dueTodayNotificationMinute: minute,
       ),
     );
-    _store.storage.saveDueTodayNotificationTime(hour, minute);
+    _store.settings.saveDueTodayNotificationTime(hour, minute);
   }
 
   void setRoutineNotificationEnabled(bool value) {
     _store.commit(_state.copyWith(routineNotificationEnabled: value));
-    _store.storage.saveRoutineNotificationEnabled(value);
+    _store.settings.saveRoutineNotificationEnabled(value);
   }
 
   void setRoutineNotificationTime(int hour, int minute) {
@@ -139,12 +139,12 @@ class SettingsPresenter {
         routineNotificationMinute: minute,
       ),
     );
-    _store.storage.saveRoutineNotificationTime(hour, minute);
+    _store.settings.saveRoutineNotificationTime(hour, minute);
   }
 
   void setQuickAddNotificationEnabled(bool value) {
     _store.commit(_state.copyWith(quickAddNotificationEnabled: value));
-    _store.storage.saveQuickAddNotificationEnabled(value);
+    _store.settings.saveQuickAddNotificationEnabled(value);
   }
 }
 

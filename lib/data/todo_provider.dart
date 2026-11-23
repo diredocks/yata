@@ -8,11 +8,13 @@ import 'package:result_dart/result_dart.dart';
 import '../account/account_provider.dart';
 import '../core/result/app_result.dart';
 import '../homeview/home_view_ordering.dart';
+import '../models/default_lists.dart';
+import '../models/pending_step_deletion.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import 'todo_database.dart';
-import 'todo_local_storage.dart';
 import 'todo_repository.dart';
+import 'todo_settings_store.dart';
 import 'todo_settings_sync.dart';
 import 'todo_state.dart';
 
@@ -30,21 +32,17 @@ final todoDatabaseProvider = Provider<TodoDatabase?>((ref) {
   return db;
 });
 
-final todoRepositoryProvider = Provider<TodoRepository?>((ref) {
-  final database = ref.watch(todoDatabaseProvider);
-  return database == null ? null : TodoRepository(database);
+final todoSettingsStoreProvider = Provider<TodoSettingsStore>((ref) {
+  return TodoSettingsStore(
+    ref.watch(sharedPreferencesProvider),
+    accountId: ref.watch(accountProvider.select((s) => s.activeAccountId)),
+  );
 });
 
-final todoLocalStorageProvider = Provider<TodoLocalStorage>((ref) {
-  final prefs = ref.watch(sharedPreferencesProvider);
-  final repository = ref.watch(todoRepositoryProvider);
-  final activeAccountId = ref.watch(
-    accountProvider.select((s) => s.activeAccountId),
-  );
-  return TodoLocalStorage(
-    prefs,
-    accountId: activeAccountId,
-    repository: repository,
+final todoRepositoryProvider = Provider<TodoRepository>((ref) {
+  return TodoRepository.forSession(
+    ref.watch(todoDatabaseProvider) ?? sharedFallbackTodoDatabase,
+    ref.watch(todoSettingsStoreProvider),
   );
 });
 
@@ -56,7 +54,9 @@ class TodoNotifier extends Notifier<TodoState> {
     return '${prefix}_${DateTime.now().microsecondsSinceEpoch}_$_idCounter';
   }
 
-  TodoLocalStorage get storage => ref.read(todoLocalStorageProvider);
+  TodoRepository get repository => ref.read(todoRepositoryProvider);
+
+  TodoSettingsStore get settings => ref.read(todoSettingsStoreProvider);
 
   String _todayKey(DateTime dt) =>
       '${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
@@ -86,20 +86,21 @@ class TodoNotifier extends Notifier<TodoState> {
 
   @override
   TodoState build() {
-    final storage = ref.watch(todoLocalStorageProvider);
-    final snapshot = storage.load().fold(
-      (snapshot) => snapshot,
-      (_) => TodoLocalStorage.fallbackSnapshot(),
+    final repository = ref.watch(todoRepositoryProvider);
+    final settingsStore = ref.watch(todoSettingsStoreProvider);
+    final settings = settingsStore.load().fold(
+      (settings) => settings,
+      (_) => const TodoSettings(),
     );
     final now = DateTime.now();
     final todayKey = _todayKey(now);
     var changed = false;
     final tasks = <TaskItem>[];
-    for (final task in snapshot.tasks) {
+    for (final task in repository.readCachedTasks()) {
       final synced = syncMyDayFlag(
         task,
         now: now,
-        showDueTodayInMyDay: snapshot.showDueTodayInMyDay,
+        showDueTodayInMyDay: settings.showDueTodayInMyDay,
       );
       if (!identical(synced, task)) {
         changed = true;
@@ -107,45 +108,42 @@ class TodoNotifier extends Notifier<TodoState> {
       tasks.add(synced);
     }
     if (changed) {
-      storage.saveTasks(tasks);
+      repository.saveTasks(tasks);
     }
-    if (snapshot.lastMyDayResetDate != todayKey) {
-      storage.saveLastMyDayResetDate(todayKey);
+    if (settings.lastMyDayResetDate != todayKey) {
+      settingsStore.saveLastMyDayResetDate(todayKey);
     }
 
     return TodoState(
-      lists: snapshot.lists,
-      groups: snapshot.groups,
+      lists: normalizeSmartLists(repository.readCachedLists()),
+      groups: [...repository.readCachedGroups()],
       tasks: tasks,
-      selectedListId: snapshot.selectedListId,
-      themeMode: snapshot.themeMode,
-      addNewTasksOnTop: snapshot.addNewTasksOnTop,
-      moveStarredTasksToTop: snapshot.moveStarredTasksToTop,
-      playCompletionSound: snapshot.playCompletionSound,
-      confirmBeforeDeleting: snapshot.confirmBeforeDeleting,
-      showDueTodayInMyDay: snapshot.showDueTodayInMyDay,
-      startOfWeek: snapshot.startOfWeek,
-      showSmartListImportant: snapshot.showSmartListImportant,
-      showSmartListPlanned: snapshot.showSmartListPlanned,
-      showSmartListAll: snapshot.showSmartListAll,
-      showSmartListCompleted: snapshot.showSmartListCompleted,
-      autoHideEmptySmartLists: snapshot.autoHideEmptySmartLists,
-      plannedDueDateFilter: snapshot.plannedDueDateFilter,
-      plannedGroupOption: snapshot.plannedGroupOption,
-      useDynamicColor: snapshot.useDynamicColor,
-      remindersEnabled: snapshot.remindersEnabled,
-      pinReminders: snapshot.pinReminders,
-      dueTodayNotificationsEnabled: snapshot.dueTodayNotificationsEnabled,
-      dueTodayNotificationHour: snapshot.dueTodayNotificationHour,
-      dueTodayNotificationMinute: snapshot.dueTodayNotificationMinute,
-      routineNotificationEnabled: snapshot.routineNotificationEnabled,
-      routineNotificationHour: snapshot.routineNotificationHour,
-      routineNotificationMinute: snapshot.routineNotificationMinute,
-      quickAddNotificationEnabled: snapshot.quickAddNotificationEnabled,
-      completedExpandedByList: storage.loadCompletedExpandedByList().fold(
-        (expanded) => expanded,
-        (_) => const <String, bool>{},
-      ),
+      selectedListId: settings.selectedListId,
+      themeMode: settings.themeMode,
+      addNewTasksOnTop: settings.addNewTasksOnTop,
+      moveStarredTasksToTop: settings.moveStarredTasksToTop,
+      playCompletionSound: settings.playCompletionSound,
+      confirmBeforeDeleting: settings.confirmBeforeDeleting,
+      showDueTodayInMyDay: settings.showDueTodayInMyDay,
+      startOfWeek: settings.startOfWeek,
+      showSmartListImportant: settings.showSmartListImportant,
+      showSmartListPlanned: settings.showSmartListPlanned,
+      showSmartListAll: settings.showSmartListAll,
+      showSmartListCompleted: settings.showSmartListCompleted,
+      autoHideEmptySmartLists: settings.autoHideEmptySmartLists,
+      plannedDueDateFilter: settings.plannedDueDateFilter,
+      plannedGroupOption: settings.plannedGroupOption,
+      useDynamicColor: settings.useDynamicColor,
+      remindersEnabled: settings.remindersEnabled,
+      pinReminders: settings.pinReminders,
+      dueTodayNotificationsEnabled: settings.dueTodayNotificationsEnabled,
+      dueTodayNotificationHour: settings.dueTodayNotificationHour,
+      dueTodayNotificationMinute: settings.dueTodayNotificationMinute,
+      routineNotificationEnabled: settings.routineNotificationEnabled,
+      routineNotificationHour: settings.routineNotificationHour,
+      routineNotificationMinute: settings.routineNotificationMinute,
+      quickAddNotificationEnabled: settings.quickAddNotificationEnabled,
+      completedExpandedByList: settings.completedExpandedByList,
     );
   }
 
@@ -160,10 +158,10 @@ class TodoNotifier extends Notifier<TodoState> {
     final listsChanged = !identical(prevLists, nextState.lists);
     final tasksChanged = !identical(prevTasks, nextState.tasks);
 
-    final dirtyGroups = storage.loadDirtyGroupIds().toSet();
-    final dirtyLists = storage.loadDirtyListIds().toSet();
-    final dirtyTasks = storage.loadDirtyTaskIds().toSet();
-    final dirtySettings = storage.loadDirtySettingKeys().toSet();
+    final dirtyGroups = repository.loadDirtyGroupIds().toSet();
+    final dirtyLists = repository.loadDirtyListIds().toSet();
+    final dirtyTasks = repository.loadDirtyTaskIds().toSet();
+    final dirtySettings = settings.loadDirtySettingKeys().toSet();
 
     var stampedGroups = nextState.groups;
     var groupSyncNeeded = false;
@@ -172,7 +170,7 @@ class TodoNotifier extends Notifier<TodoState> {
       final nextGroupIds = {for (final g in nextState.groups) g.id};
 
       final deletedGroupRemoteIds = [
-        ...storage.loadPendingDeletedGroupRemoteIds(),
+        ...repository.loadPendingDeletedGroupRemoteIds(),
       ];
       for (final prev in prevGroups) {
         if (!nextGroupIds.contains(prev.id)) {
@@ -185,7 +183,7 @@ class TodoNotifier extends Notifier<TodoState> {
           }
         }
       }
-      storage.savePendingDeletedGroupRemoteIds(deletedGroupRemoteIds);
+      repository.savePendingDeletedGroupRemoteIds(deletedGroupRemoteIds);
 
       final nextGroups = <ListGroup>[];
       for (final group in nextState.groups) {
@@ -208,7 +206,7 @@ class TodoNotifier extends Notifier<TodoState> {
       final nextListIds = {for (final l in nextState.lists) l.id};
 
       final deletedListRemoteIds = [
-        ...storage.loadPendingDeletedListRemoteIds(),
+        ...repository.loadPendingDeletedListRemoteIds(),
       ];
       for (final prev in prevLists) {
         if (!nextListIds.contains(prev.id)) {
@@ -221,7 +219,7 @@ class TodoNotifier extends Notifier<TodoState> {
           }
         }
       }
-      storage.savePendingDeletedListRemoteIds(deletedListRemoteIds);
+      repository.savePendingDeletedListRemoteIds(deletedListRemoteIds);
 
       final nextLists = <TodoList>[];
       for (final list in nextState.lists) {
@@ -255,7 +253,7 @@ class TodoNotifier extends Notifier<TodoState> {
       final nextTaskIds = {for (final t in nextState.tasks) t.id};
 
       final deletedTaskRemoteIds = [
-        ...storage.loadPendingDeletedTaskRemoteIds(),
+        ...repository.loadPendingDeletedTaskRemoteIds(),
       ];
       for (final prev in prevTasks) {
         if (!nextTaskIds.contains(prev.id)) {
@@ -267,9 +265,9 @@ class TodoNotifier extends Notifier<TodoState> {
           }
         }
       }
-      storage.savePendingDeletedTaskRemoteIds(deletedTaskRemoteIds);
+      repository.savePendingDeletedTaskRemoteIds(deletedTaskRemoteIds);
 
-      final deletedSteps = [...storage.loadPendingDeletedSteps()];
+      final deletedSteps = [...repository.loadPendingDeletedSteps()];
       for (final task in nextState.tasks) {
         final prev = prevTaskById[task.id];
         if (prev != null && prev.remoteId != null) {
@@ -295,7 +293,7 @@ class TodoNotifier extends Notifier<TodoState> {
           }
         }
       }
-      storage.savePendingDeletedSteps(deletedSteps);
+      repository.savePendingDeletedSteps(deletedSteps);
 
       final prevListRemoteById = {
         for (final l in prevLists)
@@ -337,10 +335,10 @@ class TodoNotifier extends Notifier<TodoState> {
       dirtySettings.addAll(changedGlobalSettingKeys);
     }
 
-    storage.saveDirtyGroupIds(dirtyGroups);
-    storage.saveDirtyListIds(dirtyLists);
-    storage.saveDirtyTaskIds(dirtyTasks);
-    storage.saveDirtySettingKeys(dirtySettings);
+    repository.saveDirtyGroupIds(dirtyGroups);
+    repository.saveDirtyListIds(dirtyLists);
+    repository.saveDirtyTaskIds(dirtyTasks);
+    settings.saveDirtySettingKeys(dirtySettings);
 
     state = nextState.copyWith(
       groups: stampedGroups,
@@ -596,22 +594,22 @@ class TodoNotifier extends Notifier<TodoState> {
           )
         : tasks;
 
-    final remainingDirtyGroups = storage.loadDirtyGroupIds().toSet()
+    final remainingDirtyGroups = repository.loadDirtyGroupIds().toSet()
       ..removeAll(syncedGroupIds ?? const {})
       ..addAll(preserveDirtyGroups);
-    final remainingDirtyLists = storage.loadDirtyListIds().toSet()
+    final remainingDirtyLists = repository.loadDirtyListIds().toSet()
       ..removeAll(syncedListIds ?? const {})
       ..addAll(preserveDirtyLists);
-    final remainingDirtyTasks = storage.loadDirtyTaskIds().toSet()
+    final remainingDirtyTasks = repository.loadDirtyTaskIds().toSet()
       ..removeAll(syncedTaskIds ?? const {})
       ..addAll(preserveDirtyTasks);
-    final remainingDirtySettings = storage.loadDirtySettingKeys().toSet()
+    final remainingDirtySettings = settings.loadDirtySettingKeys().toSet()
       ..removeAll(syncedSettingKeys ?? const {});
 
     var nextState = state;
     if (settingsPatch != null) {
       final applied = await applySyncedSettingsPatch(
-        storage: storage,
+        settings: settings,
         current: state,
         snapshot: snapshotState,
         patch: settingsPatch,
@@ -668,20 +666,20 @@ class TodoNotifier extends Notifier<TodoState> {
     ];
 
     final remainingDeletedGroups = processedDeletedGroupRemoteIds == null
-        ? storage.loadPendingDeletedGroupRemoteIds()
-        : storage
+        ? repository.loadPendingDeletedGroupRemoteIds()
+        : repository
               .loadPendingDeletedGroupRemoteIds()
               .where((id) => !processedDeletedGroupRemoteIds.contains(id))
               .toList();
     final remainingDeletedLists = processedDeletedListRemoteIds == null
-        ? storage.loadPendingDeletedListRemoteIds()
-        : storage
+        ? repository.loadPendingDeletedListRemoteIds()
+        : repository
               .loadPendingDeletedListRemoteIds()
               .where((id) => !processedDeletedListRemoteIds.contains(id))
               .toList();
     final remainingDeletedTasks = processedDeletedTaskRemoteIds == null
-        ? storage.loadPendingDeletedTaskRemoteIds()
-        : storage
+        ? repository.loadPendingDeletedTaskRemoteIds()
+        : repository
               .loadPendingDeletedTaskRemoteIds()
               .where((id) => !processedDeletedTaskRemoteIds.contains(id))
               .toList();
@@ -692,8 +690,8 @@ class TodoNotifier extends Notifier<TodoState> {
               '${s.taskRemoteId}::${s.stepRemoteId}',
           };
     final remainingDeletedSteps = processedDeletedSteps == null
-        ? storage.loadPendingDeletedSteps()
-        : storage
+        ? repository.loadPendingDeletedSteps()
+        : repository
               .loadPendingDeletedSteps()
               .where(
                 (s) => !processedStepKeys.contains(
@@ -702,20 +700,20 @@ class TodoNotifier extends Notifier<TodoState> {
               )
               .toList();
 
-    await storage.saveGroups(sortedGroups);
-    await storage.saveLists(sortedLists);
-    await storage.saveTasks(syncedTasks);
+    await repository.saveGroups(sortedGroups);
+    await repository.saveLists(sortedLists);
+    await repository.saveTasks(syncedTasks);
     if (expandedChanged) {
-      await storage.saveCompletedExpandedByList(nextExpanded);
+      await settings.saveCompletedExpandedByList(nextExpanded);
     }
-    await storage.savePendingDeletedGroupRemoteIds(remainingDeletedGroups);
-    await storage.savePendingDeletedListRemoteIds(remainingDeletedLists);
-    await storage.savePendingDeletedTaskRemoteIds(remainingDeletedTasks);
-    await storage.savePendingDeletedSteps(remainingDeletedSteps);
-    await storage.saveDirtyGroupIds(remainingDirtyGroups);
-    await storage.saveDirtyListIds(remainingDirtyLists);
-    await storage.saveDirtyTaskIds(remainingDirtyTasks);
-    await storage.saveDirtySettingKeys(remainingDirtySettings);
+    await repository.savePendingDeletedGroupRemoteIds(remainingDeletedGroups);
+    await repository.savePendingDeletedListRemoteIds(remainingDeletedLists);
+    await repository.savePendingDeletedTaskRemoteIds(remainingDeletedTasks);
+    await repository.savePendingDeletedSteps(remainingDeletedSteps);
+    await repository.saveDirtyGroupIds(remainingDirtyGroups);
+    await repository.saveDirtyListIds(remainingDirtyLists);
+    await repository.saveDirtyTaskIds(remainingDirtyTasks);
+    await settings.saveDirtySettingKeys(remainingDirtySettings);
 
     final validSelectedListId =
         sortedLists.any((l) => l.id == nextState.selectedListId)
@@ -734,11 +732,11 @@ class TodoNotifier extends Notifier<TodoState> {
 
   void selectList(String listId) {
     state = state.copyWith(selectedListId: listId, selectedTaskId: null);
-    storage.saveSelectedListId(listId);
+    settings.saveSelectedListId(listId);
   }
 
   void setLastEnteredListId(String? listId) {
-    storage.saveLastEnteredListId(listId);
+    settings.saveLastEnteredListId(listId);
   }
 
   void setCompletedExpanded(String listId, bool expanded) {
@@ -764,11 +762,11 @@ class TodoNotifier extends Notifier<TodoState> {
           completedExpandedByList: nextExpanded,
         ),
       );
-      storage.saveLists(state.lists);
+      repository.saveLists(state.lists);
     } else {
       state = state.copyWith(completedExpandedByList: nextExpanded);
     }
-    storage.saveCompletedExpandedByList(nextExpanded);
+    settings.saveCompletedExpandedByList(nextExpanded);
   }
 
   void selectTask(String? taskId) {

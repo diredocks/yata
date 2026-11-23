@@ -165,7 +165,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     final isWide = MediaQuery.sizeOf(context).width >= 600;
     if (isWide) return;
     final lastListId = ref
-        .read(todoLocalStorageProvider)
+        .read(todoSettingsStoreProvider)
         .loadLastEnteredListId();
     if (lastListId == null) return;
     final lists = ref.read(todoProvider).lists;

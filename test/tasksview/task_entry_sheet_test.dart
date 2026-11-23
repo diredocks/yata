@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:yata/data/todo_local_storage.dart';
+import 'package:yata/models/default_lists.dart';
 import 'package:yata/l10n/app_localizations.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
@@ -16,7 +16,7 @@ Widget _wrapSheet(Widget child) {
 
 void main() {
   final lists = [
-    ...TodoLocalStorage.defaultSmartLists(),
+    ...defaultSmartLists(),
     const TodoList(
       id: 'custom_1',
       title: 'Groceries',
