@@ -328,6 +328,11 @@ class TodoNotifier extends Notifier<TodoState> {
     Set<String>? syncedTaskIds,
     Set<String>? syncedSettingKeys,
   }) async {
+    List<T> filterProcessed<T>(List<T> pending, List<T>? processed) =>
+        processed == null
+        ? pending
+        : pending.where((item) => !processed.contains(item)).toList();
+
     final preserveDirtyGroups = <String>{};
     final preserveDirtyLists = <String>{};
     final preserveDirtyTasks = <String>{};
@@ -386,8 +391,9 @@ class TodoNotifier extends Notifier<TodoState> {
       ..removeAll(syncedSettingKeys ?? const {});
 
     var nextState = state;
+    final settingsPersistFutures = <Future<void>>[];
     if (settingsPatch != null) {
-      final applied = await applySyncedSettingsPatch(
+      final applied = applySyncedSettingsPatch(
         settings: settings,
         current: state,
         snapshot: snapshotState,
@@ -397,6 +403,7 @@ class TodoNotifier extends Notifier<TodoState> {
       );
       nextState = applied.state;
       reconciledLists = applied.lists;
+      settingsPersistFutures.addAll(applied.persistFutures);
     }
 
     final sortedGroups = sortGroupsByOrder(reconciledGroups);
@@ -444,11 +451,6 @@ class TodoNotifier extends Notifier<TodoState> {
         ),
     ];
 
-    List<T> filterProcessed<T>(List<T> pending, List<T>? processed) =>
-        processed == null
-        ? pending
-        : pending.where((item) => !processed.contains(item)).toList();
-
     final remainingDeletedGroups = filterProcessed(
       repository.loadPendingDeletedGroupRemoteIds(),
       processedDeletedGroupRemoteIds,
@@ -466,25 +468,28 @@ class TodoNotifier extends Notifier<TodoState> {
       processedDeletedSteps,
     );
 
-    await repository.saveGroups(sortedGroups);
-    await repository.saveLists(sortedLists);
-    await repository.saveTasks(syncedTasks);
-    if (expandedChanged) {
-      await settings.saveCompletedExpandedByList(nextExpanded);
-    }
-    await repository.savePendingDeletedGroupRemoteIds(remainingDeletedGroups);
-    await repository.savePendingDeletedListRemoteIds(remainingDeletedLists);
-    await repository.savePendingDeletedTaskRemoteIds(remainingDeletedTasks);
-    await repository.savePendingDeletedSteps(remainingDeletedSteps);
-    await repository.saveDirtyGroupIds(remainingDirtyGroups);
-    await repository.saveDirtyListIds(remainingDirtyLists);
-    await repository.saveDirtyTaskIds(remainingDirtyTasks);
-    await settings.saveDirtySettingKeys(remainingDirtySettings);
-
     final validSelectedListId =
         sortedLists.any((l) => l.id == nextState.selectedListId)
         ? nextState.selectedListId
         : 'my_day';
+
+    // Commit repository caches and Riverpod state synchronously before awaiting
+    // SQLite/prefs persistence so concurrent UI edits cannot be overwritten.
+    final persistFutures = <Future<Object?>>[
+      ...settingsPersistFutures,
+      repository.saveGroups(sortedGroups),
+      repository.saveLists(sortedLists),
+      repository.saveTasks(syncedTasks),
+      if (expandedChanged) settings.saveCompletedExpandedByList(nextExpanded),
+      repository.savePendingDeletedGroupRemoteIds(remainingDeletedGroups),
+      repository.savePendingDeletedListRemoteIds(remainingDeletedLists),
+      repository.savePendingDeletedTaskRemoteIds(remainingDeletedTasks),
+      repository.savePendingDeletedSteps(remainingDeletedSteps),
+      repository.saveDirtyGroupIds(remainingDirtyGroups),
+      repository.saveDirtyListIds(remainingDirtyLists),
+      repository.saveDirtyTaskIds(remainingDirtyTasks),
+      settings.saveDirtySettingKeys(remainingDirtySettings),
+    ];
 
     state = nextState.copyWith(
       groups: sortedGroups,
@@ -493,6 +498,8 @@ class TodoNotifier extends Notifier<TodoState> {
       selectedListId: validSelectedListId,
       completedExpandedByList: nextExpanded,
     );
+
+    await Future.wait(persistFutures);
   }
 
   void selectList(String listId) {

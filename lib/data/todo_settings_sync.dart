@@ -181,16 +181,17 @@ class _GlobalSettingSpec<T> {
 
   String encodeState(TodoState state) => encode(readState(state));
 
-  Future<TodoState> applyIfPresent({
+  TodoState applyIfPresent({
     required TodoState state,
     required SyncedSettingsPatch patch,
     required TodoSettingsStore settings,
     required bool Function(String key) canApply,
-  }) async {
+    required List<Future<void>> persistFutures,
+  }) {
     final value = readPatch(patch);
     if (value == null || !canApply(key)) return state;
     final next = applyToState(state, value);
-    await persist(settings, value);
+    persistFutures.add(persist(settings, value));
     return next;
   }
 }
@@ -404,14 +405,15 @@ Set<String> detectGlobalSettingChanges(TodoState prev, TodoState next) => {
     if (spec.hasChanged(prev, next)) spec.key,
 };
 
-Future<({TodoState state, List<TodoList> lists})> applySyncedSettingsPatch({
+({TodoState state, List<TodoList> lists, List<Future<void>> persistFutures})
+applySyncedSettingsPatch({
   required TodoSettingsStore settings,
   required TodoState current,
   required TodoState? snapshot,
   required SyncedSettingsPatch patch,
   required List<TodoList> lists,
   required Set<String> dirtySettings,
-}) async {
+}) {
   bool canApplySetting(String key) {
     if (dirtySettings.contains(key)) return false;
     if (snapshot == null) return true;
@@ -419,18 +421,20 @@ Future<({TodoState state, List<TodoList> lists})> applySyncedSettingsPatch({
         extractSettingValueForKey(snapshot, key);
   }
 
+  final persistFutures = <Future<void>>[];
   var next = current;
   for (final spec in _globalSettingSpecs) {
-    next = await spec.applyIfPresent(
+    next = spec.applyIfPresent(
       state: next,
       patch: patch,
       settings: settings,
       canApply: canApplySetting,
+      persistFutures: persistFutures,
     );
   }
 
   if (patch.smartListPatches.isEmpty) {
-    return (state: next, lists: lists);
+    return (state: next, lists: lists, persistFutures: persistFutures);
   }
 
   final updatedLists = [
@@ -442,7 +446,7 @@ Future<({TodoState state, List<TodoList> lists})> applySyncedSettingsPatch({
         canApplySetting: canApplySetting,
       ),
   ];
-  return (state: next, lists: updatedLists);
+  return (state: next, lists: updatedLists, persistFutures: persistFutures);
 }
 
 TodoList _applySmartListPatch({

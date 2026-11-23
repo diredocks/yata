@@ -230,6 +230,7 @@ class SyncNotifier extends Notifier<SyncState> {
       repository: todoNotifier.repository,
       settings: todoNotifier.settings,
       idGenerator: todoNotifier.nextId,
+      readLatestState: () => ref.read(todoProvider),
     );
 
     if (_disposed) return;
@@ -237,15 +238,16 @@ class SyncNotifier extends Notifier<SyncState> {
     await result.fold(
       (outcome) async {
         if (ref.read(accountProvider).activeAccount?.id == active.id) {
+          final effectiveSnapshot = outcome.snapshotState ?? snapshotState;
           await todoNotifier.applySyncResult(
             groups: outcome.groups,
             lists: outcome.lists,
             tasks: outcome.tasks,
             settingsPatch: outcome.settingsPatch,
-            snapshotGroups: snapshotState.groups,
-            snapshotLists: snapshotState.lists,
-            snapshotTasks: snapshotState.tasks,
-            snapshotState: snapshotState,
+            snapshotGroups: effectiveSnapshot.groups,
+            snapshotLists: effectiveSnapshot.lists,
+            snapshotTasks: effectiveSnapshot.tasks,
+            snapshotState: effectiveSnapshot,
             processedDeletedGroupRemoteIds:
                 outcome.processedDeletedGroupRemoteIds,
             processedDeletedListRemoteIds:

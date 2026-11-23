@@ -134,7 +134,11 @@ abstract class TodoState with _$TodoState {
           result.sort((a, b) {
             final aTime = a.completedAt ?? a.createdAt;
             final bTime = b.completedAt ?? b.createdAt;
-            return bTime.compareTo(aTime);
+            final cmp = bTime.compareTo(aTime);
+            if (cmp != 0) return cmp;
+            final createdCmp = b.createdAt.compareTo(a.createdAt);
+            if (createdCmp != 0) return createdCmp;
+            return a.id.compareTo(b.id);
           });
           return;
         }

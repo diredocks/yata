@@ -31,6 +31,7 @@ class SyncOutcome {
     required this.syncedTaskIds,
     required this.syncedSettingKeys,
     required this.syncedAt,
+    this.snapshotState,
   });
 
   final List<ListGroup> groups;
@@ -46,6 +47,7 @@ class SyncOutcome {
   final Set<String> syncedTaskIds;
   final Set<String> syncedSettingKeys;
   final DateTime syncedAt;
+  final TodoState? snapshotState;
 }
 
 class CloudSyncService {
@@ -122,6 +124,7 @@ class CloudSyncService {
     required TodoRepository repository,
     required TodoSettingsStore settings,
     required String Function(String prefix) idGenerator,
+    TodoState Function()? readLatestState,
   }) async {
     Future<AppResult<SyncOutcome>> runAttempt({
       required bool forceRefreshToken,
@@ -133,7 +136,7 @@ class CloudSyncService {
       (ctx) => guardApiCall(
         () => _executeSyncPhases(
           ctx: ctx,
-          currentState: currentState,
+          currentState: readLatestState?.call() ?? currentState,
           repository: repository,
           settings: settings,
           idGenerator: idGenerator,
@@ -454,6 +457,7 @@ class CloudSyncService {
       syncedTaskIds: syncedTaskIds,
       syncedSettingKeys: syncedSettingKeys,
       syncedAt: DateTime.now(),
+      snapshotState: currentState,
     );
   }
 
@@ -557,6 +561,7 @@ class CloudSyncService {
                   listId: resolvedListId,
                   existingSteps: existing.steps,
                   idGenerator: idGenerator,
+                  existingCompletedAt: existing.completedAt,
                 );
         } else {
           final newLocalId = idGenerator('task');

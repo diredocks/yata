@@ -261,12 +261,46 @@ Map<String, dynamic> buildTaskWritePayload(
   return payload;
 }
 
+DateTime? _resolveSyncedCompletedAt({
+  required DateTime? existingCompletedAt,
+  required RemoteTodoTask remote,
+}) {
+  if (!remote.isCompleted) return null;
+  final remoteCompleted = remote.completedDateTime;
+  if (remoteCompleted == null) return existingCompletedAt;
+  if (existingCompletedAt == null) return remoteCompleted;
+
+  final localUtc = existingCompletedAt.toUtc();
+  final remoteUtc = remoteCompleted.toUtc();
+  final sameUtcDay =
+      localUtc.year == remoteUtc.year &&
+      localUtc.month == remoteUtc.month &&
+      localUtc.day == remoteUtc.day;
+  if (!sameUtcDay) return remoteCompleted;
+
+  final remoteIsMidnight =
+      remoteUtc.hour == 0 &&
+      remoteUtc.minute == 0 &&
+      remoteUtc.second == 0 &&
+      remoteUtc.millisecond == 0 &&
+      remoteUtc.microsecond == 0;
+  final sameSecond =
+      localUtc.hour == remoteUtc.hour &&
+      localUtc.minute == remoteUtc.minute &&
+      localUtc.second == remoteUtc.second;
+  if (remoteIsMidnight || sameSecond) {
+    return existingCompletedAt;
+  }
+  return remoteCompleted;
+}
+
 TaskItem taskFromRemote(
   RemoteTodoTask remote, {
   required String localId,
   required String listId,
   required List<TaskStep> existingSteps,
   required String Function(String prefix) idGenerator,
+  DateTime? existingCompletedAt,
 }) {
   final existingStepIdByRemoteId = {
     for (final s in existingSteps)
@@ -316,7 +350,10 @@ TaskItem taskFromRemote(
     recurrence: remote.recurrence,
     note: remote.plainTextNote,
     noteUpdatedAt: remote.bodyLastModifiedTime,
-    completedAt: remote.isCompleted ? remote.completedDateTime : null,
+    completedAt: _resolveSyncedCompletedAt(
+      existingCompletedAt: existingCompletedAt,
+      remote: remote,
+    ),
     steps: [for (final item in indexedSteps) item.step],
     remoteId: remote.id,
     remoteParentFolderId: remote.parentFolderId,
