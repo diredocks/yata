@@ -15,6 +15,7 @@ import 'todo_repository.dart';
 import 'todo_settings_store.dart';
 import 'todo_settings_sync.dart';
 import 'todo_state.dart';
+import 'todo_sync_reconciler.dart';
 
 export '../account/account_provider.dart' show sharedPreferencesProvider;
 export 'todo_database.dart';
@@ -149,10 +150,6 @@ class TodoNotifier extends Notifier<TodoState> {
     final prevTasks = prevState.tasks;
     final nowUtc = DateTime.now().toUtc();
 
-    final groupsChanged = !identical(prevGroups, nextState.groups);
-    final listsChanged = !identical(prevLists, nextState.lists);
-    final tasksChanged = !identical(prevTasks, nextState.tasks);
-
     final dirtyGroups = repository.loadDirtyGroupIds().toSet();
     final dirtyLists = repository.loadDirtyListIds().toSet();
     final dirtyTasks = repository.loadDirtyTaskIds().toSet();
@@ -160,164 +157,126 @@ class TodoNotifier extends Notifier<TodoState> {
 
     var stampedGroups = nextState.groups;
     var groupSyncNeeded = false;
-    if (groupsChanged) {
+    if (!identical(prevGroups, nextState.groups)) {
       final prevGroupById = {for (final g in prevGroups) g.id: g};
-      final nextGroupIds = {for (final g in nextState.groups) g.id};
+      final groupDeletions = collectPendingRemoteDeletions<ListGroup>(
+        prevItems: prevGroups,
+        nextIds: {for (final g in nextState.groups) g.id},
+        idOf: (g) => g.id,
+        remoteIdOf: (g) => g.remoteId,
+        dirtyIds: dirtyGroups,
+        existingDeletedRemoteIds: repository.loadPendingDeletedGroupRemoteIds(),
+      );
+      groupSyncNeeded = groupDeletions.changed;
+      repository.savePendingDeletedGroupRemoteIds(
+        groupDeletions.deletedRemoteIds,
+      );
 
-      final deletedGroupRemoteIds = [
-        ...repository.loadPendingDeletedGroupRemoteIds(),
-      ];
-      for (final prev in prevGroups) {
-        if (!nextGroupIds.contains(prev.id)) {
-          dirtyGroups.remove(prev.id);
-          if (prev.remoteId != null) {
-            groupSyncNeeded = true;
-            if (!deletedGroupRemoteIds.contains(prev.remoteId)) {
-              deletedGroupRemoteIds.add(prev.remoteId!);
+      stampedGroups = [
+        for (final group in nextState.groups)
+          () {
+            final prev = prevGroupById[group.id];
+            if (prev == null || isGroupSyncDirty(prev, group)) {
+              groupSyncNeeded = true;
+              dirtyGroups.add(group.id);
+              return group.copyWith(updatedAt: nowUtc);
             }
-          }
-        }
-      }
-      repository.savePendingDeletedGroupRemoteIds(deletedGroupRemoteIds);
-
-      final nextGroups = <ListGroup>[];
-      for (final group in nextState.groups) {
-        final prev = prevGroupById[group.id];
-        if (prev == null || _groupSyncDirty(prev, group)) {
-          groupSyncNeeded = true;
-          dirtyGroups.add(group.id);
-          nextGroups.add(group.copyWith(updatedAt: nowUtc));
-        } else {
-          nextGroups.add(group);
-        }
-      }
-      stampedGroups = nextGroups;
+            return group;
+          }(),
+      ];
     }
 
     var stampedLists = nextState.lists;
     var listSyncNeeded = false;
-    if (listsChanged) {
+    if (!identical(prevLists, nextState.lists)) {
       final prevListById = {for (final l in prevLists) l.id: l};
-      final nextListIds = {for (final l in nextState.lists) l.id};
+      final listDeletions = collectPendingRemoteDeletions<TodoList>(
+        prevItems: prevLists,
+        nextIds: {for (final l in nextState.lists) l.id},
+        idOf: (l) => l.id,
+        remoteIdOf: (l) => l.remoteId,
+        dirtyIds: dirtyLists,
+        existingDeletedRemoteIds: repository.loadPendingDeletedListRemoteIds(),
+        canDeleteRemotely: (l) => !l.isSmartList,
+      );
+      listSyncNeeded = listDeletions.changed;
+      repository.savePendingDeletedListRemoteIds(
+        listDeletions.deletedRemoteIds,
+      );
 
-      final deletedListRemoteIds = [
-        ...repository.loadPendingDeletedListRemoteIds(),
+      stampedLists = [
+        for (final list in nextState.lists)
+          () {
+            final prev = prevListById[list.id];
+            if (isSyncableFolderList(list)) {
+              if (prev == null || isListSyncDirty(prev, list)) {
+                listSyncNeeded = true;
+                dirtyLists.add(list.id);
+                return list.copyWith(updatedAt: nowUtc);
+              }
+              return list;
+            }
+            if (prev != null) {
+              final changedSmartKeys = smartListChangedSettingKeys(prev, list);
+              if (changedSmartKeys.isNotEmpty) {
+                listSyncNeeded = true;
+                dirtySettings.addAll(changedSmartKeys);
+              }
+            }
+            return list;
+          }(),
       ];
-      for (final prev in prevLists) {
-        if (!nextListIds.contains(prev.id)) {
-          dirtyLists.remove(prev.id);
-          if (!prev.isSmartList && prev.remoteId != null) {
-            listSyncNeeded = true;
-            if (!deletedListRemoteIds.contains(prev.remoteId)) {
-              deletedListRemoteIds.add(prev.remoteId!);
-            }
-          }
-        }
-      }
-      repository.savePendingDeletedListRemoteIds(deletedListRemoteIds);
-
-      final nextLists = <TodoList>[];
-      for (final list in nextState.lists) {
-        final prev = prevListById[list.id];
-        if (_isSyncableFolder(list)) {
-          if (prev == null || _listSyncDirty(prev, list)) {
-            listSyncNeeded = true;
-            dirtyLists.add(list.id);
-            nextLists.add(list.copyWith(updatedAt: nowUtc));
-          } else {
-            nextLists.add(list);
-          }
-        } else {
-          if (prev != null) {
-            final changedSmartKeys = smartListChangedSettingKeys(prev, list);
-            if (changedSmartKeys.isNotEmpty) {
-              listSyncNeeded = true;
-              dirtySettings.addAll(changedSmartKeys);
-            }
-          }
-          nextLists.add(list);
-        }
-      }
-      stampedLists = nextLists;
     }
 
     var stampedTasks = nextState.tasks;
     var taskSyncNeeded = false;
-    if (tasksChanged) {
+    if (!identical(prevTasks, nextState.tasks)) {
       final prevTaskById = {for (final t in prevTasks) t.id: t};
-      final nextTaskIds = {for (final t in nextState.tasks) t.id};
+      final taskDeletions = collectPendingRemoteDeletions<TaskItem>(
+        prevItems: prevTasks,
+        nextIds: {for (final t in nextState.tasks) t.id},
+        idOf: (t) => t.id,
+        remoteIdOf: (t) => t.remoteId,
+        dirtyIds: dirtyTasks,
+        existingDeletedRemoteIds: repository.loadPendingDeletedTaskRemoteIds(),
+      );
+      taskSyncNeeded = taskDeletions.changed;
+      repository.savePendingDeletedTaskRemoteIds(
+        taskDeletions.deletedRemoteIds,
+      );
 
-      final deletedTaskRemoteIds = [
-        ...repository.loadPendingDeletedTaskRemoteIds(),
-      ];
-      for (final prev in prevTasks) {
-        if (!nextTaskIds.contains(prev.id)) {
-          dirtyTasks.remove(prev.id);
-          if (prev.remoteId != null &&
-              !deletedTaskRemoteIds.contains(prev.remoteId)) {
-            taskSyncNeeded = true;
-            deletedTaskRemoteIds.add(prev.remoteId!);
-          }
-        }
-      }
-      repository.savePendingDeletedTaskRemoteIds(deletedTaskRemoteIds);
-
-      final deletedSteps = [...repository.loadPendingDeletedSteps()];
-      for (final task in nextState.tasks) {
-        final prev = prevTaskById[task.id];
-        if (prev != null && prev.remoteId != null) {
-          final nextStepIds = {for (final s in task.steps) s.id};
-          for (final prevStep in prev.steps) {
-            if (!nextStepIds.contains(prevStep.id) &&
-                prevStep.remoteId != null) {
-              final alreadyQueued = deletedSteps.any(
-                (d) =>
-                    d.taskRemoteId == prev.remoteId &&
-                    d.stepRemoteId == prevStep.remoteId,
-              );
-              if (!alreadyQueued) {
-                taskSyncNeeded = true;
-                deletedSteps.add(
-                  PendingStepDeletion(
-                    taskRemoteId: prev.remoteId!,
-                    stepRemoteId: prevStep.remoteId!,
-                  ),
-                );
-              }
-            }
-          }
-        }
-      }
-      repository.savePendingDeletedSteps(deletedSteps);
+      final stepDeletions = collectPendingStepDeletions(
+        prevTaskById: prevTaskById,
+        nextTasks: nextState.tasks,
+        existingDeletedSteps: repository.loadPendingDeletedSteps(),
+      );
+      if (stepDeletions.changed) taskSyncNeeded = true;
+      repository.savePendingDeletedSteps(stepDeletions.deletedSteps);
 
       final prevListRemoteById = {
         for (final l in prevLists)
           if (l.remoteId != null) l.id: l.remoteId!,
       };
-      final nextTasks = <TaskItem>[];
-      for (final task in nextState.tasks) {
-        final prev = prevTaskById[task.id];
-        if (_taskNeedsSyncStamp(prev, task)) {
-          taskSyncNeeded = true;
-          dirtyTasks.add(task.id);
-          final resolvedRemoteParent =
-              (prev != null &&
-                  prev.listId != task.listId &&
-                  task.remoteId != null &&
-                  task.remoteParentFolderId == null)
-              ? prevListRemoteById[prev.listId]
-              : task.remoteParentFolderId;
-          nextTasks.add(
-            task.copyWith(
+      stampedTasks = [
+        for (final task in nextState.tasks)
+          () {
+            final prev = prevTaskById[task.id];
+            if (!doesTaskNeedSyncStamp(prev, task)) return task;
+            taskSyncNeeded = true;
+            dirtyTasks.add(task.id);
+            final resolvedRemoteParent =
+                (prev != null &&
+                    prev.listId != task.listId &&
+                    task.remoteId != null &&
+                    task.remoteParentFolderId == null)
+                ? prevListRemoteById[prev.listId]
+                : task.remoteParentFolderId;
+            return task.copyWith(
               remoteParentFolderId: resolvedRemoteParent,
               updatedAt: nowUtc,
-            ),
-          );
-        } else {
-          nextTasks.add(task);
-        }
-      }
-      stampedTasks = nextTasks;
+            );
+          }(),
+      ];
     }
 
     final changedGlobalSettingKeys = detectGlobalSettingChanges(
@@ -349,187 +308,6 @@ class TodoNotifier extends Notifier<TodoState> {
     );
   }
 
-  static bool _isSyncableFolder(TodoList list) =>
-      !list.isSmartList || list.smartType == SmartListType.tasks;
-
-  static bool _groupSyncDirty(ListGroup prev, ListGroup next) =>
-      prev.title != next.title || prev.orderDateTime != next.orderDateTime;
-
-  static bool _listSyncDirty(TodoList prev, TodoList next) =>
-      prev.title != next.title ||
-      prev.emoji != next.emoji ||
-      prev.groupId != next.groupId ||
-      prev.themeColor != next.themeColor ||
-      prev.themePhoto != next.themePhoto ||
-      prev.sortOption != next.sortOption ||
-      prev.sortAscending != next.sortAscending ||
-      prev.showCompleted != next.showCompleted ||
-      prev.orderDateTime != next.orderDateTime;
-
-  static bool _taskNeedsSyncStamp(TaskItem? prev, TaskItem next) {
-    if (prev == null) return true;
-    if (prev.steps.length != next.steps.length) return true;
-    final normalizedPrev = prev.copyWith(
-      remoteId: next.remoteId,
-      remoteParentFolderId: next.remoteParentFolderId,
-      changeKey: next.changeKey,
-      updatedAt: next.updatedAt,
-      noteUpdatedAt: next.noteUpdatedAt,
-      steps: [
-        for (var i = 0; i < prev.steps.length; i++)
-          prev.steps[i].copyWith(
-            id: next.steps[i].id,
-            remoteId: next.steps[i].remoteId,
-          ),
-      ],
-    );
-    return normalizedPrev != next;
-  }
-
-  List<ListGroup> _reconcileSyncedGroups({
-    required List<ListGroup> outcomeGroups,
-    required List<ListGroup> snapshotGroups,
-    required Set<String> preserveDirtyGroupIds,
-  }) {
-    final snapshotById = {for (final g in snapshotGroups) g.id: g};
-    final currentById = {for (final g in state.groups) g.id: g};
-    final outcomeById = {for (final g in outcomeGroups) g.id: g};
-
-    final reconciled = <ListGroup>[];
-    for (final current in state.groups) {
-      final outcome = outcomeById[current.id];
-      final snap = snapshotById[current.id];
-      if (outcome == null) {
-        if (snap == null) {
-          reconciled.add(current);
-        }
-        continue;
-      }
-      final editedDuringSync = snap != null && _groupSyncDirty(snap, current);
-      if (editedDuringSync) {
-        preserveDirtyGroupIds.add(current.id);
-        reconciled.add(
-          current.copyWith(remoteId: outcome.remoteId ?? current.remoteId),
-        );
-      } else {
-        reconciled.add(outcome.copyWith(isExpanded: current.isExpanded));
-      }
-    }
-
-    for (final outcome in outcomeGroups) {
-      if (!snapshotById.containsKey(outcome.id) &&
-          !currentById.containsKey(outcome.id)) {
-        reconciled.add(outcome);
-      }
-    }
-    return reconciled;
-  }
-
-  List<TodoList> _reconcileSyncedLists({
-    required List<TodoList> outcomeLists,
-    required List<TodoList> snapshotLists,
-    required Set<String> preserveDirtyListIds,
-  }) {
-    final snapshotById = {for (final l in snapshotLists) l.id: l};
-    final currentById = {for (final l in state.lists) l.id: l};
-    final outcomeById = {for (final l in outcomeLists) l.id: l};
-
-    final reconciled = <TodoList>[];
-    for (final current in state.lists) {
-      final outcome = outcomeById[current.id];
-      final snap = snapshotById[current.id];
-      if (outcome == null) {
-        if (snap == null) {
-          reconciled.add(current);
-        }
-        continue;
-      }
-      if (!_isSyncableFolder(current)) {
-        reconciled.add(current);
-        continue;
-      }
-      final editedDuringSync = snap != null && _listSyncDirty(snap, current);
-      if (editedDuringSync) {
-        preserveDirtyListIds.add(current.id);
-        reconciled.add(
-          current.copyWith(remoteId: outcome.remoteId ?? current.remoteId),
-        );
-      } else {
-        reconciled.add(outcome.copyWith(icon: current.icon));
-      }
-    }
-
-    for (final outcome in outcomeLists) {
-      if (!snapshotById.containsKey(outcome.id) &&
-          !currentById.containsKey(outcome.id)) {
-        reconciled.add(outcome);
-      }
-    }
-    return reconciled;
-  }
-
-  List<TaskItem> _reconcileSyncedTasks({
-    required List<TaskItem> outcomeTasks,
-    required List<TaskItem> snapshotTasks,
-    required Set<String> validListIds,
-    required Set<String> preserveDirtyTaskIds,
-  }) {
-    final snapshotById = {for (final t in snapshotTasks) t.id: t};
-    final currentById = {for (final t in state.tasks) t.id: t};
-    final outcomeById = {for (final t in outcomeTasks) t.id: t};
-
-    final newRemoteTasks = <TaskItem>[
-      for (final outcome in outcomeTasks)
-        if (!snapshotById.containsKey(outcome.id) &&
-            !currentById.containsKey(outcome.id) &&
-            validListIds.contains(outcome.listId))
-          outcome,
-    ];
-
-    final existingAndLocal = <TaskItem>[];
-    for (final current in state.tasks) {
-      if (!validListIds.contains(current.listId)) continue;
-      final outcome = outcomeById[current.id];
-      final snap = snapshotById[current.id];
-      if (outcome == null) {
-        if (snap == null) {
-          existingAndLocal.add(current);
-        }
-        continue;
-      }
-      final editedDuringSync =
-          snap != null && _taskNeedsSyncStamp(snap, current);
-      if (!editedDuringSync) {
-        existingAndLocal.add(outcome);
-      } else {
-        preserveDirtyTaskIds.add(current.id);
-        final outcomeStepRemoteById = {
-          for (final s in outcome.steps)
-            if (s.remoteId != null) s.id: s.remoteId!,
-        };
-        final mergedSteps = [
-          for (final step in current.steps)
-            step.copyWith(
-              remoteId: step.remoteId ?? outcomeStepRemoteById[step.id],
-            ),
-        ];
-        existingAndLocal.add(
-          current.copyWith(
-            remoteId: outcome.remoteId ?? current.remoteId,
-            remoteParentFolderId:
-                outcome.remoteParentFolderId ?? current.remoteParentFolderId,
-            changeKey: outcome.changeKey ?? current.changeKey,
-            steps: mergedSteps,
-          ),
-        );
-      }
-    }
-
-    return state.addNewTasksOnTop
-        ? [...newRemoteTasks, ...existingAndLocal]
-        : [...existingAndLocal, ...newRemoteTasks];
-  }
-
   Future<void> applySyncResult({
     List<ListGroup>? groups,
     required List<TodoList> lists,
@@ -555,7 +333,8 @@ class TodoNotifier extends Notifier<TodoState> {
     final reconciledGroups = groups == null
         ? state.groups
         : (snapshotGroups != null
-              ? _reconcileSyncedGroups(
+              ? reconcileSyncedGroups(
+                  currentGroups: state.groups,
                   outcomeGroups: groups,
                   snapshotGroups: snapshotGroups,
                   preserveDirtyGroupIds: preserveDirtyGroups,
@@ -563,7 +342,8 @@ class TodoNotifier extends Notifier<TodoState> {
               : groups);
 
     var reconciledLists = snapshotLists != null
-        ? _reconcileSyncedLists(
+        ? reconcileSyncedLists(
+            currentLists: state.lists,
             outcomeLists: lists,
             snapshotLists: snapshotLists,
             preserveDirtyListIds: preserveDirtyLists,
@@ -581,11 +361,13 @@ class TodoNotifier extends Notifier<TodoState> {
 
     final validListIds = {for (final l in reconciledLists) l.id};
     final reconciledTasks = snapshotTasks != null
-        ? _reconcileSyncedTasks(
+        ? reconcileSyncedTasks(
+            currentTasks: state.tasks,
             outcomeTasks: tasks,
             snapshotTasks: snapshotTasks,
             validListIds: validListIds,
             preserveDirtyTaskIds: preserveDirtyTasks,
+            addNewTasksOnTop: state.addNewTasksOnTop,
           )
         : tasks;
 
@@ -628,7 +410,7 @@ class TodoNotifier extends Notifier<TodoState> {
           list.smartType == SmartListType.important) {
         continue;
       }
-      if (_isSyncableFolder(list)) {
+      if (isSyncableFolderList(list)) {
         if (list.remoteId != null && !remainingDirtyLists.contains(list.id)) {
           if (nextExpanded[list.id] != list.showCompleted) {
             nextExpanded[list.id] = list.showCompleted;
@@ -660,40 +442,27 @@ class TodoNotifier extends Notifier<TodoState> {
         ),
     ];
 
-    final remainingDeletedGroups = processedDeletedGroupRemoteIds == null
-        ? repository.loadPendingDeletedGroupRemoteIds()
-        : repository
-              .loadPendingDeletedGroupRemoteIds()
-              .where((id) => !processedDeletedGroupRemoteIds.contains(id))
-              .toList();
-    final remainingDeletedLists = processedDeletedListRemoteIds == null
-        ? repository.loadPendingDeletedListRemoteIds()
-        : repository
-              .loadPendingDeletedListRemoteIds()
-              .where((id) => !processedDeletedListRemoteIds.contains(id))
-              .toList();
-    final remainingDeletedTasks = processedDeletedTaskRemoteIds == null
-        ? repository.loadPendingDeletedTaskRemoteIds()
-        : repository
-              .loadPendingDeletedTaskRemoteIds()
-              .where((id) => !processedDeletedTaskRemoteIds.contains(id))
-              .toList();
-    final processedStepKeys = processedDeletedSteps == null
-        ? const <String>{}
-        : {
-            for (final s in processedDeletedSteps)
-              '${s.taskRemoteId}::${s.stepRemoteId}',
-          };
-    final remainingDeletedSteps = processedDeletedSteps == null
-        ? repository.loadPendingDeletedSteps()
-        : repository
-              .loadPendingDeletedSteps()
-              .where(
-                (s) => !processedStepKeys.contains(
-                  '${s.taskRemoteId}::${s.stepRemoteId}',
-                ),
-              )
-              .toList();
+    List<T> filterProcessed<T>(List<T> pending, List<T>? processed) =>
+        processed == null
+        ? pending
+        : pending.where((item) => !processed.contains(item)).toList();
+
+    final remainingDeletedGroups = filterProcessed(
+      repository.loadPendingDeletedGroupRemoteIds(),
+      processedDeletedGroupRemoteIds,
+    );
+    final remainingDeletedLists = filterProcessed(
+      repository.loadPendingDeletedListRemoteIds(),
+      processedDeletedListRemoteIds,
+    );
+    final remainingDeletedTasks = filterProcessed(
+      repository.loadPendingDeletedTaskRemoteIds(),
+      processedDeletedTaskRemoteIds,
+    );
+    final remainingDeletedSteps = filterProcessed(
+      repository.loadPendingDeletedSteps(),
+      processedDeletedSteps,
+    );
 
     await repository.saveGroups(sortedGroups);
     await repository.saveLists(sortedLists);

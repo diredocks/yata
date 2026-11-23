@@ -1,16 +1,31 @@
-import 'package:freezed_annotation/freezed_annotation.dart';
+/// Queued remote subtask deletion awaiting the next sync pass.
+class PendingStepDeletion {
+  const PendingStepDeletion({
+    required this.taskRemoteId,
+    required this.stepRemoteId,
+  });
 
-part 'pending_step_deletion.freezed.dart';
-part 'pending_step_deletion.g.dart';
-
-/// A step deletion that still has to be pushed to the remote API.
-@freezed
-abstract class PendingStepDeletion with _$PendingStepDeletion {
-  const factory PendingStepDeletion({
-    required String taskRemoteId,
-    required String stepRemoteId,
-  }) = _PendingStepDeletion;
+  final String taskRemoteId;
+  final String stepRemoteId;
 
   factory PendingStepDeletion.fromJson(Map<String, dynamic> json) =>
-      _$PendingStepDeletionFromJson(json);
+      PendingStepDeletion(
+        taskRemoteId: json['taskRemoteId'] as String,
+        stepRemoteId: json['stepRemoteId'] as String,
+      );
+
+  Map<String, dynamic> toJson() => {
+    'taskRemoteId': taskRemoteId,
+    'stepRemoteId': stepRemoteId,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PendingStepDeletion &&
+          other.taskRemoteId == taskRemoteId &&
+          other.stepRemoteId == stepRemoteId);
+
+  @override
+  int get hashCode => Object.hash(taskRemoteId, stepRemoteId);
 }

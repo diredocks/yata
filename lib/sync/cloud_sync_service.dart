@@ -3,15 +3,15 @@ import 'package:result_dart/result_dart.dart';
 import '../auth/microsoft_auth_service.dart';
 import '../core/error/app_error.dart';
 import '../core/result/app_result.dart';
+import '../data/todo_provider.dart';
 import '../data/todo_repository.dart';
 import '../data/todo_settings_store.dart';
-import '../models/pending_step_deletion.dart';
-import '../data/todo_provider.dart';
-import '../homeview/home_view_ordering.dart';
 import '../models/account.dart';
+import '../models/pending_step_deletion.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import 'microsoft_todo_api.dart';
+import 'substrate_sync_mappers.dart';
 import 'sync_guard.dart';
 import 'todo_wire_codecs.dart';
 
@@ -174,11 +174,6 @@ class CloudSyncService {
     final syncedListIds = <String>{};
     final syncedTaskIds = <String>{};
 
-    final processedDeletedSteps = <PendingStepDeletion>[];
-    final processedDeletedTaskRemoteIds = <String>[];
-    final processedDeletedListRemoteIds = <String>[];
-    final processedDeletedGroupRemoteIds = <String>[];
-
     // Phase 2: Push dirty settings.
     for (final key in dirtySettingKeys) {
       final wireValue = extractSettingValueForKey(currentState, key);
@@ -189,48 +184,19 @@ class CloudSyncService {
     }
 
     // Phase 3: Push step, task, and folder deletions.
-    for (final stepDel in repository.loadPendingDeletedSteps()) {
-      try {
-        await todoApi.deleteStep(
-          ctx,
-          stepDel.taskRemoteId,
-          stepDel.stepRemoteId,
-        );
-        processedDeletedSteps.add(stepDel);
-      } on SyncApiException catch (e) {
-        if (e.isNotFound) {
-          processedDeletedSteps.add(stepDel);
-        } else {
-          rethrow;
-        }
-      }
-    }
-
-    for (final taskRemoteId in repository.loadPendingDeletedTaskRemoteIds()) {
-      try {
-        await todoApi.deleteTask(ctx, taskRemoteId);
-        processedDeletedTaskRemoteIds.add(taskRemoteId);
-      } on SyncApiException catch (e) {
-        if (e.isNotFound) {
-          processedDeletedTaskRemoteIds.add(taskRemoteId);
-        } else {
-          rethrow;
-        }
-      }
-    }
-
-    for (final listRemoteId in repository.loadPendingDeletedListRemoteIds()) {
-      try {
-        await todoApi.deleteFolder(ctx, listRemoteId);
-        processedDeletedListRemoteIds.add(listRemoteId);
-      } on SyncApiException catch (e) {
-        if (e.isNotFound || e.isCantDeleteDefaultFolder) {
-          processedDeletedListRemoteIds.add(listRemoteId);
-        } else {
-          rethrow;
-        }
-      }
-    }
+    final processedDeletedSteps = await _pushPendingDeletions(
+      items: repository.loadPendingDeletedSteps(),
+      deleteCall: (s) => todoApi.deleteStep(ctx, s.taskRemoteId, s.stepRemoteId),
+    );
+    final processedDeletedTaskRemoteIds = await _pushPendingDeletions(
+      items: repository.loadPendingDeletedTaskRemoteIds(),
+      deleteCall: (id) => todoApi.deleteTask(ctx, id),
+    );
+    final processedDeletedListRemoteIds = await _pushPendingDeletions(
+      items: repository.loadPendingDeletedListRemoteIds(),
+      deleteCall: (id) => todoApi.deleteFolder(ctx, id),
+      treatAsDeletedOn: (e) => e.isNotFound || e.isCantDeleteDefaultFolder,
+    );
 
     // Phase 4: Push dirty / new folder groups.
     for (var i = 0; i < workingGroups.length; i++) {
@@ -296,19 +262,14 @@ class CloudSyncService {
           : null;
 
       if (!list.isSmartList && list.remoteId == null) {
-        final payload = <String, dynamic>{
-          'Name': encodeFolderName(list.title, list.emoji),
-          'OrderDateTime': formatSubstrateUtcTimestamp(
-            list.orderDateTime ?? nowUtc,
+        final created = await todoApi.createFolder(
+          ctx,
+          buildFolderCreatePayload(
+            list,
+            parentGroupRemoteId: parentGroupRemoteId,
+            nowUtc: nowUtc,
           ),
-          'ThemeColor': encodeFolderThemeColor(list.themeColor),
-          'ThemeBackground': ?encodeFolderThemeBackground(list.themePhoto),
-          'ShowCompletedTasks': list.showCompleted,
-          'SortType': encodeSortType(list.sortOption),
-          'SortAscending': list.sortAscending,
-          'ParentFolderGroupId': ?parentGroupRemoteId,
-        };
-        final created = await todoApi.createFolder(ctx, payload);
+        );
         workingLists[i] = list.copyWith(
           remoteId: created.id,
           orderDateTime: created.orderDateTime ?? list.orderDateTime,
@@ -316,20 +277,15 @@ class CloudSyncService {
         );
         syncedListIds.add(list.id);
       } else if (list.remoteId != null && dirtyListIds.contains(list.id)) {
-        final patch = <String, dynamic>{
-          if (!list.isSmartList)
-            'Name': encodeFolderName(list.title, list.emoji),
-          if (!list.isSmartList) 'ParentFolderGroupId': parentGroupRemoteId,
-          'ThemeColor': encodeFolderThemeColor(list.themeColor),
-          'ThemeBackground': encodeFolderThemeBackground(list.themePhoto),
-          'ShowCompletedTasks': list.showCompleted,
-          'SortType': encodeSortType(list.sortOption),
-          'SortAscending': list.sortAscending,
-          if (list.orderDateTime != null)
-            'OrderDateTime': formatSubstrateUtcTimestamp(list.orderDateTime!),
-        };
         try {
-          final patched = await todoApi.patchFolder(ctx, list.remoteId!, patch);
+          final patched = await todoApi.patchFolder(
+            ctx,
+            list.remoteId!,
+            buildFolderPatchPayload(
+              list,
+              parentGroupRemoteId: parentGroupRemoteId,
+            ),
+          );
           workingLists[i] = list.copyWith(
             orderDateTime: patched.orderDateTime ?? list.orderDateTime,
             updatedAt: nowUtc,
@@ -337,18 +293,14 @@ class CloudSyncService {
           syncedListIds.add(list.id);
         } on SyncApiException catch (e) {
           if (!e.isNotFound || list.isSmartList) rethrow;
-          final recreated = await todoApi.createFolder(ctx, {
-            'Name': encodeFolderName(list.title, list.emoji),
-            'OrderDateTime': formatSubstrateUtcTimestamp(
-              list.orderDateTime ?? nowUtc,
+          final recreated = await todoApi.createFolder(
+            ctx,
+            buildFolderCreatePayload(
+              list,
+              parentGroupRemoteId: parentGroupRemoteId,
+              nowUtc: nowUtc,
             ),
-            'ThemeColor': encodeFolderThemeColor(list.themeColor),
-            'ThemeBackground': ?encodeFolderThemeBackground(list.themePhoto),
-            'ShowCompletedTasks': list.showCompleted,
-            'SortType': encodeSortType(list.sortOption),
-            'SortAscending': list.sortAscending,
-            'ParentFolderGroupId': ?parentGroupRemoteId,
-          });
+          );
           workingLists[i] = list.copyWith(
             remoteId: recreated.id,
             updatedAt: nowUtc,
@@ -359,20 +311,11 @@ class CloudSyncService {
     }
 
     // Phase 6: Delete pending folder groups (after ungrouping member folders).
-    for (final groupRemoteId in repository.loadPendingDeletedGroupRemoteIds()) {
-      try {
-        await todoApi.deleteFolderGroup(ctx, groupRemoteId);
-        processedDeletedGroupRemoteIds.add(groupRemoteId);
-      } on SyncApiException catch (e) {
-        if (e.isNotFound) {
-          processedDeletedGroupRemoteIds.add(groupRemoteId);
-        } else if (e.isFolderGroupNotEmpty) {
-          // Leave queued until member folders are ungrouped remotely.
-        } else {
-          rethrow;
-        }
-      }
-    }
+    final processedDeletedGroupRemoteIds = await _pushPendingDeletions(
+      items: repository.loadPendingDeletedGroupRemoteIds(),
+      deleteCall: (id) => todoApi.deleteFolderGroup(ctx, id),
+      keepQueuedOn: (e) => e.isFolderGroupNotEmpty,
+    );
 
     // Phase 7: Pull remote settings (skip keys still dirty locally).
     final remainingDirtySettings = dirtySettingKeys.difference(
@@ -393,11 +336,10 @@ class CloudSyncService {
     if (groupsDeltaResult.deltaLink != null) {
       await settings.saveGroupsDeltaLink(groupsDeltaResult.deltaLink);
     }
-    final remainingDirtyGroups = dirtyGroupIds.difference(syncedGroupIds);
-    workingGroups = _mergeFolderGroupsDelta(
+    workingGroups = mergeFolderGroupsDelta(
       localGroups: workingGroups,
       remoteDelta: groupsDeltaResult.items,
-      dirtyGroupIds: remainingDirtyGroups,
+      dirtyGroupIds: dirtyGroupIds.difference(syncedGroupIds),
       idGenerator: idGenerator,
     );
 
@@ -410,15 +352,14 @@ class CloudSyncService {
     if (foldersDeltaResult.deltaLink != null) {
       await settings.saveFoldersDeltaLink(foldersDeltaResult.deltaLink);
     }
-    final remainingDirtyLists = dirtyListIds.difference(syncedListIds);
     final groupLocalIdByRemoteId = {
       for (final g in workingGroups)
         if (g.remoteId != null) g.remoteId!: g.id,
     };
-    workingLists = _mergeFoldersDelta(
+    workingLists = mergeFoldersDelta(
       localLists: workingLists,
       remoteDelta: foldersDeltaResult.items,
-      dirtyListIds: remainingDirtyLists,
+      dirtyListIds: dirtyListIds.difference(syncedListIds),
       groupLocalIdByRemoteId: groupLocalIdByRemoteId,
       idGenerator: idGenerator,
     );
@@ -439,63 +380,101 @@ class CloudSyncService {
       final folderRemoteId = folderRemoteByLocalId[task.listId];
       if (folderRemoteId == null) continue;
 
-      if (task.remoteId == null) {
-        final payload = _buildTaskWritePayload(
-          task,
-          parentFolderRemoteId: folderRemoteId,
-          isCreate: true,
-          firstDayOfWeek: currentState.startOfWeek,
-        );
-        final created = await todoApi.createTask(ctx, folderRemoteId, payload);
-        final pushedSteps = await _syncStepsForTask(
-          ctx: ctx,
-          taskRemoteId: created.id,
-          localSteps: task.steps,
-        );
-        workingTasks[i] = task.copyWith(
-          remoteId: created.id,
-          remoteParentFolderId: created.parentFolderId ?? folderRemoteId,
-          changeKey: created.changeKey ?? task.changeKey,
-          orderDateTime: created.orderDateTime ?? task.orderDateTime,
-          committedOrder: created.committedOrder ?? task.committedOrder,
-          steps: pushedSteps,
-          updatedAt: nowUtc,
-        );
-        syncedTaskIds.add(task.id);
-      } else if (dirtyTaskIds.contains(task.id)) {
-        final payload = _buildTaskWritePayload(
-          task,
-          parentFolderRemoteId: folderRemoteId,
-          isCreate: false,
-          firstDayOfWeek: currentState.startOfWeek,
-        );
-        final patched = await _patchTaskWithConflictRetry(
-          ctx: ctx,
-          task: task,
-          payload: payload,
-        );
-        final pushedSteps = await _syncStepsForTask(
-          ctx: ctx,
-          taskRemoteId: patched.id,
-          localSteps: task.steps,
-        );
-        workingTasks[i] = task.copyWith(
-          changeKey: patched.changeKey ?? task.changeKey,
-          orderDateTime: patched.orderDateTime ?? task.orderDateTime,
-          committedOrder: patched.committedOrder ?? task.committedOrder,
-          remoteParentFolderId: patched.parentFolderId ?? folderRemoteId,
-          steps: pushedSteps,
-          updatedAt: nowUtc,
-        );
-        syncedTaskIds.add(task.id);
-      }
+      final isCreate = task.remoteId == null;
+      if (!isCreate && !dirtyTaskIds.contains(task.id)) continue;
+
+      final payload = buildTaskWritePayload(
+        task,
+        parentFolderRemoteId: folderRemoteId,
+        isCreate: isCreate,
+        firstDayOfWeek: currentState.startOfWeek,
+      );
+      final remoteTask = isCreate
+          ? await todoApi.createTask(ctx, folderRemoteId, payload)
+          : await _patchTaskWithConflictRetry(
+              ctx: ctx,
+              task: task,
+              payload: payload,
+            );
+      final pushedSteps = await _syncStepsForTask(
+        ctx: ctx,
+        taskRemoteId: remoteTask.id,
+        localSteps: task.steps,
+      );
+      workingTasks[i] = task.copyWith(
+        remoteId: isCreate ? remoteTask.id : task.remoteId,
+        remoteParentFolderId: remoteTask.parentFolderId ?? folderRemoteId,
+        changeKey: remoteTask.changeKey ?? task.changeKey,
+        orderDateTime: remoteTask.orderDateTime ?? task.orderDateTime,
+        committedOrder: remoteTask.committedOrder ?? task.committedOrder,
+        steps: pushedSteps,
+        updatedAt: nowUtc,
+      );
+      syncedTaskIds.add(task.id);
     }
 
     // Phase 10b: Pull per-folder tasks delta (with 410 recovery + move safety).
+    final mergedTasks = await _pullAndMergeTasksDelta(
+      ctx: ctx,
+      settings: settings,
+      workingLists: workingLists,
+      workingTasks: workingTasks,
+      remainingDirtyTasks: dirtyTaskIds.difference(syncedTaskIds),
+      idGenerator: idGenerator,
+    );
+
+    return SyncOutcome(
+      groups: workingGroups,
+      lists: workingLists,
+      tasks: mergedTasks,
+      settingsPatch: settingsPatch,
+      processedDeletedGroupRemoteIds: processedDeletedGroupRemoteIds,
+      processedDeletedListRemoteIds: processedDeletedListRemoteIds,
+      processedDeletedTaskRemoteIds: processedDeletedTaskRemoteIds,
+      processedDeletedSteps: processedDeletedSteps,
+      syncedGroupIds: syncedGroupIds,
+      syncedListIds: syncedListIds,
+      syncedTaskIds: syncedTaskIds,
+      syncedSettingKeys: syncedSettingKeys,
+      syncedAt: DateTime.now(),
+    );
+  }
+
+  Future<List<T>> _pushPendingDeletions<T>({
+    required List<T> items,
+    required Future<void> Function(T item) deleteCall,
+    bool Function(SyncApiException e)? treatAsDeletedOn,
+    bool Function(SyncApiException e)? keepQueuedOn,
+  }) async {
+    final processed = <T>[];
+    for (final item in items) {
+      try {
+        await deleteCall(item);
+        processed.add(item);
+      } on SyncApiException catch (e) {
+        if ((treatAsDeletedOn ?? (err) => err.isNotFound)(e)) {
+          processed.add(item);
+        } else if (keepQueuedOn != null && keepQueuedOn(e)) {
+          // Leave queued for a future sync pass.
+        } else {
+          rethrow;
+        }
+      }
+    }
+    return processed;
+  }
+
+  Future<List<TaskItem>> _pullAndMergeTasksDelta({
+    required SubstrateRequestContext ctx,
+    required TodoSettingsStore settings,
+    required List<TodoList> workingLists,
+    required List<TaskItem> workingTasks,
+    required Set<String> remainingDirtyTasks,
+    required String Function(String prefix) idGenerator,
+  }) async {
     final taskDeltaLinks = Map<String, String>.from(
       settings.loadTaskDeltaLinks(),
     );
-    final remainingDirtyTasks = dirtyTaskIds.difference(syncedTaskIds);
     final localListIdByFolderRemoteId = {
       for (final l in workingLists)
         if (l.remoteId != null) l.remoteId!: l.id,
@@ -550,29 +529,26 @@ class CloudSyncService {
         final existingId = taskIdByRemoteId[remote.id];
         final existing = existingId != null ? tasksById[existingId] : null;
         if (existing != null) {
-          if (remainingDirtyTasks.contains(existing.id)) {
-            tasksById[existing.id] = existing.copyWith(
-              changeKey: remote.changeKey ?? existing.changeKey,
-            );
-          } else {
-            tasksById[existing.id] = _taskFromRemote(
-              remote,
-              localId: existing.id,
-              listId: resolvedListId,
-              existingSteps: existing.steps,
-              idGenerator: idGenerator,
-            );
-          }
+          tasksById[existing.id] = remainingDirtyTasks.contains(existing.id)
+              ? existing.copyWith(
+                  changeKey: remote.changeKey ?? existing.changeKey,
+                )
+              : taskFromRemote(
+                  remote,
+                  localId: existing.id,
+                  listId: resolvedListId,
+                  existingSteps: existing.steps,
+                  idGenerator: idGenerator,
+                );
         } else {
           final newLocalId = idGenerator('task');
-          final createdLocal = _taskFromRemote(
+          tasksById[newLocalId] = taskFromRemote(
             remote,
             localId: newLocalId,
             listId: resolvedListId,
             existingSteps: const [],
             idGenerator: idGenerator,
           );
-          tasksById[newLocalId] = createdLocal;
           taskIdByRemoteId[remote.id] = newLocalId;
         }
       }
@@ -594,29 +570,14 @@ class CloudSyncService {
       final localId = taskIdByRemoteId[deletedRemoteId];
       if (localId == null || remainingDirtyTasks.contains(localId)) continue;
       final localTask = tasksById[localId];
-      if (localTask == null) continue;
-      if (!deletedFromListIds.contains(localTask.listId)) continue;
+      if (localTask == null || !deletedFromListIds.contains(localTask.listId)) {
+        continue;
+      }
       tasksById.remove(localId);
     }
 
     await settings.saveTaskDeltaLinks(taskDeltaLinks);
-
-    final mergedTasks = tasksById.values.toList();
-    return SyncOutcome(
-      groups: workingGroups,
-      lists: workingLists,
-      tasks: mergedTasks,
-      settingsPatch: settingsPatch,
-      processedDeletedGroupRemoteIds: processedDeletedGroupRemoteIds,
-      processedDeletedListRemoteIds: processedDeletedListRemoteIds,
-      processedDeletedTaskRemoteIds: processedDeletedTaskRemoteIds,
-      processedDeletedSteps: processedDeletedSteps,
-      syncedGroupIds: syncedGroupIds,
-      syncedListIds: syncedListIds,
-      syncedTaskIds: syncedTaskIds,
-      syncedSettingKeys: syncedSettingKeys,
-      syncedAt: DateTime.now(),
-    );
+    return tasksById.values.toList();
   }
 
   Future<DeltaPageResult<T>> _fetchWithDeltaRecovery<T>({
@@ -631,243 +592,6 @@ class CloudSyncService {
       await clearDeltaLink();
       return fetch(null);
     }
-  }
-
-  List<ListGroup> _mergeFolderGroupsDelta({
-    required List<ListGroup> localGroups,
-    required List<RemoteFolderGroup> remoteDelta,
-    required Set<String> dirtyGroupIds,
-    required String Function(String prefix) idGenerator,
-  }) {
-    final result = [...localGroups];
-    for (final remote in remoteDelta) {
-      final idx = result.indexWhere((g) => g.remoteId == remote.id);
-      if (remote.isDeleted) {
-        if (idx >= 0 && !dirtyGroupIds.contains(result[idx].id)) {
-          result.removeAt(idx);
-        }
-        continue;
-      }
-      if (idx >= 0) {
-        final existing = result[idx];
-        if (!dirtyGroupIds.contains(existing.id)) {
-          result[idx] = existing.copyWith(
-            title: remote.name,
-            orderDateTime: remote.orderDateTime ?? existing.orderDateTime,
-          );
-        }
-      } else {
-        result.add(
-          ListGroup(
-            id: idGenerator('group'),
-            title: remote.name,
-            isExpanded: true,
-            remoteId: remote.id,
-            orderDateTime: remote.orderDateTime,
-          ),
-        );
-      }
-    }
-    return sortGroupsByOrder(result);
-  }
-
-  List<TodoList> _mergeFoldersDelta({
-    required List<TodoList> localLists,
-    required List<RemoteTodoFolder> remoteDelta,
-    required Set<String> dirtyListIds,
-    required Map<String, String> groupLocalIdByRemoteId,
-    required String Function(String prefix) idGenerator,
-  }) {
-    final result = [...localLists];
-    for (final remote in remoteDelta) {
-      if (remote.isIgnoredSpecialFolder) continue;
-
-      if (remote.isDeleted) {
-        final idx = result.indexWhere(
-          (l) => !l.isSmartList && l.remoteId == remote.id,
-        );
-        if (idx >= 0 && !dirtyListIds.contains(result[idx].id)) {
-          result.removeAt(idx);
-        }
-        continue;
-      }
-
-      if (remote.isDefaultFolder) {
-        final idx = result.indexWhere(
-          (l) => l.smartType == SmartListType.tasks,
-        );
-        if (idx >= 0) {
-          final existing = result[idx];
-          if (dirtyListIds.contains(existing.id)) {
-            result[idx] = existing.copyWith(remoteId: remote.id);
-          } else {
-            final theme = decodeFolderTheme(
-              themeColor: remote.themeColor,
-              themeBackground: remote.themeBackground,
-              fallbackColor: existing.themeColor,
-            );
-            result[idx] = existing.copyWith(
-              remoteId: remote.id,
-              themeColor: theme.themeColor,
-              themePhoto: theme.themePhoto,
-              showCompleted: remote.showCompletedTasks,
-              sortOption: remote.sortOption,
-              sortAscending: remote.sortAscending,
-              orderDateTime: remote.orderDateTime ?? existing.orderDateTime,
-            );
-          }
-        }
-        continue;
-      }
-
-      final decodedName = decodeFolderName(remote.name);
-      final mappedGroupId = remote.parentFolderGroupId != null
-          ? groupLocalIdByRemoteId[remote.parentFolderGroupId!]
-          : null;
-
-      var idx = result.indexWhere(
-        (l) => !l.isSmartList && l.remoteId == remote.id,
-      );
-      if (idx < 0) {
-        idx = result.indexWhere(
-          (l) =>
-              !l.isSmartList &&
-              l.remoteId == null &&
-              (encodeFolderName(l.title, l.emoji) == remote.name ||
-                  l.title == remote.name),
-        );
-      }
-
-      if (idx >= 0) {
-        final existing = result[idx];
-        if (dirtyListIds.contains(existing.id)) {
-          result[idx] = existing.copyWith(remoteId: remote.id);
-        } else {
-          final theme = decodeFolderTheme(
-            themeColor: remote.themeColor,
-            themeBackground: remote.themeBackground,
-            fallbackColor: existing.themeColor,
-          );
-          result[idx] = existing.copyWith(
-            title: decodedName.title,
-            emoji: decodedName.emoji,
-            groupId: mappedGroupId,
-            themeColor: theme.themeColor,
-            themePhoto: theme.themePhoto,
-            showCompleted: remote.showCompletedTasks,
-            sortOption: remote.sortOption,
-            sortAscending: remote.sortAscending,
-            remoteId: remote.id,
-            orderDateTime: remote.orderDateTime ?? existing.orderDateTime,
-          );
-        }
-      } else {
-        final theme = decodeFolderTheme(
-          themeColor: remote.themeColor,
-          themeBackground: remote.themeBackground,
-        );
-        result.add(
-          TodoList(
-            id: idGenerator('list'),
-            title: decodedName.title,
-            groupId: mappedGroupId,
-            emoji: decodedName.emoji,
-            themeColor: theme.themeColor,
-            themePhoto: theme.themePhoto,
-            showCompleted: remote.showCompletedTasks,
-            sortOption: remote.sortOption,
-            sortAscending: remote.sortAscending,
-            remoteId: remote.id,
-            orderDateTime: remote.orderDateTime,
-          ),
-        );
-      }
-    }
-    return sortListsPreservingSmartLists(result);
-  }
-
-  Map<String, dynamic> _buildTaskWritePayload(
-    TaskItem task, {
-    required String parentFolderRemoteId,
-    required bool isCreate,
-    required WeekStart firstDayOfWeek,
-  }) {
-    final nowUtc = DateTime.now().toUtc();
-    final recurrenceMap = encodeSubstrateRecurrence(
-      task.recurrence,
-      dueDate: task.dueDate,
-      firstDayOfWeek: firstDayOfWeek,
-    );
-
-    final movedFolder =
-        !isCreate &&
-        task.remoteParentFolderId != null &&
-        task.remoteParentFolderId != parentFolderRemoteId;
-
-    final payload = <String, dynamic>{
-      'Subject': task.title,
-      if (isCreate || movedFolder) 'ParentFolderId': parentFolderRemoteId,
-      'OrderDateTime': formatSubstrateUtcTimestamp(
-        task.orderDateTime ?? task.createdAt,
-      ),
-      if (isCreate) 'CreatedWithLocalId': task.id,
-      'Body': {'Content': task.note, 'ContentType': 'Text'},
-      if (task.noteUpdatedAt != null)
-        'BodyLastModifiedTime': formatSubstrateUtcTimestamp(
-          task.noteUpdatedAt!,
-        ),
-      'Status': task.isCompleted ? 'Completed' : 'NotStarted',
-      'Importance': task.isImportant ? 'High' : 'Normal',
-      'IsReminderOn': task.reminderAt != null,
-    };
-
-    if (task.dueDate != null) {
-      payload['DueDateTime'] = formatDueDateTimeZone(task.dueDate!);
-    } else if (!isCreate) {
-      payload['DueDateTime'] = null;
-    }
-
-    if (task.reminderAt != null) {
-      payload['ReminderDateTime'] = formatDateTimeTimeZoneUtc(task.reminderAt!);
-    } else if (!isCreate) {
-      payload['ReminderDateTime'] = null;
-    }
-
-    if (task.isCompleted) {
-      payload['CompletedDateTime'] = formatDateTimeTimeZoneUtc(
-        task.completedAt ?? nowUtc,
-      );
-    } else if (!isCreate) {
-      payload['CompletedDateTime'] = null;
-    }
-
-    if (task.myDayDate != null) {
-      payload['CommittedDay'] = formatDayString(task.myDayDate!);
-    } else if (!isCreate) {
-      payload['CommittedDay'] = null;
-    }
-
-    if (task.committedOrder != null) {
-      payload['CommittedOrder'] = formatSubstrateUtcTimestamp(
-        task.committedOrder!,
-      );
-    } else if (!isCreate && !task.isInMyDay) {
-      payload['CommittedOrder'] = null;
-    }
-
-    if (task.postponedDay != null) {
-      payload['PostponedDay'] = formatDayString(task.postponedDay!);
-    } else if (!isCreate) {
-      payload['PostponedDay'] = null;
-    }
-
-    if (recurrenceMap != null) {
-      payload['Recurrence'] = recurrenceMap;
-    } else if (!isCreate) {
-      payload['Recurrence'] = null;
-    }
-
-    return payload;
   }
 
   Future<RemoteTodoTask> _patchTaskWithConflictRetry({
@@ -946,72 +670,5 @@ class CloudSyncService {
       }
     }
     return syncedSteps;
-  }
-
-  TaskItem _taskFromRemote(
-    RemoteTodoTask remote, {
-    required String localId,
-    required String listId,
-    required List<TaskStep> existingSteps,
-    required String Function(String prefix) idGenerator,
-  }) {
-    final existingStepIdByRemoteId = {
-      for (final s in existingSteps)
-        if (s.remoteId != null) s.remoteId!: s.id,
-    };
-    final indexedSteps = [
-      for (var i = 0; i < remote.subtasks.length; i++)
-        (
-          index: i,
-          step: TaskStep(
-            id:
-                existingStepIdByRemoteId[remote.subtasks[i].id] ??
-                idGenerator('step'),
-            title: remote.subtasks[i].subject,
-            isCompleted: remote.subtasks[i].isCompleted,
-            remoteId: remote.subtasks[i].id,
-            orderDateTime: remote.subtasks[i].orderDateTime,
-          ),
-        ),
-    ];
-    indexedSteps.sort((a, b) {
-      final ao = a.step.orderDateTime;
-      final bo = b.step.orderDateTime;
-      if (ao != null && bo != null) {
-        final cmp = bo.compareTo(ao);
-        if (cmp != 0) return cmp;
-      } else if (ao != null) {
-        return -1;
-      } else if (bo != null) {
-        return 1;
-      }
-      return a.index.compareTo(b.index);
-    });
-    final mappedSteps = [for (final item in indexedSteps) item.step];
-
-    return TaskItem(
-      id: localId,
-      listId: listId,
-      title: remote.subject,
-      createdAt: remote.createdDateTime ?? DateTime.now(),
-      isCompleted: remote.isCompleted,
-      isImportant: remote.isImportant,
-      isInMyDay: false, // Recomputed by TodoNotifier.syncMyDayFlag
-      myDayDate: remote.committedDay,
-      postponedDay: remote.postponedDay,
-      dueDate: remote.dueDate,
-      reminderAt: remote.isReminderOn ? remote.reminderDateTime : null,
-      recurrence: remote.recurrence,
-      note: remote.plainTextNote,
-      noteUpdatedAt: remote.bodyLastModifiedTime,
-      completedAt: remote.isCompleted ? remote.completedDateTime : null,
-      steps: mappedSteps,
-      remoteId: remote.id,
-      remoteParentFolderId: remote.parentFolderId,
-      orderDateTime: remote.orderDateTime,
-      committedOrder: remote.committedOrder,
-      changeKey: remote.changeKey,
-      updatedAt: remote.lastModifiedDateTime ?? remote.createdDateTime,
-    );
   }
 }

@@ -136,91 +136,235 @@ class SyncedSettingsPatch {
   final Map<String, SmartListSettingsPatch> smartListPatches;
 }
 
+class _GlobalSettingSpec<T> {
+  const _GlobalSettingSpec({
+    required this.key,
+    required this.readState,
+    required this.readPatch,
+    required this.encode,
+    required this.applyToState,
+    required this.persist,
+  });
+
+  final String key;
+  final T Function(TodoState state) readState;
+  final T? Function(SyncedSettingsPatch patch) readPatch;
+  final String Function(T value) encode;
+  final TodoState Function(TodoState state, T value) applyToState;
+  final Future<void> Function(TodoSettingsStore store, T value) persist;
+
+  bool hasChanged(TodoState prev, TodoState next) =>
+      readState(prev) != readState(next);
+
+  String encodeState(TodoState state) => encode(readState(state));
+
+  Future<TodoState> applyIfPresent({
+    required TodoState state,
+    required SyncedSettingsPatch patch,
+    required TodoSettingsStore settings,
+    required bool Function(String key) canApply,
+  }) async {
+    final value = readPatch(patch);
+    if (value == null || !canApply(key)) return state;
+    final next = applyToState(state, value);
+    await persist(settings, value);
+    return next;
+  }
+}
+
+final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
+  _GlobalSettingSpec<bool>(
+    key: TodoSettingKeys.confirmOnDelete,
+    readState: (s) => s.confirmBeforeDeleting,
+    readPatch: (p) => p.confirmBeforeDeleting,
+    encode: encodeBoolSetting,
+    applyToState: (s, v) => s.copyWith(confirmBeforeDeleting: v),
+    persist: (store, v) => store.saveConfirmBeforeDeleting(v),
+  ),
+  _GlobalSettingSpec<bool>(
+    key: TodoSettingKeys.soundOnCompletion,
+    readState: (s) => s.playCompletionSound,
+    readPatch: (p) => p.playCompletionSound,
+    encode: encodeBoolSetting,
+    applyToState: (s, v) => s.copyWith(playCompletionSound: v),
+    persist: (store, v) => store.savePlayCompletionSound(v),
+  ),
+  _GlobalSettingSpec<bool>(
+    key: TodoSettingKeys.myDayShowDueTasks,
+    readState: (s) => s.showDueTodayInMyDay,
+    readPatch: (p) => p.showDueTodayInMyDay,
+    encode: encodeBoolSetting,
+    applyToState: (s, v) => s.copyWith(showDueTodayInMyDay: v),
+    persist: (store, v) => store.saveShowDueTodayInMyDay(v),
+  ),
+  _GlobalSettingSpec<bool>(
+    key: TodoSettingKeys.addTasksToTop,
+    readState: (s) => s.addNewTasksOnTop,
+    readPatch: (p) => p.addNewTasksOnTop,
+    encode: encodeBoolSetting,
+    applyToState: (s, v) => s.copyWith(addNewTasksOnTop: v),
+    persist: (store, v) => store.saveAddNewTasksOnTop(v),
+  ),
+  _GlobalSettingSpec<bool>(
+    key: TodoSettingKeys.moveStarredTasksToTop,
+    readState: (s) => s.moveStarredTasksToTop,
+    readPatch: (p) => p.moveStarredTasksToTop,
+    encode: encodeBoolSetting,
+    applyToState: (s, v) => s.copyWith(moveStarredTasksToTop: v),
+    persist: (store, v) => store.saveMoveStarredTasksToTop(v),
+  ),
+  _GlobalSettingSpec<WeekStart>(
+    key: TodoSettingKeys.startWeekFrom,
+    readState: (s) => s.startOfWeek,
+    readPatch: (p) => p.startOfWeek,
+    encode: (v) => encodeIntSetting(encodeWeekStart(v)),
+    applyToState: (s, v) => s.copyWith(startOfWeek: v),
+    persist: (store, v) => store.saveStartOfWeek(v),
+  ),
+  _GlobalSettingSpec<bool>(
+    key: TodoSettingKeys.reminderNotifications,
+    readState: (s) => s.remindersEnabled,
+    readPatch: (p) => p.remindersEnabled,
+    encode: encodeBoolSetting,
+    applyToState: (s, v) => s.copyWith(remindersEnabled: v),
+    persist: (store, v) => store.saveRemindersEnabled(v),
+  ),
+  _GlobalSettingSpec<bool>(
+    key: TodoSettingKeys.dueDateNotifications,
+    readState: (s) => s.dueTodayNotificationsEnabled,
+    readPatch: (p) => p.dueTodayNotificationsEnabled,
+    encode: encodeBoolSetting,
+    applyToState: (s, v) => s.copyWith(dueTodayNotificationsEnabled: v),
+    persist: (store, v) => store.saveDueTodayNotificationsEnabled(v),
+  ),
+  _GlobalSettingSpec<TimeOfDay>(
+    key: TodoSettingKeys.dueDateNotificationTime,
+    readState: (s) => TimeOfDay(
+      hour: s.dueTodayNotificationHour,
+      minute: s.dueTodayNotificationMinute,
+    ),
+    readPatch: (p) => p.dueTodayNotificationTime,
+    encode: encodeTimeOfDaySetting,
+    applyToState: (s, v) => s.copyWith(
+      dueTodayNotificationHour: v.hour,
+      dueTodayNotificationMinute: v.minute,
+    ),
+    persist: (store, v) => store.saveDueTodayNotificationTime(v.hour, v.minute),
+  ),
+  _GlobalSettingSpec<bool>(
+    key: TodoSettingKeys.pinReminders,
+    readState: (s) => s.pinReminders,
+    readPatch: (p) => p.pinReminders,
+    encode: encodeBoolSetting,
+    applyToState: (s, v) => s.copyWith(pinReminders: v),
+    persist: (store, v) => store.savePinReminders(v),
+  ),
+  _GlobalSettingSpec<bool>(
+    key: TodoSettingKeys.routineNotification,
+    readState: (s) => s.routineNotificationEnabled,
+    readPatch: (p) => p.routineNotificationEnabled,
+    encode: encodeRoutineNotificationEnabled,
+    applyToState: (s, v) => s.copyWith(routineNotificationEnabled: v),
+    persist: (store, v) => store.saveRoutineNotificationEnabled(v),
+  ),
+  _GlobalSettingSpec<TimeOfDay>(
+    key: TodoSettingKeys.routineNotificationConfiguration,
+    readState: (s) => TimeOfDay(
+      hour: s.routineNotificationHour,
+      minute: s.routineNotificationMinute,
+    ),
+    readPatch: (p) => p.routineNotificationTime,
+    encode: encodeRoutineConfig,
+    applyToState: (s, v) => s.copyWith(
+      routineNotificationHour: v.hour,
+      routineNotificationMinute: v.minute,
+    ),
+    persist: (store, v) => store.saveRoutineNotificationTime(v.hour, v.minute),
+  ),
+  _GlobalSettingSpec<bool>(
+    key: TodoSettingKeys.smartListStarredEnabled,
+    readState: (s) => s.showSmartListImportant,
+    readPatch: (p) => p.showSmartListImportant,
+    encode: encodeBoolSetting,
+    applyToState: (s, v) => s.copyWith(showSmartListImportant: v),
+    persist: (store, v) => store.saveShowSmartListImportant(v),
+  ),
+  _GlobalSettingSpec<bool>(
+    key: TodoSettingKeys.smartListPlannedEnabled,
+    readState: (s) => s.showSmartListPlanned,
+    readPatch: (p) => p.showSmartListPlanned,
+    encode: encodeBoolSetting,
+    applyToState: (s, v) => s.copyWith(showSmartListPlanned: v),
+    persist: (store, v) => store.saveShowSmartListPlanned(v),
+  ),
+  _GlobalSettingSpec<bool>(
+    key: TodoSettingKeys.smartListAllEnabled,
+    readState: (s) => s.showSmartListAll,
+    readPatch: (p) => p.showSmartListAll,
+    encode: encodeBoolSetting,
+    applyToState: (s, v) => s.copyWith(showSmartListAll: v),
+    persist: (store, v) => store.saveShowSmartListAll(v),
+  ),
+  _GlobalSettingSpec<bool>(
+    key: TodoSettingKeys.smartListCompletedEnabled,
+    readState: (s) => s.showSmartListCompleted,
+    readPatch: (p) => p.showSmartListCompleted,
+    encode: encodeBoolSetting,
+    applyToState: (s, v) => s.copyWith(showSmartListCompleted: v),
+    persist: (store, v) => store.saveShowSmartListCompleted(v),
+  ),
+  _GlobalSettingSpec<bool>(
+    key: TodoSettingKeys.smartListsAutoHide,
+    readState: (s) => s.autoHideEmptySmartLists,
+    readPatch: (p) => p.autoHideEmptySmartLists,
+    encode: encodeBoolSetting,
+    applyToState: (s, v) => s.copyWith(autoHideEmptySmartLists: v),
+    persist: (store, v) => store.saveAutoHideEmptySmartLists(v),
+  ),
+  _GlobalSettingSpec<PlannedDueDateFilter>(
+    key: TodoSettingKeys.smartListPlannedDueDateFilter,
+    readState: (s) => s.plannedDueDateFilter,
+    readPatch: (p) => p.plannedDueDateFilter,
+    encode: (v) => encodeIntSetting(encodePlannedDueDateFilter(v)),
+    applyToState: (s, v) => s.copyWith(plannedDueDateFilter: v),
+    persist: (store, v) => store.savePlannedDueDateFilter(v),
+  ),
+  _GlobalSettingSpec<PlannedGroupOption>(
+    key: TodoSettingKeys.smartListPlannedGroupType,
+    readState: (s) => s.plannedGroupOption,
+    readPatch: (p) => p.plannedGroupOption,
+    encode: (v) => encodeIntSetting(encodePlannedGroupOption(v)),
+    applyToState: (s, v) => s.copyWith(plannedGroupOption: v),
+    persist: (store, v) => store.savePlannedGroupOption(v),
+  ),
+];
+
+final Map<String, _GlobalSettingSpec<Object?>> _globalSpecByKey = {
+  for (final spec in _globalSettingSpecs) spec.key: spec,
+};
+
 Set<String> smartListChangedSettingKeys(TodoList prev, TodoList next) {
   final mapping = smartListSettingKeyMap[next.id];
   if (mapping == null) return const {};
-  final changed = <String>{};
-  if (mapping.showCompletedKey != null &&
-      prev.showCompleted != next.showCompleted) {
-    changed.add(mapping.showCompletedKey!);
-  }
-  if (mapping.themeColorKey != null &&
-      (prev.themeColor != next.themeColor ||
-          prev.themePhoto != next.themePhoto)) {
-    changed.add(mapping.themeColorKey!);
-  }
-  if (mapping.sortTypeKey != null && prev.sortOption != next.sortOption) {
-    changed.add(mapping.sortTypeKey!);
-  }
-  if (mapping.sortAscKey != null && prev.sortAscending != next.sortAscending) {
-    changed.add(mapping.sortAscKey!);
-  }
-  return changed;
+  return {
+    if (mapping.showCompletedKey != null &&
+        prev.showCompleted != next.showCompleted)
+      mapping.showCompletedKey!,
+    if (mapping.themeColorKey != null &&
+        (prev.themeColor != next.themeColor ||
+            prev.themePhoto != next.themePhoto))
+      mapping.themeColorKey!,
+    if (mapping.sortTypeKey != null && prev.sortOption != next.sortOption)
+      mapping.sortTypeKey!,
+    if (mapping.sortAscKey != null && prev.sortAscending != next.sortAscending)
+      mapping.sortAscKey!,
+  };
 }
 
-Set<String> detectGlobalSettingChanges(TodoState prev, TodoState next) {
-  final changed = <String>{};
-  if (prev.confirmBeforeDeleting != next.confirmBeforeDeleting) {
-    changed.add(TodoSettingKeys.confirmOnDelete);
-  }
-  if (prev.playCompletionSound != next.playCompletionSound) {
-    changed.add(TodoSettingKeys.soundOnCompletion);
-  }
-  if (prev.showDueTodayInMyDay != next.showDueTodayInMyDay) {
-    changed.add(TodoSettingKeys.myDayShowDueTasks);
-  }
-  if (prev.addNewTasksOnTop != next.addNewTasksOnTop) {
-    changed.add(TodoSettingKeys.addTasksToTop);
-  }
-  if (prev.moveStarredTasksToTop != next.moveStarredTasksToTop) {
-    changed.add(TodoSettingKeys.moveStarredTasksToTop);
-  }
-  if (prev.startOfWeek != next.startOfWeek) {
-    changed.add(TodoSettingKeys.startWeekFrom);
-  }
-  if (prev.remindersEnabled != next.remindersEnabled) {
-    changed.add(TodoSettingKeys.reminderNotifications);
-  }
-  if (prev.dueTodayNotificationsEnabled != next.dueTodayNotificationsEnabled) {
-    changed.add(TodoSettingKeys.dueDateNotifications);
-  }
-  if (prev.dueTodayNotificationHour != next.dueTodayNotificationHour ||
-      prev.dueTodayNotificationMinute != next.dueTodayNotificationMinute) {
-    changed.add(TodoSettingKeys.dueDateNotificationTime);
-  }
-  if (prev.pinReminders != next.pinReminders) {
-    changed.add(TodoSettingKeys.pinReminders);
-  }
-  if (prev.routineNotificationEnabled != next.routineNotificationEnabled) {
-    changed.add(TodoSettingKeys.routineNotification);
-  }
-  if (prev.routineNotificationHour != next.routineNotificationHour ||
-      prev.routineNotificationMinute != next.routineNotificationMinute) {
-    changed.add(TodoSettingKeys.routineNotificationConfiguration);
-  }
-  if (prev.showSmartListImportant != next.showSmartListImportant) {
-    changed.add(TodoSettingKeys.smartListStarredEnabled);
-  }
-  if (prev.showSmartListPlanned != next.showSmartListPlanned) {
-    changed.add(TodoSettingKeys.smartListPlannedEnabled);
-  }
-  if (prev.showSmartListAll != next.showSmartListAll) {
-    changed.add(TodoSettingKeys.smartListAllEnabled);
-  }
-  if (prev.showSmartListCompleted != next.showSmartListCompleted) {
-    changed.add(TodoSettingKeys.smartListCompletedEnabled);
-  }
-  if (prev.autoHideEmptySmartLists != next.autoHideEmptySmartLists) {
-    changed.add(TodoSettingKeys.smartListsAutoHide);
-  }
-  if (prev.plannedDueDateFilter != next.plannedDueDateFilter) {
-    changed.add(TodoSettingKeys.smartListPlannedDueDateFilter);
-  }
-  if (prev.plannedGroupOption != next.plannedGroupOption) {
-    changed.add(TodoSettingKeys.smartListPlannedGroupType);
-  }
-  return changed;
-}
+Set<String> detectGlobalSettingChanges(TodoState prev, TodoState next) => {
+  for (final spec in _globalSettingSpecs)
+    if (spec.hasChanged(prev, next)) spec.key,
+};
 
 Future<({TodoState state, List<TodoList> lists})> applySyncedSettingsPatch({
   required TodoSettingsStore settings,
@@ -238,118 +382,13 @@ Future<({TodoState state, List<TodoList> lists})> applySyncedSettingsPatch({
   }
 
   var next = current;
-  if (patch.confirmBeforeDeleting != null &&
-      canApplySetting(TodoSettingKeys.confirmOnDelete)) {
-    next = next.copyWith(confirmBeforeDeleting: patch.confirmBeforeDeleting!);
-    await settings.saveConfirmBeforeDeleting(next.confirmBeforeDeleting);
-  }
-  if (patch.playCompletionSound != null &&
-      canApplySetting(TodoSettingKeys.soundOnCompletion)) {
-    next = next.copyWith(playCompletionSound: patch.playCompletionSound!);
-    await settings.savePlayCompletionSound(next.playCompletionSound);
-  }
-  if (patch.showDueTodayInMyDay != null &&
-      canApplySetting(TodoSettingKeys.myDayShowDueTasks)) {
-    next = next.copyWith(showDueTodayInMyDay: patch.showDueTodayInMyDay!);
-    await settings.saveShowDueTodayInMyDay(next.showDueTodayInMyDay);
-  }
-  if (patch.addNewTasksOnTop != null &&
-      canApplySetting(TodoSettingKeys.addTasksToTop)) {
-    next = next.copyWith(addNewTasksOnTop: patch.addNewTasksOnTop!);
-    await settings.saveAddNewTasksOnTop(next.addNewTasksOnTop);
-  }
-  if (patch.moveStarredTasksToTop != null &&
-      canApplySetting(TodoSettingKeys.moveStarredTasksToTop)) {
-    next = next.copyWith(moveStarredTasksToTop: patch.moveStarredTasksToTop!);
-    await settings.saveMoveStarredTasksToTop(next.moveStarredTasksToTop);
-  }
-  if (patch.startOfWeek != null &&
-      canApplySetting(TodoSettingKeys.startWeekFrom)) {
-    next = next.copyWith(startOfWeek: patch.startOfWeek!);
-    await settings.saveStartOfWeek(next.startOfWeek);
-  }
-  if (patch.remindersEnabled != null &&
-      canApplySetting(TodoSettingKeys.reminderNotifications)) {
-    next = next.copyWith(remindersEnabled: patch.remindersEnabled!);
-    await settings.saveRemindersEnabled(next.remindersEnabled);
-  }
-  if (patch.dueTodayNotificationsEnabled != null &&
-      canApplySetting(TodoSettingKeys.dueDateNotifications)) {
-    next = next.copyWith(
-      dueTodayNotificationsEnabled: patch.dueTodayNotificationsEnabled!,
+  for (final spec in _globalSettingSpecs) {
+    next = await spec.applyIfPresent(
+      state: next,
+      patch: patch,
+      settings: settings,
+      canApply: canApplySetting,
     );
-    await settings.saveDueTodayNotificationsEnabled(
-      next.dueTodayNotificationsEnabled,
-    );
-  }
-  if (patch.dueTodayNotificationTime != null &&
-      canApplySetting(TodoSettingKeys.dueDateNotificationTime)) {
-    final t = patch.dueTodayNotificationTime!;
-    next = next.copyWith(
-      dueTodayNotificationHour: t.hour,
-      dueTodayNotificationMinute: t.minute,
-    );
-    await settings.saveDueTodayNotificationTime(t.hour, t.minute);
-  }
-  if (patch.pinReminders != null &&
-      canApplySetting(TodoSettingKeys.pinReminders)) {
-    next = next.copyWith(pinReminders: patch.pinReminders!);
-    await settings.savePinReminders(next.pinReminders);
-  }
-  if (patch.routineNotificationEnabled != null &&
-      canApplySetting(TodoSettingKeys.routineNotification)) {
-    next = next.copyWith(
-      routineNotificationEnabled: patch.routineNotificationEnabled!,
-    );
-    await settings.saveRoutineNotificationEnabled(
-      next.routineNotificationEnabled,
-    );
-  }
-  if (patch.routineNotificationTime != null &&
-      canApplySetting(TodoSettingKeys.routineNotificationConfiguration)) {
-    final t = patch.routineNotificationTime!;
-    next = next.copyWith(
-      routineNotificationHour: t.hour,
-      routineNotificationMinute: t.minute,
-    );
-    await settings.saveRoutineNotificationTime(t.hour, t.minute);
-  }
-  if (patch.showSmartListImportant != null &&
-      canApplySetting(TodoSettingKeys.smartListStarredEnabled)) {
-    next = next.copyWith(showSmartListImportant: patch.showSmartListImportant!);
-    await settings.saveShowSmartListImportant(next.showSmartListImportant);
-  }
-  if (patch.showSmartListPlanned != null &&
-      canApplySetting(TodoSettingKeys.smartListPlannedEnabled)) {
-    next = next.copyWith(showSmartListPlanned: patch.showSmartListPlanned!);
-    await settings.saveShowSmartListPlanned(next.showSmartListPlanned);
-  }
-  if (patch.showSmartListAll != null &&
-      canApplySetting(TodoSettingKeys.smartListAllEnabled)) {
-    next = next.copyWith(showSmartListAll: patch.showSmartListAll!);
-    await settings.saveShowSmartListAll(next.showSmartListAll);
-  }
-  if (patch.showSmartListCompleted != null &&
-      canApplySetting(TodoSettingKeys.smartListCompletedEnabled)) {
-    next = next.copyWith(showSmartListCompleted: patch.showSmartListCompleted!);
-    await settings.saveShowSmartListCompleted(next.showSmartListCompleted);
-  }
-  if (patch.autoHideEmptySmartLists != null &&
-      canApplySetting(TodoSettingKeys.smartListsAutoHide)) {
-    next = next.copyWith(
-      autoHideEmptySmartLists: patch.autoHideEmptySmartLists!,
-    );
-    await settings.saveAutoHideEmptySmartLists(next.autoHideEmptySmartLists);
-  }
-  if (patch.plannedDueDateFilter != null &&
-      canApplySetting(TodoSettingKeys.smartListPlannedDueDateFilter)) {
-    next = next.copyWith(plannedDueDateFilter: patch.plannedDueDateFilter!);
-    await settings.savePlannedDueDateFilter(next.plannedDueDateFilter);
-  }
-  if (patch.plannedGroupOption != null &&
-      canApplySetting(TodoSettingKeys.smartListPlannedGroupType)) {
-    next = next.copyWith(plannedGroupOption: patch.plannedGroupOption!);
-    await settings.savePlannedGroupOption(next.plannedGroupOption);
   }
 
   if (patch.smartListPatches.isEmpty) {
@@ -404,59 +443,9 @@ TodoList _applySmartListPatch({
 
 /// Encodes local [state] field corresponding to Substrate setting [key].
 String? extractSettingValueForKey(TodoState state, String key) {
-  switch (key) {
-    case TodoSettingKeys.confirmOnDelete:
-      return encodeBoolSetting(state.confirmBeforeDeleting);
-    case TodoSettingKeys.soundOnCompletion:
-      return encodeBoolSetting(state.playCompletionSound);
-    case TodoSettingKeys.myDayShowDueTasks:
-      return encodeBoolSetting(state.showDueTodayInMyDay);
-    case TodoSettingKeys.addTasksToTop:
-      return encodeBoolSetting(state.addNewTasksOnTop);
-    case TodoSettingKeys.moveStarredTasksToTop:
-      return encodeBoolSetting(state.moveStarredTasksToTop);
-    case TodoSettingKeys.startWeekFrom:
-      return encodeIntSetting(encodeWeekStart(state.startOfWeek));
-    case TodoSettingKeys.reminderNotifications:
-      return encodeBoolSetting(state.remindersEnabled);
-    case TodoSettingKeys.dueDateNotifications:
-      return encodeBoolSetting(state.dueTodayNotificationsEnabled);
-    case TodoSettingKeys.dueDateNotificationTime:
-      return encodeTimeOfDaySetting(
-        TimeOfDay(
-          hour: state.dueTodayNotificationHour,
-          minute: state.dueTodayNotificationMinute,
-        ),
-      );
-    case TodoSettingKeys.pinReminders:
-      return encodeBoolSetting(state.pinReminders);
-    case TodoSettingKeys.routineNotification:
-      return encodeRoutineNotificationEnabled(state.routineNotificationEnabled);
-    case TodoSettingKeys.routineNotificationConfiguration:
-      return encodeRoutineConfig(
-        TimeOfDay(
-          hour: state.routineNotificationHour,
-          minute: state.routineNotificationMinute,
-        ),
-      );
-    case TodoSettingKeys.smartListStarredEnabled:
-      return encodeBoolSetting(state.showSmartListImportant);
-    case TodoSettingKeys.smartListPlannedEnabled:
-      return encodeBoolSetting(state.showSmartListPlanned);
-    case TodoSettingKeys.smartListAllEnabled:
-      return encodeBoolSetting(state.showSmartListAll);
-    case TodoSettingKeys.smartListCompletedEnabled:
-      return encodeBoolSetting(state.showSmartListCompleted);
-    case TodoSettingKeys.smartListsAutoHide:
-      return encodeBoolSetting(state.autoHideEmptySmartLists);
-    case TodoSettingKeys.smartListPlannedDueDateFilter:
-      return encodeIntSetting(
-        encodePlannedDueDateFilter(state.plannedDueDateFilter),
-      );
-    case TodoSettingKeys.smartListPlannedGroupType:
-      return encodeIntSetting(
-        encodePlannedGroupOption(state.plannedGroupOption),
-      );
+  final globalSpec = _globalSpecByKey[key];
+  if (globalSpec != null) {
+    return globalSpec.encodeState(state);
   }
 
   for (final entry in smartListSettingKeyMap.entries) {
@@ -494,6 +483,11 @@ SyncedSettingsPatch buildSyncedSettingsPatchFromWire(
     if (lower == 'true' || lower == '1' || lower == 'enabled') return true;
     if (lower == 'false' || lower == '0' || lower == 'disabled') return false;
     return null;
+  }
+
+  T? mapVal<T>(String key, T? Function(String raw) decode) {
+    final raw = getVal(key);
+    return raw == null ? null : decode(raw);
   }
 
   final smartPatches = <String, SmartListSettingsPatch>{};
@@ -543,33 +537,27 @@ SyncedSettingsPatch buildSyncedSettingsPatchFromWire(
     }
   }
 
-  final rawWeek = getVal(TodoSettingKeys.startWeekFrom);
-  final rawDueFilter = getVal(TodoSettingKeys.smartListPlannedDueDateFilter);
-  final rawGroupType = getVal(TodoSettingKeys.smartListPlannedGroupType);
-  final rawDueTime = getVal(TodoSettingKeys.dueDateNotificationTime);
-  final rawRoutineConfig = getVal(
-    TodoSettingKeys.routineNotificationConfiguration,
-  );
-
   return SyncedSettingsPatch(
     confirmBeforeDeleting: boolOrNull(TodoSettingKeys.confirmOnDelete),
     playCompletionSound: boolOrNull(TodoSettingKeys.soundOnCompletion),
     showDueTodayInMyDay: boolOrNull(TodoSettingKeys.myDayShowDueTasks),
     addNewTasksOnTop: boolOrNull(TodoSettingKeys.addTasksToTop),
     moveStarredTasksToTop: boolOrNull(TodoSettingKeys.moveStarredTasksToTop),
-    startOfWeek: rawWeek != null ? decodeWeekStart(rawWeek) : null,
+    startOfWeek: mapVal(TodoSettingKeys.startWeekFrom, decodeWeekStart),
     remindersEnabled: boolOrNull(TodoSettingKeys.reminderNotifications),
     dueTodayNotificationsEnabled: boolOrNull(
       TodoSettingKeys.dueDateNotifications,
     ),
-    dueTodayNotificationTime: rawDueTime != null
-        ? decodeTimeOfDaySetting(rawDueTime)
-        : null,
+    dueTodayNotificationTime: mapVal(
+      TodoSettingKeys.dueDateNotificationTime,
+      decodeTimeOfDaySetting,
+    ),
     pinReminders: boolOrNull(TodoSettingKeys.pinReminders),
     routineNotificationEnabled: boolOrNull(TodoSettingKeys.routineNotification),
-    routineNotificationTime: rawRoutineConfig != null
-        ? decodeRoutineConfigTime(rawRoutineConfig)
-        : null,
+    routineNotificationTime: mapVal(
+      TodoSettingKeys.routineNotificationConfiguration,
+      decodeRoutineConfigTime,
+    ),
     showSmartListImportant: boolOrNull(TodoSettingKeys.smartListStarredEnabled),
     showSmartListPlanned: boolOrNull(TodoSettingKeys.smartListPlannedEnabled),
     showSmartListAll: boolOrNull(TodoSettingKeys.smartListAllEnabled),
@@ -577,12 +565,14 @@ SyncedSettingsPatch buildSyncedSettingsPatchFromWire(
       TodoSettingKeys.smartListCompletedEnabled,
     ),
     autoHideEmptySmartLists: boolOrNull(TodoSettingKeys.smartListsAutoHide),
-    plannedDueDateFilter: rawDueFilter != null
-        ? decodePlannedDueDateFilter(rawDueFilter)
-        : null,
-    plannedGroupOption: rawGroupType != null
-        ? decodePlannedGroupOption(rawGroupType)
-        : null,
+    plannedDueDateFilter: mapVal(
+      TodoSettingKeys.smartListPlannedDueDateFilter,
+      decodePlannedDueDateFilter,
+    ),
+    plannedGroupOption: mapVal(
+      TodoSettingKeys.smartListPlannedGroupType,
+      decodePlannedGroupOption,
+    ),
     smartListPatches: smartPatches,
   );
 }

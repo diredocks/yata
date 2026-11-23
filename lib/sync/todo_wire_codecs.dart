@@ -268,49 +268,61 @@ DecodedFolderName decodeFolderName(String raw) {
   return DecodedFolderName(emoji: firstGrapheme, title: remainder);
 }
 
-/// Encodes [TaskSortOption] to MS To Do `TasksSortOrder` integer (`0..6`).
-int encodeSortType(TaskSortOption option) {
-  return switch (option) {
-    TaskSortOption.defaultOrder => 0,
-    TaskSortOption.alphabetical => 1,
-    TaskSortOption.dueDate => 2,
-    TaskSortOption.creationDate => 3,
-    TaskSortOption.addedToMyDay => 5,
-    TaskSortOption.importance => 6,
-  };
-}
-
-/// Decodes `SortType` wire integer or string into [TaskSortOption].
-TaskSortOption decodeSortType(dynamic raw) {
+T _decodeWireEnum<T>({
+  required dynamic raw,
+  required Map<int, T> byInt,
+  required Map<String, T> byString,
+  required T fallback,
+}) {
   final intVal = parseWireInt(raw);
   if (intVal != null) {
-    return switch (intVal) {
-      0 || 4 => TaskSortOption.defaultOrder,
-      1 => TaskSortOption.alphabetical,
-      2 => TaskSortOption.dueDate,
-      3 => TaskSortOption.creationDate,
-      5 => TaskSortOption.addedToMyDay,
-      6 => TaskSortOption.importance,
-      _ => TaskSortOption.defaultOrder,
-    };
+    return byInt[intVal] ?? fallback;
   }
   if (raw is String) {
     final normalized = raw.trim().toLowerCase();
-    return switch (normalized) {
-      'alphabetical' || 'subject' => TaskSortOption.alphabetical,
-      'duedate' || 'due_date' => TaskSortOption.dueDate,
-      'creationdate' ||
-      'created' ||
-      'creation_date' => TaskSortOption.creationDate,
-      'addedtomyday' ||
-      'committed' ||
-      'added_to_my_day' => TaskSortOption.addedToMyDay,
-      'importance' || 'priority' => TaskSortOption.importance,
-      _ => TaskSortOption.defaultOrder,
-    };
+    return byString[normalized] ?? fallback;
   }
-  return TaskSortOption.defaultOrder;
+  return fallback;
 }
+
+/// Encodes [TaskSortOption] to MS To Do `TasksSortOrder` integer (`0..6`).
+int encodeSortType(TaskSortOption option) => switch (option) {
+  TaskSortOption.defaultOrder => 0,
+  TaskSortOption.alphabetical => 1,
+  TaskSortOption.dueDate => 2,
+  TaskSortOption.creationDate => 3,
+  TaskSortOption.addedToMyDay => 5,
+  TaskSortOption.importance => 6,
+};
+
+/// Decodes `SortType` wire integer or string into [TaskSortOption].
+TaskSortOption decodeSortType(dynamic raw) => _decodeWireEnum(
+  raw: raw,
+  byInt: const {
+    0: TaskSortOption.defaultOrder,
+    1: TaskSortOption.alphabetical,
+    2: TaskSortOption.dueDate,
+    3: TaskSortOption.creationDate,
+    4: TaskSortOption.defaultOrder,
+    5: TaskSortOption.addedToMyDay,
+    6: TaskSortOption.importance,
+  },
+  byString: const {
+    'alphabetical': TaskSortOption.alphabetical,
+    'subject': TaskSortOption.alphabetical,
+    'duedate': TaskSortOption.dueDate,
+    'due_date': TaskSortOption.dueDate,
+    'creationdate': TaskSortOption.creationDate,
+    'created': TaskSortOption.creationDate,
+    'creation_date': TaskSortOption.creationDate,
+    'addedtomyday': TaskSortOption.addedToMyDay,
+    'committed': TaskSortOption.addedToMyDay,
+    'added_to_my_day': TaskSortOption.addedToMyDay,
+    'importance': TaskSortOption.importance,
+    'priority': TaskSortOption.importance,
+  },
+  fallback: TaskSortOption.defaultOrder,
+);
 
 /// Parses wire booleans represented as `bool`, `num`, or `String`.
 bool parseWireBool(dynamic value, {required bool fallback}) {
@@ -333,121 +345,73 @@ int? parseWireInt(dynamic value) {
 }
 
 /// Encodes [PlannedDueDateFilter] to `SmartListPlanned_DueDateFilter` (`0..5`).
-int encodePlannedDueDateFilter(PlannedDueDateFilter filter) {
-  return switch (filter) {
-    PlannedDueDateFilter.overdue => 0,
-    PlannedDueDateFilter.today => 1,
-    PlannedDueDateFilter.tomorrow => 2,
-    PlannedDueDateFilter.thisWeek => 3,
-    PlannedDueDateFilter.later => 4,
-    PlannedDueDateFilter.all => 5,
-  };
-}
+int encodePlannedDueDateFilter(PlannedDueDateFilter filter) => filter.index;
 
 /// Decodes `SmartListPlanned_DueDateFilter` (`0..5` or name) into [PlannedDueDateFilter].
 PlannedDueDateFilter decodePlannedDueDateFilter(
   dynamic raw, {
   PlannedDueDateFilter fallback = PlannedDueDateFilter.all,
-}) {
-  final intVal = parseWireInt(raw);
-  if (intVal != null) {
-    return switch (intVal) {
-      0 => PlannedDueDateFilter.overdue,
-      1 => PlannedDueDateFilter.today,
-      2 => PlannedDueDateFilter.tomorrow,
-      3 => PlannedDueDateFilter.thisWeek,
-      4 => PlannedDueDateFilter.later,
-      5 => PlannedDueDateFilter.all,
-      _ => fallback,
-    };
-  }
-  if (raw is String) {
-    final normalized = raw.trim().toLowerCase();
-    return switch (normalized) {
-      'overdue' => PlannedDueDateFilter.overdue,
-      'today' => PlannedDueDateFilter.today,
-      'tomorrow' => PlannedDueDateFilter.tomorrow,
-      'thisweek' || 'this_week' => PlannedDueDateFilter.thisWeek,
-      'later' => PlannedDueDateFilter.later,
-      'all' => PlannedDueDateFilter.all,
-      _ => fallback,
-    };
-  }
-  return fallback;
-}
+}) => _decodeWireEnum(
+  raw: raw,
+  byInt: {for (final v in PlannedDueDateFilter.values) v.index: v},
+  byString: const {
+    'overdue': PlannedDueDateFilter.overdue,
+    'today': PlannedDueDateFilter.today,
+    'tomorrow': PlannedDueDateFilter.tomorrow,
+    'thisweek': PlannedDueDateFilter.thisWeek,
+    'this_week': PlannedDueDateFilter.thisWeek,
+    'later': PlannedDueDateFilter.later,
+    'all': PlannedDueDateFilter.all,
+  },
+  fallback: fallback,
+);
 
 /// Encodes [PlannedGroupOption] to `SmartListPlanned_GroupType` (`0..2`).
-int encodePlannedGroupOption(PlannedGroupOption option) {
-  return switch (option) {
-    PlannedGroupOption.ungroup => 0,
-    PlannedGroupOption.byDueDate => 1,
-    PlannedGroupOption.byList => 2,
-  };
-}
+int encodePlannedGroupOption(PlannedGroupOption option) => option.index;
 
 /// Decodes `SmartListPlanned_GroupType` (`0..2` or name) into [PlannedGroupOption].
 PlannedGroupOption decodePlannedGroupOption(
   dynamic raw, {
   PlannedGroupOption fallback = PlannedGroupOption.byDueDate,
-}) {
-  final intVal = parseWireInt(raw);
-  if (intVal != null) {
-    return switch (intVal) {
-      0 => PlannedGroupOption.ungroup,
-      1 => PlannedGroupOption.byDueDate,
-      2 => PlannedGroupOption.byList,
-      _ => fallback,
-    };
-  }
-  if (raw is String) {
-    final normalized = raw.trim().toLowerCase();
-    return switch (normalized) {
-      'ungroup' || 'none' => PlannedGroupOption.ungroup,
-      'byduedate' || 'by_due_date' || 'duedate' => PlannedGroupOption.byDueDate,
-      'bylist' || 'by_list' || 'list' => PlannedGroupOption.byList,
-      _ => fallback,
-    };
-  }
-  return fallback;
-}
+}) => _decodeWireEnum(
+  raw: raw,
+  byInt: {for (final v in PlannedGroupOption.values) v.index: v},
+  byString: const {
+    'ungroup': PlannedGroupOption.ungroup,
+    'none': PlannedGroupOption.ungroup,
+    'byduedate': PlannedGroupOption.byDueDate,
+    'by_due_date': PlannedGroupOption.byDueDate,
+    'duedate': PlannedGroupOption.byDueDate,
+    'bylist': PlannedGroupOption.byList,
+    'by_list': PlannedGroupOption.byList,
+    'list': PlannedGroupOption.byList,
+  },
+  fallback: fallback,
+);
 
 /// Encodes [WeekStart] to Substrate `start_week_from` (`0, 1, 2, 7`).
-int encodeWeekStart(WeekStart weekStart) {
-  return switch (weekStart) {
-    WeekStart.system => 0,
-    WeekStart.sunday => 1,
-    WeekStart.monday => 2,
-    WeekStart.saturday => 7,
-  };
-}
+int encodeWeekStart(WeekStart weekStart) => switch (weekStart) {
+  WeekStart.system => 0,
+  WeekStart.sunday => 1,
+  WeekStart.monday => 2,
+  WeekStart.saturday => 7,
+};
 
 /// Decodes Substrate `start_week_from` (`0, 1, 2, 7` or name) into [WeekStart].
 WeekStart decodeWeekStart(
   dynamic raw, {
   WeekStart fallback = WeekStart.system,
-}) {
-  final intVal = parseWireInt(raw);
-  if (intVal != null) {
-    return switch (intVal) {
-      0 => WeekStart.system,
-      1 => WeekStart.sunday,
-      2 => WeekStart.monday,
-      7 => WeekStart.saturday,
-      _ => fallback,
-    };
-  }
-  if (raw is String) {
-    final normalized = raw.trim().toLowerCase();
-    return switch (normalized) {
-      'system' => WeekStart.system,
-      'sunday' => WeekStart.sunday,
-      'monday' => WeekStart.monday,
-      'saturday' => WeekStart.saturday,
-      _ => fallback,
-    };
-  }
-  return fallback;
-}
+}) => _decodeWireEnum(
+  raw: raw,
+  byInt: const {
+    0: WeekStart.system,
+    1: WeekStart.sunday,
+    2: WeekStart.monday,
+    7: WeekStart.saturday,
+  },
+  byString: {for (final v in WeekStart.values) v.name: v},
+  fallback: fallback,
+);
 
 /// Formats [dt] as a 7-fractional-digit UTC ISO-8601 string for Substrate.
 String formatSubstrateUtcTimestamp(DateTime dt) {
