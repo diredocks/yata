@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:focusable="true"
+    android:orientation="vertical">
+
+    <!-- Header matching mstodo widget_layout.xml -->
+    <FrameLayout
+        android:id="@+id/widget_header_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:focusable="true"
+        android:minHeight="48dp">
+
+        <ImageView
+            android:id="@+id/widget_header_background"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@null"
+            android:scaleType="fitXY"
+            android:src="@drawable/widget_header_background" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:focusable="true"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/widget_todo_icon"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:contentDescription="@string/widget_description"
+                android:src="@mipmap/ic_launcher_foreground"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/widget_todo_gap"
+                android:layout_width="12dp"
+                android:layout_height="match_parent"
+                android:focusable="false"
+                android:visibility="visible" />
+
+            <LinearLayout
+                android:id="@+id/widget_headline_container"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:focusable="true"
+                android:orientation="vertical"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp">
+
+                <TextView
+                    android:id="@+id/widget_list_name"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:drawableEnd="@drawable/ic_widget_arrow_down"
+                    android:drawablePadding="4dp"
+                    android:ellipsize="end"
+                    android:focusable="true"
+                    android:fontFamily="sans-serif-medium"
+                    android:gravity="center_vertical"
+                    android:maxLines="1"
+                    android:paddingStart="0dp"
+                    android:paddingTop="3dp"
+                    android:paddingEnd="4dp"
+                    android:paddingBottom="3dp"
+                    android:text="@string/widget_my_day"
+                    android:textColor="@color/widget_primary_text"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/widget_account_name"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/widget_secondary_text"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_gravity="end"
+            android:focusable="true"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/widget_refresh_button"
+                android:layout_width="39dp"
+                android:layout_height="39dp"
+                android:layout_gravity="center_vertical"
+                android:contentDescription="@string/widget_refresh"
+                android:focusable="true"
+                android:padding="8dp"
+                android:src="@drawable/ic_widget_refresh" />
+
+            <ProgressBar
+                android:id="@+id/widget_refresh_progress"
+                android:layout_width="39dp"
+                android:layout_height="39dp"
+                android:layout_gravity="center_vertical"
+                android:focusable="true"
+                android:indeterminate="true"
+                android:indeterminateTint="@color/widget_header_icon_tint"
+                android:padding="8dp"
+                android:visibility="gone" />
+
+            <ImageView
+                android:id="@+id/widget_add_task"
+                android:layout_width="39dp"
+                android:layout_height="39dp"
+                android:layout_gravity="center_vertical"
+                android:contentDescription="@string/widget_add_task"
+                android:focusable="true"
+                android:padding="8dp"
+                android:src="@drawable/ic_widget_add" />
+
+            <ImageView
+                android:id="@+id/widget_settings"
+                android:layout_width="39dp"
+                android:layout_height="39dp"
+                android:layout_gravity="center_vertical"
+                android:contentDescription="@string/widget_settings"
+                android:focusable="true"
+                android:padding="8dp"
+                android:src="@drawable/ic_widget_settings" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <ProgressBar
+        android:id="@+id/widget_progress_bar"
+        style="@android:style/Widget.ProgressBar.Horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:indeterminate="true"
+        android:visibility="gone" />
+
+    <!-- Body -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:focusable="true">
+
+        <ImageView
+            android:id="@+id/widget_background"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@null"
+            android:scaleType="fitXY"
+            android:src="@drawable/widget_body_background" />
+
+        <FrameLayout
+            android:id="@+id/widget_container"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:focusable="true"
+            android:padding="10dp">
+
+            <ListView
+                android:id="@+id/widget_tasks_list_view"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@android:color/transparent"
+                android:clipToPadding="false"
+                android:divider="@android:color/transparent"
+                android:dividerHeight="4dp"
+                android:focusable="true"
+                android:scrollbars="none" />
+
+            <TextView
+                android:id="@+id/widget_empty_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.2"
+                android:padding="16dp"
+                android:text="@string/widget_empty_state"
+                android:textColor="@color/widget_secondary_text"
+                android:textSize="14sp"
+                android:visibility="gone" />
+        </FrameLayout>
+    </FrameLayout>
+</LinearLayout>

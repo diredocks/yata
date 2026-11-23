@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:dynamic_color/dynamic_color.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:home_widget/home_widget.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,9 +15,15 @@ import 'l10n/app_localizations.dart';
 import 'onboarding/landing_screen.dart';
 import 'theme/todo_theme.dart';
 import 'view/main_shell_screen.dart';
+import 'widget/home_widget_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb &&
+      !Platform.environment.containsKey('FLUTTER_TEST') &&
+      (Platform.isAndroid || Platform.isIOS)) {
+    await HomeWidget.registerInteractivityCallback(homeWidgetBackgroundCallback);
+  }
   final prefs = await SharedPreferences.getInstance();
   final database = TodoDatabase();
   final accountSnapshot = AccountLocalStorage(prefs).load();

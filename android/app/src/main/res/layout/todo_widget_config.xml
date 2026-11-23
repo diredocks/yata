@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <View
+        android:id="@+id/widget_config_backdrop"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clickable="true"
+        android:focusable="true" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginTop="-5dp"
+        android:background="@drawable/widget_config_background"
+        android:orientation="vertical"
+        android:paddingBottom="24dp">
+
+        <!-- Opacity -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="24dp"
+            android:layout_marginEnd="20dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/widget_opacity"
+                android:textColor="@color/widget_primary_text"
+                android:textSize="16sp" />
+
+            <SeekBar
+                android:id="@+id/widget_opacity_bar"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_vertical"
+                android:layout_marginStart="5dp"
+                android:layout_weight="1"
+                android:max="80" />
+
+            <TextView
+                android:id="@+id/widget_opacity_current"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="35dp"
+                android:textColor="@color/widget_secondary_text"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- Font size -->
+        <LinearLayout
+            android:id="@+id/widget_font_option"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="24dp"
+            android:layout_marginEnd="20dp"
+            android:background="?android:attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/widget_font_size"
+                android:textColor="@color/widget_primary_text"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/widget_font_current"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/widget_secondary_text"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- Show completed tasks -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="24dp"
+            android:layout_marginEnd="20dp"
+            android:focusable="true">
+
+            <Switch
+                android:id="@+id/widget_toggle_completed"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/widget_show_completed"
+                android:textColor="@color/widget_primary_text"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+        <!-- Show task details -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="24dp"
+            android:layout_marginEnd="20dp"
+            android:focusable="true">
+
+            <Switch
+                android:id="@+id/widget_toggle_metadata"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:checked="false"
+                android:text="@string/widget_show_metadata"
+                android:textColor="@color/widget_primary_text"
+                android:textSize="16sp" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

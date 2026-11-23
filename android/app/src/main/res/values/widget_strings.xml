@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">View and manage your tasks right from your home screen</string>
+    <string name="widget_empty_state">No tasks in this list</string>
+    <string name="widget_add_task">Add a task</string>
+    <string name="widget_refresh">Refresh</string>
+    <string name="widget_settings">Widget settings</string>
+    <string name="widget_opacity">Opacity</string>
+    <string name="widget_font_size">Font size</string>
+    <string name="widget_font_small">Small</string>
+    <string name="widget_font_medium">Medium</string>
+    <string name="widget_font_large">Large</string>
+    <string name="widget_show_completed">Show completed tasks</string>
+    <string name="widget_show_metadata">Show task details</string>
+    <string name="widget_select_list">Select list</string>
+    <string name="widget_my_day">My Day</string>
+    <string name="widget_done">Done</string>
+</resources>

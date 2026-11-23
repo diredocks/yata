@@ -20,6 +20,7 @@ import '../sync/sync_provider.dart';
 import '../tasksview/richentry/task_entry_sheet.dart';
 import '../tasksview/tasks_view_presenter.dart';
 import '../tasksview/tasks_view_screen.dart';
+import '../widget/home_widget_service.dart';
 
 class MainShellScreen extends ConsumerStatefulWidget {
   const MainShellScreen({super.key});
@@ -28,26 +29,157 @@ class MainShellScreen extends ConsumerStatefulWidget {
   ConsumerState<MainShellScreen> createState() => _MainShellScreenState();
 }
 
-class _MainShellScreenState extends ConsumerState<MainShellScreen> {
+class _MainShellScreenState extends ConsumerState<MainShellScreen>
+    with WidgetsBindingObserver {
   StreamSubscription<NotificationActionEvent>? _notificationSub;
+  StreamSubscription<Uri?>? _widgetClickSub;
+  int _lastKnownWidgetMutationMs = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _lastKnownWidgetMutationMs =
+        ref.read(sharedPreferencesProvider).getInt(kWidgetLastMutationMsKey) ?? 0;
+
     final notificationService = ref.read(notificationServiceProvider);
     _notificationSub = notificationService.events.listen(
       _handleNotificationAction,
     );
+
+    final widgetService = ref.read(homeWidgetServiceProvider);
+    _widgetClickSub = widgetService.widgetClicked.listen(_handleWidgetUri);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final state = ref.read(todoProvider);
-      final strings = NotificationStrings.fromLocalizations(
-        AppLocalizations.of(context),
-      );
+      final l10n = AppLocalizations.of(context);
+      final strings = NotificationStrings.fromLocalizations(l10n);
       unawaited(notificationService.syncWithState(state, strings: strings));
+      _syncHomeWidget(state, l10n);
       _restoreLastEnteredListIfNeeded();
       _startSyncForActiveAccount();
+      unawaited(
+        widgetService.initiallyLaunchedFromHomeWidget().then(_handleWidgetUri),
+      );
     });
+  }
+
+  void _syncHomeWidget(TodoState state, AppLocalizations l10n) {
+    final accountName = ref.read(accountProvider).activeAccount?.displayName;
+    unawaited(
+      ref.read(homeWidgetServiceProvider).syncWithState(
+        state,
+        accountName: accountName,
+        strings: HomeWidgetStrings.fromLocalizations(l10n),
+      ),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_reloadIfWidgetMutated());
+    }
+  }
+
+  Future<void> _reloadIfWidgetMutated() async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.reload();
+    final latestMs = prefs.getInt(kWidgetLastMutationMsKey) ?? 0;
+    if (latestMs > _lastKnownWidgetMutationMs) {
+      _lastKnownWidgetMutationMs = latestMs;
+      await ref.read(todoRepositoryProvider).preload();
+      if (mounted) {
+        ref.invalidate(todoProvider);
+      }
+    }
+  }
+
+  void _handleWidgetUri(Uri? uri) {
+    if (!mounted) return;
+    final action = HomeWidgetAction.fromUri(uri);
+    if (action == null) return;
+
+    final state = ref.read(todoProvider);
+    final isWide = MediaQuery.sizeOf(context).width >= 600;
+    final isExtraWide = MediaQuery.sizeOf(context).width >= 960;
+
+    switch (action.type) {
+      case HomeWidgetActionType.quickAdd:
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        final targetList = state.lists.firstWhere(
+          (l) => l.id == action.listId,
+          orElse: () => state.selectedList,
+        );
+        ref.read(todoProvider.notifier).selectList(targetList.id);
+        _openQuickAddSheet(state, targetList);
+      case HomeWidgetActionType.openList:
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        final targetList = state.lists.firstWhere(
+          (l) => l.id == action.listId,
+          orElse: () => state.selectedList,
+        );
+        _handleSelectList(targetList, isWide);
+      case HomeWidgetActionType.openTask:
+        final taskId = action.taskId;
+        if (taskId == null) return;
+        for (final task in state.tasks) {
+          if (task.id == taskId) {
+            Navigator.of(context).popUntil((route) => route.isFirst);
+            if (!isWide) {
+              final taskList = state.lists.firstWhere(
+                (l) => l.id == (action.listId ?? task.listId),
+                orElse: () => state.selectedList,
+              );
+              _pushTasksView(taskList);
+            }
+            _handleOpenTask(task, isExtraWide);
+            break;
+          }
+        }
+      case HomeWidgetActionType.toggleComplete:
+      case HomeWidgetActionType.toggleImportant:
+      case HomeWidgetActionType.refresh:
+        break;
+    }
+    if (isWide && action.listId != null) {
+      final matched = state.lists.where((l) => l.id == action.listId).firstOrNull;
+      if (matched != null) {
+        ref.read(todoProvider.notifier).selectList(matched.id);
+      }
+    }
+  }
+
+  void _openQuickAddSheet(TodoState state, TodoList currentList) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => TaskEntrySheet(
+        lists: state.lists,
+        currentList: currentList,
+        startOfWeek: state.startOfWeek,
+        onSubmit:
+            ({
+              required String title,
+              String? targetListId,
+              DateTime? dueDate,
+              DateTime? reminderAt,
+              RecurrenceType recurrence = RecurrenceType.none,
+            }) {
+              ref
+                  .read(tasksViewPresenterProvider)
+                  .addTask(
+                    title: title,
+                    targetListId: targetListId,
+                    dueDate: dueDate,
+                    reminderAt: reminderAt,
+                    recurrence: recurrence,
+                  );
+            },
+      ),
+    );
   }
 
   void _startSyncForActiveAccount({bool accountChanged = false}) {
@@ -59,7 +191,9 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     unawaited(_notificationSub?.cancel());
+    unawaited(_widgetClickSub?.cancel());
     super.dispose();
   }
 
@@ -241,6 +375,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
               strings: NotificationStrings.fromLocalizations(l10n),
             ),
       );
+      _syncHomeWidget(next, l10n);
     });
     final state = ref.watch(todoProvider);
     final width = MediaQuery.sizeOf(context).width;
