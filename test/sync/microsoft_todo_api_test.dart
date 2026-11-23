@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
+import 'package:yata/core/error/app_error.dart';
 import 'package:yata/sync/microsoft_todo_api.dart';
 
 void main() {
@@ -118,37 +119,39 @@ void main() {
         cid: 'CID:cid123',
       );
 
-      final groups = await api.fetchFolderGroupsDelta(ctx);
+      final groups = (await api.fetchFolderGroupsDelta(ctx)).getOrThrow();
       expect(groups.items.length, 2);
       expect(groups.items.first.name, 'Group 1');
       expect(groups.items.last.name, 'Group 2');
       expect(groups.deltaLink, contains('deltatoken=g-dt'));
 
-      final settings = await api.getSettings(ctx);
+      final settings = (await api.getSettings(ctx)).getOrThrow();
       expect(settings['ConfirmOnDelete'], 'false');
       expect(throttledCalls, 2);
 
-      await expectLater(
-        () =>
-            api.patchTask(ctx, 't1', const {'Subject': 'x'}, changeKey: 'ck-1'),
-        throwsA(predicate<SyncApiException>((e) => e.isConflict)),
+      final conflict409 = await api.patchTask(
+        ctx,
+        't1',
+        const {'Subject': 'x'},
+        changeKey: 'ck-1',
       );
+      expect(conflict409.exceptionOrNull()?.isConflict, isTrue);
 
-      await expectLater(
-        () => api.patchTask(ctx, 't412', const {
-          'Subject': 'x',
-        }, changeKey: 'ck-stale'),
-        throwsA(predicate<SyncApiException>((e) => e.isConflict)),
+      final conflict412 = await api.patchTask(
+        ctx,
+        't412',
+        const {'Subject': 'x'},
+        changeKey: 'ck-stale',
       );
+      expect(conflict412.exceptionOrNull()?.isConflict, isTrue);
 
-      await expectLater(
-        () => api.fetchTasksDelta(
-          ctx,
-          folderRemoteId: 'f1',
-          deltaLink: 'https://substrate.office.com/todob2/api/v1/tasks?deltatoken=expired',
-        ),
-        throwsA(predicate<SyncApiException>((e) => e.isDeltaExpired)),
+      final expired410 = await api.fetchTasksDelta(
+        ctx,
+        folderRemoteId: 'f1',
+        deltaLink:
+            'https://substrate.office.com/todob2/api/v1/tasks?deltatoken=expired',
       );
+      expect(expired410.exceptionOrNull()?.isDeltaExpired, isTrue);
     });
 
     test('parses NDJSON realtime events and tracks own request IDs', () async {

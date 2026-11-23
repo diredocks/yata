@@ -178,7 +178,7 @@ class CloudSyncService {
     for (final key in dirtySettingKeys) {
       final wireValue = extractSettingValueForKey(currentState, key);
       if (wireValue != null) {
-        await todoApi.patchSetting(ctx, key, wireValue);
+        (await todoApi.patchSetting(ctx, key, wireValue)).getOrThrow();
       }
       syncedSettingKeys.add(key);
     }
@@ -202,11 +202,11 @@ class CloudSyncService {
     for (var i = 0; i < workingGroups.length; i++) {
       final group = workingGroups[i];
       if (group.remoteId == null) {
-        final created = await todoApi.createFolderGroup(
+        final created = (await todoApi.createFolderGroup(
           ctx,
           name: group.title,
           orderDateTime: group.orderDateTime ?? nowUtc,
-        );
+        )).getOrThrow();
         workingGroups[i] = group.copyWith(
           remoteId: created.id,
           orderDateTime: created.orderDateTime ?? group.orderDateTime,
@@ -214,34 +214,32 @@ class CloudSyncService {
         );
         syncedGroupIds.add(group.id);
       } else if (dirtyGroupIds.contains(group.id)) {
-        try {
-          final patched = await todoApi.patchFolderGroup(ctx, group.remoteId!, {
-            'Name': group.title,
-            if (group.orderDateTime != null)
-              'OrderDateTime': formatSubstrateUtcTimestamp(
-                group.orderDateTime!,
-              ),
-          });
-          workingGroups[i] = group.copyWith(
-            title: patched.name.isNotEmpty ? patched.name : group.title,
-            orderDateTime: patched.orderDateTime ?? group.orderDateTime,
-            updatedAt: nowUtc,
-          );
-          syncedGroupIds.add(group.id);
-        } on SyncApiException catch (e) {
-          if (!e.isNotFound) rethrow;
-          final recreated = await todoApi.createFolderGroup(
-            ctx,
-            name: group.title,
-            orderDateTime: group.orderDateTime ?? nowUtc,
-          );
-          workingGroups[i] = group.copyWith(
-            remoteId: recreated.id,
-            orderDateTime: recreated.orderDateTime ?? group.orderDateTime,
-            updatedAt: nowUtc,
-          );
-          syncedGroupIds.add(group.id);
-        }
+        final patchResult = await todoApi
+            .patchFolderGroup(ctx, group.remoteId!, {
+              'Name': group.title,
+              if (group.orderDateTime != null)
+                'OrderDateTime': formatSubstrateUtcTimestamp(
+                  group.orderDateTime!,
+                ),
+            })
+            .recover((error) async {
+              if (!error.isNotFound) {
+                return Failure<RemoteFolderGroup, AppError>(error);
+              }
+              return todoApi.createFolderGroup(
+                ctx,
+                name: group.title,
+                orderDateTime: group.orderDateTime ?? nowUtc,
+              );
+            });
+        final remoteGroup = patchResult.getOrThrow();
+        workingGroups[i] = group.copyWith(
+          remoteId: remoteGroup.id,
+          title: remoteGroup.name.isNotEmpty ? remoteGroup.name : group.title,
+          orderDateTime: remoteGroup.orderDateTime ?? group.orderDateTime,
+          updatedAt: nowUtc,
+        );
+        syncedGroupIds.add(group.id);
       }
     }
 
@@ -262,14 +260,14 @@ class CloudSyncService {
           : null;
 
       if (!list.isSmartList && list.remoteId == null) {
-        final created = await todoApi.createFolder(
+        final created = (await todoApi.createFolder(
           ctx,
           buildFolderCreatePayload(
             list,
             parentGroupRemoteId: parentGroupRemoteId,
             nowUtc: nowUtc,
           ),
-        );
+        )).getOrThrow();
         workingLists[i] = list.copyWith(
           remoteId: created.id,
           orderDateTime: created.orderDateTime ?? list.orderDateTime,
@@ -277,36 +275,35 @@ class CloudSyncService {
         );
         syncedListIds.add(list.id);
       } else if (list.remoteId != null && dirtyListIds.contains(list.id)) {
-        try {
-          final patched = await todoApi.patchFolder(
-            ctx,
-            list.remoteId!,
-            buildFolderPatchPayload(
-              list,
-              parentGroupRemoteId: parentGroupRemoteId,
-            ),
-          );
-          workingLists[i] = list.copyWith(
-            orderDateTime: patched.orderDateTime ?? list.orderDateTime,
-            updatedAt: nowUtc,
-          );
-          syncedListIds.add(list.id);
-        } on SyncApiException catch (e) {
-          if (!e.isNotFound || list.isSmartList) rethrow;
-          final recreated = await todoApi.createFolder(
-            ctx,
-            buildFolderCreatePayload(
-              list,
-              parentGroupRemoteId: parentGroupRemoteId,
-              nowUtc: nowUtc,
-            ),
-          );
-          workingLists[i] = list.copyWith(
-            remoteId: recreated.id,
-            updatedAt: nowUtc,
-          );
-          syncedListIds.add(list.id);
-        }
+        final patchResult = await todoApi
+            .patchFolder(
+              ctx,
+              list.remoteId!,
+              buildFolderPatchPayload(
+                list,
+                parentGroupRemoteId: parentGroupRemoteId,
+              ),
+            )
+            .recover((error) async {
+              if (!error.isNotFound || list.isSmartList) {
+                return Failure<RemoteTodoFolder, AppError>(error);
+              }
+              return todoApi.createFolder(
+                ctx,
+                buildFolderCreatePayload(
+                  list,
+                  parentGroupRemoteId: parentGroupRemoteId,
+                  nowUtc: nowUtc,
+                ),
+              );
+            });
+        final remoteFolder = patchResult.getOrThrow();
+        workingLists[i] = list.copyWith(
+          remoteId: remoteFolder.id,
+          orderDateTime: remoteFolder.orderDateTime ?? list.orderDateTime,
+          updatedAt: nowUtc,
+        );
+        syncedListIds.add(list.id);
       }
     }
 
@@ -321,7 +318,7 @@ class CloudSyncService {
     final remainingDirtySettings = dirtySettingKeys.difference(
       syncedSettingKeys,
     );
-    final remoteSettings = await todoApi.getSettings(ctx);
+    final remoteSettings = (await todoApi.getSettings(ctx)).getOrThrow();
     final settingsPatch = buildSyncedSettingsPatchFromWire(
       remoteSettings,
       skipKeys: remainingDirtySettings,
@@ -390,7 +387,7 @@ class CloudSyncService {
         firstDayOfWeek: currentState.startOfWeek,
       );
       final remoteTask = isCreate
-          ? await todoApi.createTask(ctx, folderRemoteId, payload)
+          ? (await todoApi.createTask(ctx, folderRemoteId, payload)).getOrThrow()
           : await _patchTaskWithConflictRetry(
               ctx: ctx,
               task: task,
@@ -442,24 +439,25 @@ class CloudSyncService {
 
   Future<List<T>> _pushPendingDeletions<T>({
     required List<T> items,
-    required Future<void> Function(T item) deleteCall,
-    bool Function(SyncApiException e)? treatAsDeletedOn,
-    bool Function(SyncApiException e)? keepQueuedOn,
+    required AsyncAppResult<Unit> Function(T item) deleteCall,
+    bool Function(AppError e)? treatAsDeletedOn,
+    bool Function(AppError e)? keepQueuedOn,
   }) async {
     final processed = <T>[];
     for (final item in items) {
-      try {
-        await deleteCall(item);
-        processed.add(item);
-      } on SyncApiException catch (e) {
-        if ((treatAsDeletedOn ?? (err) => err.isNotFound)(e)) {
-          processed.add(item);
-        } else if (keepQueuedOn != null && keepQueuedOn(e)) {
-          // Leave queued for a future sync pass.
-        } else {
-          rethrow;
-        }
-      }
+      final result = await deleteCall(item);
+      result.fold(
+        (_) => processed.add(item),
+        (error) {
+          if ((treatAsDeletedOn ?? (err) => err.isNotFound)(error)) {
+            processed.add(item);
+          } else if (keepQueuedOn != null && keepQueuedOn(error)) {
+            // Leave queued for a future sync pass.
+          } else {
+            throw error;
+          }
+        },
+      );
     }
     return processed;
   }
@@ -583,15 +581,17 @@ class CloudSyncService {
   Future<DeltaPageResult<T>> _fetchWithDeltaRecovery<T>({
     required String? deltaLink,
     required Future<void> Function() clearDeltaLink,
-    required Future<DeltaPageResult<T>> Function(String? deltaLink) fetch,
+    required AsyncAppResult<DeltaPageResult<T>> Function(String? deltaLink)
+    fetch,
   }) async {
-    try {
-      return await fetch(deltaLink);
-    } on SyncApiException catch (e) {
-      if (!e.isDeltaExpired || deltaLink == null) rethrow;
+    final result = await fetch(deltaLink).recover((error) async {
+      if (!error.isDeltaExpired || deltaLink == null) {
+        return Failure<DeltaPageResult<T>, AppError>(error);
+      }
       await clearDeltaLink();
       return fetch(null);
-    }
+    });
+    return result.getOrThrow();
   }
 
   Future<RemoteTodoTask> _patchTaskWithConflictRetry({
@@ -599,23 +599,24 @@ class CloudSyncService {
     required TaskItem task,
     required Map<String, dynamic> payload,
   }) async {
-    try {
-      return await todoApi.patchTask(
-        ctx,
-        task.remoteId!,
-        payload,
-        changeKey: task.changeKey,
-      );
-    } on SyncApiException catch (e) {
-      if (!e.isConflict) rethrow;
-      final latest = await todoApi.getTask(ctx, task.remoteId!);
-      return todoApi.patchTask(
-        ctx,
-        task.remoteId!,
-        payload,
-        changeKey: latest.changeKey,
-      );
-    }
+    final result = await todoApi
+        .patchTask(ctx, task.remoteId!, payload, changeKey: task.changeKey)
+        .recover((error) async {
+          if (!error.isConflict) {
+            return Failure<RemoteTodoTask, AppError>(error);
+          }
+          return todoApi
+              .getTask(ctx, task.remoteId!)
+              .flatMap(
+                (latest) => todoApi.patchTask(
+                  ctx,
+                  task.remoteId!,
+                  payload,
+                  changeKey: latest.changeKey,
+                ),
+              );
+        });
+    return result.getOrThrow();
   }
 
   Future<List<TaskStep>> _syncStepsForTask({
@@ -633,16 +634,16 @@ class CloudSyncService {
             nowUtc.subtract(
               Duration(seconds: i * kOrderDateTimeStep.inSeconds),
             );
-        final created = await todoApi.createStep(
+        final created = (await todoApi.createStep(
           ctx,
           taskRemoteId,
           subject: step.title,
           orderDateTime: stepOrder,
-        );
+        )).getOrThrow();
         if (step.isCompleted) {
-          await todoApi.patchStep(ctx, taskRemoteId, created.id, const {
+          (await todoApi.patchStep(ctx, taskRemoteId, created.id, const {
             'IsCompleted': true,
-          });
+          })).getOrThrow();
         }
         syncedSteps.add(
           step.copyWith(
@@ -651,7 +652,7 @@ class CloudSyncService {
           ),
         );
       } else {
-        final patched = await todoApi.patchStep(
+        final patched = (await todoApi.patchStep(
           ctx,
           taskRemoteId,
           step.remoteId!,
@@ -661,7 +662,7 @@ class CloudSyncService {
             if (step.orderDateTime != null)
               'OrderDateTime': formatSubstrateUtcTimestamp(step.orderDateTime!),
           },
-        );
+        )).getOrThrow();
         syncedSteps.add(
           step.copyWith(
             orderDateTime: patched.orderDateTime ?? step.orderDateTime,

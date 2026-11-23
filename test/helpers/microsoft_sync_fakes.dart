@@ -1,8 +1,11 @@
 import 'dart:async';
 
+import 'package:result_dart/result_dart.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/auth/msa_webview_launcher.dart';
+import 'package:yata/core/result/app_result.dart';
 import 'package:yata/sync/microsoft_todo_api.dart';
+import 'package:yata/sync/sync_guard.dart';
 
 class FakeInteractiveMsaClient implements MsaInteractiveSignInClient {
   FakeInteractiveMsaClient(this.result);
@@ -204,238 +207,284 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
       requestId != null && ownRequestIds.contains(requestId);
 
   @override
-  Future<Map<String, String>> getSettings(SubstrateRequestContext ctx) async {
-    callLog.add('GET settings');
-    return Map<String, String>.from(remoteSettings);
+  AsyncAppResult<Map<String, String>> getSettings(SubstrateRequestContext ctx) {
+    return guardApiCall(() async {
+      callLog.add('GET settings');
+      return Map<String, String>.from(remoteSettings);
+    });
   }
 
   @override
-  Future<void> patchSetting(
+  AsyncAppResult<Unit> patchSetting(
     SubstrateRequestContext ctx,
     String key,
     String value,
-  ) async {
-    callLog.add('PATCH settings/$key=$value');
-    remoteSettings[key] = value;
+  ) {
+    return guardApiCall(() async {
+      callLog.add('PATCH settings/$key=$value');
+      remoteSettings[key] = value;
+      return unit;
+    });
   }
 
   @override
-  Future<DeltaPageResult<RemoteFolderGroup>> fetchFolderGroupsDelta(
+  AsyncAppResult<DeltaPageResult<RemoteFolderGroup>> fetchFolderGroupsDelta(
     SubstrateRequestContext ctx, {
     String? deltaLink,
-  }) async {
-    callLog.add('GET foldergroups($deltaLink)');
-    return onFetchGroupsDelta?.call(deltaLink) ??
-        const DeltaPageResult(items: [], deltaLink: 'dl-groups-1');
+  }) {
+    return guardApiCall(() async {
+      callLog.add('GET foldergroups($deltaLink)');
+      return onFetchGroupsDelta?.call(deltaLink) ??
+          const DeltaPageResult(items: [], deltaLink: 'dl-groups-1');
+    });
   }
 
   @override
-  Future<RemoteFolderGroup> createFolderGroup(
+  AsyncAppResult<RemoteFolderGroup> createFolderGroup(
     SubstrateRequestContext ctx, {
     required String name,
     required DateTime orderDateTime,
-  }) async {
-    callLog.add('POST foldergroups $name');
-    if (onCreateGroup != null) return onCreateGroup!(name, orderDateTime);
-    _idSeq += 1;
-    return RemoteFolderGroup(
-      id: 'rg-$_idSeq',
-      name: name,
-      orderDateTime: orderDateTime,
-    );
+  }) {
+    return guardApiCall(() async {
+      callLog.add('POST foldergroups $name');
+      if (onCreateGroup != null) return onCreateGroup!(name, orderDateTime);
+      _idSeq += 1;
+      return RemoteFolderGroup(
+        id: 'rg-$_idSeq',
+        name: name,
+        orderDateTime: orderDateTime,
+      );
+    });
   }
 
   @override
-  Future<RemoteFolderGroup> patchFolderGroup(
+  AsyncAppResult<RemoteFolderGroup> patchFolderGroup(
     SubstrateRequestContext ctx,
     String remoteId,
     Map<String, dynamic> patch,
-  ) async {
-    callLog.add('PATCH foldergroups/$remoteId');
-    if (onPatchGroup != null) return onPatchGroup!(remoteId, patch);
-    return RemoteFolderGroup(
-      id: remoteId,
-      name: patch['Name'] as String? ?? 'Group',
-      orderDateTime: DateTime.now().toUtc(),
-    );
+  ) {
+    return guardApiCall(() async {
+      callLog.add('PATCH foldergroups/$remoteId');
+      if (onPatchGroup != null) return onPatchGroup!(remoteId, patch);
+      return RemoteFolderGroup(
+        id: remoteId,
+        name: patch['Name'] as String? ?? 'Group',
+        orderDateTime: DateTime.now().toUtc(),
+      );
+    });
   }
 
   @override
-  Future<void> deleteFolderGroup(
+  AsyncAppResult<Unit> deleteFolderGroup(
     SubstrateRequestContext ctx,
     String remoteId,
-  ) async {
-    callLog.add('DELETE foldergroups/$remoteId');
-    if (onDeleteGroup != null) await onDeleteGroup!(remoteId);
+  ) {
+    return guardApiCall(() async {
+      callLog.add('DELETE foldergroups/$remoteId');
+      if (onDeleteGroup != null) await onDeleteGroup!(remoteId);
+      return unit;
+    });
   }
 
   @override
-  Future<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta(
+  AsyncAppResult<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta(
     SubstrateRequestContext ctx, {
     String? deltaLink,
-  }) async {
-    callLog.add('GET taskfolders($deltaLink)');
-    return onFetchFoldersDelta?.call(deltaLink) ??
-        const DeltaPageResult(
-          items: [
-            RemoteTodoFolder(
-              id: 'rf-default',
-              name: 'Tasks',
-              isDefaultFolder: true,
-            ),
-          ],
-          deltaLink: 'dl-folders-1',
-        );
+  }) {
+    return guardApiCall(() async {
+      callLog.add('GET taskfolders($deltaLink)');
+      return onFetchFoldersDelta?.call(deltaLink) ??
+          const DeltaPageResult(
+            items: [
+              RemoteTodoFolder(
+                id: 'rf-default',
+                name: 'Tasks',
+                isDefaultFolder: true,
+              ),
+            ],
+            deltaLink: 'dl-folders-1',
+          );
+    });
   }
 
   @override
-  Future<RemoteTodoFolder> createFolder(
+  AsyncAppResult<RemoteTodoFolder> createFolder(
     SubstrateRequestContext ctx,
     Map<String, dynamic> payload,
-  ) async {
-    callLog.add('POST taskfolders ${payload['Name']}');
-    if (onCreateFolder != null) return onCreateFolder!(payload);
-    _idSeq += 1;
-    return RemoteTodoFolder(
-      id: 'rf-$_idSeq',
-      name: payload['Name'] as String? ?? 'List',
-    );
+  ) {
+    return guardApiCall(() async {
+      callLog.add('POST taskfolders ${payload['Name']}');
+      if (onCreateFolder != null) return onCreateFolder!(payload);
+      _idSeq += 1;
+      return RemoteTodoFolder(
+        id: 'rf-$_idSeq',
+        name: payload['Name'] as String? ?? 'List',
+      );
+    });
   }
 
   @override
-  Future<RemoteTodoFolder> patchFolder(
+  AsyncAppResult<RemoteTodoFolder> patchFolder(
     SubstrateRequestContext ctx,
     String remoteId,
     Map<String, dynamic> patch,
-  ) async {
-    callLog.add('PATCH taskfolders/$remoteId $patch');
-    if (onPatchFolder != null) return onPatchFolder!(remoteId, patch);
-    return RemoteTodoFolder(
-      id: remoteId,
-      name: patch['Name'] as String? ?? 'List',
-      parentFolderGroupId: patch['ParentFolderGroupId'] as String?,
-    );
+  ) {
+    return guardApiCall(() async {
+      callLog.add('PATCH taskfolders/$remoteId $patch');
+      if (onPatchFolder != null) return onPatchFolder!(remoteId, patch);
+      return RemoteTodoFolder(
+        id: remoteId,
+        name: patch['Name'] as String? ?? 'List',
+        parentFolderGroupId: patch['ParentFolderGroupId'] as String?,
+      );
+    });
   }
 
   @override
-  Future<void> deleteFolder(
+  AsyncAppResult<Unit> deleteFolder(
     SubstrateRequestContext ctx,
     String remoteId,
-  ) async {
-    callLog.add('DELETE taskfolders/$remoteId');
-    if (onDeleteFolder != null) await onDeleteFolder!(remoteId);
+  ) {
+    return guardApiCall(() async {
+      callLog.add('DELETE taskfolders/$remoteId');
+      if (onDeleteFolder != null) await onDeleteFolder!(remoteId);
+      return unit;
+    });
   }
 
   @override
-  Future<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta(
+  AsyncAppResult<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta(
     SubstrateRequestContext ctx, {
     required String folderRemoteId,
     String? deltaLink,
-  }) async {
-    callLog.add('GET tasks($folderRemoteId,$deltaLink)');
-    return onFetchTasksDelta?.call(folderRemoteId, deltaLink) ??
-        DeltaPageResult(items: const [], deltaLink: 'dl-tasks-$folderRemoteId');
+  }) {
+    return guardApiCall(() async {
+      callLog.add('GET tasks($folderRemoteId,$deltaLink)');
+      return onFetchTasksDelta?.call(folderRemoteId, deltaLink) ??
+          DeltaPageResult(
+            items: const [],
+            deltaLink: 'dl-tasks-$folderRemoteId',
+          );
+    });
   }
 
   @override
-  Future<RemoteTodoTask> getTask(
+  AsyncAppResult<RemoteTodoTask> getTask(
     SubstrateRequestContext ctx,
     String taskRemoteId,
-  ) async {
-    callLog.add('GET tasks/$taskRemoteId');
-    if (onGetTask != null) return onGetTask!(taskRemoteId);
-    return RemoteTodoTask(
-      id: taskRemoteId,
-      subject: 'Task',
-      changeKey: 'ck-new',
-    );
+  ) {
+    return guardApiCall(() async {
+      callLog.add('GET tasks/$taskRemoteId');
+      if (onGetTask != null) return onGetTask!(taskRemoteId);
+      return RemoteTodoTask(
+        id: taskRemoteId,
+        subject: 'Task',
+        changeKey: 'ck-new',
+      );
+    });
   }
 
   @override
-  Future<RemoteTodoTask> createTask(
+  AsyncAppResult<RemoteTodoTask> createTask(
     SubstrateRequestContext ctx,
     String folderRemoteId,
     Map<String, dynamic> payload,
-  ) async {
-    callLog.add('POST taskfolders/$folderRemoteId/tasks ${payload['Subject']}');
-    if (onCreateTask != null) return onCreateTask!(folderRemoteId, payload);
-    _idSeq += 1;
-    return RemoteTodoTask(
-      id: 'rt-$_idSeq',
-      changeKey: 'ck-$_idSeq',
-      parentFolderId: folderRemoteId,
-      subject: payload['Subject'] as String? ?? 'Task',
-    );
+  ) {
+    return guardApiCall(() async {
+      callLog.add(
+        'POST taskfolders/$folderRemoteId/tasks ${payload['Subject']}',
+      );
+      if (onCreateTask != null) return onCreateTask!(folderRemoteId, payload);
+      _idSeq += 1;
+      return RemoteTodoTask(
+        id: 'rt-$_idSeq',
+        changeKey: 'ck-$_idSeq',
+        parentFolderId: folderRemoteId,
+        subject: payload['Subject'] as String? ?? 'Task',
+      );
+    });
   }
 
   @override
-  Future<RemoteTodoTask> patchTask(
+  AsyncAppResult<RemoteTodoTask> patchTask(
     SubstrateRequestContext ctx,
     String taskRemoteId,
     Map<String, dynamic> patch, {
     String? changeKey,
-  }) async {
-    callLog.add('PATCH tasks/$taskRemoteId(ifMatch=$changeKey)');
-    if (onPatchTask != null) {
-      return onPatchTask!(taskRemoteId, patch, changeKey);
-    }
-    return RemoteTodoTask(
-      id: taskRemoteId,
-      changeKey: 'ck-updated',
-      subject: patch['Subject'] as String? ?? 'Task',
-    );
+  }) {
+    return guardApiCall(() async {
+      callLog.add('PATCH tasks/$taskRemoteId(ifMatch=$changeKey)');
+      if (onPatchTask != null) {
+        return onPatchTask!(taskRemoteId, patch, changeKey);
+      }
+      return RemoteTodoTask(
+        id: taskRemoteId,
+        changeKey: 'ck-updated',
+        subject: patch['Subject'] as String? ?? 'Task',
+      );
+    });
   }
 
   @override
-  Future<void> deleteTask(
+  AsyncAppResult<Unit> deleteTask(
     SubstrateRequestContext ctx,
     String taskRemoteId,
-  ) async {
-    callLog.add('DELETE tasks/$taskRemoteId');
-    if (onDeleteTask != null) await onDeleteTask!(taskRemoteId);
+  ) {
+    return guardApiCall(() async {
+      callLog.add('DELETE tasks/$taskRemoteId');
+      if (onDeleteTask != null) await onDeleteTask!(taskRemoteId);
+      return unit;
+    });
   }
 
   @override
-  Future<RemoteTaskStep> createStep(
+  AsyncAppResult<RemoteTaskStep> createStep(
     SubstrateRequestContext ctx,
     String taskRemoteId, {
     required String subject,
     required DateTime orderDateTime,
-  }) async {
-    callLog.add('POST tasks/$taskRemoteId/subtasks $subject');
-    if (onCreateStep != null) {
-      return onCreateStep!(taskRemoteId, subject, orderDateTime);
-    }
-    _idSeq += 1;
-    return RemoteTaskStep(
-      id: 'rs-$_idSeq',
-      subject: subject,
-      orderDateTime: orderDateTime,
-    );
+  }) {
+    return guardApiCall(() async {
+      callLog.add('POST tasks/$taskRemoteId/subtasks $subject');
+      if (onCreateStep != null) {
+        return onCreateStep!(taskRemoteId, subject, orderDateTime);
+      }
+      _idSeq += 1;
+      return RemoteTaskStep(
+        id: 'rs-$_idSeq',
+        subject: subject,
+        orderDateTime: orderDateTime,
+      );
+    });
   }
 
   @override
-  Future<RemoteTaskStep> patchStep(
+  AsyncAppResult<RemoteTaskStep> patchStep(
     SubstrateRequestContext ctx,
     String taskRemoteId,
     String stepRemoteId,
     Map<String, dynamic> patch,
-  ) async {
-    callLog.add('PATCH tasks/$taskRemoteId/subtasks/$stepRemoteId');
-    if (onPatchStep != null) {
-      return onPatchStep!(taskRemoteId, stepRemoteId, patch);
-    }
-    return RemoteTaskStep(id: stepRemoteId, subject: 'Step');
+  ) {
+    return guardApiCall(() async {
+      callLog.add('PATCH tasks/$taskRemoteId/subtasks/$stepRemoteId');
+      if (onPatchStep != null) {
+        return onPatchStep!(taskRemoteId, stepRemoteId, patch);
+      }
+      return RemoteTaskStep(id: stepRemoteId, subject: 'Step');
+    });
   }
 
   @override
-  Future<void> deleteStep(
+  AsyncAppResult<Unit> deleteStep(
     SubstrateRequestContext ctx,
     String taskRemoteId,
     String stepRemoteId,
-  ) async {
-    callLog.add('DELETE tasks/$taskRemoteId/subtasks/$stepRemoteId');
-    if (onDeleteStep != null) await onDeleteStep!(taskRemoteId, stepRemoteId);
+  ) {
+    return guardApiCall(() async {
+      callLog.add('DELETE tasks/$taskRemoteId/subtasks/$stepRemoteId');
+      if (onDeleteStep != null) await onDeleteStep!(taskRemoteId, stepRemoteId);
+      return unit;
+    });
   }
 
   @override
@@ -453,7 +502,7 @@ class BlockingFoldersApi extends FakeSubstrateApi {
   int folderFetchCount = 0;
 
   @override
-  Future<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta(
+  AsyncAppResult<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta(
     SubstrateRequestContext ctx, {
     String? deltaLink,
   }) async {

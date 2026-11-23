@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/account/account_local_storage.dart';
 import 'package:yata/account/account_provider.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
+import 'package:yata/core/error/app_error.dart';
 import 'package:yata/data/todo_repository.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/detailview/detail_view_presenter.dart';
@@ -898,7 +899,7 @@ void main() {
       fakeApi.onPatchTask = (taskRemoteId, patch, changeKey) async {
         if (taskRemoteId == 'rt-w1' && return412Once) {
           return412Once = false;
-          throw const SyncApiException(
+          throw const AppError.network(
             statusCode: 412,
             message: 'Precondition Failed',
           );

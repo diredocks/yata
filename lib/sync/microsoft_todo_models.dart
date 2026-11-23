@@ -37,54 +37,6 @@ class SubstrateRequestContext {
   }
 }
 
-/// Exception thrown by Substrate v1 API calls with decoded error codes.
-class SyncApiException implements Exception {
-  const SyncApiException({
-    required this.statusCode,
-    required this.message,
-    this.errorCode,
-    this.responseBody,
-    this.retryAfter,
-  });
-
-  final int statusCode;
-  final String message;
-  final String? errorCode;
-  final String? responseBody;
-  final Duration? retryAfter;
-
-  bool get isAuthError => statusCode == 401;
-
-  bool get isNotFound =>
-      statusCode == 404 ||
-      errorCode == 'ErrorItemNotFound' ||
-      errorCode == 'itemNotFound' ||
-      errorCode == 'ParentFolderDoesNotContainTaskWithGivenId';
-
-  bool get isConflict =>
-      statusCode == 409 ||
-      statusCode == 412 ||
-      errorCode == 'ErrorIrresolvableConflict';
-
-  bool get isDeltaExpired =>
-      statusCode == 410 ||
-      errorCode == 'SyncStateNotFound' ||
-      errorCode == 'SyncStateInvalid' ||
-      errorCode == 'resyncRequired';
-
-  bool get isThrottled => statusCode == 429;
-
-  bool get isFolderGroupNotEmpty => errorCode == 'FolderGroupNotEmpty';
-
-  bool get isCantDeleteDefaultFolder => errorCode == 'CantDeleteDefaultFolder';
-
-  @override
-  String toString() {
-    final codePart = errorCode != null ? ' [$errorCode]' : '';
-    return 'SyncApiException($statusCode$codePart): $message';
-  }
-}
-
 class RemoteFolderGroup {
   const RemoteFolderGroup({
     required this.id,

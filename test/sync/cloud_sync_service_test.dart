@@ -300,9 +300,9 @@ void main() {
         };
         fakeApi.onDeleteGroup = (groupId) async {
           if (remoteFolders.values.contains(groupId)) {
-            throw const SyncApiException(
+            throw const AppError.network(
               statusCode: 400,
-              errorCode: 'FolderGroupNotEmpty',
+              code: 'FolderGroupNotEmpty',
               message: 'Group not empty',
             );
           }
@@ -387,9 +387,9 @@ void main() {
       fakeApi.onPatchTask = (id, patch, ck) async {
         patchAttempts += 1;
         if (ck == 'ck-stale') {
-          throw const SyncApiException(
+          throw const AppError.network(
             statusCode: 409,
-            errorCode: 'ErrorIrresolvableConflict',
+            code: 'ErrorIrresolvableConflict',
             message: 'stale',
           );
         }
@@ -410,9 +410,9 @@ void main() {
 
       fakeApi.onFetchTasksDelta = (folderId, dl) {
         if (folderId == 'rf-a' && dl == 'dl-expired') {
-          throw const SyncApiException(
+          throw const AppError.network(
             statusCode: 410,
-            errorCode: 'SyncStateInvalid',
+            code: 'SyncStateInvalid',
             message: 'expired',
           );
         }
@@ -747,9 +747,9 @@ void main() {
       fakeApi.onFetchFoldersDelta = (dl) {
         attempts += 1;
         if (attempts == 1) {
-          throw const SyncApiException(
-            statusCode: 401,
+          throw const AppError.auth(
             message: 'Unauthorized',
+            requiresReauth: true,
           );
         }
         return const DeltaPageResult(items: []);

@@ -99,4 +99,41 @@ extension AppErrorX on AppError {
           (statusCode == null || statusCode >= 500 || statusCode == 429),
     _ => false,
   };
+
+  bool get isNotFound => switch (this) {
+    NotFoundError() => true,
+    NetworkError(:final statusCode, :final code) =>
+      statusCode == 404 ||
+          code == 'ErrorItemNotFound' ||
+          code == 'itemNotFound' ||
+          code == 'ParentFolderDoesNotContainTaskWithGivenId',
+    _ => false,
+  };
+
+  bool get isConflict => switch (this) {
+    NetworkError(:final statusCode, :final code) =>
+      statusCode == 409 ||
+          statusCode == 412 ||
+          code == 'ErrorIrresolvableConflict',
+    _ => false,
+  };
+
+  bool get isDeltaExpired => switch (this) {
+    NetworkError(:final statusCode, :final code) =>
+      statusCode == 410 ||
+          code == 'SyncStateNotFound' ||
+          code == 'SyncStateInvalid' ||
+          code == 'resyncRequired',
+    _ => false,
+  };
+
+  bool get isFolderGroupNotEmpty => switch (this) {
+    NetworkError(:final code) => code == 'FolderGroupNotEmpty',
+    _ => false,
+  };
+
+  bool get isCantDeleteDefaultFolder => switch (this) {
+    NetworkError(:final code) => code == 'CantDeleteDefaultFolder',
+    _ => false,
+  };
 }
