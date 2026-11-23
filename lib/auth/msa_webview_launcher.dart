@@ -264,6 +264,8 @@ class _MsaWebViewSignInScreenState extends State<MsaWebViewSignInScreen> {
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
+    final showWebView = controller != null && !_closing;
+    final transparentHole = !kIsWeb && Platform.isLinux && showWebView;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -272,6 +274,7 @@ class _MsaWebViewSignInScreenState extends State<MsaWebViewSignInScreen> {
         }
       },
       child: Scaffold(
+        backgroundColor: transparentHole ? Colors.transparent : null,
         appBar: AppBar(
           title: const Text('Microsoft'),
           leading: IconButton(
