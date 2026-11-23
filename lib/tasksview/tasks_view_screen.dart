@@ -872,6 +872,31 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     );
   }
 
+  /// Builds the overscroll indicator for the task list around [child].
+  ///
+  /// [child] contains both the scroll view and the header shadow overlay. The
+  /// indicator has to sit above that stack, otherwise the Android stretch
+  /// overscroll effect only transforms the scroll view while the shadow stays
+  /// put and appears to float over the list. The scroll view would add its own
+  /// indicator internally, so that one is suppressed.
+  Widget _buildOverscrollIndicator(BuildContext context, Widget child) {
+    final behavior = ScrollConfiguration.of(context);
+    return behavior.buildOverscrollIndicator(
+      context,
+      NotificationListener<OverscrollIndicatorNotification>(
+        onNotification: (notification) {
+          notification.disallowIndicator();
+          return false;
+        },
+        child: child,
+      ),
+      ScrollableDetails.vertical(
+        controller: _scrollController,
+        decorationClipBehavior: Clip.hardEdge,
+      ),
+    );
+  }
+
   Widget _buildScrollShadow(String? subtitle) {
     final maxTop = subtitle != null ? 144.0 : 116.0;
     return Positioned(
@@ -1012,170 +1037,175 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 _buildBackground(currentList, backgroundColor),
                 SafeArea(
                   bottom: false,
-                  child: Stack(
-                    children: [
-                      NotificationListener<ScrollNotification>(
-                        onNotification: (notification) {
-                          if (notification.depth != 0) return false;
-                          final offset = notification.metrics.pixels;
-                          if ((offset - _scrollOffset).abs() > 0.5) {
-                            setState(() => _scrollOffset = offset);
-                          }
-                          if (notification is ScrollEndNotification) {
-                            final collapseDelta =
-                                (subtitle != null ? 144.0 : 116.0) -
-                                kToolbarHeight;
-                            _snapHeaderIfNeeded(collapseDelta);
-                          }
-                          return false;
-                        },
-                        child: Builder(
-                          builder: (context) {
-                            final isMicrosoft = ref.watch(
-                              accountProvider.select(
-                                (s) => s.activeAccount?.isMicrosoft ?? false,
-                              ),
-                            );
-                            final scrollView = CustomScrollView(
-                              controller: _scrollController,
-                              physics: isMicrosoft
-                                  ? const AlwaysScrollableScrollPhysics()
-                                  : null,
-                              slivers: [
-                                if (_mode == TasksViewMode.browsing)
-                                  TasksSliverAppBar(
-                                    l10n: l10n,
-                                    currentList: currentList,
-                                    listTitle: listTitle,
-                                    subtitle: subtitle,
-                                    headerFg: headerFg,
-                                    backgroundColor: backgroundColor,
-                                    activeTasksCount: active.length,
-                                    isDark: isDark,
-                                    overlayStyle: overlayStyle,
-                                    onBackPressed: widget.onBackPressed,
-                                    onScrollToTop: _scrollToTop,
-                                    onSelectMenuAction: (action) =>
-                                        _handleMenuAction(
-                                          action,
-                                          state,
-                                          currentList,
-                                        ),
-                                  )
-                                else if (_mode ==
-                                        TasksViewMode.multiSelecting ||
-                                    _mode == TasksViewMode.reordering)
-                                  SliverToBoxAdapter(
-                                    child: Padding(
-                                      padding: const EdgeInsets.fromLTRB(
-                                        16,
-                                        12,
-                                        16,
-                                        12,
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            listTitle,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              color: headerFg,
-                                              fontWeight: FontWeight.w500,
-                                              fontSize: 30,
-                                            ),
+                  child: _buildOverscrollIndicator(
+                    context,
+                    Stack(
+                      children: [
+                        NotificationListener<ScrollNotification>(
+                          onNotification: (notification) {
+                            if (notification.depth != 0) return false;
+                            final offset = notification.metrics.pixels;
+                            if ((offset - _scrollOffset).abs() > 0.5) {
+                              setState(() => _scrollOffset = offset);
+                            }
+                            if (notification is ScrollEndNotification) {
+                              final collapseDelta =
+                                  (subtitle != null ? 144.0 : 116.0) -
+                                  kToolbarHeight;
+                              _snapHeaderIfNeeded(collapseDelta);
+                            }
+                            return false;
+                          },
+                          child: Builder(
+                            builder: (context) {
+                              final isMicrosoft = ref.watch(
+                                accountProvider.select(
+                                  (s) => s.activeAccount?.isMicrosoft ?? false,
+                                ),
+                              );
+                              final scrollView = CustomScrollView(
+                                controller: _scrollController,
+                                physics: isMicrosoft
+                                    ? const AlwaysScrollableScrollPhysics()
+                                    : null,
+                                slivers: [
+                                  if (_mode == TasksViewMode.browsing)
+                                    TasksSliverAppBar(
+                                      l10n: l10n,
+                                      currentList: currentList,
+                                      listTitle: listTitle,
+                                      subtitle: subtitle,
+                                      headerFg: headerFg,
+                                      backgroundColor: backgroundColor,
+                                      activeTasksCount: active.length,
+                                      isDark: isDark,
+                                      overlayStyle: overlayStyle,
+                                      onBackPressed: widget.onBackPressed,
+                                      onScrollToTop: _scrollToTop,
+                                      onSelectMenuAction: (action) =>
+                                          _handleMenuAction(
+                                            action,
+                                            state,
+                                            currentList,
                                           ),
-                                          if (subtitle != null) ...[
-                                            const SizedBox(height: 2),
+                                    )
+                                  else if (_mode ==
+                                          TasksViewMode.multiSelecting ||
+                                      _mode == TasksViewMode.reordering)
+                                    SliverToBoxAdapter(
+                                      child: Padding(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          16,
+                                          12,
+                                          16,
+                                          12,
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
                                             Text(
-                                              subtitle,
+                                              listTitle,
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
-                                                color: headerFg.withValues(
-                                                  alpha: 0.92,
-                                                ),
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.w400,
+                                                color: headerFg,
+                                                fontWeight: FontWeight.w500,
+                                                fontSize: 30,
                                               ),
                                             ),
+                                            if (subtitle != null) ...[
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                subtitle,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  color: headerFg.withValues(
+                                                    alpha: 0.92,
+                                                  ),
+                                                  fontSize: 20,
+                                                  fontWeight: FontWeight.w400,
+                                                ),
+                                              ),
+                                            ],
                                           ],
-                                        ],
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                if (currentList.sortOption !=
-                                        TaskSortOption.defaultOrder &&
-                                    _mode != TasksViewMode.reordering)
-                                  TasksSortBanner(
-                                    l10n: l10n,
-                                    currentList: currentList,
-                                    headerFg: headerFg,
-                                    onToggleSortDirection: () =>
-                                        notifier.toggleListSortDirection(
-                                          currentList.id,
-                                        ),
-                                    onClearSort: () =>
-                                        notifier.setListSortOption(
-                                          currentList.id,
-                                          TaskSortOption.defaultOrder,
-                                        ),
-                                  ),
-                                if (currentList.smartType ==
-                                        SmartListType.planned &&
-                                    _mode == TasksViewMode.browsing)
-                                  TasksPlannedFilterBanner(
-                                    l10n: l10n,
-                                    currentList: currentList,
-                                    currentFilter: state.plannedDueDateFilter,
-                                    headerFg: headerFg,
-                                    onTap: () => showPlannedFilterSheet(
-                                      context: context,
-                                      currentFilter: state.plannedDueDateFilter,
-                                      onSelectFilter:
-                                          notifier.setPlannedDueDateFilter,
+                                  if (currentList.sortOption !=
+                                          TaskSortOption.defaultOrder &&
+                                      _mode != TasksViewMode.reordering)
+                                    TasksSortBanner(
+                                      l10n: l10n,
+                                      currentList: currentList,
+                                      headerFg: headerFg,
+                                      onToggleSortDirection: () =>
+                                          notifier.toggleListSortDirection(
+                                            currentList.id,
+                                          ),
+                                      onClearSort: () =>
+                                          notifier.setListSortOption(
+                                            currentList.id,
+                                            TaskSortOption.defaultOrder,
+                                          ),
                                     ),
+                                  if (currentList.smartType ==
+                                          SmartListType.planned &&
+                                      _mode == TasksViewMode.browsing)
+                                    TasksPlannedFilterBanner(
+                                      l10n: l10n,
+                                      currentList: currentList,
+                                      currentFilter: state.plannedDueDateFilter,
+                                      headerFg: headerFg,
+                                      onTap: () => showPlannedFilterSheet(
+                                        context: context,
+                                        currentFilter:
+                                            state.plannedDueDateFilter,
+                                        onSelectFilter:
+                                            notifier.setPlannedDueDateFilter,
+                                      ),
+                                    ),
+                                  ..._buildTaskSlivers(
+                                    l10n: l10n,
+                                    state: state,
+                                    currentList: currentList,
+                                    activeTasks: active,
+                                    completedTasks: completed,
+                                    accentColor: accentColor,
+                                    headerFg: headerFg,
                                   ),
-                                ..._buildTaskSlivers(
-                                  l10n: l10n,
-                                  state: state,
-                                  currentList: currentList,
-                                  activeTasks: active,
-                                  completedTasks: completed,
-                                  accentColor: accentColor,
-                                  headerFg: headerFg,
-                                ),
-                                _buildRuledLinesSliver(
-                                  currentList,
-                                  isDark,
-                                  collapseDelta: _mode == TasksViewMode.browsing
-                                      ? ((subtitle != null ? 144.0 : 116.0) -
-                                            kToolbarHeight)
-                                      : 0.0,
-                                ),
-                              ],
-                            );
-                            if (!isMicrosoft ||
-                                _mode == TasksViewMode.reordering) {
-                              return scrollView;
-                            }
-                            return RefreshIndicator(
-                              onRefresh: () =>
-                                  ref.read(syncProvider.notifier).syncNow(),
-                              color: accentColor,
-                              backgroundColor: isDark
-                                  ? TodoColors.primaryBackgroundDark
-                                  : TodoColors.primaryBackgroundLight,
-                              child: scrollView,
-                            );
-                          },
+                                  _buildRuledLinesSliver(
+                                    currentList,
+                                    isDark,
+                                    collapseDelta:
+                                        _mode == TasksViewMode.browsing
+                                        ? ((subtitle != null ? 144.0 : 116.0) -
+                                              kToolbarHeight)
+                                        : 0.0,
+                                  ),
+                                ],
+                              );
+                              if (!isMicrosoft ||
+                                  _mode == TasksViewMode.reordering) {
+                                return scrollView;
+                              }
+                              return RefreshIndicator(
+                                onRefresh: () =>
+                                    ref.read(syncProvider.notifier).syncNow(),
+                                color: accentColor,
+                                backgroundColor: isDark
+                                    ? TodoColors.primaryBackgroundDark
+                                    : TodoColors.primaryBackgroundLight,
+                                child: scrollView,
+                              );
+                            },
+                          ),
                         ),
-                      ),
-                      _buildScrollShadow(subtitle),
-                    ],
+                        _buildScrollShadow(subtitle),
+                      ],
+                    ),
                   ),
                 ),
               ],
