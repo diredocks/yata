@@ -51,6 +51,7 @@ class _LandingScreenState extends ConsumerState<LandingScreen> {
     try {
       String? code;
       final interactiveResult = await interactiveClient.signIn(
+        context: context,
         authorizeUrl: authorizeUrl,
         redirectUri: MsaAuthConfig.redirectUri,
       );

@@ -36,7 +36,7 @@
         }).androidsdk;
 
       sdkPath = "${androidSdk}/libexec/android-sdk";
-      jdk = pkgs.jdk17;
+      jdk = pkgs.jdk21;
     in {
       default = pkgs.mkShell {
         packages = [
@@ -55,6 +55,8 @@
           pkgs.libsecret
           pkgs.json-glib
           pkgs.sqlite
+          pkgs.webkitgtk_4_1
+          pkgs.libsoup_3
           pkgs.gst_all_1.gstreamer
           pkgs.gst_all_1.gstreamer.dev
           pkgs.gst_all_1.gst-plugins-base

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:result_dart/result_dart.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/auth/msa_webview_launcher.dart';
@@ -16,6 +17,7 @@ class FakeInteractiveMsaClient implements MsaInteractiveSignInClient {
 
   @override
   Future<MsaInteractiveSignInResult?> signIn({
+    BuildContext? context,
     required String authorizeUrl,
     required String redirectUri,
     bool clearCookies = true,

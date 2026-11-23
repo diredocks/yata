@@ -264,8 +264,47 @@ void main() {
     );
   });
 
+  group('parseMsaRedirectUrl', () {
+    test('returns null for non-redirect URLs and extracts code or error from redirect URL', () {
+      expect(
+        parseMsaRedirectUrl(
+          url: 'https://login.live.com/oauth20_authorize.srf?client_id=123',
+          redirectUri: MsaAuthConfig.redirectUri,
+        ),
+        isNull,
+      );
+
+      final success = parseMsaRedirectUrl(
+        url:
+            'https://login.live.com/oauth20_desktop.srf?code=M.C509_XYZ&state=ProjectCheshire',
+        redirectUri: MsaAuthConfig.redirectUri,
+      );
+      expect(success, isNotNull);
+      expect(success!.cancelled, isFalse);
+      expect(success.error, isNull);
+      expect(success.code, 'M.C509_XYZ');
+
+      final failure = parseMsaRedirectUrl(
+        url:
+            'https://login.live.com/oauth20_desktop.srf?error=access_denied&error_description=User+denied',
+        redirectUri: MsaAuthConfig.redirectUri,
+      );
+      expect(failure, isNotNull);
+      expect(failure!.cancelled, isFalse);
+      expect(failure.code, isNull);
+      expect(failure.error, 'User denied');
+
+      final cancelled = parseMsaRedirectUrl(
+        url: 'https://login.live.com/oauth20_desktop.srf?lc=1033',
+        redirectUri: MsaAuthConfig.redirectUri,
+      );
+      expect(cancelled, isNotNull);
+      expect(cancelled!.cancelled, isTrue);
+    });
+  });
+
   group('LandingScreen MSA flows', () {
-    testWidgets('completes sign-in via Android WebView interactive client', (
+    testWidgets('completes sign-in via webview_all interactive client', (
       tester,
     ) async {
       final prefs = await SharedPreferences.getInstance();
