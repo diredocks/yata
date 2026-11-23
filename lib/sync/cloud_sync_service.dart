@@ -385,6 +385,12 @@ class CloudSyncService {
       final folderRemoteId = folderRemoteByLocalId[task.listId];
       if (folderRemoteId == null) continue;
 
+      if (task.remoteId != null &&
+          processedDeletedTaskRemoteIds.contains(task.remoteId)) {
+        syncedTaskIds.add(task.id);
+        continue;
+      }
+
       final isCreate = task.remoteId == null;
       if (!isCreate && !dirtyTaskIds.contains(task.id)) continue;
 
@@ -400,14 +406,20 @@ class CloudSyncService {
               ctx: ctx,
               task: task,
               payload: payload,
+              folderRemoteId: folderRemoteId,
+              firstDayOfWeek: currentState.startOfWeek,
             );
+      final wasRecreated = !isCreate && remoteTask.id != task.remoteId;
+      final stepsToSync = wasRecreated
+          ? [for (final s in task.steps) s.copyWith(remoteId: null)]
+          : task.steps;
       final pushedSteps = await _syncStepsForTask(
         ctx: ctx,
         taskRemoteId: remoteTask.id,
-        localSteps: task.steps,
+        localSteps: stepsToSync,
       );
       workingTasks[i] = task.copyWith(
-        remoteId: isCreate ? remoteTask.id : task.remoteId,
+        remoteId: remoteTask.id,
         remoteParentFolderId: remoteTask.parentFolderId ?? folderRemoteId,
         changeKey: remoteTask.changeKey ?? task.changeKey,
         orderDateTime: remoteTask.orderDateTime ?? task.orderDateTime,
@@ -606,6 +618,8 @@ class CloudSyncService {
     required SubstrateRequestContext ctx,
     required TaskItem task,
     required Map<String, dynamic> payload,
+    required String folderRemoteId,
+    required WeekStart firstDayOfWeek,
   }) async {
     final result = await todoApi
         .patchTask(ctx, task.remoteId!, payload, changeKey: task.changeKey)
@@ -623,8 +637,43 @@ class CloudSyncService {
                   changeKey: latest.changeKey,
                 ),
               );
+        })
+        .recover((error) async {
+          if (!error.isNotFound) {
+            return Failure<RemoteTodoTask, AppError>(error);
+          }
+          final createPayload = buildTaskWritePayload(
+            task,
+            parentFolderRemoteId: folderRemoteId,
+            isCreate: true,
+            firstDayOfWeek: firstDayOfWeek,
+          );
+          return todoApi.createTask(ctx, folderRemoteId, createPayload);
         });
     return result.getOrThrow();
+  }
+
+  Future<TaskStep> _createAndSyncStep({
+    required SubstrateRequestContext ctx,
+    required String taskRemoteId,
+    required TaskStep step,
+    required DateTime stepOrder,
+  }) async {
+    final created = (await todoApi.createStep(
+      ctx,
+      taskRemoteId,
+      subject: step.title,
+      orderDateTime: stepOrder,
+    )).getOrThrow();
+    if (step.isCompleted) {
+      (await todoApi.patchStep(ctx, taskRemoteId, created.id, const {
+        'IsCompleted': true,
+      })).getOrThrow();
+    }
+    return step.copyWith(
+      remoteId: created.id,
+      orderDateTime: created.orderDateTime ?? stepOrder,
+    );
   }
 
   Future<List<TaskStep>> _syncStepsForTask({
@@ -636,47 +685,51 @@ class CloudSyncService {
     final syncedSteps = <TaskStep>[];
     for (var i = 0; i < localSteps.length; i++) {
       final step = localSteps[i];
+      final stepOrder =
+          step.orderDateTime ??
+          nowUtc.subtract(
+            Duration(seconds: i * kOrderDateTimeStep.inSeconds),
+          );
       if (step.remoteId == null) {
-        final stepOrder =
-            step.orderDateTime ??
-            nowUtc.subtract(
-              Duration(seconds: i * kOrderDateTimeStep.inSeconds),
-            );
-        final created = (await todoApi.createStep(
-          ctx,
-          taskRemoteId,
-          subject: step.title,
-          orderDateTime: stepOrder,
-        )).getOrThrow();
-        if (step.isCompleted) {
-          (await todoApi.patchStep(ctx, taskRemoteId, created.id, const {
-            'IsCompleted': true,
-          })).getOrThrow();
-        }
         syncedSteps.add(
-          step.copyWith(
-            remoteId: created.id,
-            orderDateTime: created.orderDateTime ?? stepOrder,
+          await _createAndSyncStep(
+            ctx: ctx,
+            taskRemoteId: taskRemoteId,
+            step: step,
+            stepOrder: stepOrder,
           ),
         );
-      } else {
-        final patched = (await todoApi.patchStep(
-          ctx,
-          taskRemoteId,
-          step.remoteId!,
-          {
-            'Subject': step.title,
-            'IsCompleted': step.isCompleted,
-            if (step.orderDateTime != null)
-              'OrderDateTime': formatSubstrateUtcTimestamp(step.orderDateTime!),
-          },
-        )).getOrThrow();
-        syncedSteps.add(
-          step.copyWith(
-            orderDateTime: patched.orderDateTime ?? step.orderDateTime,
-          ),
-        );
+        continue;
       }
+      final patchResult = await todoApi.patchStep(
+        ctx,
+        taskRemoteId,
+        step.remoteId!,
+        {
+          'Subject': step.title,
+          'IsCompleted': step.isCompleted,
+          if (step.orderDateTime != null)
+            'OrderDateTime': formatSubstrateUtcTimestamp(step.orderDateTime!),
+        },
+      );
+      final patchError = patchResult.exceptionOrNull();
+      if (patchError != null && patchError.isNotFound) {
+        syncedSteps.add(
+          await _createAndSyncStep(
+            ctx: ctx,
+            taskRemoteId: taskRemoteId,
+            step: step,
+            stepOrder: stepOrder,
+          ),
+        );
+        continue;
+      }
+      final patched = patchResult.getOrThrow();
+      syncedSteps.add(
+        step.copyWith(
+          orderDateTime: patched.orderDateTime ?? step.orderDateTime,
+        ),
+      );
     }
     return syncedSteps;
   }

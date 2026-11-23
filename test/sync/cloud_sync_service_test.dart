@@ -873,6 +873,138 @@ void main() {
         expect(updated.avatarBase64, avatar);
       },
     );
+
+    test(
+      'recovers from ErrorItemNotFound (404) on deleted/missing task PATCH and clears pending deletes',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        const accountId = 'acct_404';
+        final tokenStorage = AuthTokenStorage(prefs);
+        await tokenStorage.saveTokens(
+          accountId,
+          MicrosoftAuthTokens(
+            accessToken: 'at',
+            refreshToken: 'rt',
+            expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+            userId: 'cid404',
+          ),
+        );
+        final account = MicrosoftAccount(
+          id: accountId,
+          displayName: 'User',
+          email: 'user@outlook.com',
+          createdAt: DateTime(2026, 11, 22),
+          microsoftUserId: 'cid404',
+        );
+        await AccountLocalStorage(prefs).saveAccounts([account]);
+        await AccountLocalStorage(prefs).saveActiveAccountId(accountId);
+
+        final session = _session(prefs, accountId);
+        final repo = session.repository;
+        final now = DateTime.utc(2026, 4, 15, 10, 0);
+
+        final defaultTasksList = TodoList(
+          id: 'tasks',
+          title: 'Tasks',
+          smartType: SmartListType.tasks,
+          remoteId: 'rf-default',
+        );
+        // Task 1: present in both pendingDeletedTaskRemoteIds AND dirty tasks
+        // with the same remoteId -> should NOT be patched or recreated.
+        final deletedGhostTask = TaskItem(
+          id: 't-ghost',
+          listId: 'tasks',
+          title: 'Ghost deleted task',
+          remoteId: 'rt-ghost',
+          changeKey: 'ck-ghost',
+          createdAt: now,
+          updatedAt: now,
+        );
+        // Task 2: dirty task whose remoteId returns 404 on PATCH -> should
+        // recreate via createTask and recreate its steps via createStep.
+        final missingRemoteTask = TaskItem(
+          id: 't-recreate',
+          listId: 'tasks',
+          title: 'Edited after remote delete',
+          remoteId: 'rt-missing',
+          changeKey: 'ck-missing',
+          steps: const [
+            TaskStep(
+              id: 's1',
+              title: 'Step 1',
+              remoteId: 'rs-old',
+            ),
+          ],
+          createdAt: now,
+          updatedAt: now,
+        );
+
+        await repo.saveLists([defaultTasksList]);
+        await repo.saveTasks([deletedGhostTask, missingRemoteTask]);
+        await repo.savePendingDeletedTaskRemoteIds(['rt-ghost']);
+        await repo.saveDirtyTaskIds({'t-ghost', 't-recreate'});
+
+        final fakeApi = FakeSubstrateApi()
+          ..onDeleteTask = (taskRemoteId) async {
+            if (taskRemoteId == 'rt-ghost') {
+              throw const AppError.notFound(
+                message: 'Item not found',
+                id: 'ErrorItemNotFound',
+              );
+            }
+          }
+          ..onPatchTask = (taskRemoteId, patch, changeKey) async {
+            if (taskRemoteId == 'rt-missing') {
+              throw const AppError.notFound(
+                message: 'Item not found',
+                id: 'ErrorItemNotFound',
+              );
+            }
+            throw StateError('Unexpected PATCH for $taskRemoteId');
+          };
+
+        final container = ProviderContainer(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+            microsoftTodoApiProvider.overrideWithValue(fakeApi),
+            realtimeSyncEnabledProvider.overrideWithValue(false),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        await container.read(syncProvider.notifier).syncNow();
+
+        expect(container.read(syncProvider).status, SyncStatus.success);
+        expect(repo.loadPendingDeletedTaskRemoteIds(), isEmpty);
+        expect(repo.loadDirtyTaskIds(), isEmpty);
+
+        // Ghost task was never patched or recreated.
+        expect(
+          fakeApi.callLog.any((c) => c.contains('PATCH tasks/rt-ghost')),
+          isFalse,
+        );
+        expect(
+          fakeApi.callLog.any((c) => c.contains('Ghost deleted task')),
+          isFalse,
+        );
+
+        // Missing task was recreated and its step was recreated on the new task.
+        expect(
+          fakeApi.callLog,
+          contains(
+            'POST taskfolders/rf-default/tasks Edited after remote delete',
+          ),
+        );
+        final recreated = container
+            .read(todoProvider)
+            .tasks
+            .firstWhere((t) => t.id == 't-recreate');
+        expect(recreated.remoteId, isNot('rt-missing'));
+        expect(recreated.steps.single.remoteId, isNot('rs-old'));
+      },
+    );
   });
 }
 
