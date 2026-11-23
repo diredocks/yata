@@ -57,6 +57,8 @@
           pkgs.sqlite
           pkgs.webkitgtk_4_1
           pkgs.libsoup_3
+          pkgs.glib-networking
+          pkgs.gsettings-desktop-schemas
           pkgs.gst_all_1.gstreamer
           pkgs.gst_all_1.gstreamer.dev
           pkgs.gst_all_1.gst-plugins-base
@@ -71,6 +73,8 @@
 
         shellHook = ''
           export PATH="$ANDROID_HOME/platform-tools:$PATH"
+          export GIO_EXTRA_MODULES="${pkgs.glib-networking}/lib/gio/modules''${GIO_EXTRA_MODULES:+:$GIO_EXTRA_MODULES}"
+          export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
         '';
       };
     });

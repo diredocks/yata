@@ -20,6 +20,17 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
 
+  // On Wayland desktops without GNOME GSettings schemas (e.g. KDE Plasma),
+  // GtkSettings::gtk-xft-dpi can report -1, causing WebKitGTK 2.54+ to compute
+  // a negative devicePixelRatio (-1 / 96) and render pages off-screen.
+  if (GtkSettings* gtk_settings = gtk_settings_get_default()) {
+    gint xft_dpi = -1;
+    g_object_get(gtk_settings, "gtk-xft-dpi", &xft_dpi, nullptr);
+    if (xft_dpi <= 0) {
+      g_object_set(gtk_settings, "gtk-xft-dpi", 96 * 1024, nullptr);
+    }
+  }
+
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
   gtk_window_set_default_size(window, 1280, 720);

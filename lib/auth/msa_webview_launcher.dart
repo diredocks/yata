@@ -180,6 +180,12 @@ class _MsaWebViewSignInScreenState extends State<MsaWebViewSignInScreen> {
               setState(() => _progress = 100);
             }
           },
+          onWebResourceError: (error) {
+            debugPrint(
+              '[MsaWebView] WebResourceError (${error.errorCode}): '
+              '${error.description} (url=${error.url}, isMainFrame=${error.isForMainFrame})',
+            );
+          },
         ),
       );
 
