@@ -13,6 +13,7 @@ import 'data/todo_provider.dart';
 import 'data/todo_repository.dart';
 import 'l10n/app_localizations.dart';
 import 'onboarding/landing_screen.dart';
+import 'theme/system_font_loader.dart';
 import 'theme/todo_theme.dart';
 import 'view/main_shell_screen.dart';
 import 'widget/home_widget_service.dart';
@@ -22,7 +23,9 @@ Future<void> main() async {
   if (!kIsWeb &&
       !Platform.environment.containsKey('FLUTTER_TEST') &&
       (Platform.isAndroid || Platform.isIOS)) {
-    await HomeWidget.registerInteractivityCallback(homeWidgetBackgroundCallback);
+    await HomeWidget.registerInteractivityCallback(
+      homeWidgetBackgroundCallback,
+    );
   }
   final prefs = await SharedPreferences.getInstance();
   final database = TodoDatabase();
@@ -46,11 +49,43 @@ Future<void> main() async {
   );
 }
 
-class YataApp extends ConsumerWidget {
+class YataApp extends ConsumerStatefulWidget {
   const YataApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<YataApp> createState() => _YataAppState();
+}
+
+class _YataAppState extends ConsumerState<YataApp> with WidgetsBindingObserver {
+  final SystemFontLoader _systemFonts = SystemFontLoader();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _syncSystemFont();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The default font may have changed in the system settings meanwhile.
+    if (state == AppLifecycleState.resumed) _syncSystemFont();
+  }
+
+  Future<void> _syncSystemFont() async {
+    final previous = _systemFonts.family;
+    await _systemFonts.refresh();
+    if (mounted && _systemFonts.family != previous) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final activeAccount = ref.watch(
       accountProvider.select((s) => s.activeAccount),
     );
@@ -68,11 +103,15 @@ class YataApp extends ConsumerWidget {
           debugShowCheckedModeBanner: false,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
-          theme: TodoTheme.light(
-            dynamicColorScheme: useDynamicColor ? lightDynamic : null,
+          theme: _systemFonts.applyTo(
+            TodoTheme.light(
+              dynamicColorScheme: useDynamicColor ? lightDynamic : null,
+            ),
           ),
-          darkTheme: TodoTheme.dark(
-            dynamicColorScheme: useDynamicColor ? darkDynamic : null,
+          darkTheme: _systemFonts.applyTo(
+            TodoTheme.dark(
+              dynamicColorScheme: useDynamicColor ? darkDynamic : null,
+            ),
           ),
           themeMode: themeMode,
           home: activeAccount == null

@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import top.clickfling.yata.font.SystemFontChannel
 
 class MainActivity : FlutterActivity() {
     companion object {
@@ -21,8 +22,11 @@ class MainActivity : FlutterActivity() {
             "top.clickfling.yata/notification_settings"
     }
 
+    private var systemFontChannel: SystemFontChannel? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        systemFontChannel = SystemFontChannel().also { it.attach(flutterEngine) }
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             NOTIFICATION_SETTINGS_CHANNEL,
@@ -48,6 +52,12 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    override fun onDestroy() {
+        systemFontChannel?.detach()
+        systemFontChannel = null
+        super.onDestroy()
     }
 
     private fun readPermissionStatus(): Map<String, Any> {
