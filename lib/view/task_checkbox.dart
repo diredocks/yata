@@ -220,12 +220,22 @@ class _TaskCheckboxState extends State<TaskCheckbox>
                           scale: checkScale,
                           child: Opacity(
                             opacity: checkProgress,
-                            child: Icon(
-                              Icons.check,
-                              key: const ValueKey('checked'),
-                              size: widget.size * 0.65,
-                              color: Colors.white,
-                            ),
+                            child: widget.mode == CheckboxMode.select
+                                ? Container(
+                                    key: const ValueKey('selected_dot'),
+                                    width: widget.size * 0.4,
+                                    height: widget.size * 0.4,
+                                    decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Icon(
+                                    Icons.check,
+                                    key: const ValueKey('checked'),
+                                    size: widget.size * 0.65,
+                                    color: Colors.white,
+                                  ),
                           ),
                         ),
                     ],
