@@ -68,6 +68,7 @@ class SystemFontChannel {
         "changed" to changed,
         "familyName" to familyName,
         "fingerprint" to fingerprint,
+        "fallbackFamilies" to fallbackFamilies,
         "regular" to regular,
         "bold" to bold,
     )

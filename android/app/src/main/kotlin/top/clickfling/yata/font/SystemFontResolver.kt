@@ -5,6 +5,7 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.fonts.Font
+import android.graphics.fonts.FontStyle
 import android.graphics.fonts.SystemFonts
 import android.os.Build
 import java.io.File
@@ -39,6 +40,7 @@ class SystemFontResolver {
         val changed: Boolean,
         val familyName: String?,
         val fingerprint: String?,
+        val fallbackFamilies: List<String>,
         val regular: ByteArray?,
         val bold: ByteArray?,
     )
@@ -46,6 +48,7 @@ class SystemFontResolver {
     private data class Candidate(
         val path: String,
         val weight: Int,
+        val italic: Boolean,
         val ttcIndex: Int,
         val lastModified: Long,
         val length: Long,
@@ -94,6 +97,7 @@ class SystemFontResolver {
                 changed = false,
                 familyName = selection.familyName,
                 fingerprint = fingerprint,
+                fallbackFamilies = emptyList(),
                 regular = null,
                 bold = null,
             )
@@ -106,20 +110,26 @@ class SystemFontResolver {
             changed = true,
             familyName = selection.familyName,
             fingerprint = fingerprint,
+            fallbackFamilies = selection.familyName
+                ?.let(SystemFontConfig::fallbackFamiliesFor)
+                .orEmpty(),
             regular = regular,
             bold = bold,
         )
     }
 
     private fun resolve(): Selection? {
-        // OEM theme engines are the only ones that know the applied file:
-        // fontconfig keeps pointing "sans-serif" at Roboto while the theme
-        // engine swaps the rendering font at runtime.
-        overlayFontCandidates()?.let { return it }
-
         val mounted = mountedCandidates()
+
+        // OEM theme engines are the only ones that know the applied font:
+        // fontconfig keeps pointing "sans-serif" at Roboto while the theme
+        // engine swaps the rendering font at runtime. They publish either a
+        // file path or a font family name.
+        overlayFontSelection(mounted)?.let { return it }
+
         val systemFamily = systemDefaultFamilyName()
         if (systemFamily != null && !isGenericFamily(systemFamily)) {
+            configFamilySelection(systemFamily)?.let { return it }
             matchByFamily(mounted, systemFamily)?.let { return it }
         }
 
@@ -141,23 +151,49 @@ class SystemFontResolver {
      * property. The file is world readable and `appdomain` is allowed to read
      * `themeservice_app_data_file`, so the exact bytes can be streamed.
      */
-    private fun overlayFontCandidates(): Selection? {
+    private fun overlayFontSelection(mounted: List<Candidate>): Selection? {
         for (key in OVERLAY_FONT_PROPERTIES) {
             val raw = readSystemProperty(key)
             if (raw.isNullOrBlank()) continue
 
-            for (entry in raw.split(':', ',', ';')) {
-                val value = entry.trim()
-                if (value.isEmpty()) continue
+            // Only the first entry is the active font; the remaining ones are
+            // variants for other scripts of the same theme.
+            val value = raw.split(':', ',', ';')
+                .firstOrNull { it.isNotBlank() }
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: continue
 
+            if (value.contains('/') || SfntFont.hasFontExtension(value)) {
                 val file = File(if (value.startsWith("/")) value else "/$value")
                 if (!SfntFont.isFontFile(file)) continue
-
                 val candidate = toCandidate(file) ?: continue
                 selectionFor(null, siblingCandidates(candidate))?.let { return it }
+            } else {
+                configFamilySelection(value)?.let { return it }
+                matchByFamily(mounted, value, exactOnly = true)?.let { return it }
             }
         }
         return null
+    }
+
+    /**
+     * Resolves a family name through the platform font configuration, which is
+     * the only source for OEM preloaded theme families.
+     */
+    private fun configFamilySelection(familyName: String): Selection? {
+        val candidates = SystemFontConfig.fontsFor(familyName).mapNotNull { entry ->
+            if (!SfntFont.isFontFile(entry.file)) return@mapNotNull null
+            Candidate(
+                path = entry.file.absolutePath,
+                weight = entry.weight,
+                italic = entry.italic,
+                ttcIndex = entry.ttcIndex,
+                lastModified = entry.file.lastModified(),
+                length = entry.file.length(),
+            )
+        }
+        return selectionFor(familyName, candidates)
     }
 
     /** The overlay font plus same-family files from its directory, if listable. */
@@ -204,13 +240,19 @@ class SystemFontResolver {
         return (fromDefault ?: fromSansSerif)?.takeIf { it.isNotBlank() }
     }
 
-    private fun matchByFamily(candidates: List<Candidate>, systemFamily: String): Selection? {
+    private fun matchByFamily(
+        candidates: List<Candidate>,
+        systemFamily: String,
+        exactOnly: Boolean = false,
+    ): Selection? {
         if (candidates.isEmpty()) return null
         val target = normalize(systemFamily)
         if (target.isEmpty()) return null
 
-        val scored = candidates.mapNotNull { candidate ->
-            val score = matchScore(candidate, target)
+        // Italic faces are never the UI default, and their family names are
+        // often a shorter prefix of the upright family ("Rookery" vs "Rookery New").
+        val scored = candidates.filterNot { it.italic }.mapNotNull { candidate ->
+            val score = matchScore(candidate, target, exactOnly)
             if (score > 0) candidate to score else null
         }
         if (scored.isEmpty()) return null
@@ -222,9 +264,10 @@ class SystemFontResolver {
         return selectionFor(systemFamily, group.ifEmpty { listOf(best) })
     }
 
-    private fun matchScore(candidate: Candidate, target: String): Int {
+    private fun matchScore(candidate: Candidate, target: String, exactOnly: Boolean): Int {
         val names = familyNames(candidate)
         if (names.any { it == target }) return SCORE_EXACT
+        if (exactOnly) return 0
         if (names.any { it.startsWith(target) || target.startsWith(it) }) return SCORE_PREFIX
         if (names.any { it.contains(target) }) return SCORE_CONTAINS
         val stem = stemOf(candidate)
@@ -240,7 +283,10 @@ class SystemFontResolver {
 
     private fun metricMatch(candidates: List<Candidate>): Selection? {
         if (candidates.isEmpty()) return null
-        val regulars = candidates.filter { it.weight in 300..500 }.ifEmpty { candidates }
+        val regulars = candidates
+            .filter { !it.italic && it.weight in 300..500 }
+            .ifEmpty { candidates.filterNot { it.italic } }
+            .ifEmpty { candidates }
         val reference = runCatching { Typeface.create("sans-serif", Typeface.NORMAL) }
             .getOrNull() ?: return null
         val referenceSignature = glyphSignature(reference)
@@ -355,6 +401,7 @@ class SystemFontResolver {
         return Candidate(
             path = file.absolutePath,
             weight = SfntFont.weight(file) ?: weightFromName(file.name),
+            italic = SfntFont.isItalic(file) || isItalicName(file.name),
             ttcIndex = 0,
             lastModified = file.lastModified(),
             length = file.length(),
@@ -390,6 +437,9 @@ class SystemFontResolver {
             val candidate = Candidate(
                 path = file.absolutePath,
                 weight = weight.takeIf { it in 1..1000 } ?: WEIGHT_NORMAL,
+                italic = runCatching {
+                    font.style.slant != FontStyle.FONT_SLANT_UPRIGHT
+                }.getOrDefault(false),
                 ttcIndex = runCatching { font.ttcIndex }.getOrDefault(0),
                 lastModified = file.lastModified(),
                 length = file.length(),
@@ -401,10 +451,17 @@ class SystemFontResolver {
 
     private fun selectionFor(familyName: String?, group: List<Candidate>): Selection? {
         if (group.isEmpty()) return null
-        val regular = group.filter { it.weight in 300..500 }.minByOrNull { abs(it.weight - 400) }
-            ?: group.minByOrNull { abs(it.weight - 400) }
+
+        // Upright faces always win: families often ship an italic at the same
+        // weight, which would otherwise be registered as the regular face. A
+        // family without any upright face is not the system default.
+        val upright = group.filterNot { it.italic }
+        if (upright.isEmpty()) return null
+        val regular = upright.filter { it.weight in 300..500 }
+            .minByOrNull { abs(it.weight - 400) }
+            ?: upright.minByOrNull { abs(it.weight - 400) }
             ?: return null
-        val bold = group
+        val bold = upright
             .filter { it.weight in 600..800 && !sameFace(it, regular) }
             .minByOrNull { abs(it.weight - 700) }
         return Selection(familyName, regular, bold)
@@ -451,6 +508,11 @@ class SystemFontResolver {
         val tokens = base.split('-', '_', ' ', '.').filter { it.isNotEmpty() }
         val kept = tokens.dropLastWhile { normalize(it) in VARIANT_TOKENS }
         return normalize(if (kept.isEmpty()) base else kept.joinToString(separator = ""))
+    }
+
+    private fun isItalicName(name: String): Boolean {
+        val lower = name.lowercase(Locale.ROOT)
+        return "italic" in lower || "oblique" in lower
     }
 
     private fun weightFromName(name: String): Int {

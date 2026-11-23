@@ -50,6 +50,10 @@ internal object SfntFont {
     fun isFontFile(file: File): Boolean =
         file.isFile && file.canRead() && file.length() > 0L && extension(file) in FONT_EXTENSIONS
 
+    /** `true` when [name] carries a font file extension. */
+    fun hasFontExtension(name: String): Boolean =
+        name.substringAfterLast('.', "").lowercase(Locale.ROOT) in FONT_EXTENSIONS
+
     /** `true` when [file] is a font collection (`.ttc` / `.otc`). */
     fun isCollection(file: File): Boolean = runCatching {
         RandomAccessFile(file, "r").use { raf -> readTag(raf, 0L) == TAG_TTCF }
@@ -67,6 +71,29 @@ internal object SfntFont {
             readFamilyNames(raf, nameTable)
         }
     }.getOrDefault(emptyList())
+
+    /** `true` when the face is italic or oblique. */
+    fun isItalic(file: File, ttcIndex: Int = 0): Boolean = runCatching {
+        RandomAccessFile(file, "r").use { raf ->
+            val faceOffset = faceOffset(raf, ttcIndex) ?: return@use false
+            val tables = tableDirectory(raf, faceOffset) ?: return@use false
+
+            // head.macStyle, bit 1
+            val head = tables.firstOrNull { it.name == "head" }
+            if (head != null && head.length >= 46L) {
+                raf.seek(head.offset + 44L)
+                if (raf.readUnsignedShort() and 0x02 != 0) return@use true
+            }
+
+            // OS/2.fsSelection, bit 0
+            val os2 = tables.firstOrNull { it.name == "OS/2" }
+            if (os2 != null && os2.length >= 64L) {
+                raf.seek(os2.offset + 62L)
+                if (raf.readUnsignedShort() and 0x01 != 0) return@use true
+            }
+            false
+        }
+    }.getOrDefault(false)
 
     /** `usWeightClass` from the `OS/2` table, or `null` when unavailable. */
     fun weight(file: File, ttcIndex: Int = 0): Int? = runCatching {

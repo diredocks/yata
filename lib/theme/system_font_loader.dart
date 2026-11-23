@@ -35,6 +35,7 @@ class SystemFontLoader {
   final SystemFontRegistrar _registrar;
 
   String? _family;
+  List<String> _fontFamilyFallback = fontFamilyFallback;
 
   /// Registered family, or `null` while the platform font is in use.
   String? get family => _family;
@@ -61,6 +62,10 @@ class SystemFontLoader {
           'SystemDynamicFont_${DateTime.now().microsecondsSinceEpoch}';
       await _registrar(dynamicFamily, fonts);
       _family = dynamicFamily;
+      _fontFamilyFallback = <String>[
+        ..._platformFallbacks(payload['fallbackFamilies']),
+        ...fontFamilyFallback,
+      ];
     } on MissingPluginException {
       // Unsupported host or headless test without a plugin registrant.
     } on PlatformException catch (error, stack) {
@@ -80,13 +85,25 @@ class SystemFontLoader {
     return theme.copyWith(
       textTheme: theme.textTheme.apply(
         fontFamily: family,
-        fontFamilyFallback: fontFamilyFallback,
+        fontFamilyFallback: _fontFamilyFallback,
       ),
       primaryTextTheme: theme.primaryTextTheme.apply(
         fontFamily: family,
-        fontFamilyFallback: fontFamilyFallback,
+        fontFamilyFallback: _fontFamilyFallback,
       ),
     );
+  }
+}
+
+/// System families the platform declares as fallbacks (e.g. CJK faces).
+Iterable<String> _platformFallbacks(Object? value) sync* {
+  if (value is! List) return;
+  for (final name in value) {
+    if (name is String &&
+        name.isNotEmpty &&
+        !SystemFontLoader.fontFamilyFallback.contains(name)) {
+      yield name;
+    }
   }
 }
 

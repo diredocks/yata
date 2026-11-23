@@ -105,6 +105,23 @@ void main() {
     expect(registered, isEmpty);
   });
 
+  test('prepends the platform declared fallback families', () async {
+    reply(<String, Object?>{
+      'changed': true,
+      'regular': regular,
+      'fallbackFamilies': <String>['HYQiHei'],
+    });
+    final loader = createLoader();
+
+    await loader.refresh();
+
+    final theme = loader.applyTo(TodoTheme.light());
+    expect(theme.textTheme.bodyMedium?.fontFamilyFallback, <String>[
+      'HYQiHei',
+      ...SystemFontLoader.fontFamilyFallback,
+    ]);
+  });
+
   test('leaves the theme untouched without a loaded font', () {
     final theme = TodoTheme.dark();
 
