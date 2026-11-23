@@ -291,6 +291,10 @@ class HomeWidgetService {
       'widget_my_day_label',
       activeStrings.myDay,
     );
+    await _transport.saveWidgetData(
+      'widget_move_starred_to_top',
+      state.moveStarredTasksToTop,
+    );
     await _transport.saveWidgetData('widget_is_refreshing', false);
     await _transport.updateWidget(
       qualifiedAndroidName: kAndroidWidgetProviderName,
@@ -352,6 +356,82 @@ class HomeWidgetService {
   }
 }
 
+Future<void> _widgetBgChain = Future<void>.value();
+Timer? _widgetSyncDebounceTimer;
+bool _widgetSyncRunning = false;
+bool _widgetSyncQueued = false;
+
+Future<T> _enqueueWidgetBgWork<T>(Future<T> Function() work) {
+  final next = _widgetBgChain.then((_) => work(), onError: (_) => work());
+  _widgetBgChain = next.then((_) {}, onError: (_, _) {});
+  return next;
+}
+
+void _scheduleDetachedWidgetSync() {
+  _widgetSyncDebounceTimer?.cancel();
+  _widgetSyncDebounceTimer = Timer(const Duration(milliseconds: 600), () {
+    unawaited(_triggerDetachedWidgetSync());
+  });
+}
+
+Future<void> _triggerDetachedWidgetSync() async {
+  if (_widgetSyncRunning) {
+    _widgetSyncQueued = true;
+    return;
+  }
+  _widgetSyncRunning = true;
+  try {
+    do {
+      _widgetSyncQueued = false;
+      await _enqueueWidgetBgWork(() async {
+        final prefs = await SharedPreferences.getInstance();
+        final database = TodoDatabase();
+        ProviderContainer? container;
+        try {
+          final snapshot = AccountLocalStorage(prefs).load();
+          final activeId = snapshot.activeAccountId;
+          if (activeId != null) {
+            await TodoRepository.forAccount(
+              prefs,
+              accountId: activeId,
+              database: database,
+            ).preload();
+          }
+          container = ProviderContainer(
+            overrides: [
+              sharedPreferencesProvider.overrideWithValue(prefs),
+              todoDatabaseProvider.overrideWithValue(database),
+              realtimeSyncEnabledProvider.overrideWithValue(false),
+              periodicSyncEnabledProvider.overrideWithValue(false),
+            ],
+          );
+          await container
+              .read(syncProvider.notifier)
+              .syncNow()
+              .timeout(const Duration(seconds: 10), onTimeout: () {});
+          await prefs.setInt(
+            kWidgetLastMutationMsKey,
+            DateTime.now().millisecondsSinceEpoch,
+          );
+          final activeAccount = container.read(accountProvider).activeAccount;
+          final service = HomeWidgetService(const FlutterHomeWidgetTransport());
+          await service.syncWithState(
+            container.read(todoProvider),
+            accountName: activeAccount?.displayName ?? '',
+          );
+        } catch (e) {
+          appLog('widget detached sync failed: $e', label: 'HomeWidgetBackground');
+        } finally {
+          container?.dispose();
+          await database.close();
+        }
+      });
+    } while (_widgetSyncQueued);
+  } finally {
+    _widgetSyncRunning = false;
+  }
+}
+
 /// Background entry point invoked by `home_widget` when the user taps a
 /// checkbox or star directly on the Android home screen widget.
 @pragma('vm:entry-point')
@@ -365,71 +445,82 @@ Future<void> homeWidgetBackgroundCallback(Uri? uri) async {
   if (!isMutation && action.type != HomeWidgetActionType.refresh) return;
 
   WidgetsFlutterBinding.ensureInitialized();
-  final prefs = await SharedPreferences.getInstance();
-  final database = TodoDatabase();
-  ProviderContainer? container;
-  try {
-    final snapshot = AccountLocalStorage(prefs).load();
-    final activeId = snapshot.activeAccountId;
-    if (activeId != null) {
-      await TodoRepository.forAccount(
-        prefs,
-        accountId: activeId,
-        database: database,
-      ).preload();
-    }
-
-    container = ProviderContainer(
-      overrides: [
-        sharedPreferencesProvider.overrideWithValue(prefs),
-        todoDatabaseProvider.overrideWithValue(database),
-        realtimeSyncEnabledProvider.overrideWithValue(false),
-      ],
-    );
-
-    final presenter = container.read(tasksViewPresenterProvider);
-    var state = container.read(todoProvider);
-
-    if (isMutation) {
-      final taskId = action.taskId!;
-      final target = state.tasks.where((t) => t.id == taskId).firstOrNull;
-      if (target != null) {
-        if (action.type == HomeWidgetActionType.toggleComplete) {
-          final completed = action.flagValue ?? !target.isCompleted;
-          presenter.setTaskCompleted(taskId, completed: completed);
-        } else {
-          final desiredImportant = action.flagValue ?? !target.isImportant;
-          if (target.isImportant != desiredImportant) {
-            presenter.toggleTaskImportant(taskId);
-          }
-        }
-        // Flush async Drift writes before closing the background database.
-        final repo = container.read(todoRepositoryProvider);
-        await repo.saveTasks(container.read(todoProvider).tasks);
-        await repo.saveDirtyTaskIds(repo.loadDirtyTaskIds());
+  await _enqueueWidgetBgWork(() async {
+    final prefs = await SharedPreferences.getInstance();
+    final database = TodoDatabase();
+    ProviderContainer? container;
+    try {
+      final snapshot = AccountLocalStorage(prefs).load();
+      final activeId = snapshot.activeAccountId;
+      if (activeId != null) {
+        await TodoRepository.forAccount(
+          prefs,
+          accountId: activeId,
+          database: database,
+        ).preload();
       }
+
+      container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          todoDatabaseProvider.overrideWithValue(database),
+          realtimeSyncEnabledProvider.overrideWithValue(false),
+          periodicSyncEnabledProvider.overrideWithValue(false),
+        ],
+      );
+
+      final presenter = container.read(tasksViewPresenterProvider);
+      final state = container.read(todoProvider);
+      final activeAccount = container.read(accountProvider).activeAccount;
+
+      var didMutate = false;
+      if (isMutation) {
+        final taskId = action.taskId!;
+        final target = state.tasks.where((t) => t.id == taskId).firstOrNull;
+        if (target != null) {
+          if (action.type == HomeWidgetActionType.toggleComplete) {
+            final completed = action.flagValue ?? !target.isCompleted;
+            presenter.setTaskCompleted(taskId, completed: completed);
+            didMutate = true;
+          } else {
+            final desiredImportant = action.flagValue ?? !target.isImportant;
+            if (target.isImportant != desiredImportant) {
+              presenter.toggleTaskImportant(taskId);
+              didMutate = true;
+            }
+          }
+          // Flush async Drift writes before closing the background database.
+          final repo = container.read(todoRepositoryProvider);
+          await repo.saveTasks(container.read(todoProvider).tasks);
+          await repo.saveDirtyTaskIds(repo.loadDirtyTaskIds());
+        }
+        await prefs.setInt(
+          kWidgetLastMutationMsKey,
+          DateTime.now().millisecondsSinceEpoch,
+        );
+      }
+
+      if (action.type == HomeWidgetActionType.refresh) {
+        await container.read(syncProvider.notifier).syncNow();
+        await prefs.setInt(
+          kWidgetLastMutationMsKey,
+          DateTime.now().millisecondsSinceEpoch,
+        );
+        final service = HomeWidgetService(const FlutterHomeWidgetTransport());
+        await service.syncWithState(
+          container.read(todoProvider),
+          accountName: activeAccount?.displayName ?? '',
+        );
+      } else if (didMutate) {
+        // Debounce & coalesce background sync so rapid widget taps stay instant
+        // and never overlap on SQLite or SharedPreferences.
+        _scheduleDetachedWidgetSync();
+      }
+    } catch (e, st) {
+      appLog('failed handling $uri: $e\n$st', label: 'HomeWidgetBackground');
+    } finally {
+      container?.dispose();
+      await database.close();
     }
-
-    if (action.type == HomeWidgetActionType.refresh) {
-      await container.read(syncProvider.notifier).syncNow();
-    }
-    await prefs.setInt(
-      kWidgetLastMutationMsKey,
-      DateTime.now().millisecondsSinceEpoch,
-    );
-
-    state = container.read(todoProvider);
-    final activeAccount = container.read(accountProvider).activeAccount;
-
-    final service = HomeWidgetService(const FlutterHomeWidgetTransport());
-    await service.syncWithState(
-      state,
-      accountName: activeAccount?.displayName ?? '',
-    );
-  } catch (e, st) {
-    appLog('failed handling $uri: $e\n$st', label: 'HomeWidgetBackground');
-  } finally {
-    container?.dispose();
-    await database.close();
-  }
+  });
 }

@@ -53,7 +53,7 @@ class TodoWidgetProvider : HomeWidgetProvider() {
         when (itemAction) {
             ITEM_ACTION_TOGGLE_COMPLETE -> {
                 val newValue = TodoWidgetData.optimisticToggleComplete(context, taskId)
-                refreshAllWidgets(context)
+                notifyTaskListChanged(context)
                 val uri = Uri.parse(
                     "yata://widget/toggle_complete?taskId=${Uri.encode(taskId)}" +
                         if (newValue != null) "&completed=$newValue" else "",
@@ -62,7 +62,7 @@ class TodoWidgetProvider : HomeWidgetProvider() {
             }
             ITEM_ACTION_TOGGLE_IMPORTANT -> {
                 val newValue = TodoWidgetData.optimisticToggleImportant(context, taskId)
-                refreshAllWidgets(context)
+                notifyTaskListChanged(context)
                 val uri = Uri.parse(
                     "yata://widget/toggle_important?taskId=${Uri.encode(taskId)}" +
                         if (newValue != null) "&important=$newValue" else "",
@@ -100,6 +100,14 @@ class TodoWidgetProvider : HomeWidgetProvider() {
         const val ITEM_ACTION_TOGGLE_COMPLETE = "toggle_complete"
         const val ITEM_ACTION_TOGGLE_IMPORTANT = "toggle_important"
         const val ITEM_ACTION_OPEN_TASK = "open_task"
+
+        fun notifyTaskListChanged(context: Context) {
+            val manager = AppWidgetManager.getInstance(context)
+            val component = ComponentName(context, TodoWidgetProvider::class.java)
+            val ids = manager.getAppWidgetIds(component)
+            if (ids.isEmpty()) return
+            manager.notifyAppWidgetViewDataChanged(ids, R.id.widget_tasks_list_view)
+        }
 
         fun refreshAllWidgets(context: Context) {
             val manager = AppWidgetManager.getInstance(context)

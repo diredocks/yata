@@ -70,6 +70,7 @@ object TodoWidgetData {
     private const val KEY_ACCOUNT_NAME = "widget_account_name"
     private const val KEY_EMPTY_MESSAGE = "widget_empty_message"
     private const val KEY_MY_DAY_LABEL = "widget_my_day_label"
+    private const val KEY_MOVE_STARRED_TO_TOP = "widget_move_starred_to_top"
     private const val KEY_IS_REFRESHING = "widget_is_refreshing"
 
     private const val CONFIG_PREFS_NAME = "yata_widget_configs"
@@ -228,10 +229,71 @@ object TodoWidgetData {
     }
 
     fun optimisticToggleImportant(context: Context, taskId: String): Boolean? {
-        return updateTaskField(context, taskId) { obj ->
-            val next = !obj.optBoolean("isImportant", false)
-            obj.put("isImportant", next)
-            next
+        val next = updateTaskField(context, taskId) { obj ->
+            val value = !obj.optBoolean("isImportant", false)
+            obj.put("isImportant", value)
+            value
+        } ?: return null
+
+        updateListTaskIdsOnImportantChange(context, taskId, next)
+        return next
+    }
+
+    private fun updateListTaskIdsOnImportantChange(
+        context: Context,
+        taskId: String,
+        isImportant: Boolean,
+    ) {
+        val p = prefs(context)
+        val raw = p.getString(KEY_LIST_TASK_IDS, null) ?: return
+        val moveStarredToTop = p.getBoolean(KEY_MOVE_STARRED_TO_TOP, true)
+        try {
+            val mapObj = JSONObject(raw)
+            var changed = false
+            val keys = mapObj.keys()
+            while (keys.hasNext()) {
+                val listId = keys.next()
+                val arr = mapObj.optJSONArray(listId) ?: continue
+                if (listId == "important") {
+                    val updated = JSONArray()
+                    if (isImportant) {
+                        updated.put(taskId)
+                    }
+                    for (i in 0 until arr.length()) {
+                        val id = arr.optString(i)
+                        if (id != taskId) {
+                            updated.put(id)
+                        }
+                    }
+                    mapObj.put(listId, updated)
+                    changed = true
+                } else if (isImportant && moveStarredToTop) {
+                    var found = false
+                    for (i in 0 until arr.length()) {
+                        if (arr.optString(i) == taskId) {
+                            found = true
+                            break
+                        }
+                    }
+                    if (found) {
+                        val updated = JSONArray()
+                        updated.put(taskId)
+                        for (i in 0 until arr.length()) {
+                            val id = arr.optString(i)
+                            if (id != taskId) {
+                                updated.put(id)
+                            }
+                        }
+                        mapObj.put(listId, updated)
+                        changed = true
+                    }
+                }
+            }
+            if (changed) {
+                p.edit().putString(KEY_LIST_TASK_IDS, mapObj.toString()).apply()
+            }
+        } catch (_: Exception) {
+            // Best-effort optimistic reorder.
         }
     }
 
