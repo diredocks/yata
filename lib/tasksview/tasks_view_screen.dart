@@ -46,6 +46,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   bool _isSnappingHeader = false;
   final ScrollController _scrollController = ScrollController();
   final Set<String> _multiSelectedIds = {};
+  String? _draggingTaskId;
+  int? _dragStartIndex;
+  double? _dragPointerStartY;
   final Set<String> _collapsedPlannedBuckets = {};
   final Set<String> _collapsedCompletedListBuckets = {};
   final _completionController = DelayedTaskCompletionController();
@@ -411,6 +414,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     required Color accentColor,
     required bool showMyDayBadge,
     String? originListName,
+    bool enableLongPress = true,
   }) {
     final notifier = ref.read(tasksViewPresenterProvider);
     final actionPresenter = ref.read(tasksActionPresenterProvider);
@@ -440,7 +444,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
             widget.onOpenTask(task);
           }
         },
-        onLongPress: () => _toggleSelection(task.id),
+        onLongPress: enableLongPress ? () => _toggleSelection(task.id) : null,
         onToggleCompleted: () {
           if (!task.isCompleted && !_completionController.isPending(task.id)) {
             ref.read(completionSoundServiceProvider).playIfEnabled();
@@ -756,6 +760,78 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final isMyDay = currentList.smartType == SmartListType.myDay;
     final showOriginList =
         currentList.isSmartList && currentList.smartType != SmartListType.tasks;
+    final canDragReorder =
+        supportsTaskReordering(currentList, activeTasks.length) &&
+        (_mode == TasksViewMode.browsing || _draggingTaskId != null);
+
+    if (canDragReorder) {
+      final notifier = ref.read(tasksViewPresenterProvider);
+      return SliverPadding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        sliver: AnimatedReorderableTaskSliver(
+          key: ValueKey('flat_reorder_${currentList.id}'),
+          tasks: activeTasks,
+          proxyDecorator: (child, index, animation) => Material(
+            elevation: 4,
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(4),
+            child: child,
+          ),
+          onReorderStart: (index) {
+            final taskId = activeTasks[index].id;
+            _draggingTaskId = taskId;
+            _dragStartIndex = index;
+            _toggleSelection(taskId);
+          },
+          onReorder: (oldIndex, newIndex) {
+            _draggingTaskId = null;
+            _dragStartIndex = null;
+            _dragPointerStartY = null;
+            notifier.reorderActiveTasks(activeTasks, oldIndex, newIndex);
+            if (_mode == TasksViewMode.multiSelecting && mounted) {
+              _clearSelection();
+            }
+          },
+          onReorderEnd: (insertIndex) {
+            final startIndex = _dragStartIndex;
+            final adjustedNew =
+                startIndex != null && insertIndex > startIndex
+                ? insertIndex - 1
+                : insertIndex;
+            final willReorder =
+                startIndex != null && adjustedNew != startIndex;
+            if (willReorder) {
+              // Keep _draggingTaskId non-null until onReorder fires after the
+              // drop animation so AnimatedReorderableTaskSliver stays mounted.
+              if (_mode == TasksViewMode.multiSelecting && mounted) {
+                _clearSelection();
+              }
+              return;
+            }
+            _draggingTaskId = null;
+            _dragStartIndex = null;
+            _dragPointerStartY = null;
+            if (mounted) setState(() {});
+          },
+          itemBuilder: (context, index, task, _) =>
+              ReorderableDelayedDragStartListener(
+                key: ValueKey('drag_${task.id}'),
+                index: index,
+                child: _buildTaskTile(
+                  task: task,
+                  state: state,
+                  accentColor: accentColor,
+                  showMyDayBadge: !isMyDay,
+                  originListName: showOriginList
+                      ? resolveOriginListName(l10n, state.lists, task.listId)
+                      : null,
+                  enableLongPress: false,
+                ),
+              ),
+        ),
+      );
+    }
+
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       sliver: AnimatedTaskSliverList(
@@ -1063,12 +1139,25 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                   (s) => s.activeAccount?.isMicrosoft ?? false,
                                 ),
                               );
-                              final scrollView = CustomScrollView(
-                                controller: _scrollController,
-                                physics: isMicrosoft
-                                    ? const AlwaysScrollableScrollPhysics()
-                                    : null,
-                                slivers: [
+                              final scrollView = Listener(
+                                onPointerDown: (event) =>
+                                    _dragPointerStartY = event.position.dy,
+                                onPointerMove: (event) {
+                                  if (_draggingTaskId != null &&
+                                      _mode == TasksViewMode.multiSelecting &&
+                                      _dragPointerStartY != null &&
+                                      (event.position.dy - _dragPointerStartY!)
+                                              .abs() >
+                                          18) {
+                                    _clearSelection();
+                                  }
+                                },
+                                child: CustomScrollView(
+                                  controller: _scrollController,
+                                  physics: isMicrosoft
+                                      ? const AlwaysScrollableScrollPhysics()
+                                      : null,
+                                  slivers: [
                                   if (_mode == TasksViewMode.browsing)
                                     TasksSliverAppBar(
                                       l10n: l10n,
@@ -1185,7 +1274,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                               kToolbarHeight)
                                         : 0.0,
                                   ),
-                                ],
+                                  ],
+                                ),
                               );
                               if (!isMicrosoft ||
                                   _mode == TasksViewMode.reordering) {

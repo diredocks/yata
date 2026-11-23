@@ -39,6 +39,15 @@ PopupMenuItem<T> buildTasksPopupMenuItem<T>({
   );
 }
 
+bool supportsTaskReordering(TodoList list, int activeTasksCount) {
+  final isCustom = !list.isSmartList;
+  return (isCustom ||
+          list.smartType == SmartListType.myDay ||
+          list.smartType == SmartListType.tasks) &&
+      list.sortOption == TaskSortOption.defaultOrder &&
+      activeTasksCount >= 2;
+}
+
 List<PopupMenuEntry<ListMenuAction>> buildListMenuItems(
   AppLocalizations l10n,
   TodoList list,
@@ -52,12 +61,7 @@ List<PopupMenuEntry<ListMenuAction>> buildListMenuItems(
       list.smartType == SmartListType.all ||
       list.smartType == SmartListType.completed ||
       list.smartType == SmartListType.tasks;
-  final supportsReorder =
-      (isCustom ||
-          list.smartType == SmartListType.myDay ||
-          list.smartType == SmartListType.tasks) &&
-      list.sortOption == TaskSortOption.defaultOrder &&
-      activeTasksCount >= 2;
+  final supportsReorder = supportsTaskReordering(list, activeTasksCount);
 
   return [
     if (isCustom)

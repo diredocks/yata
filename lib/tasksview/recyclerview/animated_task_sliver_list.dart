@@ -271,10 +271,16 @@ class AnimatedReorderableTaskSliver extends StatefulWidget {
     required this.tasks,
     required this.onReorder,
     required this.itemBuilder,
+    this.proxyDecorator,
+    this.onReorderStart,
+    this.onReorderEnd,
   });
 
   final List<TaskItem> tasks;
   final void Function(int oldIndex, int newIndex) onReorder;
+  final ReorderItemProxyDecorator? proxyDecorator;
+  final void Function(int index)? onReorderStart;
+  final void Function(int index)? onReorderEnd;
   final Widget Function(
     BuildContext context,
     int index,
@@ -334,6 +340,9 @@ class _AnimatedReorderableTaskSliverState
     return SliverReorderableList(
       itemCount: widget.tasks.length,
       onReorderItem: widget.onReorder,
+      onReorderStart: widget.onReorderStart,
+      onReorderEnd: widget.onReorderEnd,
+      proxyDecorator: widget.proxyDecorator,
       itemBuilder: (context, index) {
         final task = widget.tasks[index];
         return _FlipItem(
