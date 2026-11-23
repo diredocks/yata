@@ -112,6 +112,11 @@ class SettingsPresenter {
     _store.settings.savePinReminders(value);
   }
 
+  void setAccurateReminders(bool value) {
+    _store.commit(_state.copyWith(accurateReminders: value));
+    _store.settings.saveAccurateReminders(value);
+  }
+
   void setDueTodayNotificationsEnabled(bool value) {
     _store.commit(_state.copyWith(dueTodayNotificationsEnabled: value));
     _store.settings.saveDueTodayNotificationsEnabled(value);
@@ -140,6 +145,12 @@ class SettingsPresenter {
       ),
     );
     _store.settings.saveRoutineNotificationTime(hour, minute);
+  }
+
+  void setRoutineNotificationDays(List<int> days) {
+    final sorted = days.toSet().toList()..sort();
+    _store.commit(_state.copyWith(routineNotificationDays: sorted));
+    _store.settings.saveRoutineNotificationDays(sorted);
   }
 
   void setQuickAddNotificationEnabled(bool value) {

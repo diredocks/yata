@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
@@ -82,6 +83,25 @@ class NotificationStrings {
   final String defaultTasksListName;
 }
 
+@immutable
+class NotificationPermissionStatus {
+  const NotificationPermissionStatus({
+    this.notificationsEnabled = true,
+    this.exactAlarmsEnabled = true,
+    this.ignoringBatteryOptimizations = true,
+    this.backgroundRestricted = false,
+    this.isAndroid = false,
+    this.androidSdkInt = 0,
+  });
+
+  final bool notificationsEnabled;
+  final bool exactAlarmsEnabled;
+  final bool ignoringBatteryOptimizations;
+  final bool backgroundRestricted;
+  final bool isAndroid;
+  final int androidSdkInt;
+}
+
 /// Abstract transport so tests can verify notification scheduling without OS channels.
 abstract class NotificationTransport {
   bool get supportsZonedSchedule;
@@ -91,6 +111,17 @@ abstract class NotificationTransport {
   });
 
   Future<bool> requestPermissions();
+
+  Future<NotificationPermissionStatus> getPermissionStatus() async =>
+      const NotificationPermissionStatus();
+
+  Future<void> openNotificationSettings() async {}
+
+  Future<void> openExactAlarmSettings() async {}
+
+  Future<void> openBatteryOptimizationSettings() async {}
+
+  Future<void> openAppDetailsSettings() async {}
 
   Future<void> show({
     required int id,
@@ -115,6 +146,8 @@ abstract class NotificationTransport {
     bool ongoing = false,
     bool highPriority = true,
     bool repeatDaily = false,
+    bool repeatWeekly = false,
+    bool exactAlarm = true,
     List<AndroidNotificationAction> actions = const [],
   });
 
@@ -124,6 +157,10 @@ abstract class NotificationTransport {
 class FlutterLocalNotificationTransport implements NotificationTransport {
   FlutterLocalNotificationTransport([FlutterLocalNotificationsPlugin? plugin])
     : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+
+  static const MethodChannel _settingsChannel = MethodChannel(
+    'top.clickfling.yata/notification_settings',
+  );
 
   final FlutterLocalNotificationsPlugin _plugin;
   bool _initialized = false;
@@ -200,6 +237,63 @@ class FlutterLocalNotificationTransport implements NotificationTransport {
     return result ?? true;
   }
 
+  @override
+  Future<NotificationPermissionStatus> getPermissionStatus() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return const NotificationPermissionStatus();
+    }
+    final raw = await _guardPlatform<Map<dynamic, dynamic>>(
+      () => _settingsChannel
+          .invokeMapMethod<dynamic, dynamic>('getPermissionStatus')
+          .then((value) => value ?? const <dynamic, dynamic>{}),
+    );
+    if (raw == null || raw.isEmpty) {
+      return const NotificationPermissionStatus();
+    }
+    return NotificationPermissionStatus(
+      notificationsEnabled: raw['notificationsEnabled'] as bool? ?? true,
+      exactAlarmsEnabled: raw['exactAlarmsEnabled'] as bool? ?? true,
+      ignoringBatteryOptimizations:
+          raw['ignoringBatteryOptimizations'] as bool? ?? true,
+      backgroundRestricted: raw['backgroundRestricted'] as bool? ?? false,
+      isAndroid: raw['isAndroid'] as bool? ?? true,
+      androidSdkInt: raw['androidSdkInt'] as int? ?? 0,
+    );
+  }
+
+  @override
+  Future<void> openNotificationSettings() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    await _guardPlatform(
+      () => _settingsChannel.invokeMethod<void>('openNotificationSettings'),
+    );
+  }
+
+  @override
+  Future<void> openExactAlarmSettings() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    await _guardPlatform(
+      () => _settingsChannel.invokeMethod<void>('openExactAlarmSettings'),
+    );
+  }
+
+  @override
+  Future<void> openBatteryOptimizationSettings() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    await _guardPlatform(
+      () =>
+          _settingsChannel.invokeMethod<void>('openBatteryOptimizationSettings'),
+    );
+  }
+
+  @override
+  Future<void> openAppDetailsSettings() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    await _guardPlatform(
+      () => _settingsChannel.invokeMethod<void>('openAppDetailsSettings'),
+    );
+  }
+
   NotificationDetails _details({
     required String channelId,
     required String channelName,
@@ -273,6 +367,8 @@ class FlutterLocalNotificationTransport implements NotificationTransport {
     bool ongoing = false,
     bool highPriority = true,
     bool repeatDaily = false,
+    bool repeatWeekly = false,
+    bool exactAlarm = true,
     List<AndroidNotificationAction> actions = const [],
   }) async {
     if (!supportsZonedSchedule) return;
@@ -283,8 +379,23 @@ class FlutterLocalNotificationTransport implements NotificationTransport {
       highPriority: highPriority,
       actions: actions,
     );
-    final match = repeatDaily ? DateTimeComponents.time : null;
+    final match = repeatWeekly
+        ? DateTimeComponents.dayOfWeekAndTime
+        : (repeatDaily ? DateTimeComponents.time : null);
     await _guardPlatform(() async {
+      if (!exactAlarm) {
+        await _plugin.zonedSchedule(
+          id: id,
+          title: title,
+          body: body,
+          scheduledDate: scheduledDate,
+          notificationDetails: details,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          matchDateTimeComponents: match,
+          payload: payload,
+        );
+        return;
+      }
       try {
         await _plugin.zonedSchedule(
           id: id,
@@ -331,6 +442,7 @@ class NotificationService {
   static const dueTodayNotificationId = 1001;
   static const routineNotificationId = 1002;
   static const quickAddNotificationId = 1003;
+  static const routineWeekdayBaseId = 1010;
 
   static const completeActionId = 'complete';
   static const snoozeActionId = 'snooze';
@@ -384,6 +496,21 @@ class NotificationService {
     await ensureInitialized();
     return _transport.requestPermissions();
   }
+
+  Future<NotificationPermissionStatus> getPermissionStatus() async {
+    await ensureInitialized();
+    return _transport.getPermissionStatus();
+  }
+
+  Future<void> openNotificationSettings() =>
+      _transport.openNotificationSettings();
+
+  Future<void> openExactAlarmSettings() => _transport.openExactAlarmSettings();
+
+  Future<void> openBatteryOptimizationSettings() =>
+      _transport.openBatteryOptimizationSettings();
+
+  Future<void> openAppDetailsSettings() => _transport.openAppDetailsSettings();
 
   @visibleForTesting
   void handleNotificationResponse(NotificationResponse response) {
@@ -461,6 +588,26 @@ class NotificationService {
     return candidate;
   }
 
+  DateTime _nextWeeklyOccurrence(
+    int weekday,
+    int hour,
+    int minute,
+    DateTime now,
+  ) {
+    final daysUntil = (weekday - now.weekday + 7) % 7;
+    var candidate = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      hour,
+      minute,
+    ).add(Duration(days: daysUntil));
+    if (!candidate.isAfter(now)) {
+      candidate = candidate.add(const Duration(days: 7));
+    }
+    return candidate;
+  }
+
   String _resolveListName(
     TaskItem task,
     List<TodoList> lists,
@@ -523,6 +670,7 @@ class NotificationService {
             payload: payload,
             ongoing: state.pinReminders,
             highPriority: true,
+            exactAlarm: state.accurateReminders,
             actions: actions,
           );
         } else {
@@ -613,48 +761,98 @@ class NotificationService {
       await _transport.cancel(dueTodayNotificationId);
     }
 
-    // 3. Plan Your Day (Routine) daily notification.
-    if (state.routineNotificationEnabled) {
-      final target = _nextDailyOccurrence(
-        state.routineNotificationHour,
-        state.routineNotificationMinute,
-        now,
-      );
+    // 3. Plan Your Day (Routine) daily/weekly notification.
+    final selectedDays = state.routineNotificationDays
+        .where((d) => d >= DateTime.monday && d <= DateTime.sunday)
+        .toSet();
+    if (state.routineNotificationEnabled && selectedDays.isNotEmpty) {
       final payload = jsonEncode({'type': 'routine'});
-
       if (_transport.supportsZonedSchedule) {
-        await _transport.schedule(
-          id: routineNotificationId,
-          title: l10n.routineTitle,
-          body: l10n.routineBody,
-          scheduledDate: tz.TZDateTime.from(target, _localLocation),
-          channelId: 'routine',
-          channelName: 'Plan Your Day',
-          payload: payload,
-          highPriority: false,
-          repeatDaily: true,
-        );
-      } else {
-        _scheduleFallbackTimer(
-          id: routineNotificationId,
-          target: target,
-          onFire: () {
-            unawaited(
-              _transport.show(
-                id: routineNotificationId,
+        if (selectedDays.length == 7) {
+          for (var d = DateTime.monday; d <= DateTime.sunday; d++) {
+            await _transport.cancel(routineWeekdayBaseId + d);
+          }
+          final target = _nextDailyOccurrence(
+            state.routineNotificationHour,
+            state.routineNotificationMinute,
+            now,
+          );
+          await _transport.schedule(
+            id: routineNotificationId,
+            title: l10n.routineTitle,
+            body: l10n.routineBody,
+            scheduledDate: tz.TZDateTime.from(target, _localLocation),
+            channelId: 'routine',
+            channelName: 'Plan Your Day',
+            payload: payload,
+            highPriority: false,
+            repeatDaily: true,
+          );
+        } else {
+          await _transport.cancel(routineNotificationId);
+          for (var d = DateTime.monday; d <= DateTime.sunday; d++) {
+            final weekdayId = routineWeekdayBaseId + d;
+            if (selectedDays.contains(d)) {
+              final target = _nextWeeklyOccurrence(
+                d,
+                state.routineNotificationHour,
+                state.routineNotificationMinute,
+                now,
+              );
+              await _transport.schedule(
+                id: weekdayId,
                 title: l10n.routineTitle,
                 body: l10n.routineBody,
+                scheduledDate: tz.TZDateTime.from(target, _localLocation),
                 channelId: 'routine',
                 channelName: 'Plan Your Day',
                 payload: payload,
-              ),
-            );
-          },
-        );
+                highPriority: false,
+                repeatWeekly: true,
+              );
+            } else {
+              await _transport.cancel(weekdayId);
+            }
+          }
+        }
+      } else {
+        DateTime? nextTarget;
+        for (final d in selectedDays) {
+          final candidate = _nextWeeklyOccurrence(
+            d,
+            state.routineNotificationHour,
+            state.routineNotificationMinute,
+            now,
+          );
+          if (nextTarget == null || candidate.isBefore(nextTarget)) {
+            nextTarget = candidate;
+          }
+        }
+        if (nextTarget != null) {
+          _scheduleFallbackTimer(
+            id: routineNotificationId,
+            target: nextTarget,
+            onFire: () {
+              unawaited(
+                _transport.show(
+                  id: routineNotificationId,
+                  title: l10n.routineTitle,
+                  body: l10n.routineBody,
+                  channelId: 'routine',
+                  channelName: 'Plan Your Day',
+                  payload: payload,
+                ),
+              );
+            },
+          );
+        }
       }
     } else {
       _cancelFallbackTimer(routineNotificationId);
       await _transport.cancel(routineNotificationId);
+      for (var d = DateTime.monday; d <= DateTime.sunday; d++) {
+        await _transport.cancel(routineWeekdayBaseId + d);
+      }
     }
 
     // 4. Quick Add persistent notification.

@@ -29,12 +29,14 @@ class TodoSettings {
     this.useDynamicColor = true,
     this.remindersEnabled = true,
     this.pinReminders = false,
+    this.accurateReminders = true,
     this.dueTodayNotificationsEnabled = false,
     this.dueTodayNotificationHour = 9,
     this.dueTodayNotificationMinute = 0,
     this.routineNotificationEnabled = false,
     this.routineNotificationHour = 8,
     this.routineNotificationMinute = 30,
+    this.routineNotificationDays = const <int>[1, 2, 3, 4, 5, 6, 7],
     this.quickAddNotificationEnabled = false,
     this.completedExpandedByList = const <String, bool>{},
     this.lastMyDayResetDate,
@@ -58,12 +60,14 @@ class TodoSettings {
   final bool useDynamicColor;
   final bool remindersEnabled;
   final bool pinReminders;
+  final bool accurateReminders;
   final bool dueTodayNotificationsEnabled;
   final int dueTodayNotificationHour;
   final int dueTodayNotificationMinute;
   final bool routineNotificationEnabled;
   final int routineNotificationHour;
   final int routineNotificationMinute;
+  final List<int> routineNotificationDays;
   final bool quickAddNotificationEnabled;
   final Map<String, bool> completedExpandedByList;
   final String? lastMyDayResetDate;
@@ -119,6 +123,7 @@ class TodoSettingsStore {
   String get _useDynamicColorKey => _k('use_dynamic_color');
   String get _remindersEnabledKey => _k('reminder_notification_enabled');
   String get _pinRemindersKey => _k('reminder_pin_setting');
+  String get _accurateRemindersKey => _k('accurate_alarms_preference');
   String get _dueTodayNotificationsKey => _k('due_date_notification_enabled');
   String get _dueTodayNotificationHourKey => _k('due_date_notification_hour');
   String get _dueTodayNotificationMinuteKey =>
@@ -126,7 +131,12 @@ class TodoSettingsStore {
   String get _routineNotificationKey => _k('routine_notification_enabled');
   String get _routineNotificationHourKey => _k('routine_notification_hour');
   String get _routineNotificationMinuteKey => _k('routine_notification_minute');
+  String get _routineNotificationDaysKey => _k('routine_notification_days');
   String get _quickAddNotificationKey => _k('quick_add_notification_enabled');
+  String get _notificationPermissionPromptedKey =>
+      _k('notification_permission_prompted');
+  String get _reminderPermissionPromptedKey =>
+      _k('reminder_permission_prompted');
   String get _lastMyDayResetKey => _k('last_my_day_reset');
   String get _plannedDueDateFilterKey => _k('planned_due_date_filter');
   String get _plannedGroupOptionKey => _k('planned_group_option');
@@ -181,6 +191,7 @@ class TodoSettingsStore {
       useDynamicColor: _prefs.getBool(_useDynamicColorKey) ?? true,
       remindersEnabled: _prefs.getBool(_remindersEnabledKey) ?? true,
       pinReminders: _prefs.getBool(_pinRemindersKey) ?? false,
+      accurateReminders: _prefs.getBool(_accurateRemindersKey) ?? true,
       dueTodayNotificationsEnabled:
           _prefs.getBool(_dueTodayNotificationsKey) ?? false,
       dueTodayNotificationHour:
@@ -192,11 +203,27 @@ class TodoSettingsStore {
       routineNotificationHour: _prefs.getInt(_routineNotificationHourKey) ?? 8,
       routineNotificationMinute:
           _prefs.getInt(_routineNotificationMinuteKey) ?? 30,
+      routineNotificationDays: _parseRoutineDays(),
       quickAddNotificationEnabled:
           _prefs.getBool(_quickAddNotificationKey) ?? false,
       completedExpandedByList: _parseCompletedExpandedByList(),
       lastMyDayResetDate: _prefs.getString(_lastMyDayResetKey),
     );
+  }
+
+  List<int> _parseRoutineDays() {
+    final raw = _prefs.getStringList(_routineNotificationDaysKey);
+    if (raw == null || raw.isEmpty) {
+      return const <int>[1, 2, 3, 4, 5, 6, 7];
+    }
+    final parsed = raw
+        .map(int.tryParse)
+        .whereType<int>()
+        .where((d) => d >= DateTime.monday && d <= DateTime.sunday)
+        .toSet()
+        .toList()
+      ..sort();
+    return parsed.isEmpty ? const <int>[1, 2, 3, 4, 5, 6, 7] : parsed;
   }
 
   Map<String, bool> _parseCompletedExpandedByList() {
@@ -272,6 +299,9 @@ class TodoSettingsStore {
   Future<void> savePinReminders(bool value) =>
       _prefs.setBool(_pinRemindersKey, value);
 
+  Future<void> saveAccurateReminders(bool value) =>
+      _prefs.setBool(_accurateRemindersKey, value);
+
   Future<void> saveDueTodayNotificationsEnabled(bool value) =>
       _prefs.setBool(_dueTodayNotificationsKey, value);
 
@@ -288,8 +318,28 @@ class TodoSettingsStore {
     await _prefs.setInt(_routineNotificationMinuteKey, minute);
   }
 
+  Future<void> saveRoutineNotificationDays(List<int> days) async {
+    final sorted = days.toSet().toList()..sort();
+    await _prefs.setStringList(
+      _routineNotificationDaysKey,
+      sorted.map((d) => d.toString()).toList(),
+    );
+  }
+
   Future<void> saveQuickAddNotificationEnabled(bool value) =>
       _prefs.setBool(_quickAddNotificationKey, value);
+
+  bool get notificationPermissionPrompted =>
+      _prefs.getBool(_notificationPermissionPromptedKey) ?? false;
+
+  Future<void> saveNotificationPermissionPrompted(bool value) =>
+      _prefs.setBool(_notificationPermissionPromptedKey, value);
+
+  bool get reminderPermissionPrompted =>
+      _prefs.getBool(_reminderPermissionPromptedKey) ?? false;
+
+  Future<void> saveReminderPermissionPrompted(bool value) =>
+      _prefs.setBool(_reminderPermissionPromptedKey, value);
 
   Future<void> saveLastMyDayResetDate(String dateKey) =>
       _prefs.setString(_lastMyDayResetKey, dateKey);

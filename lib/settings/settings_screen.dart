@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -13,14 +15,100 @@ import '../data/todo_provider.dart';
 import '../theme/todo_theme.dart';
 import '../view/persona_avatar.dart';
 import '../view/sync_status_label.dart';
+import 'reminder_settings_screen.dart';
+import 'routine_settings_screen.dart';
 import 'settings_presenter.dart';
 
 final appPackageInfoProvider = FutureProvider<PackageInfo>((ref) {
   return PackageInfo.fromPlatform();
 });
 
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen>
+    with WidgetsBindingObserver {
+  NotificationPermissionStatus _permissionStatus =
+      const NotificationPermissionStatus();
+  bool _checkedInitialPrompt = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_refreshPermissionStatus(allowInitialPrompt: true));
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshPermissionStatus(allowInitialPrompt: false));
+    }
+  }
+
+  Future<void> _refreshPermissionStatus({
+    required bool allowInitialPrompt,
+  }) async {
+    final service = ref.read(notificationServiceProvider);
+    final status = await service.getPermissionStatus();
+    if (!mounted) return;
+    setState(() => _permissionStatus = status);
+
+    if (allowInitialPrompt && !_checkedInitialPrompt) {
+      _checkedInitialPrompt = true;
+      final settings = ref.read(todoProvider.notifier).settings;
+      if (!status.notificationsEnabled &&
+          !settings.notificationPermissionPrompted) {
+        await settings.saveNotificationPermissionPrompted(true);
+        if (mounted) {
+          await _showNotificationPermissionDialog();
+        }
+      }
+    }
+  }
+
+  Future<void> _showNotificationPermissionDialog() async {
+    final l10n = AppLocalizations.of(context);
+    final openSettings = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.notificationPermissionDisabledTitle),
+        content: Text(l10n.notificationPermissionRequiredRationale),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.settings),
+          ),
+        ],
+      ),
+    );
+    if (openSettings == true && mounted) {
+      await _requestOrOpenNotificationSettings();
+    }
+  }
+
+  Future<void> _requestOrOpenNotificationSettings() async {
+    final service = ref.read(notificationServiceProvider);
+    final granted = await service.requestPermissions();
+    await _refreshPermissionStatus(allowInitialPrompt: false);
+    if (!granted || !_permissionStatus.notificationsEnabled) {
+      await service.openNotificationSettings();
+    }
+  }
 
   Future<void> _confirmSignOut(
     BuildContext context,
@@ -97,7 +185,7 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final state = ref.watch(todoProvider);
     final syncState = ref.watch(syncProvider);
     final activeAccount = ref.watch(
@@ -440,114 +528,91 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
           _SectionHeader(title: l10n.notificationsSection),
-          SwitchListTile(
-            secondary: const Icon(Icons.notifications_active_outlined),
-            title: Text(l10n.remindersEnabled),
-            subtitle: Text(l10n.remindersEnabledSummary),
-            value: state.remindersEnabled,
-            onChanged: (value) async {
-              notifier.setRemindersEnabled(value);
-              if (value) {
-                await _ensureNotificationPermission(context, ref);
-              }
-            },
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.push_pin_outlined),
-            title: Text(l10n.pinReminders),
-            subtitle: Text(l10n.pinRemindersSummary),
-            value: state.pinReminders,
-            onChanged: state.remindersEnabled ? notifier.setPinReminders : null,
-          ),
-          SwitchListTile(
-            secondary: const Icon(Icons.today_outlined),
-            title: Text(l10n.dueTodayNotifications),
-            value: state.dueTodayNotificationsEnabled,
-            onChanged: (value) async {
-              notifier.setDueTodayNotificationsEnabled(value);
-              if (value) {
-                await _ensureNotificationPermission(context, ref);
-              }
-            },
-          ),
-          if (state.dueTodayNotificationsEnabled)
+          if (!_permissionStatus.notificationsEnabled)
             ListTile(
-              leading: const Icon(Icons.schedule_outlined),
-              title: Text(l10n.dueTodayNotificationTime),
-              subtitle: Text(
-                _formatTime(
-                  context,
-                  state.dueTodayNotificationHour,
-                  state.dueTodayNotificationMinute,
-                ),
-              ),
-              onTap: () async {
-                final picked = await showTimePicker(
-                  context: context,
-                  initialTime: TimeOfDay(
-                    hour: state.dueTodayNotificationHour,
-                    minute: state.dueTodayNotificationMinute,
-                  ),
-                );
-                if (picked != null) {
-                  notifier.setDueTodayNotificationTime(
-                    picked.hour,
-                    picked.minute,
-                  );
+              leading: const Icon(Icons.notifications_off_outlined),
+              title: Text(l10n.enableNotificationsFromSettings),
+              subtitle: Text(l10n.notificationPermissionRequiredRationale),
+              trailing: const Icon(Icons.open_in_new, size: 18),
+              onTap: _requestOrOpenNotificationSettings,
+            )
+          else ...[
+            SwitchListTile(
+              secondary: const Icon(Icons.add_alert_outlined),
+              title: Text(l10n.quickAddNotification),
+              subtitle: Text(l10n.quickAddNotificationSummary),
+              value: state.quickAddNotificationEnabled,
+              onChanged: (value) async {
+                notifier.setQuickAddNotificationEnabled(value);
+                if (value) {
+                  await _ensureNotificationPermission(context, ref);
                 }
               },
             ),
-          SwitchListTile(
-            secondary: const Icon(Icons.wb_sunny_outlined),
-            title: Text(l10n.routineNotifications),
-            subtitle: Text(l10n.routineNotificationsSummary),
-            value: state.routineNotificationEnabled,
-            onChanged: (value) async {
-              notifier.setRoutineNotificationEnabled(value);
-              if (value) {
-                await _ensureNotificationPermission(context, ref);
-              }
-            },
-          ),
-          if (state.routineNotificationEnabled)
             ListTile(
-              leading: const Icon(Icons.schedule_outlined),
-              title: Text(l10n.routineNotificationTime),
-              subtitle: Text(
-                _formatTime(
-                  context,
-                  state.routineNotificationHour,
-                  state.routineNotificationMinute,
-                ),
-              ),
-              onTap: () async {
-                final picked = await showTimePicker(
-                  context: context,
-                  initialTime: TimeOfDay(
-                    hour: state.routineNotificationHour,
-                    minute: state.routineNotificationMinute,
+              leading: const Icon(Icons.wb_sunny_outlined),
+              title: Text(l10n.routineNotifications),
+              subtitle: Text(l10n.routineNotificationsSummary),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const RoutineSettingsScreen(),
                   ),
                 );
-                if (picked != null) {
-                  notifier.setRoutineNotificationTime(
-                    picked.hour,
-                    picked.minute,
-                  );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.notifications_active_outlined),
+              title: Text(l10n.reminderSettings),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ReminderSettingsScreen(),
+                  ),
+                );
+              },
+            ),
+            SwitchListTile(
+              secondary: const Icon(Icons.today_outlined),
+              title: Text(l10n.dueTodayNotifications),
+              value: state.dueTodayNotificationsEnabled,
+              onChanged: (value) async {
+                notifier.setDueTodayNotificationsEnabled(value);
+                if (value) {
+                  await _ensureNotificationPermission(context, ref);
                 }
               },
             ),
-          SwitchListTile(
-            secondary: const Icon(Icons.add_alert_outlined),
-            title: Text(l10n.quickAddNotification),
-            subtitle: Text(l10n.quickAddNotificationSummary),
-            value: state.quickAddNotificationEnabled,
-            onChanged: (value) async {
-              notifier.setQuickAddNotificationEnabled(value);
-              if (value) {
-                await _ensureNotificationPermission(context, ref);
-              }
-            },
-          ),
+            if (state.dueTodayNotificationsEnabled)
+              ListTile(
+                leading: const Icon(Icons.schedule_outlined),
+                title: Text(l10n.dueTodayNotificationTime),
+                subtitle: Text(
+                  _formatTime(
+                    context,
+                    state.dueTodayNotificationHour,
+                    state.dueTodayNotificationMinute,
+                  ),
+                ),
+                onTap: () async {
+                  final picked = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay(
+                      hour: state.dueTodayNotificationHour,
+                      minute: state.dueTodayNotificationMinute,
+                    ),
+                  );
+                  if (picked != null) {
+                    notifier.setDueTodayNotificationTime(
+                      picked.hour,
+                      picked.minute,
+                    );
+                  }
+                },
+              ),
+          ],
           const Divider(),
           _SectionHeader(title: l10n.aboutSection),
           ListTile(

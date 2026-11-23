@@ -14,10 +14,19 @@ import 'package:yata/notifications/snooze_reminder_sheet.dart';
 import 'package:yata/settings/settings_screen.dart';
 
 class _FakeTransport implements NotificationTransport {
+  _FakeTransport({
+    this.permissionStatus = const NotificationPermissionStatus(),
+  });
+
   final Map<int, _ScheduledCall> scheduled = {};
   final Map<int, _ShownCall> shown = {};
   final List<int> cancelled = [];
   bool permissionRequested = false;
+  NotificationPermissionStatus permissionStatus;
+  bool openedNotificationSettings = false;
+  bool openedExactAlarmSettings = false;
+  bool openedBatteryOptimizationSettings = false;
+  bool openedAppDetailsSettings = false;
 
   @override
   bool get supportsZonedSchedule => true;
@@ -30,7 +39,31 @@ class _FakeTransport implements NotificationTransport {
   @override
   Future<bool> requestPermissions() async {
     permissionRequested = true;
-    return true;
+    return permissionStatus.notificationsEnabled;
+  }
+
+  @override
+  Future<NotificationPermissionStatus> getPermissionStatus() async =>
+      permissionStatus;
+
+  @override
+  Future<void> openNotificationSettings() async {
+    openedNotificationSettings = true;
+  }
+
+  @override
+  Future<void> openExactAlarmSettings() async {
+    openedExactAlarmSettings = true;
+  }
+
+  @override
+  Future<void> openBatteryOptimizationSettings() async {
+    openedBatteryOptimizationSettings = true;
+  }
+
+  @override
+  Future<void> openAppDetailsSettings() async {
+    openedAppDetailsSettings = true;
   }
 
   @override
@@ -66,6 +99,8 @@ class _FakeTransport implements NotificationTransport {
     bool ongoing = false,
     bool highPriority = true,
     bool repeatDaily = false,
+    bool repeatWeekly = false,
+    bool exactAlarm = true,
     List<AndroidNotificationAction> actions = const [],
   }) async {
     scheduled[id] = _ScheduledCall(
@@ -75,6 +110,8 @@ class _FakeTransport implements NotificationTransport {
       scheduledDate: scheduledDate,
       ongoing: ongoing,
       repeatDaily: repeatDaily,
+      repeatWeekly: repeatWeekly,
+      exactAlarm: exactAlarm,
       payload: payload,
       actions: actions,
     );
@@ -96,6 +133,8 @@ class _ScheduledCall {
     required this.scheduledDate,
     required this.ongoing,
     required this.repeatDaily,
+    required this.repeatWeekly,
+    required this.exactAlarm,
     required this.payload,
     required this.actions,
   });
@@ -106,6 +145,8 @@ class _ScheduledCall {
   final tz.TZDateTime scheduledDate;
   final bool ongoing;
   final bool repeatDaily;
+  final bool repeatWeekly;
+  final bool exactAlarm;
   final String? payload;
   final List<AndroidNotificationAction> actions;
 }
@@ -350,14 +391,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(find.text('Quick add notification'), 300);
+    await tester.scrollUntilVisible(find.text('Due Today notifications'), 300);
     await tester.pumpAndSettle();
 
     expect(find.text('Notifications'), findsOneWidget);
-    expect(find.text('Pin Reminders'), findsOneWidget);
-    expect(find.text('Due Today notifications'), findsOneWidget);
-    expect(find.text('Plan your day reminders'), findsOneWidget);
     expect(find.text('Quick add notification'), findsOneWidget);
+    expect(find.text('Plan your day reminders'), findsOneWidget);
+    expect(find.text('Reminder Settings'), findsOneWidget);
+    expect(find.text('Due Today notifications'), findsOneWidget);
+    // Pin Reminders lives on the secondary Reminder Settings screen.
+    expect(find.text('Pin Reminders'), findsNothing);
 
     // Enable Due Today notifications -> reveals time tile and requests permission.
     await tester.tap(find.text('Due Today notifications'));
@@ -369,6 +412,157 @@ void main() {
     final reloaded = TodoSettingsStore(prefs).load();
     expect(reloaded.dueTodayNotificationsEnabled, isTrue);
   });
+
+  testWidgets(
+    'SettingsScreen hides notification items and prompts when permission is disabled',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final transport = _FakeTransport(
+        permissionStatus: const NotificationPermissionStatus(
+          notificationsEnabled: false,
+          isAndroid: true,
+          androidSdkInt: 34,
+        ),
+      );
+      final service = NotificationService(transport: transport);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            notificationServiceProvider.overrideWithValue(service),
+          ],
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: SettingsScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // First-time dialog prompt should appear.
+      expect(find.text('Notifications are disabled'), findsOneWidget);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(find.text('Enable notification'), 300);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Enable notification'), findsOneWidget);
+      expect(find.text('Quick add notification'), findsNothing);
+      expect(find.text('Plan your day reminders'), findsNothing);
+      expect(find.text('Reminder Settings'), findsNothing);
+      expect(find.text('Due Today notifications'), findsNothing);
+
+      await tester.tap(find.text('Enable notification'));
+      await tester.pumpAndSettle();
+      expect(transport.openedNotificationSettings, isTrue);
+    },
+  );
+
+  testWidgets(
+    'SettingsScreen navigates to RoutineSettingsScreen and persists day selection',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final transport = _FakeTransport();
+      final service = NotificationService(transport: transport);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            notificationServiceProvider.overrideWithValue(service),
+          ],
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: SettingsScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(find.text('Plan your day reminders'), 300);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Plan your day reminders'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Turn on reminder'), findsOneWidget);
+      await tester.tap(find.text('Turn on reminder'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('What time do you want to be reminded?'), findsOneWidget);
+      expect(find.text('When do you want to be reminded?'), findsOneWidget);
+
+      // Toggle off Sunday ('S' at the end when week starts on Monday).
+      await tester.tap(find.text('S').last);
+      await tester.pumpAndSettle();
+
+      final reloaded = TodoSettingsStore(prefs).load();
+      expect(reloaded.routineNotificationEnabled, isTrue);
+      expect(reloaded.routineNotificationDays, [1, 2, 3, 4, 5, 6]);
+    },
+  );
+
+  testWidgets(
+    'SettingsScreen navigates to ReminderSettingsScreen and shows exact alarm prompt when restricted',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final transport = _FakeTransport(
+        permissionStatus: const NotificationPermissionStatus(
+          notificationsEnabled: true,
+          exactAlarmsEnabled: false,
+          ignoringBatteryOptimizations: false,
+          backgroundRestricted: true,
+          isAndroid: true,
+          androidSdkInt: 34,
+        ),
+      );
+      final service = NotificationService(transport: transport);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            notificationServiceProvider.overrideWithValue(service),
+          ],
+          child: const MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: SettingsScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(find.text('Reminder Settings'), 300);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Reminder Settings'));
+      await tester.pumpAndSettle();
+
+      // Exact alarm permission dialog appears on first visit.
+      expect(find.text("Don't miss a reminder"), findsOneWidget);
+      await tester.tap(find.text('Turn on'));
+      await tester.pumpAndSettle();
+      expect(transport.openedExactAlarmSettings, isTrue);
+
+      expect(find.text('Enable Reminders'), findsOneWidget);
+      expect(find.text('Pin Reminders'), findsOneWidget);
+      expect(find.text('Reminders not working?'), findsOneWidget);
+      expect(find.text('More accurate reminders'), findsOneWidget);
+      expect(find.text('Ignore battery optimization'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Remove background restriction'),
+        200,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Remove background restriction'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'showSnoozeReminderSheet shows all 5 options and returns chosen duration',
