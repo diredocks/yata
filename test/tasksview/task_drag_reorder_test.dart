@@ -100,6 +100,11 @@ void main() {
     (WidgetTester tester) async {
       await pumpAppWithTasks(tester);
 
+      final headerTitleFinder = find.descendant(
+        of: find.byType(CustomScrollView).last,
+        matching: find.text('My Day'),
+      );
+      final beforeHeaderRect = tester.getRect(headerTitleFinder);
       final beforeTopY = tester.getTopLeft(find.text('Third task')).dy;
 
       await tester.longPress(find.text('Second task'));
@@ -111,6 +116,7 @@ void main() {
       );
       final afterTopY = tester.getTopLeft(find.text('Third task')).dy;
       expect(afterTopY, beforeTopY);
+      expect(tester.getRect(headerTitleFinder), beforeHeaderRect);
     },
   );
 

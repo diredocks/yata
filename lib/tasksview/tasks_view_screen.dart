@@ -1209,45 +1209,78 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                         height: subtitle != null ? 88.0 : 60.0,
                                         child: Stack(
                                           children: [
-                                            PositionedDirectional(
-                                              start:
-                                                  widget.onBackPressed != null
-                                                  ? 16.0
-                                                  : 15.0,
-                                              end: 56,
-                                              bottom: subtitle != null
-                                                  ? 42.0
-                                                  : 16.0,
-                                              child: Text(
-                                                listTitle,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  color: headerFg,
-                                                  fontWeight: FontWeight.w500,
-                                                  fontSize: 30,
+                                            Align(
+                                              alignment: AlignmentDirectional
+                                                  .bottomStart,
+                                              child: Padding(
+                                                padding:
+                                                    EdgeInsetsDirectional.only(
+                                                      start:
+                                                          widget.onBackPressed !=
+                                                              null
+                                                          ? 16.0
+                                                          : 15.0,
+                                                      bottom: subtitle != null
+                                                          ? 42.0
+                                                          : 16.0,
+                                                      end: 56,
+                                                    ),
+                                                child: Transform.scale(
+                                                  scale: 1.5,
+                                                  alignment:
+                                                      AlignmentDirectional
+                                                          .bottomStart,
+                                                  child: DefaultTextStyle(
+                                                    style:
+                                                        Theme.of(context)
+                                                            .primaryTextTheme
+                                                            .titleLarge ??
+                                                        const TextStyle(),
+                                                    child: Text(
+                                                      listTitle,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        color: headerFg,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                        fontSize: 20,
+                                                      ),
+                                                    ),
+                                                  ),
                                                 ),
                                               ),
                                             ),
                                             if (subtitle != null)
-                                              PositionedDirectional(
-                                                start:
-                                                    widget.onBackPressed != null
-                                                    ? 16.0
-                                                    : 15.0,
-                                                end: 56,
-                                                bottom: 10.0,
-                                                child: Text(
-                                                  subtitle,
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    color: headerFg.withValues(
-                                                      alpha: 0.92,
+                                              Align(
+                                                alignment: AlignmentDirectional
+                                                    .bottomStart,
+                                                child: Padding(
+                                                  padding:
+                                                      EdgeInsetsDirectional.only(
+                                                        start:
+                                                            widget.onBackPressed !=
+                                                                null
+                                                            ? 16.0
+                                                            : 15.0,
+                                                        bottom: 10.0,
+                                                        end: 56,
+                                                      ),
+                                                  child: Text(
+                                                    subtitle,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      color: headerFg
+                                                          .withValues(
+                                                            alpha: 0.92,
+                                                          ),
+                                                      fontSize: 20,
+                                                      fontWeight:
+                                                          FontWeight.w400,
                                                     ),
-                                                    fontSize: 20,
-                                                    fontWeight: FontWeight.w400,
                                                   ),
                                                 ),
                                               ),
