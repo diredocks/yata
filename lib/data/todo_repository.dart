@@ -79,52 +79,53 @@ class TodoRepository {
 
   /// Loads this account's rows from SQLite into the in-memory cache.
   AsyncAppResult<Unit> preload() {
+    if (!_db.persistToSqlite) {
+      return Future.value(const Success(unit));
+    }
     return guardDbCall(() async {
-      if (_db.persistToSqlite) {
-        final listRows = await _db.selectTodoListRecords(accountKey);
-        final groupRows = await _db.selectListGroupRecords(accountKey);
-        final taskRows = await _db.selectTaskItemRecords(accountKey);
-        final allMutations = await _db.selectSyncMutationRecords(accountKey);
+      final listRows = await _db.selectTodoListRecords(accountKey);
+      final groupRows = await _db.selectListGroupRecords(accountKey);
+      final taskRows = await _db.selectTaskItemRecords(accountKey);
+      final allMutations = await _db.selectSyncMutationRecords(accountKey);
 
-        // Decode first: a corrupt payload must not clobber the cache.
-        final lists = [
-          for (final row in listRows)
-            TodoList.fromJson(_decodePayload(row.payloadJson)),
-        ];
-        final groups = [
-          for (final row in groupRows)
-            ListGroup.fromJson(_decodePayload(row.payloadJson)),
-        ];
-        final tasks = [
-          for (final row in taskRows)
-            TaskItem.fromJson(_decodePayload(row.payloadJson)),
-        ];
-        final mutationRows = <String, List<String>>{};
-        final steps = <PendingStepDeletion>[];
-        for (final row in allMutations) {
-          if (row.kind == _deletedStepKind) {
-            steps.add(
-              PendingStepDeletion.fromJson(_decodePayload(row.payloadJson)),
-            );
-          } else {
-            (mutationRows[row.kind] ??= <String>[]).add(row.itemKey);
-          }
+      // Decode first: a corrupt payload must not clobber the cache.
+      final lists = [
+        for (final row in listRows)
+          TodoList.fromJson(_decodePayload(row.payloadJson)),
+      ];
+      final groups = [
+        for (final row in groupRows)
+          ListGroup.fromJson(_decodePayload(row.payloadJson)),
+      ];
+      final tasks = [
+        for (final row in taskRows)
+          TaskItem.fromJson(_decodePayload(row.payloadJson)),
+      ];
+      final mutationRows = <String, List<String>>{};
+      final steps = <PendingStepDeletion>[];
+      for (final row in allMutations) {
+        if (row.kind == _deletedStepKind) {
+          steps.add(
+            PendingStepDeletion.fromJson(_decodePayload(row.payloadJson)),
+          );
+        } else {
+          (mutationRows[row.kind] ??= <String>[]).add(row.itemKey);
         }
-
-        final cache = _cache;
-        cache.lists = lists.isEmpty ? null : List<TodoList>.unmodifiable(lists);
-        cache.groups = List<ListGroup>.unmodifiable(groups);
-        cache.tasks = List<TaskItem>.unmodifiable(tasks);
-        cache.mutationKeys
-          ..clear()
-          ..addAll({
-            for (final entry in mutationRows.entries)
-              entry.key: List<String>.unmodifiable(entry.value),
-          });
-        cache.pendingDeletedSteps = List<PendingStepDeletion>.unmodifiable(
-          steps,
-        );
       }
+
+      final cache = _cache;
+      cache.lists = lists.isEmpty ? null : List<TodoList>.unmodifiable(lists);
+      cache.groups = List<ListGroup>.unmodifiable(groups);
+      cache.tasks = List<TaskItem>.unmodifiable(tasks);
+      cache.mutationKeys
+        ..clear()
+        ..addAll({
+          for (final entry in mutationRows.entries)
+            entry.key: List<String>.unmodifiable(entry.value),
+        });
+      cache.pendingDeletedSteps = List<PendingStepDeletion>.unmodifiable(
+        steps,
+      );
       return unit;
     }, operation: 'preloadAccount');
   }
@@ -136,94 +137,91 @@ class TodoRepository {
     return next;
   }
 
+  AsyncAppResult<Unit> _persistWrite(
+    String operation,
+    Future<void> Function() write,
+  ) {
+    if (!_db.persistToSqlite) {
+      return Future.value(const Success(unit));
+    }
+    return guardDbCall(() async {
+      await _enqueueWrite(write);
+      return unit;
+    }, operation: operation);
+  }
+
   AsyncAppResult<Unit> saveLists(List<TodoList> lists) {
     final snapshot = List<TodoList>.unmodifiable(lists);
     _cache.lists = snapshot;
-    return guardDbCall(() async {
-      if (_db.persistToSqlite) {
-        await _enqueueWrite(
-          () => _db.replaceTodoListRecords(accountKey, [
-            for (var i = 0; i < snapshot.length; i++)
-              TodoListRecordsCompanion.insert(
-                accountKey: accountKey,
-                id: snapshot[i].id,
-                position: i,
-                payloadJson: jsonEncode(snapshot[i].toJson()),
-              ),
-          ]),
-        );
-      }
-      return unit;
-    }, operation: 'saveLists');
+    return _persistWrite(
+      'saveLists',
+      () => _db.replaceTodoListRecords(accountKey, [
+        for (var i = 0; i < snapshot.length; i++)
+          TodoListRecordsCompanion.insert(
+            accountKey: accountKey,
+            id: snapshot[i].id,
+            position: i,
+            payloadJson: jsonEncode(snapshot[i].toJson()),
+          ),
+      ]),
+    );
   }
 
   AsyncAppResult<Unit> saveGroups(List<ListGroup> groups) {
     final snapshot = List<ListGroup>.unmodifiable(groups);
     _cache.groups = snapshot;
-    return guardDbCall(() async {
-      if (_db.persistToSqlite) {
-        await _enqueueWrite(
-          () => _db.replaceListGroupRecords(accountKey, [
-            for (var i = 0; i < snapshot.length; i++)
-              ListGroupRecordsCompanion.insert(
-                accountKey: accountKey,
-                id: snapshot[i].id,
-                position: i,
-                payloadJson: jsonEncode(snapshot[i].toJson()),
-              ),
-          ]),
-        );
-      }
-      return unit;
-    }, operation: 'saveGroups');
+    return _persistWrite(
+      'saveGroups',
+      () => _db.replaceListGroupRecords(accountKey, [
+        for (var i = 0; i < snapshot.length; i++)
+          ListGroupRecordsCompanion.insert(
+            accountKey: accountKey,
+            id: snapshot[i].id,
+            position: i,
+            payloadJson: jsonEncode(snapshot[i].toJson()),
+          ),
+      ]),
+    );
   }
 
   AsyncAppResult<Unit> saveTasks(List<TaskItem> tasks) {
     final snapshot = List<TaskItem>.unmodifiable(tasks);
     _cache.tasks = snapshot;
-    return guardDbCall(() async {
-      if (_db.persistToSqlite) {
-        await _enqueueWrite(
-          () => _db.replaceTaskItemRecords(accountKey, [
-            for (var i = 0; i < snapshot.length; i++)
-              TaskItemRecordsCompanion.insert(
-                accountKey: accountKey,
-                id: snapshot[i].id,
-                listId: snapshot[i].listId,
-                position: i,
-                payloadJson: jsonEncode(snapshot[i].toJson()),
-              ),
-          ]),
-        );
-      }
-      return unit;
-    }, operation: 'saveTasks');
+    return _persistWrite(
+      'saveTasks',
+      () => _db.replaceTaskItemRecords(accountKey, [
+        for (var i = 0; i < snapshot.length; i++)
+          TaskItemRecordsCompanion.insert(
+            accountKey: accountKey,
+            id: snapshot[i].id,
+            listId: snapshot[i].listId,
+            position: i,
+            payloadJson: jsonEncode(snapshot[i].toJson()),
+          ),
+      ]),
+    );
   }
 
   AsyncAppResult<Unit> saveMutationKeys(String kind, Iterable<String> keys) {
     final list = List<String>.unmodifiable(keys);
     _cache.mutationKeys[kind] = list;
-    return guardDbCall(() async {
-      if (_db.persistToSqlite) {
-        await _enqueueWrite(
-          () => _db.replaceSyncMutationRecords(
-            accountKey,
-            kind: kind,
-            rows: [
-              for (var i = 0; i < list.length; i++)
-                SyncMutationRecordsCompanion.insert(
-                  accountKey: accountKey,
-                  kind: kind,
-                  itemKey: list[i],
-                  position: i,
-                  payloadJson: list[i],
-                ),
-            ],
-          ),
-        );
-      }
-      return unit;
-    }, operation: 'saveMutationKeys($kind)');
+    return _persistWrite(
+      'saveMutationKeys($kind)',
+      () => _db.replaceSyncMutationRecords(
+        accountKey,
+        kind: kind,
+        rows: [
+          for (var i = 0; i < list.length; i++)
+            SyncMutationRecordsCompanion.insert(
+              accountKey: accountKey,
+              kind: kind,
+              itemKey: list[i],
+              position: i,
+              payloadJson: list[i],
+            ),
+        ],
+      ),
+    );
   }
 
   AsyncAppResult<Unit> savePendingDeletedSteps(
@@ -231,39 +229,36 @@ class TodoRepository {
   ) {
     final list = List<PendingStepDeletion>.unmodifiable(items);
     _cache.pendingDeletedSteps = list;
-    return guardDbCall(() async {
-      if (_db.persistToSqlite) {
-        await _enqueueWrite(
-          () => _db.replaceSyncMutationRecords(
-            accountKey,
-            kind: _deletedStepKind,
-            rows: [
-              for (var i = 0; i < list.length; i++)
-                SyncMutationRecordsCompanion.insert(
-                  accountKey: accountKey,
-                  kind: _deletedStepKind,
-                  itemKey: '${list[i].taskRemoteId}::${list[i].stepRemoteId}',
-                  position: i,
-                  payloadJson: jsonEncode(list[i].toJson()),
-                ),
-            ],
-          ),
-        );
-      }
-      return unit;
-    }, operation: 'savePendingDeletedSteps');
+    return _persistWrite(
+      'savePendingDeletedSteps',
+      () => _db.replaceSyncMutationRecords(
+        accountKey,
+        kind: _deletedStepKind,
+        rows: [
+          for (var i = 0; i < list.length; i++)
+            SyncMutationRecordsCompanion.insert(
+              accountKey: accountKey,
+              kind: _deletedStepKind,
+              itemKey: '${list[i].taskRemoteId}::${list[i].stepRemoteId}',
+              position: i,
+              payloadJson: jsonEncode(list[i].toJson()),
+            ),
+        ],
+      ),
+    );
   }
 
   AsyncAppResult<Unit> deleteAccountRecords() {
     final cache = _caches[_db]?.remove(scopeKey);
+    if (!_db.persistToSqlite) {
+      return Future.value(const Success(unit));
+    }
     return guardDbCall(() async {
-      if (_db.persistToSqlite) {
-        final prior = cache?.writeQueue ?? Future<void>.value();
-        await prior.then(
-          (_) => _db.deleteAllAccountRecords(accountKey),
-          onError: (_) => _db.deleteAllAccountRecords(accountKey),
-        );
-      }
+      final prior = cache?.writeQueue ?? Future<void>.value();
+      await prior.then(
+        (_) => _db.deleteAllAccountRecords(accountKey),
+        onError: (_) => _db.deleteAllAccountRecords(accountKey),
+      );
       return unit;
     }, operation: 'deleteAccountRecords');
   }
