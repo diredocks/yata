@@ -200,6 +200,18 @@ void main() {
         contains(';Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday'),
       );
       expect(decodeRoutineConfigTime(wireRoutine), routineTime);
+      expect(decodeRoutineConfigDays(wireRoutine), [1, 2, 3, 4, 5, 6, 7]);
+
+      final weekdayRoutine = encodeRoutineConfig(
+        routineTime,
+        days: const [1, 3, 5],
+      );
+      expect(weekdayRoutine, endsWith(';Monday,Wednesday,Friday'));
+      expect(decodeRoutineConfigDays(weekdayRoutine), [1, 3, 5]);
+      expect(
+        TodoSettingKeys.allSyncableKeys,
+        contains(TodoSettingKeys.setAlarmClockReminderAndroid),
+      );
     });
   });
 

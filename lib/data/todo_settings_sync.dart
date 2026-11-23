@@ -90,6 +90,27 @@ class SmartListSettingsPatch {
   }
 }
 
+class RoutineNotificationConfig {
+  const RoutineNotificationConfig({required this.time, required this.days});
+
+  final TimeOfDay time;
+  final List<int> days;
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! RoutineNotificationConfig) return false;
+    if (time != other.time || days.length != other.days.length) return false;
+    for (var i = 0; i < days.length; i++) {
+      if (days[i] != other.days[i]) return false;
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hash(time, Object.hashAll(days));
+}
+
 class SyncedSettingsPatch {
   const SyncedSettingsPatch({
     this.confirmBeforeDeleting,
@@ -102,8 +123,9 @@ class SyncedSettingsPatch {
     this.dueTodayNotificationsEnabled,
     this.dueTodayNotificationTime,
     this.pinReminders,
+    this.accurateReminders,
     this.routineNotificationEnabled,
-    this.routineNotificationTime,
+    this.routineNotificationConfig,
     this.showSmartListImportant,
     this.showSmartListPlanned,
     this.showSmartListAll,
@@ -124,8 +146,9 @@ class SyncedSettingsPatch {
   final bool? dueTodayNotificationsEnabled;
   final TimeOfDay? dueTodayNotificationTime;
   final bool? pinReminders;
+  final bool? accurateReminders;
   final bool? routineNotificationEnabled;
-  final TimeOfDay? routineNotificationTime;
+  final RoutineNotificationConfig? routineNotificationConfig;
   final bool? showSmartListImportant;
   final bool? showSmartListPlanned;
   final bool? showSmartListAll;
@@ -260,6 +283,14 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
     persist: (store, v) => store.savePinReminders(v),
   ),
   _GlobalSettingSpec<bool>(
+    key: TodoSettingKeys.setAlarmClockReminderAndroid,
+    readState: (s) => s.accurateReminders,
+    readPatch: (p) => p.accurateReminders,
+    encode: encodeBoolSetting,
+    applyToState: (s, v) => s.copyWith(accurateReminders: v),
+    persist: (store, v) => store.saveAccurateReminders(v),
+  ),
+  _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.routineNotification,
     readState: (s) => s.routineNotificationEnabled,
     readPatch: (p) => p.routineNotificationEnabled,
@@ -267,19 +298,26 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
     applyToState: (s, v) => s.copyWith(routineNotificationEnabled: v),
     persist: (store, v) => store.saveRoutineNotificationEnabled(v),
   ),
-  _GlobalSettingSpec<TimeOfDay>(
+  _GlobalSettingSpec<RoutineNotificationConfig>(
     key: TodoSettingKeys.routineNotificationConfiguration,
-    readState: (s) => TimeOfDay(
-      hour: s.routineNotificationHour,
-      minute: s.routineNotificationMinute,
+    readState: (s) => RoutineNotificationConfig(
+      time: TimeOfDay(
+        hour: s.routineNotificationHour,
+        minute: s.routineNotificationMinute,
+      ),
+      days: s.routineNotificationDays,
     ),
-    readPatch: (p) => p.routineNotificationTime,
-    encode: encodeRoutineConfig,
+    readPatch: (p) => p.routineNotificationConfig,
+    encode: (v) => encodeRoutineConfig(v.time, days: v.days),
     applyToState: (s, v) => s.copyWith(
-      routineNotificationHour: v.hour,
-      routineNotificationMinute: v.minute,
+      routineNotificationHour: v.time.hour,
+      routineNotificationMinute: v.time.minute,
+      routineNotificationDays: v.days,
     ),
-    persist: (store, v) => store.saveRoutineNotificationTime(v.hour, v.minute),
+    persist: (store, v) async {
+      await store.saveRoutineNotificationTime(v.time.hour, v.time.minute);
+      await store.saveRoutineNotificationDays(v.days);
+    },
   ),
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.smartListStarredEnabled,
@@ -553,10 +591,21 @@ SyncedSettingsPatch buildSyncedSettingsPatchFromWire(
       decodeTimeOfDaySetting,
     ),
     pinReminders: boolOrNull(TodoSettingKeys.pinReminders),
+    accurateReminders: boolOrNull(TodoSettingKeys.setAlarmClockReminderAndroid),
     routineNotificationEnabled: boolOrNull(TodoSettingKeys.routineNotification),
-    routineNotificationTime: mapVal(
+    routineNotificationConfig: mapVal(
       TodoSettingKeys.routineNotificationConfiguration,
-      decodeRoutineConfigTime,
+      (raw) {
+        final time = decodeRoutineConfigTime(raw);
+        if (time == null) return null;
+        final days = decodeRoutineConfigDays(raw);
+        return RoutineNotificationConfig(
+          time: time,
+          days: (days == null || days.isEmpty)
+              ? const [1, 2, 3, 4, 5, 6, 7]
+              : days,
+        );
+      },
     ),
     showSmartListImportant: boolOrNull(TodoSettingKeys.smartListStarredEnabled),
     showSmartListPlanned: boolOrNull(TodoSettingKeys.smartListPlannedEnabled),

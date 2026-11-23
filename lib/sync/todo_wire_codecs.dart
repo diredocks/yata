@@ -27,6 +27,7 @@ abstract final class TodoSettingKeys {
   static const dueDateNotifications = 'DueDateNotifications';
   static const dueDateNotificationTime = 'DuedateNotification_Time';
   static const pinReminders = 'PinReminders';
+  static const setAlarmClockReminderAndroid = 'SetAlarmClock_Reminder_Android';
   static const routineNotification = 'RoutineNotification';
   static const routineNotificationConfiguration =
       'RoutineNotification_Configuration';
@@ -79,6 +80,7 @@ abstract final class TodoSettingKeys {
     dueDateNotifications,
     dueDateNotificationTime,
     pinReminders,
+    setAlarmClockReminderAndroid,
     routineNotification,
     routineNotificationConfiguration,
     smartListStarredEnabled,
@@ -598,8 +600,19 @@ bool decodeRoutineNotificationEnabled(dynamic raw, {bool fallback = false}) {
 }
 
 /// Encodes `RoutineNotification_Configuration` as `"<ISO>;Monday,...,Sunday"`.
-String encodeRoutineConfig(TimeOfDay time) {
-  return '${encodeTimeOfDaySetting(time)};${_allDaysConfigurationList.join(',')}';
+String encodeRoutineConfig(
+  TimeOfDay time, {
+  List<int> days = const [1, 2, 3, 4, 5, 6, 7],
+}) {
+  final dayNames = days
+      .where((d) => d >= DateTime.monday && d <= DateTime.sunday)
+      .toSet()
+      .toList()
+    ..sort();
+  final encodedDays = dayNames.isEmpty
+      ? _allDaysConfigurationList
+      : [for (final d in dayNames) _isoWeekdayNames[d - 1]];
+  return '${encodeTimeOfDaySetting(time)};${encodedDays.join(',')}';
 }
 
 /// Decodes time-of-day from `RoutineNotification_Configuration`.
@@ -607,6 +620,28 @@ TimeOfDay? decodeRoutineConfigTime(dynamic raw) {
   if (raw is! String || raw.trim().isEmpty) return null;
   final timePart = raw.split(';').first.trim();
   return decodeTimeOfDaySetting(timePart);
+}
+
+/// Decodes selected weekdays (1=Monday .. 7=Sunday) from
+/// `RoutineNotification_Configuration`.
+List<int>? decodeRoutineConfigDays(dynamic raw) {
+  if (raw is! String || raw.trim().isEmpty) return null;
+  final parts = raw.split(';');
+  if (parts.length < 2) return null;
+  final daysPart = parts[1].trim();
+  if (daysPart.isEmpty) return const <int>[];
+  final result = <int>{};
+  for (final token in daysPart.split(',')) {
+    final normalized = token.trim().toLowerCase();
+    final idx = _isoWeekdayNames.indexWhere(
+      (name) => name.toLowerCase() == normalized,
+    );
+    if (idx >= 0) {
+      result.add(idx + 1);
+    }
+  }
+  if (result.isEmpty) return null;
+  return result.toList()..sort();
 }
 
 const List<String> _isoWeekdayNames = [
