@@ -55,7 +55,7 @@ class DelayedTaskCompletionController {
     onStateChanged();
   }
 
-  void flushAndDispose(
+  void flush(
     void Function(String taskId, {required bool completed}) onCommit,
   ) {
     final pendingIds = _pendingTimers.keys.toList(growable: false);
@@ -63,5 +63,11 @@ class DelayedTaskCompletionController {
       _pendingTimers.remove(id)?.cancel();
       onCommit(id, completed: true);
     }
+  }
+
+  void flushAndDispose(
+    void Function(String taskId, {required bool completed}) onCommit,
+  ) {
+    flush(onCommit);
   }
 }

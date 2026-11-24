@@ -85,7 +85,13 @@ class TodoDatabase extends _$TodoDatabase {
     return LazyDatabase(() async {
       final dir = await getApplicationDocumentsDirectory();
       final file = File(p.join(dir.path, 'yata.sqlite'));
-      return NativeDatabase.createInBackground(file);
+      return NativeDatabase.createInBackground(
+        file,
+        setup: (database) {
+          database.execute('PRAGMA journal_mode=WAL;');
+          database.execute('PRAGMA busy_timeout=5000;');
+        },
+      );
     });
   }
 

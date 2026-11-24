@@ -40,12 +40,12 @@ class TasksViewPresenter {
         if (list.id == listId) transform(list) else list,
     ];
     _store.commit(_state.copyWith(lists: updated));
-    _store.repository.saveLists(updated);
+    _store.repository.saveLists(_state.lists);
   }
 
   void _commitTasks(List<TaskItem> updated) {
     _store.commit(_state.copyWith(tasks: updated));
-    _store.repository.saveTasks(updated);
+    _store.repository.saveTasks(_state.tasks);
   }
 
   void setListSortOption(
@@ -193,8 +193,8 @@ class TasksViewPresenter {
         selectedTaskId: null,
       ),
     );
-    _store.repository.saveLists(updatedLists);
-    _store.repository.saveTasks(updatedTasks);
+    _store.repository.saveLists(_state.lists);
+    _store.repository.saveTasks(_state.tasks);
     _store.settings.saveSelectedListId(newListId);
     if (_store.settings.loadLastEnteredListId() != null) {
       _store.setLastEnteredListId(newListId);
@@ -224,8 +224,8 @@ class TasksViewPresenter {
         selectedTaskId: null,
       ),
     );
-    _store.repository.saveLists(updatedLists);
-    _store.repository.saveTasks(updatedTasks);
+    _store.repository.saveLists(_state.lists);
+    _store.repository.saveTasks(_state.tasks);
     _store.settings.saveSelectedListId(nextSelected);
   }
 

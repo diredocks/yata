@@ -77,12 +77,16 @@ class TodoRepository {
   List<PendingStepDeletion> readCachedPendingDeletedSteps() =>
       _cache.pendingDeletedSteps;
 
+  /// Waits for all previously enqueued SQLite writes for this account to finish.
+  Future<void> flushPendingWrites() => _cache.writeQueue;
+
   /// Loads this account's rows from SQLite into the in-memory cache.
   AsyncAppResult<Unit> preload() {
     if (!_db.persistToSqlite) {
       return Future.value(const Success(unit));
     }
     return guardDbCall(() async {
+      await _cache.writeQueue;
       final listRows = await _db.selectTodoListRecords(accountKey);
       final groupRows = await _db.selectListGroupRecords(accountKey);
       final taskRows = await _db.selectTaskItemRecords(accountKey);

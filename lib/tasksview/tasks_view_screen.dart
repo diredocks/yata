@@ -41,7 +41,8 @@ class TasksViewScreen extends ConsumerStatefulWidget {
   ConsumerState<TasksViewScreen> createState() => _TasksViewScreenState();
 }
 
-class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
+class _TasksViewScreenState extends ConsumerState<TasksViewScreen>
+    with WidgetsBindingObserver {
   TasksViewMode _mode = TasksViewMode.browsing;
   double _scrollOffset = 0.0;
   bool _isSnappingHeader = false;
@@ -65,11 +66,20 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _presenter = ref.read(tasksViewPresenterProvider);
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _completionController.flush(_presenter.setTaskCompleted);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _stopDragAutoScroll();
     _scrollController.dispose();
     _selectionNotifier.dispose();
