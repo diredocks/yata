@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -52,6 +54,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   String? _draggingTaskId;
   int? _dragStartIndex;
   double? _dragPointerStartY;
+  double? _dragPointerY;
+  double _dragVisibleTop = 0.0;
+  Timer? _dragAutoScrollTimer;
   final Set<String> _collapsedPlannedBuckets = {};
   final Set<String> _collapsedCompletedListBuckets = {};
   final _completionController = DelayedTaskCompletionController();
@@ -66,10 +71,52 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
   @override
   void dispose() {
+    _stopDragAutoScroll();
     _scrollController.dispose();
     _selectionNotifier.dispose();
     _completionController.flushAndDispose(_presenter.setTaskCompleted);
     super.dispose();
+  }
+
+  void _stopDragAutoScroll() {
+    _dragAutoScrollTimer?.cancel();
+    _dragAutoScrollTimer = null;
+    _dragPointerY = null;
+  }
+
+  void _updateDragAutoScroll(double pointerY, double visibleTop) {
+    _dragPointerY = pointerY;
+    _dragVisibleTop = visibleTop;
+    const edgeThreshold = 64.0;
+    if (_draggingTaskId == null || pointerY >= visibleTop + edgeThreshold) {
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    _dragAutoScrollTimer ??= Timer.periodic(const Duration(milliseconds: 16), (
+      _,
+    ) {
+      final y = _dragPointerY;
+      if (!mounted || _draggingTaskId == null || y == null) {
+        _stopDragAutoScroll();
+        return;
+      }
+      final proximity =
+          ((_dragVisibleTop + edgeThreshold - y) / edgeThreshold).clamp(0.0, 1.0);
+      if (proximity <= 0.0) return;
+      final step = 4.0 + 10.0 * proximity;
+      final inner = _nestedScrollKey.currentState?.innerController;
+      if (inner != null && inner.hasClients && inner.offset > 0) {
+        inner.jumpTo((inner.offset - step).clamp(0.0, inner.position.maxScrollExtent));
+      } else if (_scrollController.hasClients && _scrollController.offset > 0) {
+        _scrollController.jumpTo(
+          (_scrollController.offset - step).clamp(
+            0.0,
+            _scrollController.position.maxScrollExtent,
+          ),
+        );
+      }
+    });
   }
 
   void _snapHeaderIfNeeded(double collapseDelta) {
@@ -820,12 +867,14 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
             _draggingTaskId = null;
             _dragStartIndex = null;
             _dragPointerStartY = null;
+            _stopDragAutoScroll();
             notifier.reorderActiveTasks(activeTasks, oldIndex, newIndex);
             if (_mode == TasksViewMode.multiSelecting && mounted) {
               _clearSelection();
             }
           },
           onReorderEnd: (insertIndex) {
+            _stopDragAutoScroll();
             final startIndex = _dragStartIndex;
             final adjustedNew =
                 startIndex != null && insertIndex > startIndex
@@ -1266,20 +1315,39 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                             ],
                             body: Builder(
                               builder: (context) {
+                                final topPadding = MediaQuery.paddingOf(context).top;
+                                final collapsedHeight =
+                                    kToolbarHeight + topPadding;
+                                final expandedHeight =
+                                    (subtitle != null ? 144.0 : 116.0) +
+                                    topPadding;
+                                final visibleTop = _mode == TasksViewMode.browsing
+                                    ? (expandedHeight - _scrollOffset).clamp(
+                                        collapsedHeight,
+                                        expandedHeight,
+                                      )
+                                    : collapsedHeight;
                                 final scrollView = Listener(
                                   onPointerDown: (event) =>
                                       _dragPointerStartY = event.position.dy,
                                   onPointerMove: (event) {
-                                    if (_draggingTaskId != null &&
-                                        _mode == TasksViewMode.multiSelecting &&
-                                        _dragPointerStartY != null &&
-                                        (event.position.dy -
-                                                    _dragPointerStartY!)
-                                                .abs() >
-                                            18) {
-                                      _clearSelection();
+                                    if (_draggingTaskId != null) {
+                                      _updateDragAutoScroll(
+                                        event.position.dy,
+                                        visibleTop,
+                                      );
+                                      if (_mode == TasksViewMode.multiSelecting &&
+                                          _dragPointerStartY != null &&
+                                          (event.position.dy -
+                                                      _dragPointerStartY!)
+                                                  .abs() >
+                                              18) {
+                                        _clearSelection();
+                                      }
                                     }
                                   },
+                                  onPointerUp: (_) => _stopDragAutoScroll(),
+                                  onPointerCancel: (_) => _stopDragAutoScroll(),
                                   child: CustomScrollView(
                                     physics: isMicrosoft
                                         ? const AlwaysScrollableScrollPhysics()
