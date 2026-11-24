@@ -41,8 +41,7 @@ class TasksViewScreen extends ConsumerStatefulWidget {
   ConsumerState<TasksViewScreen> createState() => _TasksViewScreenState();
 }
 
-class _TasksViewScreenState extends ConsumerState<TasksViewScreen>
-    with WidgetsBindingObserver {
+class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   TasksViewMode _mode = TasksViewMode.browsing;
   double _scrollOffset = 0.0;
   bool _isSnappingHeader = false;
@@ -59,31 +58,23 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen>
   Timer? _dragAutoScrollTimer;
   final Set<String> _collapsedPlannedBuckets = {};
   final Set<String> _collapsedCompletedListBuckets = {};
-  final _completionController = DelayedTaskCompletionController();
+  late final DelayedTaskCompletionController _completionController;
   final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
-  late final TasksViewPresenter _presenter;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _presenter = ref.read(tasksViewPresenterProvider);
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
-      _completionController.flush(_presenter.setTaskCompleted);
-    }
+    _completionController = DelayedTaskCompletionController(
+      onCommit: ref.read(tasksViewPresenterProvider).setTaskCompleted,
+    );
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _stopDragAutoScroll();
     _scrollController.dispose();
     _selectionNotifier.dispose();
-    _completionController.flush(_presenter.setTaskCompleted);
+    _completionController.dispose();
     super.dispose();
   }
 
@@ -481,14 +472,12 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen>
   }
 
   void _toggleTaskCompleted(TaskItem task, TodoList currentList) {
-    final notifier = ref.read(tasksViewPresenterProvider);
     if (!task.isCompleted && !_completionController.isPending(task.id)) {
       ref.read(completionSoundServiceProvider).playIfEnabled();
     }
     _completionController.toggle(
       task,
       instant: currentList.smartType == SmartListType.completed,
-      onCommit: notifier.setTaskCompleted,
       onStateChanged: () {
         if (mounted) setState(() {});
       },
@@ -741,12 +730,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen>
                     onPointerDown: (y) => _dragPointerStartY = y,
                     onPointerMove: _handlePointerMove,
                     onPointerEnd: _stopDragAutoScroll,
-                    onRefresh: () => ref
-                        .read(syncProvider.notifier)
-                        .syncNow(
-                          forceFullSync: true,
-                          reason: 'pull_to_refresh',
-                        ),
+                    onRefresh: () => ref.read(syncProvider.notifier).refresh(),
                   ),
                 ),
                 floatingActionButton: TasksViewFab(

@@ -1,8 +1,11 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import '../models/task_item.dart';
+
+typedef TaskCompletionCommit =
+    void Function(String taskId, {required bool completed});
 
 /// Coordinates delayed task completion in list views, matching
 /// `CompleteTaskDelayedUseCase.kt` (`b.a.MEDIUM = 300ms` when completing a task,
@@ -10,10 +13,23 @@ import '../models/task_item.dart';
 ///
 /// Keeping the task row in place for 300ms lets `TaskCheckbox` play its fill,
 /// checkmark, and confetti animations before the task moves or disappears.
+/// Automatically flushes pending completions when the app pauses or on [dispose].
 class DelayedTaskCompletionController {
+  DelayedTaskCompletionController({required this.onCommit}) {
+    _lifecycleListener = AppLifecycleListener(
+      onStateChange: (state) {
+        if (state == AppLifecycleState.paused) {
+          flush();
+        }
+      },
+    );
+  }
+
   static const mediumDelay = Duration(milliseconds: 300);
 
+  final TaskCompletionCommit onCommit;
   final Map<String, Timer> _pendingTimers = {};
+  late final AppLifecycleListener _lifecycleListener;
 
   bool isPending(String taskId) => _pendingTimers.containsKey(taskId);
 
@@ -27,7 +43,6 @@ class DelayedTaskCompletionController {
   void toggle(
     TaskItem task, {
     bool instant = false,
-    required void Function(String taskId, {required bool completed}) onCommit,
     required VoidCallback onStateChanged,
   }) {
     if (task.isCompleted || instant) {
@@ -55,13 +70,16 @@ class DelayedTaskCompletionController {
     onStateChanged();
   }
 
-  void flush(
-    void Function(String taskId, {required bool completed}) onCommit,
-  ) {
+  void flush() {
     final pendingIds = _pendingTimers.keys.toList(growable: false);
     for (final id in pendingIds) {
       _pendingTimers.remove(id)?.cancel();
       onCommit(id, completed: true);
     }
+  }
+
+  void dispose() {
+    flush();
+    _lifecycleListener.dispose();
   }
 }

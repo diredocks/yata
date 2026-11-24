@@ -1,12 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../account/account_provider.dart';
-import '../models/account.dart';
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
+import '../data/order_date_time.dart';
 import '../data/todo_provider.dart';
 import '../homeview/home_view_ordering.dart';
-import '../sync/todo_wire_codecs.dart';
+import '../models/task_item.dart';
+import '../models/todo_list.dart';
 
 /// Presenter for `tasksview/TasksViewFragment`, matching `tasksview/TasksViewPresenter`.
 class TasksViewPresenter {
@@ -449,8 +447,6 @@ class TasksViewPresenter {
   }
 
   void setTaskCompleted(String taskId, {required bool completed}) {
-    final isMicrosoftAccount =
-        _ref.read(accountProvider).activeAccount is MicrosoftAccount;
     TaskItem? nextOccurrence;
     final updated = <TaskItem>[];
     final now = DateTime.now();
@@ -472,11 +468,9 @@ class TasksViewPresenter {
           completedAt: completed ? now.toUtc() : null,
         ),
       );
-      // For synced Microsoft account tasks, Substrate/Exchange spawns the next
-      // recurring instance upon Status=Completed PATCH; avoid creating a
-      // duplicate local copy that would also be POSTed in Phase 10a.
-      final shouldSpawnLocally = !isMicrosoftAccount || task.remoteId == null;
-      if (completed && task.hasRecurrence && shouldSpawnLocally) {
+      if (completed &&
+          task.hasRecurrence &&
+          _store.shouldSpawnRecurringLocally(task)) {
         nextOccurrence = _buildNextRecurringTask(task, now);
       }
     }

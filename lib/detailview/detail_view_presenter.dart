@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/task_item.dart';
+import '../data/order_date_time.dart';
 import '../data/todo_provider.dart';
-import '../sync/todo_wire_codecs.dart';
+import '../models/task_item.dart';
 import '../tasksview/tasks_view_presenter.dart';
 import 'recurrence/task_pickers.dart';
 
@@ -104,23 +104,15 @@ class DetailViewPresenter {
 
   void setTaskDueDate(String taskId, DateTime? dueDate) {
     final now = DateTime.now();
-    _updateTaskById(taskId, (task) {
-      final clearPostponed =
-          dueDate != null &&
-          _state.showDueTodayInMyDay &&
-          task.postponedDay != null &&
-          TodoNotifier.isSameDay(dueDate, task.postponedDay!);
-      return TodoNotifier.syncMyDayFlag(
-        task.copyWith(
-          dueDate: dueDate,
-          recurrence: dueDate == null ? RecurrenceType.none : task.recurrence,
-          rawRecurrence: dueDate == null ? null : task.rawRecurrence,
-          postponedDay: clearPostponed ? null : task.postponedDay,
-        ),
+    _updateTaskById(
+      taskId,
+      (task) => TodoNotifier.applyDueDate(
+        task,
+        dueDate,
         now: now,
         showDueTodayInMyDay: _state.showDueTodayInMyDay,
-      );
-    });
+      ),
+    );
   }
 
   void setTaskReminder(String taskId, DateTime? reminderAt) {
@@ -132,21 +124,19 @@ class DetailViewPresenter {
 
   void setTaskRecurrence(String taskId, RecurrenceType recurrence) {
     final now = DateTime.now();
-    _updateTaskById(taskId, (task) {
-      final nextDue =
-          (recurrence != RecurrenceType.none && task.dueDate == null)
-          ? defaultDueDateForRecurrence(recurrence, reminderAt: task.reminderAt)
-          : task.dueDate;
-      return TodoNotifier.syncMyDayFlag(
-        task.copyWith(
-          recurrence: recurrence,
-          rawRecurrence: null,
-          dueDate: nextDue,
-        ),
+    _updateTaskById(
+      taskId,
+      (task) => TodoNotifier.applyRecurrence(
+        task,
+        recurrence,
         now: now,
         showDueTodayInMyDay: _state.showDueTodayInMyDay,
-      );
-    });
+        fallbackDueDate: defaultDueDateForRecurrence(
+          recurrence,
+          reminderAt: task.reminderAt,
+        ),
+      ),
+    );
   }
 
   void deleteTask(String taskId) {

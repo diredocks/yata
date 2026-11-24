@@ -22,20 +22,21 @@ class SearchScreen extends ConsumerStatefulWidget {
 
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _controller = TextEditingController();
-  final _completionController = DelayedTaskCompletionController();
-  late final SearchPresenter _presenter;
+  late final DelayedTaskCompletionController _completionController;
   String _query = '';
   bool _showCompleted = true;
 
   @override
   void initState() {
     super.initState();
-    _presenter = ref.read(searchPresenterProvider);
+    _completionController = DelayedTaskCompletionController(
+      onCommit: ref.read(searchPresenterProvider).setTaskCompleted,
+    );
   }
 
   @override
   void dispose() {
-    _completionController.flush(_presenter.setTaskCompleted);
+    _completionController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -185,7 +186,6 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       }
                       _completionController.toggle(
                         task,
-                        onCommit: notifier.setTaskCompleted,
                         onStateChanged: () {
                           if (mounted) setState(() {});
                         },

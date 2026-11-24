@@ -1,8 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/task_item.dart';
+import '../data/order_date_time.dart';
 import '../data/todo_provider.dart';
-import '../sync/todo_wire_codecs.dart';
+import '../models/task_item.dart';
 
 /// Batch action presenter matching `tasksview/TasksActionPresenter`.
 class TasksActionPresenter {
@@ -184,23 +184,15 @@ class TasksActionPresenter {
 
   void batchSetDueDate(Set<String> taskIds, DateTime? dueDate) {
     final now = DateTime.now();
-    _mapSelectedTasks(taskIds, (task) {
-      final clearPostponed =
-          dueDate != null &&
-          _state.showDueTodayInMyDay &&
-          task.postponedDay != null &&
-          TodoNotifier.isSameDay(dueDate, task.postponedDay!);
-      return TodoNotifier.syncMyDayFlag(
-        task.copyWith(
-          dueDate: dueDate,
-          recurrence: dueDate == null ? RecurrenceType.none : task.recurrence,
-          rawRecurrence: dueDate == null ? null : task.rawRecurrence,
-          postponedDay: clearPostponed ? null : task.postponedDay,
-        ),
+    _mapSelectedTasks(
+      taskIds,
+      (task) => TodoNotifier.applyDueDate(
+        task,
+        dueDate,
         now: now,
         showDueTodayInMyDay: _state.showDueTodayInMyDay,
-      );
-    });
+      ),
+    );
   }
 
   void batchMoveToList(Set<String> taskIds, String targetListId) {

@@ -174,12 +174,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             SettingsAccountHeader(
               account: activeAccount,
               syncState: syncState,
-              onSyncNow: () => ref
-                  .read(syncProvider.notifier)
-                  .syncNow(
-                    forceFullSync: true,
-                    reason: 'manual_settings_sync',
-                  ),
+              onSyncNow: () => ref.read(syncProvider.notifier).refresh(),
               onManageAccounts: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => const ManageAccountsScreen(),

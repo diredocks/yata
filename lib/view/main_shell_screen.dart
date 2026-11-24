@@ -9,7 +9,6 @@ import '../detailview/detail_view_presenter.dart';
 import '../detailview/detail_view_screen.dart';
 import '../homeview/home_view_screen.dart';
 import '../l10n/app_localizations.dart';
-import '../models/account.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../notifications/notification_service.dart';
@@ -63,7 +62,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
   Future<void> _bootstrapAndStartSync() async {
     final initialAction = await ref.read(homeWidgetSyncProvider).bootstrap();
     if (!mounted) return;
-    _startSyncForActiveAccount();
+    ref.read(syncProvider.notifier).syncOnSessionStart();
     if (initialAction != null) {
       _handleWidgetAction(initialAction);
     }
@@ -167,20 +166,6 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
     );
   }
 
-  void _startSyncForActiveAccount({bool accountChanged = false}) {
-    if (!accountChanged && !ref.read(startupSyncEnabledProvider)) return;
-    final account = ref.read(accountProvider).activeAccount;
-    if (account is! MicrosoftAccount) return;
-    unawaited(
-      ref
-          .read(syncProvider.notifier)
-          .syncNow(
-            forceFullSync: true,
-            reason: accountChanged ? 'account_changed' : 'startup',
-          ),
-    );
-  }
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -238,34 +223,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
         );
         _handleSelectList(myDay, isWide);
       case NotificationActionType.quickAdd:
-        showModalBottomSheet<void>(
-          context: context,
-          isScrollControlled: true,
-          backgroundColor: Colors.transparent,
-          builder: (_) => TaskEntrySheet(
-            lists: state.lists,
-            currentList: state.selectedList,
-            startOfWeek: state.startOfWeek,
-            onSubmit:
-                ({
-                  required String title,
-                  String? targetListId,
-                  DateTime? dueDate,
-                  DateTime? reminderAt,
-                  RecurrenceType recurrence = RecurrenceType.none,
-                }) {
-                  ref
-                      .read(tasksViewPresenterProvider)
-                      .addTask(
-                        title: title,
-                        targetListId: targetListId,
-                        dueDate: dueDate,
-                        reminderAt: reminderAt,
-                        recurrence: recurrence,
-                      );
-                },
-          ),
-        );
+        _openQuickAddSheet(state, state.selectedList);
     }
   }
 
@@ -379,7 +337,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
         ref.read(todoProvider.notifier).setLastEnteredListId(null);
       }
       if (previous != next) {
-        _startSyncForActiveAccount(accountChanged: true);
+        ref.read(syncProvider.notifier).syncOnSessionStart(accountChanged: true);
       }
     });
     ref.listen<TodoState>(todoProvider, (_, next) {
