@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../detailview/recurrence/task_pickers.dart';
@@ -31,9 +32,11 @@ class TaskEntrySheet extends StatefulWidget {
   State<TaskEntrySheet> createState() => _TaskEntrySheetState();
 }
 
-class _TaskEntrySheetState extends State<TaskEntrySheet> {
+class _TaskEntrySheetState extends State<TaskEntrySheet>
+    with WidgetsBindingObserver {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
+  Animation<double>? _routeAnimation;
   late String _targetListId;
   DateTime? _dueDate;
   DateTime? _reminderAt;
@@ -54,6 +57,7 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _targetListId = widget.currentList.isSmartList
         ? 'tasks'
         : widget.currentList.id;
@@ -62,7 +66,47 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final anim = ModalRoute.of(context)?.animation;
+    if (anim != null && anim != _routeAnimation) {
+      _routeAnimation?.removeStatusListener(_onRouteAnimationStatus);
+      _routeAnimation = anim;
+      if (anim.status == AnimationStatus.completed) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _requestKeyboard());
+      } else {
+        anim.addStatusListener(_onRouteAnimationStatus);
+      }
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        _routeAnimation?.status == AnimationStatus.completed) {
+      _requestKeyboard();
+    }
+  }
+
+  void _onRouteAnimationStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      _requestKeyboard();
+    }
+  }
+
+  void _requestKeyboard() {
+    if (!mounted) return;
+    if (!_focusNode.hasFocus) {
+      _focusNode.requestFocus();
+    } else {
+      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _routeAnimation?.removeStatusListener(_onRouteAnimationStatus);
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -243,7 +287,6 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
                     child: TextField(
                       controller: _controller,
                       focusNode: _focusNode,
-                      autofocus: true,
                       textInputAction: TextInputAction.done,
                       onSubmitted: (_) => _handleSubmit(),
                       decoration: InputDecoration(
