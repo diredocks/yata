@@ -40,8 +40,7 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
   bool _accountMenuExpanded = false;
 
   Future<void> _openAddAccount() async {
-    setState(() => _accountMenuExpanded = false);
-    await Navigator.of(context).push(
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => const LandingScreen(isAddingAccount: true),
       ),
@@ -49,15 +48,9 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
   }
 
   Future<void> _openManageAccounts() async {
-    setState(() => _accountMenuExpanded = false);
     await Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const ManageAccountsScreen()),
     );
-  }
-
-  void _openSettings() {
-    setState(() => _accountMenuExpanded = false);
-    widget.onOpenSettings();
   }
 
   @override
@@ -129,7 +122,7 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
                         },
                         onAddAccount: _openAddAccount,
                         onManageAccounts: _openManageAccounts,
-                        onOpenSettings: _openSettings,
+                        onOpenSettings: widget.onOpenSettings,
                       )
                     : CustomScrollView(
                         key: const ValueKey('homeview_lists'),

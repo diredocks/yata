@@ -65,18 +65,15 @@ void main() {
       await tester.pumpAndSettle();
 
       // Bob has his own empty local storage (Alice's task is isolated)
-      expect(find.text('Bob'), findsOneWidget);
-      expect(find.text('bob@example.com'), findsOneWidget);
+      expect(find.text('Bob'), findsWidgets);
+      expect(find.text('bob@example.com'), findsWidgets);
       expect(container.read(todoProvider).tasks, isEmpty);
 
       container.read(tasksViewPresenterProvider).addTask(title: 'Bob task');
       await tester.pumpAndSettle();
       expect(container.read(todoProvider).tasks.single.title, 'Bob task');
 
-      // 4. Switch back to Alice via HomeView account switcher
-      await tester.tap(find.text('Bob'));
-      await tester.pumpAndSettle();
-
+      // 4. Switch back to Alice via HomeView account switcher (menu stays open)
       await tester.tap(find.text('Alice'));
       await tester.pumpAndSettle();
 
@@ -110,6 +107,56 @@ void main() {
 
       expect(find.text('Welcome to Yata'), findsOneWidget);
       expect(container.read(accountProvider).accounts, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'HomeView preserves account-opened state when navigating to other pages and back',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+          child: const YataApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'alice@example.com');
+      await tester.tap(find.text('Use a local account'));
+      await tester.pumpAndSettle();
+
+      // Open account menu on HomeView
+      await tester.tap(find.text('Alice'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('homeview_accounts')), findsOneWidget);
+
+      // Navigate to Settings and back
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('homeview_accounts')), findsOneWidget);
+
+      // Navigate to Manage accounts and back
+      await tester.tap(find.text('Manage accounts'));
+      await tester.pumpAndSettle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('homeview_accounts')), findsOneWidget);
+
+      // Navigate to Add account and cancel (back)
+      await tester.tap(find.text('Add account'));
+      await tester.pumpAndSettle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('homeview_accounts')), findsOneWidget);
     },
   );
 }
