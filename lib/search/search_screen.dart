@@ -35,7 +35,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
   @override
   void dispose() {
-    _completionController.flushAndDispose(_presenter.setTaskCompleted);
+    _completionController.flush(_presenter.setTaskCompleted);
     _controller.dispose();
     super.dispose();
   }

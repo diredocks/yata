@@ -64,10 +64,4 @@ class DelayedTaskCompletionController {
       onCommit(id, completed: true);
     }
   }
-
-  void flushAndDispose(
-    void Function(String taskId, {required bool completed}) onCommit,
-  ) {
-    flush(onCommit);
-  }
 }

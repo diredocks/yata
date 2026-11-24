@@ -83,7 +83,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen>
     _stopDragAutoScroll();
     _scrollController.dispose();
     _selectionNotifier.dispose();
-    _completionController.flushAndDispose(_presenter.setTaskCompleted);
+    _completionController.flush(_presenter.setTaskCompleted);
     super.dispose();
   }
 
