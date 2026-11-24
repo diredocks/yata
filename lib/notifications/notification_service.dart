@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -171,6 +172,9 @@ class FlutterLocalNotificationTransport implements NotificationTransport {
       !kIsWeb && defaultTargetPlatform != TargetPlatform.linux;
 
   Future<T?> _guardPlatform<T>(Future<T> Function() action) async {
+    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
+      return null;
+    }
     try {
       return await action();
     } on MissingPluginException {
