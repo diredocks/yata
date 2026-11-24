@@ -26,6 +26,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        detachSystemFontChannel()
         systemFontChannel = SystemFontChannel().also { it.attach(flutterEngine) }
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -54,10 +55,19 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        detachSystemFontChannel()
+        super.cleanUpFlutterEngine(flutterEngine)
+    }
+
     override fun onDestroy() {
+        detachSystemFontChannel()
+        super.onDestroy()
+    }
+
+    private fun detachSystemFontChannel() {
         systemFontChannel?.detach()
         systemFontChannel = null
-        super.onDestroy()
     }
 
     private fun readPermissionStatus(): Map<String, Any> {

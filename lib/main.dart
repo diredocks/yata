@@ -74,14 +74,12 @@ class _YataAppState extends ConsumerState<YataApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // The default font may have changed in the system settings meanwhile.
     if (state == AppLifecycleState.resumed) _syncSystemFont();
   }
 
   Future<void> _syncSystemFont() async {
-    final previous = _systemFonts.family;
-    await _systemFonts.refresh();
-    if (mounted && _systemFonts.family != previous) setState(() {});
+    final changed = await _systemFonts.refresh();
+    if (changed && mounted) setState(() {});
   }
 
   @override

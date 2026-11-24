@@ -1,114 +1,93 @@
 package top.clickfling.yata.font
 
-import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.fonts.Font
 import android.graphics.fonts.FontStyle
 import android.graphics.fonts.SystemFonts
 import android.os.Build
 import java.io.File
+import java.lang.reflect.Method
 import java.util.Locale
 import kotlin.math.abs
 
-/**
- * Locates the font file(s) the OS currently uses as its default font, so the
- * Dart side can register them with `FontLoader`.
- *
- * Flutter resolves the default `sans-serif` family through its own font
- * manager, which does not follow runtime OEM font switches (Motorola MyUX /
- * Hello UI, Lenovo ZUI, …). The files behind the system default are therefore
- * resolved natively and streamed to Dart.
- *
- * Resolution order:
- *  1. OEM theme engines publish the file they apply in a system property.
- *  2. API 34+: `Typeface.getSystemFontFamilyName()` matched against
- *     `SystemFonts.getAvailableFonts()` by name table and file name.
- *  3. Glyph metrics compared with `Typeface.create("sans-serif")`.
- *  4. FontManager updatable fonts in `/data/fonts/files` (Android 12+).
- *  5. A single non-stock (non Roboto/Noto) mounted family.
- *
- * The result is fingerprinted by `path + ttcIndex + lastModified + size`, so a
- * repeated request can answer `changed = false` instead of transferring the
- * font bytes again.
- */
+internal data class FontCandidate(
+    val file: File,
+    val weight: Int,
+    val italic: Boolean,
+    val ttcIndex: Int,
+    val lastModified: Long,
+    val length: Long,
+) {
+    val key: String get() = "${file.path}#$ttcIndex@$lastModified:$length"
+    val fingerprintPart: String get() = "${file.path}#$ttcIndex:$lastModified:$length"
+
+    fun sameFaceAs(other: FontCandidate): Boolean =
+        file.path == other.file.path && ttcIndex == other.ttcIndex
+
+    companion object {
+        fun from(
+            file: File,
+            weight: Int,
+            italic: Boolean,
+            ttcIndex: Int,
+        ): FontCandidate {
+            val absolute = file.absoluteFile
+            return FontCandidate(
+                file = absolute,
+                weight = weight,
+                italic = italic,
+                ttcIndex = ttcIndex,
+                lastModified = absolute.lastModified(),
+                length = absolute.length(),
+            )
+        }
+    }
+}
+
 class SystemFontResolver {
 
-    /** Result of [load]; only [changed] payloads carry font bytes. */
-    data class Payload(
+    class Payload(
         val changed: Boolean,
-        val familyName: String?,
-        val fingerprint: String?,
+        val fingerprint: String,
         val fallbackFamilies: List<String>,
         val regular: ByteArray?,
         val bold: ByteArray?,
-    )
-
-    private data class Candidate(
-        val path: String,
-        val weight: Int,
-        val italic: Boolean,
-        val ttcIndex: Int,
-        val lastModified: Long,
-        val length: Long,
     ) {
-        val file: File get() = File(path)
-        val key: String get() = "$path#$ttcIndex@$lastModified:$length"
-    }
-
-    private class Selection(
-        val familyName: String?,
-        val regular: Candidate,
-        val bold: Candidate?,
-    ) {
-        val fingerprint: String
-            get() = listOf(regular, bold).joinToString("|") { candidate ->
-                candidate?.let { "${it.path}#${it.ttcIndex}:${it.lastModified}:${it.length}" }
-                    ?: "-"
-            }
-    }
-
-    /** Fingerprint of the last snapshot handed to Dart. */
-    @Volatile
-    private var deliveredFingerprint: String? = null
-
-    /** Family-name lookups, keyed by [Candidate.key]. */
-    private val familyCache = HashMap<String, Set<String>>()
-
-    /**
-     * Resolves the current system font. Returns `null` when nothing usable was
-     * found; with [force] the fingerprint cache is bypassed and the bytes are
-     * sent again.
-     */
-    @Synchronized
-    fun load(force: Boolean = false): Payload? {
-        if (force) deliveredFingerprint = null
-
-        val selection = try {
-            resolve()
-        } catch (_: Throwable) {
-            null
-        } ?: return null
-
-        val fingerprint = selection.fingerprint
-        if (fingerprint == deliveredFingerprint) {
-            return Payload(
+        companion object {
+            fun unchanged(fingerprint: String): Payload = Payload(
                 changed = false,
-                familyName = selection.familyName,
                 fingerprint = fingerprint,
                 fallbackFamilies = emptyList(),
                 regular = null,
                 bold = null,
             )
         }
+    }
 
-        val regular = readFontBytes(selection.regular) ?: return null
-        val bold = selection.bold?.let(::readFontBytes)
-        deliveredFingerprint = fingerprint
+    private class Selection(
+        val familyName: String?,
+        val regular: FontCandidate,
+        val bold: FontCandidate?,
+    ) {
+        val fingerprint: String
+            get() = "${familyName.orEmpty()}|${regular.fingerprintPart}|${bold?.fingerprintPart ?: "-"}"
+    }
+
+    private val familyCache = HashMap<String, Set<String>>()
+
+    @Synchronized
+    fun load(lastFingerprint: String? = null): Payload? {
+        val selection = runCatching { resolve() }.getOrNull() ?: return null
+        val fingerprint = selection.fingerprint
+        if (fingerprint == lastFingerprint) {
+            return Payload.unchanged(fingerprint)
+        }
+
+        val regular = SfntFont.readFaceBytes(selection.regular.file, selection.regular.ttcIndex)
+            ?: return null
+        val bold = selection.bold?.let { SfntFont.readFaceBytes(it.file, it.ttcIndex) }
         return Payload(
             changed = true,
-            familyName = selection.familyName,
             fingerprint = fingerprint,
             fallbackFamilies = selection.familyName
                 ?.let(SystemFontConfig::fallbackFamiliesFor)
@@ -119,49 +98,29 @@ class SystemFontResolver {
     }
 
     private fun resolve(): Selection? {
-        val mounted = mountedCandidates()
+        val mounted = lazy(LazyThreadSafetyMode.NONE) { mountedCandidates() }
 
-        // OEM theme engines are the only ones that know the applied font:
-        // fontconfig keeps pointing "sans-serif" at Roboto while the theme
-        // engine swaps the rendering font at runtime. They publish either a
-        // file path or a font family name.
         overlayFontSelection(mounted)?.let { return it }
 
-        val systemFamily = systemDefaultFamilyName()
-        if (systemFamily != null && !isGenericFamily(systemFamily)) {
+        systemDefaultFamilyName()?.let { systemFamily ->
             configFamilySelection(systemFamily)?.let { return it }
-            matchByFamily(mounted, systemFamily)?.let { return it }
+            matchByFamily(mounted.value, systemFamily)?.let { return it }
         }
 
-        // Rendering must match `Typeface.create("sans-serif")`, which is the
-        // authoritative signal when the family name is not available.
-        metricMatch(mounted)?.let { return it }
+        metricMatch(mounted.value)?.let { return it }
+        updatableFontSelection()?.let { return it }
 
-        // FontManager updatable fonts (Android 12+).
-        updatableFontCandidates()?.let { return it }
-
-        return singleNonStockFamily(mounted)
+        return singleNonStockFamily(mounted.value)
     }
 
-    // region OEM theme engine overlay font
-
-    /**
-     * Motorola/Lenovo theme engines (MyUX "Hello UI", ZUI) extract the chosen
-     * font to `/data/misc/theme/` and publish the active file in a system
-     * property. The file is world readable and `appdomain` is allowed to read
-     * `themeservice_app_data_file`, so the exact bytes can be streamed.
-     */
-    private fun overlayFontSelection(mounted: List<Candidate>): Selection? {
+    private fun overlayFontSelection(mounted: Lazy<List<FontCandidate>>): Selection? {
         for (key in OVERLAY_FONT_PROPERTIES) {
-            val raw = readSystemProperty(key)
-            if (raw.isNullOrBlank()) continue
+            val raw = SystemPropertiesReader.get(key) ?: continue
 
-            // Only the first entry is the active font; the remaining ones are
-            // variants for other scripts of the same theme.
+            // First entry is the primary font; trailing entries are script variants.
             val value = raw.split(':', ',', ';')
                 .firstOrNull { it.isNotBlank() }
                 ?.trim()
-                ?.takeIf { it.isNotEmpty() }
                 ?: continue
 
             if (value.contains('/') || SfntFont.hasFontExtension(value)) {
@@ -171,77 +130,44 @@ class SystemFontResolver {
                 selectionFor(null, siblingCandidates(candidate))?.let { return it }
             } else {
                 configFamilySelection(value)?.let { return it }
-                matchByFamily(mounted, value, exactOnly = true)?.let { return it }
+                matchByFamily(mounted.value, value, exactOnly = true)?.let { return it }
             }
         }
         return null
     }
 
-    /**
-     * Resolves a family name through the platform font configuration, which is
-     * the only source for OEM preloaded theme families.
-     */
     private fun configFamilySelection(familyName: String): Selection? {
-        val candidates = SystemFontConfig.fontsFor(familyName).mapNotNull { entry ->
-            if (!SfntFont.isFontFile(entry.file)) return@mapNotNull null
-            Candidate(
-                path = entry.file.absolutePath,
-                weight = entry.weight,
-                italic = entry.italic,
-                ttcIndex = entry.ttcIndex,
-                lastModified = entry.file.lastModified(),
-                length = entry.file.length(),
-            )
+        val candidates = SystemFontConfig.fontsFor(familyName).map { entry ->
+            FontCandidate.from(entry.file, entry.weight, entry.italic, entry.ttcIndex)
         }
         return selectionFor(familyName, candidates)
     }
 
-    /** The overlay font plus same-family files from its directory, if listable. */
-    private fun siblingCandidates(candidate: Candidate): List<Candidate> {
+    private fun siblingCandidates(candidate: FontCandidate): List<FontCandidate> {
         val parent = candidate.file.parentFile ?: return listOf(candidate)
         val familyKey = primaryFamilyKey(candidate)
-        val siblings = fontFilesIn(parent)
-            .filter { it.absolutePath != candidate.path }
+        val siblings = fontFilesIn(parent, depth = 0)
+            .filter { it.absolutePath != candidate.file.path }
             .mapNotNull(::toCandidate)
             .filter { primaryFamilyKey(it) == familyKey }
         return (listOf(candidate) + siblings).distinctBy { it.key }
     }
 
-    private fun readSystemProperty(key: String): String? {
-        runCatching {
-            // `android.os.SystemProperties` is @hide; reflection works on most
-            // builds and returns immediately.
-            val type = Class.forName("android.os.SystemProperties")
-            val get = type.getMethod("get", String::class.java)
-            val value = get.invoke(null, key) as? String
-            if (!value.isNullOrBlank()) return value
-        }
-
-        // Fallback for builds that block hidden APIs.
-        return runCatching {
-            val process = ProcessBuilder("getprop", key).redirectErrorStream(true).start()
-            val value = process.inputStream.bufferedReader().use { it.readText() }.trim()
-            process.waitFor()
-            value.ifEmpty { null }
-        }.getOrNull()
-    }
-
-    // endregion
-
-    // region API 34 family name
-
     private fun systemDefaultFamilyName(): String? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return null
 
-        val fromDefault = runCatching { Typeface.DEFAULT.systemFontFamilyName }.getOrNull()
-        val fromSansSerif = runCatching {
+        val fromDefault = runCatching { Typeface.DEFAULT.systemFontFamilyName }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() && !isGenericFamily(it) }
+        if (fromDefault != null) return fromDefault
+
+        return runCatching {
             Typeface.create("sans-serif", Typeface.NORMAL).systemFontFamilyName
-        }.getOrNull()
-        return (fromDefault ?: fromSansSerif)?.takeIf { it.isNotBlank() }
+        }.getOrNull()?.takeIf { it.isNotBlank() && !isGenericFamily(it) }
     }
 
     private fun matchByFamily(
-        candidates: List<Candidate>,
+        candidates: List<FontCandidate>,
         systemFamily: String,
         exactOnly: Boolean = false,
     ): Selection? {
@@ -249,123 +175,54 @@ class SystemFontResolver {
         val target = normalize(systemFamily)
         if (target.isEmpty()) return null
 
-        // Italic faces are never the UI default, and their family names are
-        // often a shorter prefix of the upright family ("Rookery" vs "Rookery New").
-        val scored = candidates.filterNot { it.italic }.mapNotNull { candidate ->
-            val score = matchScore(candidate, target, exactOnly)
-            if (score > 0) candidate to score else null
-        }
-        if (scored.isEmpty()) return null
+        val best = candidates
+            .asSequence()
+            .filterNot { it.italic }
+            .mapNotNull { candidate ->
+                val score = matchScore(candidate, target, exactOnly)
+                if (score > 0) candidate to score else null
+            }
+            .maxByOrNull { it.second }
+            ?.first
+            ?: return null
 
-        val bestScore = scored.maxOf { it.second }
-        val best = scored.first { it.second == bestScore }.first
-        val familyKey = primaryFamilyKey(best)
-        val group = candidates.filter { primaryFamilyKey(it) == familyKey }
-        return selectionFor(systemFamily, group.ifEmpty { listOf(best) })
+        return selectionForFamilyOf(systemFamily, best, candidates)
     }
 
-    private fun matchScore(candidate: Candidate, target: String, exactOnly: Boolean): Int {
+    private fun matchScore(candidate: FontCandidate, target: String, exactOnly: Boolean): Int {
         val names = familyNames(candidate)
-        if (names.any { it == target }) return SCORE_EXACT
-        if (exactOnly) return 0
-        if (names.any { it.startsWith(target) || target.startsWith(it) }) return SCORE_PREFIX
-        if (names.any { it.contains(target) }) return SCORE_CONTAINS
+        if (target in names) return SCORE_EXACT
         val stem = stemOf(candidate)
-        if (stem == target || stem.startsWith(target) || target.startsWith(stem)) {
+        if (exactOnly) return if (stem == target) SCORE_FILE_NAME else 0
+        if (names.any { it.startsWith(target) || target.startsWith(it) }) return SCORE_PREFIX
+        if (names.any { target in it }) return SCORE_CONTAINS
+        if (stem.isNotEmpty() &&
+            (stem == target || stem.startsWith(target) || target.startsWith(stem))
+        ) {
             return SCORE_FILE_NAME
         }
         return 0
     }
 
-    // endregion
-
-    // region Glyph-shape comparison
-
-    private fun metricMatch(candidates: List<Candidate>): Selection? {
-        if (candidates.isEmpty()) return null
-        val regulars = candidates
-            .filter { !it.italic && it.weight in 300..500 }
-            .ifEmpty { candidates.filterNot { it.italic } }
-            .ifEmpty { candidates }
-        val reference = runCatching { Typeface.create("sans-serif", Typeface.NORMAL) }
-            .getOrNull() ?: return null
-        val referenceSignature = glyphSignature(reference)
-
-        var best: Candidate? = null
-        var bestDistance = Double.MAX_VALUE
-        for (candidate in regulars.take(MAX_METRIC_CANDIDATES)) {
-            val typeface = typefaceOf(candidate) ?: continue
-            val distance = signatureDistance(glyphSignature(typeface), referenceSignature)
-            if (distance < bestDistance) {
-                bestDistance = distance
-                best = candidate
-            }
-        }
-
-        val winner = best ?: return null
-        if (bestDistance > MAX_METRIC_DISTANCE) return null
-
-        val familyKey = primaryFamilyKey(winner)
-        val group = candidates.filter { primaryFamilyKey(it) == familyKey }
-        return selectionFor(null, group.ifEmpty { listOf(winner) })
+    private fun metricMatch(candidates: List<FontCandidate>): Selection? {
+        val winner = GlyphMetricMatcher.findBestMatch(candidates) ?: return null
+        return selectionForFamilyOf(null, winner, candidates)
     }
 
-    private fun glyphSignature(typeface: Typeface): DoubleArray {
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            this.typeface = typeface
-            textSize = 48f
-        }
-        val path = Path()
-        val bounds = RectF()
-        val signature = DoubleArray(PROBES.size * 2)
-        PROBES.forEachIndexed { index, probe ->
-            signature[index * 2] = paint.measureText(probe).toDouble()
-            path.reset()
-            paint.getTextPath(probe, 0, probe.length, 0f, 0f, path)
-            path.computeBounds(bounds, true)
-            signature[index * 2 + 1] = bounds.width().toDouble() * 1000.0 + bounds.height()
-        }
-        return signature
-    }
-
-    private fun signatureDistance(candidate: DoubleArray, reference: DoubleArray): Double {
-        if (candidate.isEmpty() || candidate.size != reference.size) return Double.MAX_VALUE
-        var sum = 0.0
-        for (index in candidate.indices) {
-            val expected = abs(reference[index]).coerceAtLeast(1.0)
-            sum += abs(candidate[index] - reference[index]) / expected
-        }
-        return sum / candidate.size
-    }
-
-    private fun typefaceOf(candidate: Candidate): Typeface? = runCatching {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Typeface.Builder(candidate.file)
-                .setTtcIndex(candidate.ttcIndex)
-                .setWeight(candidate.weight)
-                .build()
-        } else {
-            Typeface.createFromFile(candidate.file)
-        }
-    }.getOrNull()
-
-    // endregion
-
-    // region FontManager updatable fonts
-
-    private fun updatableFontCandidates(): Selection? {
+    private fun updatableFontSelection(): Selection? {
         val dataDirs = listOf(
-            File("/data/fonts/files"), // Android 12+ FontManager updates
+            File("/data/fonts/files"),
             File("/data/fonts"),
             File("/data/system/fonts"),
         )
 
-        val candidates = dataDirs.flatMap { fontFilesIn(it) }.mapNotNull(::toCandidate)
+        val candidates = dataDirs
+            .flatMap { fontFilesIn(it) }
+            .mapNotNull(::toCandidate)
+            .distinctBy { it.key }
         if (candidates.isEmpty()) return null
 
         val groups = candidates.groupBy { primaryFamilyKey(it) }
-        // FontManager writes the freshly selected family last; the newest file
-        // therefore identifies the active override.
         val newestFirst = groups.values
             .map { group -> group to group.maxOf { it.lastModified } }
             .sortedByDescending { it.second }
@@ -386,7 +243,7 @@ class SystemFontResolver {
                 if (files.size >= MAX_SCANNED_FILES) return
                 if (child.isDirectory && remaining > 0) {
                     walk(child, remaining - 1)
-                } else if (SfntFont.isFontFile(child) && child.length() > 0L) {
+                } else if (SfntFont.isFontFile(child)) {
                     files.add(child)
                 }
             }
@@ -396,23 +253,24 @@ class SystemFontResolver {
         return files
     }
 
-    private fun toCandidate(file: File): Candidate? {
+    private fun toCandidate(file: File): FontCandidate? {
         if (!SfntFont.isFontFile(file)) return null
-        return Candidate(
-            path = file.absolutePath,
-            weight = SfntFont.weight(file) ?: weightFromName(file.name),
-            italic = SfntFont.isItalic(file) || isItalicName(file.name),
+        val meta = SfntFont.readMetadata(file)
+        val candidate = FontCandidate.from(
+            file = file,
+            weight = meta?.weight ?: weightFromName(file.name),
+            italic = (meta?.italic == true) || isItalicName(file.name),
             ttcIndex = 0,
-            lastModified = file.lastModified(),
-            length = file.length(),
         )
+        if (meta != null) {
+            familyCache[candidate.key] = meta.familyNames
+                .map(::normalize)
+                .filterTo(LinkedHashSet()) { it.isNotEmpty() }
+        }
+        return candidate
     }
 
-    // endregion
-
-    // region Last resort
-
-    private fun singleNonStockFamily(candidates: List<Candidate>): Selection? {
+    private fun singleNonStockFamily(candidates: List<FontCandidate>): Selection? {
         val groups = candidates
             .groupBy { primaryFamilyKey(it) }
             .filterKeys { key -> key.isNotEmpty() && !isStockFamily(key) }
@@ -420,90 +278,63 @@ class SystemFontResolver {
         return selectionFor(null, groups.values.first())
     }
 
-    // endregion
-
-    // region Font enumeration
-
-    private fun mountedCandidates(): List<Candidate> {
+    private fun mountedCandidates(): List<FontCandidate> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return emptyList()
         val fonts: Set<Font> = runCatching { SystemFonts.getAvailableFonts() }.getOrNull()
             ?: return emptyList()
 
-        val result = LinkedHashMap<String, Candidate>()
+        val result = LinkedHashMap<String, FontCandidate>()
         for (font in fonts) {
             val file = runCatching { font.file }.getOrNull() ?: continue
             if (!SfntFont.isFontFile(file)) continue
             val weight = runCatching { font.style.weight }.getOrDefault(WEIGHT_NORMAL)
-            val candidate = Candidate(
-                path = file.absolutePath,
+            val candidate = FontCandidate.from(
+                file = file,
                 weight = weight.takeIf { it in 1..1000 } ?: WEIGHT_NORMAL,
                 italic = runCatching {
                     font.style.slant != FontStyle.FONT_SLANT_UPRIGHT
                 }.getOrDefault(false),
                 ttcIndex = runCatching { font.ttcIndex }.getOrDefault(0),
-                lastModified = file.lastModified(),
-                length = file.length(),
             )
             result[candidate.key] = candidate
         }
         return result.values.toList()
     }
 
-    private fun selectionFor(familyName: String?, group: List<Candidate>): Selection? {
-        if (group.isEmpty()) return null
+    private fun selectionForFamilyOf(
+        familyName: String?,
+        winner: FontCandidate,
+        candidates: List<FontCandidate>,
+    ): Selection? {
+        val familyKey = primaryFamilyKey(winner)
+        if (familyKey.isEmpty()) return selectionFor(familyName, listOf(winner))
+        val group = candidates.filter { primaryFamilyKey(it) == familyKey }
+        return selectionFor(familyName, group.ifEmpty { listOf(winner) })
+    }
 
-        // Upright faces always win: families often ship an italic at the same
-        // weight, which would otherwise be registered as the regular face. A
-        // family without any upright face is not the system default.
+    private fun selectionFor(familyName: String?, group: List<FontCandidate>): Selection? {
         val upright = group.filterNot { it.italic }
         if (upright.isEmpty()) return null
-        val regular = upright.filter { it.weight in 300..500 }
-            .minByOrNull { abs(it.weight - 400) }
-            ?: upright.minByOrNull { abs(it.weight - 400) }
-            ?: return null
+        val regular = upright.minByOrNull { abs(it.weight - WEIGHT_NORMAL) } ?: return null
         val bold = upright
-            .filter { it.weight in 600..800 && !sameFace(it, regular) }
-            .minByOrNull { abs(it.weight - 700) }
+            .filter { it.weight in 600..800 && !it.sameFaceAs(regular) }
+            .minByOrNull { abs(it.weight - WEIGHT_BOLD) }
         return Selection(familyName, regular, bold)
     }
 
-    private fun sameFace(a: Candidate, b: Candidate): Boolean =
-        a.path == b.path && a.ttcIndex == b.ttcIndex
-
-    private fun readFontBytes(candidate: Candidate): ByteArray? = try {
-        val file = candidate.file
-        if (!file.canRead()) {
-            null
-        } else {
-            val bytes = if (SfntFont.isCollection(file)) {
-                SfntFont.extractFace(file, candidate.ttcIndex) ?: file.readBytes()
-            } else {
-                file.readBytes()
-            }
-            bytes.takeIf { it.isNotEmpty() && it.size <= MAX_FONT_BYTES }
-        }
-    } catch (_: Throwable) {
-        null
-    }
-
-    // endregion
-
-    // region Helpers
-
-    private fun familyNames(candidate: Candidate): Set<String> =
+    private fun familyNames(candidate: FontCandidate): Set<String> =
         familyCache.getOrPut(candidate.key) {
             val names = LinkedHashSet<String>()
             SfntFont.familyNames(candidate.file, candidate.ttcIndex)
                 .map(::normalize)
                 .filterTo(names) { it.isNotEmpty() }
-            names.add(stemOf(candidate))
             names
         }
 
-    private fun primaryFamilyKey(candidate: Candidate): String =
+    private fun primaryFamilyKey(candidate: FontCandidate): String =
         familyNames(candidate).firstOrNull() ?: stemOf(candidate)
 
-    private fun stemOf(candidate: Candidate): String {
+    private fun stemOf(candidate: FontCandidate): String {
         val base = candidate.file.name.substringBeforeLast('.', candidate.file.name)
         val tokens = base.split('-', '_', ' ', '.').filter { it.isNotEmpty() }
         val kept = tokens.dropLastWhile { normalize(it) in VARIANT_TOKENS }
@@ -520,8 +351,10 @@ class SystemFontResolver {
         return when {
             "black" in lower -> 900
             "extrabold" in lower || "ultrabold" in lower || "heavy" in lower -> 800
-            "semibold" in lower || "demibold" in lower || "bold" in lower -> 700
+            "semibold" in lower || "demibold" in lower -> 600
+            "bold" in lower -> WEIGHT_BOLD
             "medium" in lower -> 500
+            "extralight" in lower || "ultralight" in lower -> 200
             "light" in lower -> 300
             "thin" in lower -> 100
             else -> WEIGHT_NORMAL
@@ -538,29 +371,48 @@ class SystemFontResolver {
 
     private fun isStockFamily(key: String): Boolean = STOCK_FAMILY_MARKERS.any { it in key }
 
-    // endregion
+    private object SystemPropertiesReader {
+        private val getMethod: Method? by lazy {
+            runCatching {
+                Class.forName("android.os.SystemProperties")
+                    .getMethod("get", String::class.java)
+            }.getOrNull()
+        }
+
+        fun get(key: String): String? {
+            val method = getMethod
+            if (method != null) {
+                val reflected = runCatching { method.invoke(null, key) as? String }
+                if (reflected.isSuccess) {
+                    return reflected.getOrNull()?.trim()?.ifEmpty { null }
+                }
+            }
+
+            return runCatching {
+                val process = ProcessBuilder("getprop", key).redirectErrorStream(true).start()
+                try {
+                    val value = process.inputStream.bufferedReader().use { it.readText() }.trim()
+                    process.waitFor()
+                    value.ifEmpty { null }
+                } finally {
+                    process.destroy()
+                }
+            }.getOrNull()
+        }
+    }
 
     private companion object {
         const val WEIGHT_NORMAL = 400
+        const val WEIGHT_BOLD = 700
         const val SCORE_EXACT = 100
         const val SCORE_PREFIX = 60
         const val SCORE_CONTAINS = 40
         const val SCORE_FILE_NAME = 30
 
         const val MAX_SCANNED_FILES = 256
-        const val MAX_METRIC_CANDIDATES = 32
-        const val MAX_METRIC_DISTANCE = 0.01
-        const val MAX_FONT_BYTES = 48 shl 20
 
-        val PROBES = listOf("Hamburgefontsiv", "0123456789", "MW@#&%")
-
-        /**
-         * OEM theme engines publish the font file they currently apply. Values
-         * are either absolute or relative to `/`, and may be separated by
-         * `:`, `,` or `;`.
-         */
         val OVERLAY_FONT_PROPERTIES = listOf(
-            "persist.sys.overlayfonts", // Motorola MyUX / Lenovo ZUI
+            "persist.sys.overlayfonts",
             "persist.sys.overlay.font",
             "persist.sys.theme.font",
             "persist.sys.font.path",

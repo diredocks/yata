@@ -2,30 +2,18 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
-/// Registers [fonts] under [family]; overridable for tests.
 typedef SystemFontRegistrar = Future<void> Function(
   String family,
   List<Uint8List> fonts,
 );
 
-/// Loads the Android system default font and applies it to the app theme.
-///
-/// Flutter resolves `sans-serif` through its own font manager, which does not
-/// follow runtime OEM font switches (Motorola MyUX / Hello UI, Lenovo ZUI, …).
-/// The platform side (see `SystemFontChannel.kt`) locates the file behind the
-/// system default and streams its bytes here; [FontLoader] registers them under
-/// a timestamped family so the engine cannot reuse the previous font's glyphs.
-///
-/// Lookups are a no-op returning `null` on iOS, web and desktop.
 class SystemFontLoader {
   SystemFontLoader({MethodChannel? channel, SystemFontRegistrar? registrar})
     : _channel = channel ?? const MethodChannel(channelName),
       _registrar = registrar ?? _registerWithEngine;
 
-  /// Same channel name as `SystemFontChannel.kt`.
   static const String channelName = 'top.clickfling.yata/system_font';
 
-  /// Used when a glyph is missing from the loaded system font.
   static const List<String> fontFamilyFallback = <String>[
     'Noto Sans CJK SC',
     'sans-serif',
@@ -35,22 +23,33 @@ class SystemFontLoader {
   final SystemFontRegistrar _registrar;
 
   String? _family;
+  String? _fingerprint;
   List<String> _fontFamilyFallback = fontFamilyFallback;
+  int _generation = 0;
+  Future<bool>? _inFlight;
 
-  /// Registered family, or `null` while the platform font is in use.
   String? get family => _family;
 
-  /// Registers the current system font when it changed since the last call.
-  Future<void> refresh() async {
-    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+  Future<bool> refresh() {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return Future<bool>.value(false);
+    }
+    return _inFlight ??= _refresh().whenComplete(() => _inFlight = null);
+  }
+
+  Future<bool> _refresh() async {
     try {
+      final args = _fingerprint == null
+          ? null
+          : <String, Object?>{'lastFingerprint': _fingerprint};
       final payload = await _channel.invokeMapMethod<String, Object?>(
         'getSystemFont',
+        args,
       );
-      if (payload == null || payload['changed'] != true) return;
+      if (payload == null || payload['changed'] != true) return false;
 
       final regular = payload['regular'];
-      if (regular is! Uint8List || regular.isEmpty) return;
+      if (regular is! Uint8List || regular.isEmpty) return false;
 
       final bold = payload['bold'];
       final fonts = <Uint8List>[
@@ -59,26 +58,29 @@ class SystemFontLoader {
       ];
 
       final dynamicFamily =
-          'SystemDynamicFont_${DateTime.now().microsecondsSinceEpoch}';
+          'SystemDynamicFont_${DateTime.now().microsecondsSinceEpoch}_${++_generation}';
       await _registrar(dynamicFamily, fonts);
+
+      final fingerprint = payload['fingerprint'];
       _family = dynamicFamily;
-      _fontFamilyFallback = <String>[
-        ..._platformFallbacks(payload['fallbackFamilies']),
-        ...fontFamilyFallback,
-      ];
+      _fingerprint = fingerprint is String && fingerprint.isNotEmpty
+          ? fingerprint
+          : null;
+      _fontFamilyFallback = _mergeFallbacks(payload['fallbackFamilies']);
+      return true;
     } on MissingPluginException {
-      // Unsupported host or headless test without a plugin registrant.
+      return false;
     } on PlatformException catch (error, stack) {
       debugPrint('[SystemFontLoader] ${error.code}: ${error.message}\n$stack');
+      return false;
     } catch (error, stack) {
       debugPrint(
         '[SystemFontLoader] unable to load system font: $error\n$stack',
       );
+      return false;
     }
   }
 
-  /// Returns [theme] with the system font applied, leaving colors, brightness
-  /// and the rest of the configuration untouched.
   ThemeData applyTo(ThemeData theme) {
     final family = _family;
     if (family == null) return theme;
@@ -95,16 +97,26 @@ class SystemFontLoader {
   }
 }
 
-/// System families the platform declares as fallbacks (e.g. CJK faces).
-Iterable<String> _platformFallbacks(Object? value) sync* {
-  if (value is! List) return;
+List<String> _mergeFallbacks(Object? value) {
+  if (value is! List || value.isEmpty) {
+    return SystemFontLoader.fontFamilyFallback;
+  }
+  final merged = <String>[];
   for (final name in value) {
     if (name is String &&
         name.isNotEmpty &&
-        !SystemFontLoader.fontFamilyFallback.contains(name)) {
-      yield name;
+        !SystemFontLoader.fontFamilyFallback.contains(name) &&
+        !merged.contains(name)) {
+      merged.add(name);
     }
   }
+  if (merged.isEmpty) {
+    return SystemFontLoader.fontFamilyFallback;
+  }
+  return List<String>.unmodifiable(<String>[
+    ...merged,
+    ...SystemFontLoader.fontFamilyFallback,
+  ]);
 }
 
 Future<void> _registerWithEngine(String family, List<Uint8List> fonts) async {

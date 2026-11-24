@@ -5,20 +5,13 @@ import android.os.Looper
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 
-/**
- * Bridges [SystemFontResolver] to Dart over `top.clickfling.yata/system_font`.
- *
- * Resolution and font reads happen on a worker thread because they touch the
- * file system and may move several megabytes; only the reply is posted back to
- * the platform thread.
- */
 class SystemFontChannel {
 
     companion object {
         const val CHANNEL_NAME = "top.clickfling.yata/system_font"
 
-        // Process-wide so the fingerprint cache survives activity recreation.
         private val resolver: SystemFontResolver by lazy { SystemFontResolver() }
     }
 
@@ -29,44 +22,50 @@ class SystemFontChannel {
 
     @Volatile
     private var attached = false
+    private var channel: MethodChannel? = null
 
     fun attach(flutterEngine: FlutterEngine) {
         attached = true
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_NAME)
-            .setMethodCallHandler { call, result ->
+        channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_NAME).apply {
+            setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getSystemFont" -> getSystemFont(
-                        force = call.argument<Boolean>("force") == true,
+                        lastFingerprint = call.argument<String>("lastFingerprint"),
                         result = result,
                     )
                     else -> result.notImplemented()
                 }
             }
+        }
     }
 
-    /** Stops delivering replies once the engine is going away. */
     fun detach() {
         attached = false
+        channel?.setMethodCallHandler(null)
+        channel = null
+        mainHandler.removeCallbacksAndMessages(null)
         executor.shutdownNow()
     }
 
-    private fun getSystemFont(force: Boolean, result: MethodChannel.Result) {
-        executor.execute {
-            val payload = try {
-                resolver.load(force)
-            } catch (_: Throwable) {
-                null
+    private fun getSystemFont(lastFingerprint: String?, result: MethodChannel.Result) {
+        try {
+            executor.execute {
+                val payload = try {
+                    resolver.load(lastFingerprint)
+                } catch (_: Throwable) {
+                    null
+                }
+                mainHandler.post {
+                    if (!attached) return@post
+                    result.success(payload?.toMap())
+                }
             }
-            mainHandler.post {
-                if (!attached) return@post
-                result.success(payload?.toMap())
-            }
+        } catch (_: RejectedExecutionException) {
         }
     }
 
     private fun SystemFontResolver.Payload.toMap(): Map<String, Any?> = mapOf(
         "changed" to changed,
-        "familyName" to familyName,
         "fingerprint" to fingerprint,
         "fallbackFamilies" to fallbackFamilies,
         "regular" to regular,
