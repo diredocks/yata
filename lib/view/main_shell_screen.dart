@@ -119,23 +119,21 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
 
     switch (action.type) {
       case HomeWidgetActionType.quickAdd:
-        Navigator.of(context).popUntil((route) => route.isFirst);
         final targetList = state.lists.firstWhere(
           (l) => l.id == action.listId,
           orElse: () => state.selectedList,
         );
-        _handleSelectList(targetList, isWide, animated: false);
+        _navigateToListFromWidget(state, targetList, isWide);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           _openQuickAddSheet(ref.read(todoProvider), targetList);
         });
       case HomeWidgetActionType.openList:
-        Navigator.of(context).popUntil((route) => route.isFirst);
         final targetList = state.lists.firstWhere(
           (l) => l.id == action.listId,
           orElse: () => state.selectedList,
         );
-        _handleSelectList(targetList, isWide, animated: false);
+        _navigateToListFromWidget(state, targetList, isWide);
       case HomeWidgetActionType.openTask:
         final taskId = action.taskId;
         if (taskId == null) return;
@@ -331,6 +329,30 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
       ref.read(todoProvider.notifier).setLastEnteredListId(null);
       return;
     }
+    _pushTasksView(targetList, animated: false);
+  }
+
+  void _navigateToListFromWidget(
+    TodoState state,
+    TodoList targetList,
+    bool isWide,
+  ) {
+    if (isWide) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      ref.read(todoProvider.notifier).selectList(targetList.id);
+      return;
+    }
+
+    final activeRoute = _activeTasksRoute;
+    final alreadyOnTargetList =
+        activeRoute != null &&
+        activeRoute.isActive &&
+        state.selectedListId == targetList.id;
+    if (alreadyOnTargetList) {
+      return;
+    }
+
+    Navigator.of(context).popUntil((route) => route.isFirst);
     _pushTasksView(targetList, animated: false);
   }
 
