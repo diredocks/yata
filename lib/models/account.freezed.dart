@@ -32,7 +32,7 @@ Account _$AccountFromJson(
 /// @nodoc
 mixin _$Account {
 
- String get id; String get displayName; String get email;@JsonKey(fromJson: _dateTimeFromJsonOrNow) DateTime get createdAt;
+ String get id; String get displayName; String get email;@JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson) DateTime get createdAt;
 /// Create a copy of Account
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -70,7 +70,7 @@ abstract mixin class $AccountCopyWith<$Res>  {
   factory $AccountCopyWith(Account value, $Res Function(Account) _then) = _$AccountCopyWithImpl;
 @useResult
 $Res call({
- String id, String displayName, String email,@JsonKey(fromJson: _dateTimeFromJsonOrNow) DateTime createdAt
+ String id, String displayName, String email,@JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson) DateTime createdAt
 });
 
 
@@ -178,7 +178,7 @@ return microsoft(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String id,  String displayName,  String email, @JsonKey(fromJson: _dateTimeFromJsonOrNow)  DateTime createdAt)?  local,TResult Function( String id,  String displayName,  String email, @JsonKey(fromJson: _dateTimeFromJsonOrNow)  DateTime createdAt,  String microsoftUserId,  String? avatarBase64,  DateTime? lastSyncedAt,  String? syncError)?  microsoft,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String id,  String displayName,  String email, @JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson)  DateTime createdAt)?  local,TResult Function( String id,  String displayName,  String email, @JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson)  DateTime createdAt,  String microsoftUserId,  String? avatarBase64, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? lastSyncedAt,  String? syncError)?  microsoft,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case LocalAccount() when local != null:
 return local(_that.id,_that.displayName,_that.email,_that.createdAt);case MicrosoftAccount() when microsoft != null:
@@ -200,7 +200,7 @@ return microsoft(_that.id,_that.displayName,_that.email,_that.createdAt,_that.mi
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String id,  String displayName,  String email, @JsonKey(fromJson: _dateTimeFromJsonOrNow)  DateTime createdAt)  local,required TResult Function( String id,  String displayName,  String email, @JsonKey(fromJson: _dateTimeFromJsonOrNow)  DateTime createdAt,  String microsoftUserId,  String? avatarBase64,  DateTime? lastSyncedAt,  String? syncError)  microsoft,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String id,  String displayName,  String email, @JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson)  DateTime createdAt)  local,required TResult Function( String id,  String displayName,  String email, @JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson)  DateTime createdAt,  String microsoftUserId,  String? avatarBase64, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? lastSyncedAt,  String? syncError)  microsoft,}) {final _that = this;
 switch (_that) {
 case LocalAccount():
 return local(_that.id,_that.displayName,_that.email,_that.createdAt);case MicrosoftAccount():
@@ -218,7 +218,7 @@ return microsoft(_that.id,_that.displayName,_that.email,_that.createdAt,_that.mi
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String id,  String displayName,  String email, @JsonKey(fromJson: _dateTimeFromJsonOrNow)  DateTime createdAt)?  local,TResult? Function( String id,  String displayName,  String email, @JsonKey(fromJson: _dateTimeFromJsonOrNow)  DateTime createdAt,  String microsoftUserId,  String? avatarBase64,  DateTime? lastSyncedAt,  String? syncError)?  microsoft,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String id,  String displayName,  String email, @JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson)  DateTime createdAt)?  local,TResult? Function( String id,  String displayName,  String email, @JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson)  DateTime createdAt,  String microsoftUserId,  String? avatarBase64, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? lastSyncedAt,  String? syncError)?  microsoft,}) {final _that = this;
 switch (_that) {
 case LocalAccount() when local != null:
 return local(_that.id,_that.displayName,_that.email,_that.createdAt);case MicrosoftAccount() when microsoft != null:
@@ -234,13 +234,13 @@ return microsoft(_that.id,_that.displayName,_that.email,_that.createdAt,_that.mi
 @JsonSerializable()
 
 class LocalAccount extends Account {
-  const LocalAccount({required this.id, required this.displayName, this.email = '', @JsonKey(fromJson: _dateTimeFromJsonOrNow) required this.createdAt,  String? $type}): $type = $type ?? 'local',super._();
+  const LocalAccount({required this.id, required this.displayName, this.email = '', @JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson) required this.createdAt,  String? $type}): $type = $type ?? 'local',super._();
   factory LocalAccount.fromJson(Map<String, dynamic> json) => _$LocalAccountFromJson(json);
 
 @override final  String id;
 @override final  String displayName;
 @override@JsonKey() final  String email;
-@override@JsonKey(fromJson: _dateTimeFromJsonOrNow) final  DateTime createdAt;
+@override@JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson) final  DateTime createdAt;
 
 @JsonKey(name: 'accountType')
 final String $type;
@@ -281,7 +281,7 @@ abstract mixin class $LocalAccountCopyWith<$Res> implements $AccountCopyWith<$Re
   factory $LocalAccountCopyWith(LocalAccount value, $Res Function(LocalAccount) _then) = _$LocalAccountCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String displayName, String email,@JsonKey(fromJson: _dateTimeFromJsonOrNow) DateTime createdAt
+ String id, String displayName, String email,@JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson) DateTime createdAt
 });
 
 
@@ -315,16 +315,16 @@ as DateTime,
 @JsonSerializable()
 
 class MicrosoftAccount extends Account {
-  const MicrosoftAccount({required this.id, required this.displayName, this.email = '', @JsonKey(fromJson: _dateTimeFromJsonOrNow) required this.createdAt, this.microsoftUserId = '', this.avatarBase64, this.lastSyncedAt, this.syncError,  String? $type}): $type = $type ?? 'microsoft',super._();
+  const MicrosoftAccount({required this.id, required this.displayName, this.email = '', @JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson) required this.createdAt, this.microsoftUserId = '', this.avatarBase64, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.lastSyncedAt, this.syncError,  String? $type}): $type = $type ?? 'microsoft',super._();
   factory MicrosoftAccount.fromJson(Map<String, dynamic> json) => _$MicrosoftAccountFromJson(json);
 
 @override final  String id;
 @override final  String displayName;
 @override@JsonKey() final  String email;
-@override@JsonKey(fromJson: _dateTimeFromJsonOrNow) final  DateTime createdAt;
+@override@JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson) final  DateTime createdAt;
 @JsonKey() final  String microsoftUserId;
  final  String? avatarBase64;
- final  DateTime? lastSyncedAt;
+@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) final  DateTime? lastSyncedAt;
  final  String? syncError;
 
 @JsonKey(name: 'accountType')
@@ -366,7 +366,7 @@ abstract mixin class $MicrosoftAccountCopyWith<$Res> implements $AccountCopyWith
   factory $MicrosoftAccountCopyWith(MicrosoftAccount value, $Res Function(MicrosoftAccount) _then) = _$MicrosoftAccountCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String displayName, String email,@JsonKey(fromJson: _dateTimeFromJsonOrNow) DateTime createdAt, String microsoftUserId, String? avatarBase64, DateTime? lastSyncedAt, String? syncError
+ String id, String displayName, String email,@JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson) DateTime createdAt, String microsoftUserId, String? avatarBase64,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? lastSyncedAt, String? syncError
 });
 
 

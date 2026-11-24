@@ -161,10 +161,16 @@
   },
   "promoteStepToTask": "Promote to task",
   "deleteStep": "Delete step",
-  "updatedOn": "Updated {date}",
+  "updatedOn": "Updated on {date}",
   "@updatedOn": {
     "placeholders": {
       "date": {"type": "String"}
+    }
+  },
+  "updatedAgo": "Updated {time}",
+  "@updatedAgo": {
+    "placeholders": {
+      "time": {"type": "String"}
     }
   },
   "removeDueDate": "Remove due date",

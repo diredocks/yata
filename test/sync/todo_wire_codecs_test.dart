@@ -230,6 +230,7 @@ void main() {
       );
       expect(ts, '2026-11-22T10:20:30.1234560Z');
       expect(parseSubstrateTimestamp('0001-01-01T00:00:00Z'), isNull);
+      expect(parseSubstrateTimestamp('1601-01-01T00:00:00Z'), isNull);
       expect(
         parseSubstrateTimestamp(ts)?.toUtc(),
         DateTime.utc(2026, 11, 22, 10, 20, 30, 123, 456),
@@ -269,6 +270,40 @@ void main() {
 
       expect(parseSubstrateTimestamp('0001-01-01T00:00:00'), isNull);
       expect(parseSubstrateTimestamp('   '), isNull);
+    });
+
+    test('parses Substrate DateTimeTimeZone to UTC and rejects sentinels', () {
+      expect(parseSubstrateDateTimeTimeZone(null), isNull);
+      expect(
+        parseSubstrateDateTimeTimeZone({
+          'DateTime': '0001-01-01T00:00:00.0000000',
+          'TimeZone': 'UTC',
+        }),
+        isNull,
+      );
+      expect(
+        parseSubstrateDateTimeTimeZone({
+          'DateTime': '1601-01-01T00:00:00Z',
+          'TimeZone': 'UTC',
+        }),
+        isNull,
+      );
+
+      final parsedUtc = parseSubstrateDateTimeTimeZone({
+        'DateTime': '2026-11-24T06:30:00.0000000',
+        'TimeZone': 'UTC',
+      });
+      expect(parsedUtc, isNotNull);
+      expect(parsedUtc!.isUtc, isTrue);
+      expect(parsedUtc, DateTime.utc(2026, 11, 24, 6, 30));
+
+      final parsedOffset = parseSubstrateDateTimeTimeZone({
+        'DateTime': '2026-11-24T14:30:00+08:00',
+        'TimeZone': 'China Standard Time',
+      });
+      expect(parsedOffset, isNotNull);
+      expect(parsedOffset!.isUtc, isTrue);
+      expect(parsedOffset, DateTime.utc(2026, 11, 24, 6, 30));
     });
 
     test('parses Substrate days with T00, YYYY-MM-DD, 0001-01-01, and +14h heuristic', () {

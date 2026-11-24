@@ -1,5 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
+import 'utc_date_time_json.dart';
+
 part 'task_item.freezed.dart';
 part 'task_item.g.dart';
 
@@ -12,6 +14,10 @@ abstract class TaskStep with _$TaskStep {
     required String title,
     @Default(false) bool isCompleted,
     String? remoteId,
+    @JsonKey(
+      fromJson: nullableUtcDateTimeFromJson,
+      toJson: nullableUtcDateTimeToJson,
+    )
     DateTime? orderDateTime,
   }) = _TaskStep;
 
@@ -27,6 +33,7 @@ abstract class TaskItem with _$TaskItem {
     required String id,
     required String listId,
     required String title,
+    @JsonKey(fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson)
     required DateTime createdAt,
     @Default(false) bool isCompleted,
     @Default(false) bool isImportant,
@@ -34,19 +41,43 @@ abstract class TaskItem with _$TaskItem {
     DateTime? myDayDate,
     DateTime? postponedDay,
     DateTime? dueDate,
+    @JsonKey(
+      fromJson: nullableUtcDateTimeFromJson,
+      toJson: nullableUtcDateTimeToJson,
+    )
     DateTime? reminderAt,
     @Default(RecurrenceType.none)
     @JsonKey(unknownEnumValue: RecurrenceType.none)
     RecurrenceType recurrence,
     @Default('') String note,
+    @JsonKey(
+      fromJson: nullableUtcDateTimeFromJson,
+      toJson: nullableUtcDateTimeToJson,
+    )
     DateTime? noteUpdatedAt,
+    @JsonKey(
+      fromJson: nullableUtcDateTimeFromJson,
+      toJson: nullableUtcDateTimeToJson,
+    )
     DateTime? completedAt,
     @Default(<TaskStep>[]) List<TaskStep> steps,
     String? remoteId,
     String? remoteParentFolderId,
+    @JsonKey(
+      fromJson: nullableUtcDateTimeFromJson,
+      toJson: nullableUtcDateTimeToJson,
+    )
     DateTime? orderDateTime,
+    @JsonKey(
+      fromJson: nullableUtcDateTimeFromJson,
+      toJson: nullableUtcDateTimeToJson,
+    )
     DateTime? committedOrder,
     String? changeKey,
+    @JsonKey(
+      fromJson: nullableUtcDateTimeFromJson,
+      toJson: nullableUtcDateTimeToJson,
+    )
     DateTime? updatedAt,
   }) = _TaskItem;
 

@@ -161,14 +161,14 @@ class TasksViewPresenter {
         task.copyWith(
           id: _store.nextId('task'),
           listId: newListId,
-          createdAt: now,
+          createdAt: now.toUtc(),
           remoteId: null,
           remoteParentFolderId: null,
           changeKey: null,
           orderDateTime: baseTaskOrder.subtract(Duration(seconds: copyIndex++)),
           committedOrder: null,
           isCompleted: keepCompleted ? task.isCompleted : false,
-          completedAt: keepCompleted ? task.completedAt : null,
+          completedAt: keepCompleted ? task.completedAt?.toUtc() : null,
           steps: [
             for (final step in task.steps)
               step.copyWith(
@@ -272,7 +272,7 @@ class TasksViewPresenter {
         id: _store.nextId('task'),
         listId: resolvedListId,
         title: trimmed,
-        createdAt: now,
+        createdAt: now.toUtc(),
         isInMyDay: committedToMyDay,
         myDayDate: committedToMyDay ? now : null,
         orderDateTime: orderDateTime,
@@ -280,7 +280,7 @@ class TasksViewPresenter {
         isImportant:
             isImportant || currentList.smartType == SmartListType.important,
         dueDate: effectiveDueDate,
-        reminderAt: reminderAt,
+        reminderAt: reminderAt?.toUtc(),
         recurrence: recurrence,
       ),
       now: now,
@@ -397,21 +397,23 @@ class TasksViewPresenter {
   TaskItem _buildNextRecurringTask(TaskItem task, DateTime now) {
     final baseDate = task.dueDate ?? DateTime(now.year, now.month, now.day);
     final nextDue = _nextDueDate(baseDate, task.recurrence);
-    final nextReminder = task.reminderAt == null
-        ? null
-        : DateTime(
-            nextDue.year,
-            nextDue.month,
-            nextDue.day,
-            task.reminderAt!.hour,
-            task.reminderAt!.minute,
-          );
+    DateTime? nextReminder;
+    if (task.reminderAt case final reminderAt?) {
+      final localReminder = reminderAt.toLocal();
+      nextReminder = DateTime(
+        nextDue.year,
+        nextDue.month,
+        nextDue.day,
+        localReminder.hour,
+        localReminder.minute,
+      ).toUtc();
+    }
     return TodoNotifier.syncMyDayFlag(
       TaskItem(
         id: _store.nextId('task'),
         listId: task.listId,
         title: task.title,
-        createdAt: now,
+        createdAt: now.toUtc(),
         orderDateTime: computeNewOrderDateTime(
           existingOrders: _state.tasks
               .where((t) => t.listId == task.listId)
@@ -463,7 +465,7 @@ class TasksViewPresenter {
       updated.add(
         task.copyWith(
           isCompleted: completed,
-          completedAt: completed ? now : null,
+          completedAt: completed ? now.toUtc() : null,
         ),
       );
       if (completed && task.recurrence != RecurrenceType.none) {

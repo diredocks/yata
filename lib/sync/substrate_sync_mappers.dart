@@ -266,30 +266,29 @@ DateTime? _resolveSyncedCompletedAt({
   required RemoteTodoTask remote,
 }) {
   if (!remote.isCompleted) return null;
-  final remoteCompleted = remote.completedDateTime;
-  if (remoteCompleted == null) return existingCompletedAt;
-  if (existingCompletedAt == null) return remoteCompleted;
+  final remoteCompleted = remote.completedDateTime?.toUtc();
+  final existingUtc = existingCompletedAt?.toUtc();
+  if (remoteCompleted == null) return existingUtc;
+  if (existingUtc == null) return remoteCompleted;
 
-  final localUtc = existingCompletedAt.toUtc();
-  final remoteUtc = remoteCompleted.toUtc();
   final sameUtcDay =
-      localUtc.year == remoteUtc.year &&
-      localUtc.month == remoteUtc.month &&
-      localUtc.day == remoteUtc.day;
+      existingUtc.year == remoteCompleted.year &&
+      existingUtc.month == remoteCompleted.month &&
+      existingUtc.day == remoteCompleted.day;
   if (!sameUtcDay) return remoteCompleted;
 
   final remoteIsMidnight =
-      remoteUtc.hour == 0 &&
-      remoteUtc.minute == 0 &&
-      remoteUtc.second == 0 &&
-      remoteUtc.millisecond == 0 &&
-      remoteUtc.microsecond == 0;
+      remoteCompleted.hour == 0 &&
+      remoteCompleted.minute == 0 &&
+      remoteCompleted.second == 0 &&
+      remoteCompleted.millisecond == 0 &&
+      remoteCompleted.microsecond == 0;
   final sameSecond =
-      localUtc.hour == remoteUtc.hour &&
-      localUtc.minute == remoteUtc.minute &&
-      localUtc.second == remoteUtc.second;
+      existingUtc.hour == remoteCompleted.hour &&
+      existingUtc.minute == remoteCompleted.minute &&
+      existingUtc.second == remoteCompleted.second;
   if (remoteIsMidnight || sameSecond) {
-    return existingCompletedAt;
+    return existingUtc;
   }
   return remoteCompleted;
 }
@@ -339,7 +338,7 @@ TaskItem taskFromRemote(
     id: localId,
     listId: listId,
     title: remote.subject,
-    createdAt: remote.createdDateTime ?? DateTime.now(),
+    createdAt: remote.createdDateTime ?? DateTime.now().toUtc(),
     isCompleted: remote.isCompleted,
     isImportant: remote.isImportant,
     isInMyDay: false, // Recomputed by TodoNotifier.syncMyDayFlag

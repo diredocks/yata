@@ -16,7 +16,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$TodoList {
 
- String get id; String get title;@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) SmartListType? get smartType; String? get groupId; String? get emoji;@JsonKey(unknownEnumValue: ListThemeColor.blue) ListThemeColor get themeColor;@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ListThemePhoto? get themePhoto;@JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) IconData get icon;@JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) TaskSortOption get sortOption; bool get sortAscending; bool get showCompleted; String? get remoteId; DateTime? get orderDateTime; DateTime? get updatedAt;
+ String get id; String get title;@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) SmartListType? get smartType; String? get groupId; String? get emoji;@JsonKey(unknownEnumValue: ListThemeColor.blue) ListThemeColor get themeColor;@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ListThemePhoto? get themePhoto;@JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) IconData get icon;@JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) TaskSortOption get sortOption; bool get sortAscending; bool get showCompleted; String? get remoteId;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get orderDateTime;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get updatedAt;
 /// Create a copy of TodoList
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -54,7 +54,7 @@ abstract mixin class $TodoListCopyWith<$Res>  {
   factory $TodoListCopyWith(TodoList value, $Res Function(TodoList) _then) = _$TodoListCopyWithImpl;
 @useResult
 $Res call({
- String id, String title,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) SmartListType? smartType, String? groupId, String? emoji,@JsonKey(unknownEnumValue: ListThemeColor.blue) ListThemeColor themeColor,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ListThemePhoto? themePhoto,@JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) IconData icon,@JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) TaskSortOption sortOption, bool sortAscending, bool showCompleted, String? remoteId, DateTime? orderDateTime, DateTime? updatedAt
+ String id, String title,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) SmartListType? smartType, String? groupId, String? emoji,@JsonKey(unknownEnumValue: ListThemeColor.blue) ListThemeColor themeColor,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ListThemePhoto? themePhoto,@JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) IconData icon,@JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) TaskSortOption sortOption, bool sortAscending, bool showCompleted, String? remoteId,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? orderDateTime,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? updatedAt
 });
 
 
@@ -172,7 +172,7 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  SmartListType? smartType,  String? groupId,  String? emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue)  ListThemeColor themeColor, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ListThemePhoto? themePhoto, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson)  IconData icon, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder)  TaskSortOption sortOption,  bool sortAscending,  bool showCompleted,  String? remoteId,  DateTime? orderDateTime,  DateTime? updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  SmartListType? smartType,  String? groupId,  String? emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue)  ListThemeColor themeColor, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ListThemePhoto? themePhoto, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson)  IconData icon, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder)  TaskSortOption sortOption,  bool sortAscending,  bool showCompleted,  String? remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _TodoList() when $default != null:
 return $default(_that.id,_that.title,_that.smartType,_that.groupId,_that.emoji,_that.themeColor,_that.themePhoto,_that.icon,_that.sortOption,_that.sortAscending,_that.showCompleted,_that.remoteId,_that.orderDateTime,_that.updatedAt);case _:
@@ -193,7 +193,7 @@ return $default(_that.id,_that.title,_that.smartType,_that.groupId,_that.emoji,_
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  SmartListType? smartType,  String? groupId,  String? emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue)  ListThemeColor themeColor, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ListThemePhoto? themePhoto, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson)  IconData icon, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder)  TaskSortOption sortOption,  bool sortAscending,  bool showCompleted,  String? remoteId,  DateTime? orderDateTime,  DateTime? updatedAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  SmartListType? smartType,  String? groupId,  String? emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue)  ListThemeColor themeColor, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ListThemePhoto? themePhoto, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson)  IconData icon, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder)  TaskSortOption sortOption,  bool sortAscending,  bool showCompleted,  String? remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)  $default,) {final _that = this;
 switch (_that) {
 case _TodoList():
 return $default(_that.id,_that.title,_that.smartType,_that.groupId,_that.emoji,_that.themeColor,_that.themePhoto,_that.icon,_that.sortOption,_that.sortAscending,_that.showCompleted,_that.remoteId,_that.orderDateTime,_that.updatedAt);case _:
@@ -213,7 +213,7 @@ return $default(_that.id,_that.title,_that.smartType,_that.groupId,_that.emoji,_
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  SmartListType? smartType,  String? groupId,  String? emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue)  ListThemeColor themeColor, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ListThemePhoto? themePhoto, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson)  IconData icon, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder)  TaskSortOption sortOption,  bool sortAscending,  bool showCompleted,  String? remoteId,  DateTime? orderDateTime,  DateTime? updatedAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  SmartListType? smartType,  String? groupId,  String? emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue)  ListThemeColor themeColor, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ListThemePhoto? themePhoto, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson)  IconData icon, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder)  TaskSortOption sortOption,  bool sortAscending,  bool showCompleted,  String? remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)?  $default,) {final _that = this;
 switch (_that) {
 case _TodoList() when $default != null:
 return $default(_that.id,_that.title,_that.smartType,_that.groupId,_that.emoji,_that.themeColor,_that.themePhoto,_that.icon,_that.sortOption,_that.sortAscending,_that.showCompleted,_that.remoteId,_that.orderDateTime,_that.updatedAt);case _:
@@ -228,7 +228,7 @@ return $default(_that.id,_that.title,_that.smartType,_that.groupId,_that.emoji,_
 @JsonSerializable()
 
 class _TodoList extends TodoList {
-  const _TodoList({required this.id, required this.title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) this.smartType, this.groupId, this.emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue) this.themeColor = ListThemeColor.blue, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) this.themePhoto, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) this.icon = Icons.format_list_bulleted, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) this.sortOption = TaskSortOption.defaultOrder, this.sortAscending = true, this.showCompleted = true, this.remoteId, this.orderDateTime, this.updatedAt}): super._();
+  const _TodoList({required this.id, required this.title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) this.smartType, this.groupId, this.emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue) this.themeColor = ListThemeColor.blue, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) this.themePhoto, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) this.icon = Icons.format_list_bulleted, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) this.sortOption = TaskSortOption.defaultOrder, this.sortAscending = true, this.showCompleted = true, this.remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.updatedAt}): super._();
   factory _TodoList.fromJson(Map<String, dynamic> json) => _$TodoListFromJson(json);
 
 @override final  String id;
@@ -243,8 +243,8 @@ class _TodoList extends TodoList {
 @override@JsonKey() final  bool sortAscending;
 @override@JsonKey() final  bool showCompleted;
 @override final  String? remoteId;
-@override final  DateTime? orderDateTime;
-@override final  DateTime? updatedAt;
+@override@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) final  DateTime? orderDateTime;
+@override@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) final  DateTime? updatedAt;
 
 /// Create a copy of TodoList
 /// with the given fields replaced by the non-null parameter values.
@@ -281,7 +281,7 @@ abstract mixin class _$TodoListCopyWith<$Res> implements $TodoListCopyWith<$Res>
   factory _$TodoListCopyWith(_TodoList value, $Res Function(_TodoList) _then) = __$TodoListCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String title,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) SmartListType? smartType, String? groupId, String? emoji,@JsonKey(unknownEnumValue: ListThemeColor.blue) ListThemeColor themeColor,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ListThemePhoto? themePhoto,@JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) IconData icon,@JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) TaskSortOption sortOption, bool sortAscending, bool showCompleted, String? remoteId, DateTime? orderDateTime, DateTime? updatedAt
+ String id, String title,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) SmartListType? smartType, String? groupId, String? emoji,@JsonKey(unknownEnumValue: ListThemeColor.blue) ListThemeColor themeColor,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ListThemePhoto? themePhoto,@JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) IconData icon,@JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) TaskSortOption sortOption, bool sortAscending, bool showCompleted, String? remoteId,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? orderDateTime,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? updatedAt
 });
 
 
@@ -325,7 +325,7 @@ as DateTime?,
 /// @nodoc
 mixin _$ListGroup {
 
- String get id; String get title; bool get isExpanded; String? get remoteId; DateTime? get orderDateTime; DateTime? get updatedAt;
+ String get id; String get title; bool get isExpanded; String? get remoteId;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get orderDateTime;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get updatedAt;
 /// Create a copy of ListGroup
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -363,7 +363,7 @@ abstract mixin class $ListGroupCopyWith<$Res>  {
   factory $ListGroupCopyWith(ListGroup value, $Res Function(ListGroup) _then) = _$ListGroupCopyWithImpl;
 @useResult
 $Res call({
- String id, String title, bool isExpanded, String? remoteId, DateTime? orderDateTime, DateTime? updatedAt
+ String id, String title, bool isExpanded, String? remoteId,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? orderDateTime,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? updatedAt
 });
 
 
@@ -473,7 +473,7 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String title,  bool isExpanded,  String? remoteId,  DateTime? orderDateTime,  DateTime? updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String title,  bool isExpanded,  String? remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _ListGroup() when $default != null:
 return $default(_that.id,_that.title,_that.isExpanded,_that.remoteId,_that.orderDateTime,_that.updatedAt);case _:
@@ -494,7 +494,7 @@ return $default(_that.id,_that.title,_that.isExpanded,_that.remoteId,_that.order
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String title,  bool isExpanded,  String? remoteId,  DateTime? orderDateTime,  DateTime? updatedAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String title,  bool isExpanded,  String? remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)  $default,) {final _that = this;
 switch (_that) {
 case _ListGroup():
 return $default(_that.id,_that.title,_that.isExpanded,_that.remoteId,_that.orderDateTime,_that.updatedAt);case _:
@@ -514,7 +514,7 @@ return $default(_that.id,_that.title,_that.isExpanded,_that.remoteId,_that.order
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String title,  bool isExpanded,  String? remoteId,  DateTime? orderDateTime,  DateTime? updatedAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String title,  bool isExpanded,  String? remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)?  $default,) {final _that = this;
 switch (_that) {
 case _ListGroup() when $default != null:
 return $default(_that.id,_that.title,_that.isExpanded,_that.remoteId,_that.orderDateTime,_that.updatedAt);case _:
@@ -529,15 +529,15 @@ return $default(_that.id,_that.title,_that.isExpanded,_that.remoteId,_that.order
 @JsonSerializable()
 
 class _ListGroup implements ListGroup {
-  const _ListGroup({required this.id, required this.title, this.isExpanded = true, this.remoteId, this.orderDateTime, this.updatedAt});
+  const _ListGroup({required this.id, required this.title, this.isExpanded = true, this.remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.updatedAt});
   factory _ListGroup.fromJson(Map<String, dynamic> json) => _$ListGroupFromJson(json);
 
 @override final  String id;
 @override final  String title;
 @override@JsonKey() final  bool isExpanded;
 @override final  String? remoteId;
-@override final  DateTime? orderDateTime;
-@override final  DateTime? updatedAt;
+@override@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) final  DateTime? orderDateTime;
+@override@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) final  DateTime? updatedAt;
 
 /// Create a copy of ListGroup
 /// with the given fields replaced by the non-null parameter values.
@@ -574,7 +574,7 @@ abstract mixin class _$ListGroupCopyWith<$Res> implements $ListGroupCopyWith<$Re
   factory _$ListGroupCopyWith(_ListGroup value, $Res Function(_ListGroup) _then) = __$ListGroupCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String title, bool isExpanded, String? remoteId, DateTime? orderDateTime, DateTime? updatedAt
+ String id, String title, bool isExpanded, String? remoteId,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? orderDateTime,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? updatedAt
 });
 
 

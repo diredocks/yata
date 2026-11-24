@@ -19,7 +19,7 @@ Map<String, dynamic> _$LocalAccountToJson(LocalAccount instance) =>
       'id': instance.id,
       'displayName': instance.displayName,
       'email': instance.email,
-      'createdAt': instance.createdAt.toIso8601String(),
+      'createdAt': utcDateTimeToJson(instance.createdAt),
       'accountType': instance.$type,
     };
 
@@ -31,9 +31,9 @@ MicrosoftAccount _$MicrosoftAccountFromJson(Map<String, dynamic> json) =>
       createdAt: _dateTimeFromJsonOrNow(json['createdAt']),
       microsoftUserId: json['microsoftUserId'] as String? ?? '',
       avatarBase64: json['avatarBase64'] as String?,
-      lastSyncedAt: json['lastSyncedAt'] == null
-          ? null
-          : DateTime.parse(json['lastSyncedAt'] as String),
+      lastSyncedAt: nullableUtcDateTimeFromJson(
+        json['lastSyncedAt'] as String?,
+      ),
       syncError: json['syncError'] as String?,
       $type: json['accountType'] as String?,
     );
@@ -43,10 +43,10 @@ Map<String, dynamic> _$MicrosoftAccountToJson(MicrosoftAccount instance) =>
       'id': instance.id,
       'displayName': instance.displayName,
       'email': instance.email,
-      'createdAt': instance.createdAt.toIso8601String(),
+      'createdAt': utcDateTimeToJson(instance.createdAt),
       'microsoftUserId': instance.microsoftUserId,
       'avatarBase64': instance.avatarBase64,
-      'lastSyncedAt': instance.lastSyncedAt?.toIso8601String(),
+      'lastSyncedAt': nullableUtcDateTimeToJson(instance.lastSyncedAt),
       'syncError': instance.syncError,
       'accountType': instance.$type,
     };

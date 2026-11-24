@@ -1,9 +1,9 @@
-import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../theme/todo_theme.dart';
+import '../recurrence/task_pickers.dart';
 
 /// Note editor card matching `detailview/note/NoteCardView` (`detailview_note.xml`).
 class NoteCardView extends StatefulWidget {
@@ -76,13 +76,13 @@ class _NoteCardViewState extends State<NoteCardView> {
                 ),
                 onChanged: widget.onNoteChanged,
               ),
-              if (widget.task.noteUpdatedAt != null) ...[
+              if (widget.task.note.trim().isNotEmpty &&
+                  widget.task.noteUpdatedAt != null) ...[
                 const SizedBox(height: 8),
                 Text(
-                  l10n.updatedOn(
-                    DateFormat.MMMd().add_jm().format(
-                      widget.task.noteUpdatedAt!,
-                    ),
+                  formatNoteUpdatedDateLabel(
+                    context,
+                    widget.task.noteUpdatedAt!,
                   ),
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: secondaryText,

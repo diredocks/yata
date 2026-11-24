@@ -128,10 +128,11 @@ class TaskListTile extends StatelessWidget {
     }
 
     if (task.reminderAt != null && task.reminderAt!.isAfter(now)) {
+      final localReminder = task.reminderAt!.toLocal();
       final reminderDay = DateTime(
-        task.reminderAt!.year,
-        task.reminderAt!.month,
-        task.reminderAt!.day,
+        localReminder.year,
+        localReminder.month,
+        localReminder.day,
       );
       final reminderColor = (!task.isCompleted && reminderDay == today)
           ? starActiveColor
@@ -140,7 +141,7 @@ class TaskListTile extends StatelessWidget {
         textMetaItems.add(
           _MetaItem(
             icon: Icons.notifications_none,
-            label: DateFormat.jm().format(task.reminderAt!),
+            label: DateFormat.jm().format(localReminder),
             color: reminderColor,
           ),
         );

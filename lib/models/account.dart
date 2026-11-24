@@ -1,13 +1,15 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
+import 'utc_date_time_json.dart';
+
 part 'account.freezed.dart';
 part 'account.g.dart';
 
 DateTime _dateTimeFromJsonOrNow(Object? raw) {
   if (raw is String && raw.isNotEmpty) {
-    return DateTime.parse(raw);
+    return DateTime.parse(raw).toUtc();
   }
-  return DateTime.now();
+  return DateTime.now().toUtc();
 }
 
 @Freezed(unionKey: 'accountType', fallbackUnion: 'local')
@@ -18,16 +20,22 @@ sealed class Account with _$Account {
     required String id,
     required String displayName,
     @Default('') String email,
-    @JsonKey(fromJson: _dateTimeFromJsonOrNow) required DateTime createdAt,
+    @JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson)
+    required DateTime createdAt,
   }) = LocalAccount;
 
   const factory Account.microsoft({
     required String id,
     required String displayName,
     @Default('') String email,
-    @JsonKey(fromJson: _dateTimeFromJsonOrNow) required DateTime createdAt,
+    @JsonKey(fromJson: _dateTimeFromJsonOrNow, toJson: utcDateTimeToJson)
+    required DateTime createdAt,
     @Default('') String microsoftUserId,
     String? avatarBase64,
+    @JsonKey(
+      fromJson: nullableUtcDateTimeFromJson,
+      toJson: nullableUtcDateTimeToJson,
+    )
     DateTime? lastSyncedAt,
     String? syncError,
   }) = MicrosoftAccount;

@@ -346,13 +346,19 @@ class HomeWidgetService {
     required DateTime now,
   }) {
     if (reminder == null) return '';
-    final timeStr = DateFormat.Hm().format(reminder);
-    final today = DateTime(now.year, now.month, now.day);
-    final target = DateTime(reminder.year, reminder.month, reminder.day);
+    final localReminder = reminder.toLocal();
+    final localNow = now.toLocal();
+    final timeStr = DateFormat.Hm().format(localReminder);
+    final today = DateTime.utc(localNow.year, localNow.month, localNow.day);
+    final target = DateTime.utc(
+      localReminder.year,
+      localReminder.month,
+      localReminder.day,
+    );
     final diff = target.difference(today).inDays;
     if (diff == 0) return timeStr;
     if (diff == 1) return '${strings.tomorrow} $timeStr';
-    return '${DateFormat.MMMd().format(reminder)} $timeStr';
+    return '${DateFormat.MMMd().format(localReminder)} $timeStr';
   }
 }
 

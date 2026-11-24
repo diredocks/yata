@@ -95,7 +95,7 @@ class AccountNotifier extends Notifier<AccountState> {
       id: _nextAccountId(),
       displayName: parsed.displayName,
       email: parsed.email,
-      createdAt: DateTime.now(),
+      createdAt: DateTime.now().toUtc(),
     );
 
     final nextAccounts = [...state.accounts, account];
@@ -132,7 +132,7 @@ class AccountNotifier extends Notifier<AccountState> {
         id: _nextAccountId(),
         displayName: result.profile.displayName,
         email: result.profile.email,
-        createdAt: DateTime.now(),
+        createdAt: DateTime.now().toUtc(),
         microsoftUserId: result.profile.id,
         avatarBase64: result.profile.avatarBase64,
       );
@@ -158,7 +158,7 @@ class AccountNotifier extends Notifier<AccountState> {
     if (target is! MicrosoftAccount) return;
 
     final updated = target.copyWith(
-      lastSyncedAt: lastSyncedAt ?? target.lastSyncedAt,
+      lastSyncedAt: (lastSyncedAt ?? target.lastSyncedAt)?.toUtc(),
       syncError: clearSyncError ? null : (syncError ?? target.syncError),
     );
     final nextAccounts = [

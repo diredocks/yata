@@ -11,9 +11,7 @@ _TaskStep _$TaskStepFromJson(Map<String, dynamic> json) => _TaskStep(
   title: json['title'] as String,
   isCompleted: json['isCompleted'] as bool? ?? false,
   remoteId: json['remoteId'] as String?,
-  orderDateTime: json['orderDateTime'] == null
-      ? null
-      : DateTime.parse(json['orderDateTime'] as String),
+  orderDateTime: nullableUtcDateTimeFromJson(json['orderDateTime'] as String?),
 );
 
 Map<String, dynamic> _$TaskStepToJson(_TaskStep instance) => <String, dynamic>{
@@ -21,14 +19,14 @@ Map<String, dynamic> _$TaskStepToJson(_TaskStep instance) => <String, dynamic>{
   'title': instance.title,
   'isCompleted': instance.isCompleted,
   'remoteId': instance.remoteId,
-  'orderDateTime': instance.orderDateTime?.toIso8601String(),
+  'orderDateTime': nullableUtcDateTimeToJson(instance.orderDateTime),
 };
 
 _TaskItem _$TaskItemFromJson(Map<String, dynamic> json) => _TaskItem(
   id: json['id'] as String,
   listId: json['listId'] as String,
   title: json['title'] as String,
-  createdAt: DateTime.parse(json['createdAt'] as String),
+  createdAt: utcDateTimeFromJson(json['createdAt'] as String),
   isCompleted: json['isCompleted'] as bool? ?? false,
   isImportant: json['isImportant'] as bool? ?? false,
   isInMyDay: json['isInMyDay'] as bool? ?? false,
@@ -41,9 +39,7 @@ _TaskItem _$TaskItemFromJson(Map<String, dynamic> json) => _TaskItem(
   dueDate: json['dueDate'] == null
       ? null
       : DateTime.parse(json['dueDate'] as String),
-  reminderAt: json['reminderAt'] == null
-      ? null
-      : DateTime.parse(json['reminderAt'] as String),
+  reminderAt: nullableUtcDateTimeFromJson(json['reminderAt'] as String?),
   recurrence:
       $enumDecodeNullable(
         _$RecurrenceTypeEnumMap,
@@ -52,12 +48,8 @@ _TaskItem _$TaskItemFromJson(Map<String, dynamic> json) => _TaskItem(
       ) ??
       RecurrenceType.none,
   note: json['note'] as String? ?? '',
-  noteUpdatedAt: json['noteUpdatedAt'] == null
-      ? null
-      : DateTime.parse(json['noteUpdatedAt'] as String),
-  completedAt: json['completedAt'] == null
-      ? null
-      : DateTime.parse(json['completedAt'] as String),
+  noteUpdatedAt: nullableUtcDateTimeFromJson(json['noteUpdatedAt'] as String?),
+  completedAt: nullableUtcDateTimeFromJson(json['completedAt'] as String?),
   steps:
       (json['steps'] as List<dynamic>?)
           ?.map((e) => TaskStep.fromJson(e as Map<String, dynamic>))
@@ -65,41 +57,37 @@ _TaskItem _$TaskItemFromJson(Map<String, dynamic> json) => _TaskItem(
       const <TaskStep>[],
   remoteId: json['remoteId'] as String?,
   remoteParentFolderId: json['remoteParentFolderId'] as String?,
-  orderDateTime: json['orderDateTime'] == null
-      ? null
-      : DateTime.parse(json['orderDateTime'] as String),
-  committedOrder: json['committedOrder'] == null
-      ? null
-      : DateTime.parse(json['committedOrder'] as String),
+  orderDateTime: nullableUtcDateTimeFromJson(json['orderDateTime'] as String?),
+  committedOrder: nullableUtcDateTimeFromJson(
+    json['committedOrder'] as String?,
+  ),
   changeKey: json['changeKey'] as String?,
-  updatedAt: json['updatedAt'] == null
-      ? null
-      : DateTime.parse(json['updatedAt'] as String),
+  updatedAt: nullableUtcDateTimeFromJson(json['updatedAt'] as String?),
 );
 
 Map<String, dynamic> _$TaskItemToJson(_TaskItem instance) => <String, dynamic>{
   'id': instance.id,
   'listId': instance.listId,
   'title': instance.title,
-  'createdAt': instance.createdAt.toIso8601String(),
+  'createdAt': utcDateTimeToJson(instance.createdAt),
   'isCompleted': instance.isCompleted,
   'isImportant': instance.isImportant,
   'isInMyDay': instance.isInMyDay,
   'myDayDate': instance.myDayDate?.toIso8601String(),
   'postponedDay': instance.postponedDay?.toIso8601String(),
   'dueDate': instance.dueDate?.toIso8601String(),
-  'reminderAt': instance.reminderAt?.toIso8601String(),
+  'reminderAt': nullableUtcDateTimeToJson(instance.reminderAt),
   'recurrence': _$RecurrenceTypeEnumMap[instance.recurrence]!,
   'note': instance.note,
-  'noteUpdatedAt': instance.noteUpdatedAt?.toIso8601String(),
-  'completedAt': instance.completedAt?.toIso8601String(),
+  'noteUpdatedAt': nullableUtcDateTimeToJson(instance.noteUpdatedAt),
+  'completedAt': nullableUtcDateTimeToJson(instance.completedAt),
   'steps': instance.steps.map((e) => e.toJson()).toList(),
   'remoteId': instance.remoteId,
   'remoteParentFolderId': instance.remoteParentFolderId,
-  'orderDateTime': instance.orderDateTime?.toIso8601String(),
-  'committedOrder': instance.committedOrder?.toIso8601String(),
+  'orderDateTime': nullableUtcDateTimeToJson(instance.orderDateTime),
+  'committedOrder': nullableUtcDateTimeToJson(instance.committedOrder),
   'changeKey': instance.changeKey,
-  'updatedAt': instance.updatedAt?.toIso8601String(),
+  'updatedAt': nullableUtcDateTimeToJson(instance.updatedAt),
 };
 
 const _$RecurrenceTypeEnumMap = {

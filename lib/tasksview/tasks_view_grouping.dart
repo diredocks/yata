@@ -72,7 +72,7 @@ List<({PlannedBucket bucket, List<TaskItem> tasks})> groupPlannedTasks(
   WeekStart startOfWeek, {
   DateTime? now,
 }) {
-  final current = now ?? DateTime.now();
+  final current = (now ?? DateTime.now()).toLocal();
   final today = DateTime(current.year, current.month, current.day);
   final tomorrow = today.add(const Duration(days: 1));
   final nextWeekStart = computeNextWeekDate(today, startOfWeek);
@@ -82,7 +82,7 @@ List<({PlannedBucket bucket, List<TaskItem> tasks})> groupPlannedTasks(
   };
 
   for (final task in tasks) {
-    final date = task.dueDate ?? task.reminderAt;
+    final date = task.dueDate ?? task.reminderAt?.toLocal();
     if (date == null) {
       buckets[PlannedBucket.later]!.add(task);
       continue;

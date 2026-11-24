@@ -83,13 +83,13 @@ class DetailViewPresenter {
   }
 
   void updateTaskNote(String taskId, String note) {
-    final now = DateTime.now();
+    final nowUtc = DateTime.now().toUtc();
     var changed = false;
     final updated = <TaskItem>[];
     for (final task in _state.tasks) {
       if (task.id == taskId && task.note != note) {
         changed = true;
-        updated.add(task.copyWith(note: note, noteUpdatedAt: now));
+        updated.add(task.copyWith(note: note, noteUpdatedAt: nowUtc));
       } else {
         updated.add(task);
       }
@@ -123,7 +123,10 @@ class DetailViewPresenter {
   }
 
   void setTaskReminder(String taskId, DateTime? reminderAt) {
-    _updateTaskById(taskId, (task) => task.copyWith(reminderAt: reminderAt));
+    _updateTaskById(
+      taskId,
+      (task) => task.copyWith(reminderAt: reminderAt?.toUtc()),
+    );
   }
 
   void setTaskRecurrence(String taskId, RecurrenceType recurrence) {
@@ -221,18 +224,18 @@ class DetailViewPresenter {
         updated.add(task);
         continue;
       }
-      final now = DateTime.now();
+      final nowUtc = DateTime.now().toUtc();
       promoted = TaskItem(
         id: _store.nextId('task'),
         listId: task.listId,
         title: step.title,
-        createdAt: now,
+        createdAt: nowUtc,
         orderDateTime: computeNewOrderDateTime(
           existingOrders: _state.tasks
               .where((t) => t.listId == task.listId)
               .map((t) => t.orderDateTime),
           addToTop: _state.addNewTasksOnTop,
-          fallbackNow: now,
+          fallbackNow: nowUtc,
         ),
         isCompleted: false,
       );

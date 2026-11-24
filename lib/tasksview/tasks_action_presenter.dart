@@ -157,7 +157,7 @@ class TasksActionPresenter {
             return task.copyWith(
               id: _store.nextId('task'),
               listId: targetListId,
-              createdAt: now,
+              createdAt: now.toUtc(),
               remoteId: null,
               remoteParentFolderId: null,
               changeKey: null,

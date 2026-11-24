@@ -456,7 +456,7 @@ class CloudSyncService {
       syncedListIds: syncedListIds,
       syncedTaskIds: syncedTaskIds,
       syncedSettingKeys: syncedSettingKeys,
-      syncedAt: DateTime.now(),
+      syncedAt: DateTime.now().toUtc(),
       snapshotState: currentState,
     );
   }

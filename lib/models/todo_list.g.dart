@@ -41,12 +41,8 @@ _TodoList _$TodoListFromJson(Map<String, dynamic> json) => _TodoList(
   sortAscending: json['sortAscending'] as bool? ?? true,
   showCompleted: json['showCompleted'] as bool? ?? true,
   remoteId: json['remoteId'] as String?,
-  orderDateTime: json['orderDateTime'] == null
-      ? null
-      : DateTime.parse(json['orderDateTime'] as String),
-  updatedAt: json['updatedAt'] == null
-      ? null
-      : DateTime.parse(json['updatedAt'] as String),
+  orderDateTime: nullableUtcDateTimeFromJson(json['orderDateTime'] as String?),
+  updatedAt: nullableUtcDateTimeFromJson(json['updatedAt'] as String?),
 );
 
 Map<String, dynamic> _$TodoListToJson(_TodoList instance) => <String, dynamic>{
@@ -61,8 +57,8 @@ Map<String, dynamic> _$TodoListToJson(_TodoList instance) => <String, dynamic>{
   'sortAscending': instance.sortAscending,
   'showCompleted': instance.showCompleted,
   'remoteId': instance.remoteId,
-  'orderDateTime': instance.orderDateTime?.toIso8601String(),
-  'updatedAt': instance.updatedAt?.toIso8601String(),
+  'orderDateTime': nullableUtcDateTimeToJson(instance.orderDateTime),
+  'updatedAt': nullableUtcDateTimeToJson(instance.updatedAt),
 };
 
 const _$SmartListTypeEnumMap = {
@@ -117,12 +113,8 @@ _ListGroup _$ListGroupFromJson(Map<String, dynamic> json) => _ListGroup(
   title: json['title'] as String,
   isExpanded: json['isExpanded'] as bool? ?? true,
   remoteId: json['remoteId'] as String?,
-  orderDateTime: json['orderDateTime'] == null
-      ? null
-      : DateTime.parse(json['orderDateTime'] as String),
-  updatedAt: json['updatedAt'] == null
-      ? null
-      : DateTime.parse(json['updatedAt'] as String),
+  orderDateTime: nullableUtcDateTimeFromJson(json['orderDateTime'] as String?),
+  updatedAt: nullableUtcDateTimeFromJson(json['updatedAt'] as String?),
 );
 
 Map<String, dynamic> _$ListGroupToJson(_ListGroup instance) =>
@@ -131,6 +123,6 @@ Map<String, dynamic> _$ListGroupToJson(_ListGroup instance) =>
       'title': instance.title,
       'isExpanded': instance.isExpanded,
       'remoteId': instance.remoteId,
-      'orderDateTime': instance.orderDateTime?.toIso8601String(),
-      'updatedAt': instance.updatedAt?.toIso8601String(),
+      'orderDateTime': nullableUtcDateTimeToJson(instance.orderDateTime),
+      'updatedAt': nullableUtcDateTimeToJson(instance.updatedAt),
     };

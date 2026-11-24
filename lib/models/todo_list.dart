@@ -1,6 +1,8 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'utc_date_time_json.dart';
+
 part 'todo_list.freezed.dart';
 part 'todo_list.g.dart';
 
@@ -128,7 +130,15 @@ abstract class TodoList with _$TodoList {
     @Default(true) bool sortAscending,
     @Default(true) bool showCompleted,
     String? remoteId,
+    @JsonKey(
+      fromJson: nullableUtcDateTimeFromJson,
+      toJson: nullableUtcDateTimeToJson,
+    )
     DateTime? orderDateTime,
+    @JsonKey(
+      fromJson: nullableUtcDateTimeFromJson,
+      toJson: nullableUtcDateTimeToJson,
+    )
     DateTime? updatedAt,
   }) = _TodoList;
 
@@ -157,7 +167,15 @@ abstract class ListGroup with _$ListGroup {
     required String title,
     @Default(true) bool isExpanded,
     String? remoteId,
+    @JsonKey(
+      fromJson: nullableUtcDateTimeFromJson,
+      toJson: nullableUtcDateTimeToJson,
+    )
     DateTime? orderDateTime,
+    @JsonKey(
+      fromJson: nullableUtcDateTimeFromJson,
+      toJson: nullableUtcDateTimeToJson,
+    )
     DateTime? updatedAt,
   }) = _ListGroup;
 

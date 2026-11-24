@@ -445,6 +445,16 @@ String formatDayString(DateTime day) {
   return '$y-$m-$d';
 }
 
+/// Minimum valid epoch millisecond matching MS To Do `kh/a.java:122`
+/// (`-9223372036853L`), filtering `.NET` `0001-01-01` and Windows FILETIME
+/// `1601-01-01` sentinel timestamps.
+const int _kMinSubstrateTimestampMillis = -9223372036853;
+
+bool _isValidSubstrateTimestamp(DateTime? parsed) =>
+    parsed != null &&
+    parsed.year > 1 &&
+    parsed.millisecondsSinceEpoch >= _kMinSubstrateTimestampMillis;
+
 /// Parses an ISO timestamp string, ignoring MS `.NET` sentinel `0001-01-01`.
 ///
 /// Strips legacy `-` separators after `T` when ending in `Z` (matching MS To Do
@@ -469,8 +479,8 @@ DateTime? parseSubstrateTimestamp(String? raw) {
     trimmed = '${trimmed}Z';
   }
   final parsed = DateTime.tryParse(trimmed);
-  if (parsed == null || parsed.year <= 1) return null;
-  return parsed.toUtc();
+  if (!_isValidSubstrateTimestamp(parsed)) return null;
+  return parsed!.toUtc();
 }
 
 /// Formats [dt] into Substrate `DateTimeTimeZone` (`UTC`).
@@ -487,7 +497,7 @@ Map<String, dynamic> formatDueDateTimeZone(DateTime date) {
   };
 }
 
-/// Parses Substrate `DateTimeTimeZone` object into a local [DateTime].
+/// Parses Substrate `DateTimeTimeZone` object into a UTC [DateTime].
 DateTime? parseSubstrateDateTimeTimeZone(Map<String, dynamic>? map) {
   if (map == null) return null;
   final raw = map['DateTime'] as String?;
@@ -503,8 +513,8 @@ DateTime? parseSubstrateDateTimeTimeZone(Map<String, dynamic>? map) {
       ? '${trimmed}Z'
       : trimmed;
   final parsed = DateTime.tryParse(candidate);
-  if (parsed == null || parsed.year <= 1) return null;
-  return parsed.toLocal();
+  if (!_isValidSubstrateTimestamp(parsed)) return null;
+  return parsed!.toUtc();
 }
 
 /// Parses Substrate day values (`DueDate`, `DueDateTime`, `CommittedDay`,

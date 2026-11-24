@@ -23,16 +23,57 @@ String formatRelativeDate(BuildContext context, DateTime date) {
 /// Formats a reminder timestamp as `Remind me at <time>` (plus relative date if not today).
 String formatReminderLabel(BuildContext context, DateTime reminderAt) {
   final l10n = AppLocalizations.of(context);
-  final timeStr = DateFormat.jm().format(reminderAt);
+  final localReminder = reminderAt.toLocal();
+  final timeStr = DateFormat.jm().format(localReminder);
   final now = DateTime.now();
   final isToday =
-      reminderAt.year == now.year &&
-      reminderAt.month == now.month &&
-      reminderAt.day == now.day;
+      localReminder.year == now.year &&
+      localReminder.month == now.month &&
+      localReminder.day == now.day;
   if (isToday) {
     return l10n.remindMeAt(timeStr);
   }
-  return '${l10n.remindMeAt(timeStr)}, ${formatRelativeDate(context, reminderAt)}';
+  return '${l10n.remindMeAt(timeStr)}, ${formatRelativeDate(context, localReminder)}';
+}
+
+String _formatRelativeTimestampLabel(
+  AppLocalizations l10n,
+  DateTime timestamp, {
+  required String Function(String relative) formatAgo,
+  required String Function(String date) formatOn,
+  DateTime? now,
+}) {
+  final localNow = (now ?? DateTime.now()).toLocal();
+  final localTarget = timestamp.toLocal();
+  // Use UTC midnight dates so DST transitions never skew calendar-day diffs.
+  final todayUtc = DateTime.utc(localNow.year, localNow.month, localNow.day);
+  final targetDayUtc = DateTime.utc(
+    localTarget.year,
+    localTarget.month,
+    localTarget.day,
+  );
+  final dayDiff = todayUtc.difference(targetDayUtc).inDays;
+
+  if (dayDiff == 0) {
+    final diff = localNow.difference(localTarget);
+    if (diff.inHours > 0) {
+      return formatAgo(l10n.createdHoursAgo(diff.inHours));
+    }
+    if (diff.inMinutes > 0) {
+      return formatAgo(l10n.createdMinutesAgo(diff.inMinutes));
+    }
+    return formatAgo(l10n.createdMomentsAgo);
+  }
+  if (dayDiff == 1) {
+    return formatAgo(l10n.createdYesterday);
+  }
+  final locale = DateFormat.localeExists(l10n.localeName)
+      ? l10n.localeName
+      : null;
+  final formatted = localTarget.year != localNow.year
+      ? DateFormat.yMMMEd(locale).format(localTarget)
+      : DateFormat.MMMEd(locale).format(localTarget);
+  return formatOn(formatted);
 }
 
 /// Formats task creation timestamp matching `yp.r.j` in the original app:
@@ -45,28 +86,32 @@ String formatCreatedDateLabel(
   DateTime? now,
 }) {
   final l10n = AppLocalizations.of(context);
-  final current = now ?? DateTime.now();
-  final today = DateTime(current.year, current.month, current.day);
-  final createdDay = DateTime(createdAt.year, createdAt.month, createdAt.day);
-  final dayDiff = today.difference(createdDay).inDays;
+  return _formatRelativeTimestampLabel(
+    l10n,
+    createdAt,
+    formatAgo: l10n.createdAgo,
+    formatOn: l10n.createdOn,
+    now: now,
+  );
+}
 
-  if (dayDiff == 0) {
-    final diff = current.difference(createdAt);
-    if (diff.inHours > 0) {
-      return l10n.createdAgo(l10n.createdHoursAgo(diff.inHours));
-    }
-    if (diff.inMinutes > 0) {
-      return l10n.createdAgo(l10n.createdMinutesAgo(diff.inMinutes));
-    }
-    return l10n.createdAgo(l10n.createdMomentsAgo);
-  }
-  if (dayDiff == 1) {
-    return l10n.createdAgo(l10n.createdYesterday);
-  }
-  final formatted = createdAt.year != current.year
-      ? DateFormat.yMMMEd().format(createdAt)
-      : DateFormat.MMMEd().format(createdAt);
-  return l10n.createdOn(formatted);
+/// Formats note modification timestamp matching `yp.r.F` in the original app:
+/// - Today: `Updated a few moments ago` / `Updated X minute(s) ago` / `Updated X hour(s) ago`
+/// - Yesterday: `Updated yesterday`
+/// - Earlier: `Updated on <MMMEd>` (or `<yMMMEd>` if different year)
+String formatNoteUpdatedDateLabel(
+  BuildContext context,
+  DateTime updatedAt, {
+  DateTime? now,
+}) {
+  final l10n = AppLocalizations.of(context);
+  return _formatRelativeTimestampLabel(
+    l10n,
+    updatedAt,
+    formatAgo: l10n.updatedAgo,
+    formatOn: l10n.updatedOn,
+    now: now,
+  );
 }
 
 /// Computes the default due date when setting [recurrence] with no due date,
@@ -87,7 +132,8 @@ DateTime? defaultDueDateForRecurrence(
     return candidate;
   }
   if (reminderAt != null) {
-    return DateTime(reminderAt.year, reminderAt.month, reminderAt.day);
+    final localReminder = reminderAt.toLocal();
+    return DateTime(localReminder.year, localReminder.month, localReminder.day);
   }
   return today;
 }
@@ -232,10 +278,10 @@ Future<DateTime?> showReminderPickerSheet(
   switch (choice) {
     case 'later':
       final baseHour = now.hour + (now.minute >= 29 ? 1 : 0) + 3;
-      return DateTime(today.year, today.month, today.day, baseHour, 0);
+      return DateTime(today.year, today.month, today.day, baseHour, 0).toUtc();
     case 'tomorrow':
       final tmr = today.add(const Duration(days: 1));
-      return DateTime(tmr.year, tmr.month, tmr.day, 9, 0);
+      return DateTime(tmr.year, tmr.month, tmr.day, 9, 0).toUtc();
     case 'next_week':
       return DateTime(
         nextWeekDate.year,
@@ -243,19 +289,20 @@ Future<DateTime?> showReminderPickerSheet(
         nextWeekDate.day,
         9,
         0,
-      );
+      ).toUtc();
     case 'custom':
+      final localInitial = initialReminder?.toLocal();
       final pickedDate = await showDatePicker(
         context: context,
-        initialDate: initialReminder ?? today,
+        initialDate: localInitial ?? today,
         firstDate: today.subtract(const Duration(days: 365)),
         lastDate: today.add(const Duration(days: 365 * 5)),
       );
       if (pickedDate == null || !context.mounted) return null;
       final pickedTime = await showTimePicker(
         context: context,
-        initialTime: initialReminder != null
-            ? TimeOfDay.fromDateTime(initialReminder)
+        initialTime: localInitial != null
+            ? TimeOfDay.fromDateTime(localInitial)
             : TimeOfDay.now(),
       );
       if (pickedTime == null) return null;
@@ -265,7 +312,7 @@ Future<DateTime?> showReminderPickerSheet(
         pickedDate.day,
         pickedTime.hour,
         pickedTime.minute,
-      );
+      ).toUtc();
     default:
       return null;
   }

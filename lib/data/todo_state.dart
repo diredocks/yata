@@ -94,7 +94,7 @@ abstract class TodoState with _$TodoState {
     if (plannedDueDateFilter == PlannedDueDateFilter.all) {
       return true;
     }
-    final target = task.dueDate ?? task.reminderAt;
+    final target = task.dueDate ?? task.reminderAt?.toLocal();
     if (target == null) return false;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);

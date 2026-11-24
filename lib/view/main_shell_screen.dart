@@ -236,7 +236,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
         if (duration != null && mounted) {
           ref
               .read(detailViewPresenterProvider)
-              .setTaskReminder(taskId, DateTime.now().add(duration));
+              .setTaskReminder(taskId, DateTime.now().toUtc().add(duration));
         }
       case NotificationActionType.openTask:
         final taskId = event.taskId;
