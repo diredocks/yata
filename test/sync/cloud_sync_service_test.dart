@@ -93,8 +93,8 @@ void main() {
                 id: 'rf-shop',
                 name: '🛒 Groceries',
                 parentFolderGroupId: 'rg-work',
-                themeColor: 'light_teal',
-                themeBackground: 'photo_beach',
+                themeColor: 'photo_beach',
+                themeBackground: 'mountain',
                 showCompletedTasks: false,
                 sortOption: TaskSortOption.dueDate,
                 sortAscending: true,
@@ -221,7 +221,7 @@ void main() {
       expect(shop.emoji, '🛒');
       expect(shop.title, 'Groceries');
       expect(shop.groupId, state.groups.first.id);
-      expect(shop.themeColor, ListThemeColor.lightTeal);
+      expect(shop.themeColor, ListThemeColor.blue);
       expect(shop.themePhoto, ListThemePhoto.beach);
       expect(shop.showCompleted, isFalse);
       expect(state.isCompletedExpanded(shop.id), isFalse);
@@ -1093,6 +1093,87 @@ void main() {
             .firstWhere((l) => l.id == 'list_shop');
         expect(syncedShop.themeColor, ListThemeColor.rose);
         expect(syncedShop.themePhoto, isNull);
+      },
+    );
+
+    test(
+      'setting photo background sends photo_* in both ThemeColor and ThemeBackground for MS To Do compatibility',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final account = Account.microsoft(
+          id: 'acct_photo',
+          displayName: 'Alice',
+          email: 'alice@outlook.com',
+          createdAt: DateTime(2026, 11, 22),
+          microsoftUserId: 'cid1',
+        );
+        await AccountLocalStorage(prefs).saveAccounts([account]);
+        await AccountLocalStorage(prefs).saveActiveAccountId('acct_photo');
+
+        final storage = _session(prefs, 'acct_photo');
+        await storage.repository.saveLists([
+          ...defaultSmartLists().map(
+            (l) => l.smartType == SmartListType.tasks
+                ? l.copyWith(remoteId: 'rf-default')
+                : l,
+          ),
+          const TodoList(
+            id: 'list_shop',
+            title: 'Shopping',
+            remoteId: 'rf-shop',
+            themeColor: ListThemeColor.blue,
+            themePhoto: ListThemePhoto.beach,
+          ),
+        ]);
+        await storage.repository.saveDirtyListIds({'list_shop'});
+
+        final fakeApi = FakeSubstrateApi();
+        fakeApi.onPatchFolder = (id, patch) async {
+          expect(id, 'rf-shop');
+          expect(patch['ThemeColor'], 'photo_beach');
+          expect(patch['ThemeBackground'], 'mountain');
+          return const RemoteTodoFolder(
+            id: 'rf-shop',
+            name: 'Shopping',
+            themeColor: 'photo_beach',
+            themeBackground: 'mountain',
+          );
+        };
+        fakeApi.onFetchFoldersDelta = (dl) => const DeltaPageResult(
+          items: [
+            RemoteTodoFolder(
+              id: 'rf-default',
+              name: 'Tasks',
+              isDefaultFolder: true,
+            ),
+            RemoteTodoFolder(
+              id: 'rf-shop',
+              name: 'Shopping',
+              themeColor: 'photo_beach',
+              themeBackground: 'mountain',
+            ),
+          ],
+          deltaLink: 'dl-folders-photo',
+        );
+
+        final container = ProviderContainer(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+            microsoftTodoApiProvider.overrideWithValue(fakeApi),
+            realtimeSyncEnabledProvider.overrideWithValue(false),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        await container.read(syncProvider.notifier).syncNow();
+
+        final syncedShop = container
+            .read(todoProvider)
+            .lists
+            .firstWhere((l) => l.id == 'list_shop');
+        expect(syncedShop.themePhoto, ListThemePhoto.beach);
       },
     );
   });

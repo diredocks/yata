@@ -12,8 +12,8 @@ Map<String, dynamic> buildFolderCreatePayload(
   return <String, dynamic>{
     'Name': encodeFolderName(list.title, list.emoji),
     'OrderDateTime': formatSubstrateUtcTimestamp(list.orderDateTime ?? nowUtc),
-    'ThemeColor': encodeFolderThemeColor(list.themeColor),
-    'ThemeBackground': encodeFolderThemeBackground(list.themePhoto),
+    'ThemeColor': encodeThemeColor(list.themeColor, list.themePhoto),
+    'ThemeBackground': 'mountain',
     'ShowCompletedTasks': list.showCompleted,
     'SortType': encodeSortType(list.sortOption),
     'SortAscending': list.sortAscending,
@@ -28,8 +28,8 @@ Map<String, dynamic> buildFolderPatchPayload(
   return <String, dynamic>{
     if (!list.isSmartList) 'Name': encodeFolderName(list.title, list.emoji),
     if (!list.isSmartList) 'ParentFolderGroupId': parentGroupRemoteId,
-    'ThemeColor': encodeFolderThemeColor(list.themeColor),
-    'ThemeBackground': encodeFolderThemeBackground(list.themePhoto),
+    'ThemeColor': encodeThemeColor(list.themeColor, list.themePhoto),
+    'ThemeBackground': 'mountain',
     'ShowCompletedTasks': list.showCompleted,
     'SortType': encodeSortType(list.sortOption),
     'SortAscending': list.sortAscending,
@@ -94,9 +94,8 @@ List<TodoList> mergeFoldersDelta({
     if (dirtyListIds.contains(existing.id)) {
       return existing.copyWith(remoteId: remote.id);
     }
-    final theme = decodeFolderTheme(
-      themeColor: remote.themeColor,
-      themeBackground: remote.themeBackground,
+    final theme = decodeThemeColor(
+      remote.themeColor,
       fallbackColor: existing.themeColor,
     );
     return existing.copyWith(
@@ -163,10 +162,7 @@ List<TodoList> mergeFoldersDelta({
         groupId: mappedGroupId,
       );
     } else {
-      final theme = decodeFolderTheme(
-        themeColor: remote.themeColor,
-        themeBackground: remote.themeBackground,
-      );
+      final theme = decodeThemeColor(remote.themeColor);
       result.add(
         TodoList(
           id: idGenerator('list'),

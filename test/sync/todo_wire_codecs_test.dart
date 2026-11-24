@@ -27,7 +27,6 @@ void main() {
       for (final color in ListThemeColor.values) {
         final wire = encodeThemeColor(color, null);
         expect(wire, expectedWire[color]);
-        expect(encodeFolderThemeColor(color), expectedWire[color]);
 
         final decoded = decodeThemeColor(wire);
         expect(decoded.themeColor, color);
@@ -51,26 +50,14 @@ void main() {
       for (final photo in ListThemePhoto.values) {
         final settingWire = encodeThemeColor(ListThemeColor.blue, photo);
         expect(settingWire, expectedPhotos[photo]);
-        expect(encodeFolderThemeBackground(photo), expectedPhotos[photo]);
 
-        final decodedSetting = decodeThemeColor(settingWire);
-        expect(decodedSetting.themePhoto, photo);
-
-        final decodedFolder = decodeFolderTheme(
-          themeColor: 'light_teal',
-          themeBackground: expectedPhotos[photo],
+        final decoded = decodeThemeColor(
+          settingWire,
+          fallbackColor: ListThemeColor.lightTeal,
         );
-        expect(decodedFolder.themeColor, ListThemeColor.lightTeal);
-        expect(decodedFolder.themePhoto, photo);
+        expect(decoded.themeColor, ListThemeColor.lightTeal);
+        expect(decoded.themePhoto, photo);
       }
-
-      expect(encodeFolderThemeBackground(null), 'mountain');
-      final clearedFolder = decodeFolderTheme(
-        themeColor: 'dark_blue',
-        themeBackground: 'mountain',
-      );
-      expect(clearedFolder.themeColor, ListThemeColor.blue);
-      expect(clearedFolder.themePhoto, isNull);
     });
 
     test('maps legacy color aliases cleanly', () {

@@ -175,7 +175,7 @@ final Map<String, ListThemePhoto> _wireToPhoto = {
 };
 
 /// Encodes local [color] and optional [photo] into a single string setting
-/// (used for SmartList `*_ThemeColor` settings where photos are stored directly).
+/// (used for both SmartList `*_ThemeColor` settings and `TaskFolder.ThemeColor`).
 String encodeThemeColor(ListThemeColor color, ListThemePhoto? photo) {
   if (photo != null) {
     return _photoToWire[photo] ?? 'photo_beach';
@@ -183,21 +183,7 @@ String encodeThemeColor(ListThemeColor color, ListThemePhoto? photo) {
   return _colorToWire[color] ?? 'dark_blue';
 }
 
-/// Encodes [color] for Substrate `TaskFolder.ThemeColor` (`dark_*` / `light_*`).
-String encodeFolderThemeColor(ListThemeColor color) {
-  return _colorToWire[color] ?? 'dark_blue';
-}
-
-/// Encodes [photo] for Substrate `TaskFolder.ThemeBackground` (`photo_*` or `'mountain'`).
-///
-/// Substrate ignores `null` in `PATCH /taskfolders/{id}` and leaves the previous
-/// photo background intact; official To Do sends `'mountain'` when no photo is set.
-String encodeFolderThemeBackground(ListThemePhoto? photo) {
-  if (photo == null) return 'mountain';
-  return _photoToWire[photo] ?? 'photo_beach';
-}
-
-/// Decodes a single theme string (setting or `ThemeColor`) into [DecodedTheme].
+/// Decodes a single theme string (`*_ThemeColor` or `TaskFolder.ThemeColor`) into [DecodedTheme].
 DecodedTheme decodeThemeColor(
   String? raw, {
   ListThemeColor fallbackColor = ListThemeColor.blue,
@@ -215,26 +201,6 @@ DecodedTheme decodeThemeColor(
     return DecodedTheme(themeColor: color);
   }
   return DecodedTheme(themeColor: fallbackColor);
-}
-
-/// Decodes Substrate folder `ThemeColor` + `ThemeBackground` pair.
-DecodedTheme decodeFolderTheme({
-  String? themeColor,
-  String? themeBackground,
-  ListThemeColor fallbackColor = ListThemeColor.blue,
-}) {
-  final colorDecoded = decodeThemeColor(
-    themeColor,
-    fallbackColor: fallbackColor,
-  );
-  final bgDecoded = decodeThemeColor(
-    themeBackground,
-    fallbackColor: colorDecoded.themeColor,
-  );
-  return DecodedTheme(
-    themeColor: colorDecoded.themeColor,
-    themePhoto: bgDecoded.themePhoto ?? colorDecoded.themePhoto,
-  );
 }
 
 final RegExp _emojiCodePointRegex = RegExp(
