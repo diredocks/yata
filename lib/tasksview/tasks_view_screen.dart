@@ -45,6 +45,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   double _scrollOffset = 0.0;
   bool _isSnappingHeader = false;
   final ScrollController _scrollController = ScrollController();
+  final GlobalKey<NestedScrollViewState> _nestedScrollKey =
+      GlobalKey<NestedScrollViewState>();
   final ValueNotifier<Set<String>> _selectionNotifier = ValueNotifier(const {});
   Set<String> get _multiSelectedIds => _selectionNotifier.value;
   String? _draggingTaskId;
@@ -102,6 +104,14 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   }
 
   void _scrollToTop() {
+    final inner = _nestedScrollKey.currentState?.innerController;
+    if (inner != null && inner.hasClients && inner.offset > 0) {
+      inner.animateTo(
+        0,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+    }
     if (!_scrollController.hasClients || _scrollController.offset <= 0) {
       return;
     }
@@ -966,35 +976,11 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     );
   }
 
-  /// Builds the overscroll indicator for the task list around [child].
-  ///
-  /// [child] contains both the scroll view and the header shadow overlay. The
-  /// indicator has to sit above that stack, otherwise the Android stretch
-  /// overscroll effect only transforms the scroll view while the shadow stays
-  /// put and appears to float over the list. The scroll view would add its own
-  /// indicator internally, so that one is suppressed.
-  Widget _buildOverscrollIndicator(BuildContext context, Widget child) {
-    final behavior = ScrollConfiguration.of(context);
-    return behavior.buildOverscrollIndicator(
-      context,
-      NotificationListener<OverscrollIndicatorNotification>(
-        onNotification: (notification) {
-          notification.disallowIndicator();
-          return false;
-        },
-        child: child,
-      ),
-      ScrollableDetails.vertical(
-        controller: _scrollController,
-        decorationClipBehavior: Clip.hardEdge,
-      ),
-    );
-  }
-
   Widget _buildScrollShadow(String? subtitle) {
+    final topPadding = MediaQuery.paddingOf(context).top;
     final maxTop = subtitle != null ? 144.0 : 116.0;
     return Positioned(
-      top: (maxTop - _scrollOffset).clamp(kToolbarHeight, maxTop),
+      top: (maxTop - _scrollOffset).clamp(kToolbarHeight, maxTop) + topPadding,
       left: 0,
       right: 0,
       child: IgnorePointer(
@@ -1130,123 +1116,72 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
               children: [
                 _buildBackground(currentList, backgroundColor),
                 SafeArea(
-                  child: _buildOverscrollIndicator(
-                    context,
-                    Stack(
-                      children: [
-                        NotificationListener<ScrollNotification>(
-                          onNotification: (notification) {
-                            if (notification.depth != 0) return false;
-                            final offset = notification.metrics.pixels;
-                            if ((offset - _scrollOffset).abs() > 0.5) {
-                              setState(() => _scrollOffset = offset);
-                            }
-                            if (notification is ScrollEndNotification) {
-                              final collapseDelta =
-                                  (subtitle != null ? 144.0 : 116.0) -
-                                  kToolbarHeight;
-                              _snapHeaderIfNeeded(collapseDelta);
-                            }
-                            return false;
-                          },
-                          child: Builder(
-                            builder: (context) {
-                              final isMicrosoft = ref.watch(
-                                accountProvider.select(
-                                  (s) => s.activeAccount?.isMicrosoft ?? false,
-                                ),
-                              );
-                              final scrollView = Listener(
-                                onPointerDown: (event) =>
-                                    _dragPointerStartY = event.position.dy,
-                                onPointerMove: (event) {
-                                  if (_draggingTaskId != null &&
-                                      _mode == TasksViewMode.multiSelecting &&
-                                      _dragPointerStartY != null &&
-                                      (event.position.dy - _dragPointerStartY!)
-                                              .abs() >
-                                          18) {
-                                    _clearSelection();
-                                  }
-                                },
-                                child: CustomScrollView(
-                                  controller: _scrollController,
-                                  physics: isMicrosoft
-                                      ? const AlwaysScrollableScrollPhysics()
-                                      : null,
-                                  slivers: [
-                                  if (_mode == TasksViewMode.browsing)
-                                    TasksSliverAppBar(
-                                      l10n: l10n,
-                                      currentList: currentList,
-                                      listTitle: listTitle,
-                                      subtitle: subtitle,
-                                      headerFg: headerFg,
-                                      backgroundColor: backgroundColor,
-                                      activeTasksCount: active.length,
-                                      isDark: isDark,
-                                      overlayStyle: overlayStyle,
-                                      onBackPressed: widget.onBackPressed,
-                                      onScrollToTop: _scrollToTop,
-                                      onSelectMenuAction: (action) =>
-                                          _handleMenuAction(
-                                            action,
-                                            state,
-                                            currentList,
-                                          ),
-                                    )
-                                  else if (_mode ==
-                                          TasksViewMode.multiSelecting ||
-                                      _mode == TasksViewMode.reordering)
-                                    SliverToBoxAdapter(
-                                      child: SizedBox(
-                                        height: subtitle != null ? 88.0 : 60.0,
-                                        child: Stack(
-                                          children: [
-                                            Align(
-                                              alignment: AlignmentDirectional
-                                                  .bottomStart,
-                                              child: Padding(
-                                                padding:
-                                                    EdgeInsetsDirectional.only(
-                                                      start:
-                                                          widget.onBackPressed !=
-                                                              null
-                                                          ? 16.0
-                                                          : 15.0,
-                                                      bottom: subtitle != null
-                                                          ? 42.0
-                                                          : 16.0,
-                                                      end: 56,
-                                                    ),
-                                                child: Transform.scale(
-                                                  scale: 1.5,
-                                                  alignment:
-                                                      AlignmentDirectional
-                                                          .bottomStart,
-                                                  child: DefaultTextStyle(
-                                                    style:
-                                                        Theme.of(context)
-                                                            .primaryTextTheme
-                                                            .titleLarge ??
-                                                        const TextStyle(),
-                                                    child: Text(
-                                                      listTitle,
-                                                      maxLines: 1,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                      style: TextStyle(
-                                                        color: headerFg,
-                                                        fontWeight:
-                                                            FontWeight.w500,
-                                                        fontSize: 20,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
+                  top: false,
+                  child: Builder(
+                    builder: (context) {
+                      final scrollBehavior = ScrollConfiguration.of(context);
+                      final isMicrosoft = ref.watch(
+                        accountProvider.select(
+                          (s) => s.activeAccount?.isMicrosoft ?? false,
+                        ),
+                      );
+                      final nestedScroll =
+                          NotificationListener<ScrollNotification>(
+                            onNotification: (notification) {
+                              if (notification.depth != 0) return false;
+                              final offset = notification.metrics.pixels;
+                              if ((offset - _scrollOffset).abs() > 0.5) {
+                                setState(() => _scrollOffset = offset);
+                              }
+                              if (notification is ScrollEndNotification) {
+                                final collapseDelta =
+                                    (subtitle != null ? 144.0 : 116.0) -
+                                    kToolbarHeight;
+                                _snapHeaderIfNeeded(collapseDelta);
+                              }
+                              return false;
+                            },
+                            child: ScrollConfiguration(
+                              behavior: scrollBehavior.copyWith(
+                                overscroll: false,
+                              ),
+                              child: NestedScrollView(
+                            key: _nestedScrollKey,
+                            controller: _scrollController,
+                            physics: isMicrosoft
+                                ? const AlwaysScrollableScrollPhysics()
+                                : null,
+                            headerSliverBuilder: (context, _) => [
+                              SliverOverlapAbsorber(
+                                handle: NestedScrollView
+                                    .sliverOverlapAbsorberHandleFor(context),
+                                sliver: _mode == TasksViewMode.browsing
+                                    ? TasksSliverAppBar(
+                                        l10n: l10n,
+                                        currentList: currentList,
+                                        listTitle: listTitle,
+                                        subtitle: subtitle,
+                                        headerFg: headerFg,
+                                        backgroundColor: backgroundColor,
+                                        activeTasksCount: active.length,
+                                        isDark: isDark,
+                                        overlayStyle: overlayStyle,
+                                        onBackPressed: widget.onBackPressed,
+                                        onScrollToTop: _scrollToTop,
+                                        onSelectMenuAction: (action) =>
+                                            _handleMenuAction(
+                                              action,
+                                              state,
+                                              currentList,
                                             ),
-                                            if (subtitle != null)
+                                      )
+                                    : SliverToBoxAdapter(
+                                        child: SizedBox(
+                                          height: subtitle != null
+                                              ? 88.0
+                                              : 60.0,
+                                          child: Stack(
+                                            children: [
                                               Align(
                                                 alignment: AlignmentDirectional
                                                     .bottomStart,
@@ -1258,100 +1193,186 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                                                 null
                                                             ? 16.0
                                                             : 15.0,
-                                                        bottom: 10.0,
+                                                        bottom: subtitle != null
+                                                            ? 42.0
+                                                            : 16.0,
                                                         end: 56,
                                                       ),
-                                                  child: Text(
-                                                    subtitle,
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                    style: TextStyle(
-                                                      color: headerFg
-                                                          .withValues(
-                                                            alpha: 0.92,
-                                                          ),
-                                                      fontSize: 20,
-                                                      fontWeight:
-                                                          FontWeight.w400,
+                                                  child: Transform.scale(
+                                                    scale: 1.5,
+                                                    alignment:
+                                                        AlignmentDirectional
+                                                            .bottomStart,
+                                                    child: DefaultTextStyle(
+                                                      style:
+                                                          Theme.of(context)
+                                                              .primaryTextTheme
+                                                              .titleLarge ??
+                                                          const TextStyle(),
+                                                      child: Text(
+                                                        listTitle,
+                                                        maxLines: 1,
+                                                        overflow: TextOverflow
+                                                            .ellipsis,
+                                                        style: TextStyle(
+                                                          color: headerFg,
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                          fontSize: 20,
+                                                        ),
+                                                      ),
                                                     ),
                                                   ),
                                                 ),
                                               ),
-                                          ],
+                                              if (subtitle != null)
+                                                Align(
+                                                  alignment:
+                                                      AlignmentDirectional
+                                                          .bottomStart,
+                                                  child: Padding(
+                                                    padding:
+                                                        EdgeInsetsDirectional.only(
+                                                          start:
+                                                              widget.onBackPressed !=
+                                                                  null
+                                                              ? 16.0
+                                                              : 15.0,
+                                                          bottom: 10.0,
+                                                          end: 56,
+                                                        ),
+                                                    child: Text(
+                                                      subtitle,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        color: headerFg
+                                                            .withValues(
+                                                              alpha: 0.92,
+                                                            ),
+                                                        fontSize: 20,
+                                                        fontWeight:
+                                                            FontWeight.w400,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  if (currentList.sortOption !=
-                                          TaskSortOption.defaultOrder &&
-                                      _mode != TasksViewMode.reordering)
-                                    TasksSortBanner(
-                                      l10n: l10n,
-                                      currentList: currentList,
-                                      headerFg: headerFg,
-                                      onToggleSortDirection: () =>
-                                          notifier.toggleListSortDirection(
-                                            currentList.id,
-                                          ),
-                                      onClearSort: () =>
-                                          notifier.setListSortOption(
-                                            currentList.id,
-                                            TaskSortOption.defaultOrder,
-                                          ),
-                                    ),
-                                  if (currentList.smartType ==
-                                          SmartListType.planned &&
-                                      _mode == TasksViewMode.browsing)
-                                    TasksPlannedFilterBanner(
-                                      l10n: l10n,
-                                      currentList: currentList,
-                                      currentFilter: state.plannedDueDateFilter,
-                                      headerFg: headerFg,
-                                      onTap: () => showPlannedFilterSheet(
-                                        context: context,
-                                        currentFilter:
-                                            state.plannedDueDateFilter,
-                                        onSelectFilter:
-                                            notifier.setPlannedDueDateFilter,
+                              ),
+                            ],
+                            body: Builder(
+                              builder: (context) {
+                                final scrollView = Listener(
+                                  onPointerDown: (event) =>
+                                      _dragPointerStartY = event.position.dy,
+                                  onPointerMove: (event) {
+                                    if (_draggingTaskId != null &&
+                                        _mode == TasksViewMode.multiSelecting &&
+                                        _dragPointerStartY != null &&
+                                        (event.position.dy -
+                                                    _dragPointerStartY!)
+                                                .abs() >
+                                            18) {
+                                      _clearSelection();
+                                    }
+                                  },
+                                  child: CustomScrollView(
+                                    physics: isMicrosoft
+                                        ? const AlwaysScrollableScrollPhysics()
+                                        : null,
+                                    slivers: [
+                                      SliverOverlapInjector(
+                                        handle: NestedScrollView
+                                            .sliverOverlapAbsorberHandleFor(
+                                              context,
+                                            ),
                                       ),
-                                    ),
-                                  ..._buildTaskSlivers(
-                                    l10n: l10n,
-                                    state: state,
-                                    currentList: currentList,
-                                    activeTasks: active,
-                                    completedTasks: completed,
-                                    accentColor: accentColor,
-                                    headerFg: headerFg,
+                                      if (currentList.sortOption !=
+                                              TaskSortOption.defaultOrder &&
+                                          _mode != TasksViewMode.reordering)
+                                        TasksSortBanner(
+                                          l10n: l10n,
+                                          currentList: currentList,
+                                          headerFg: headerFg,
+                                          onToggleSortDirection: () => notifier
+                                              .toggleListSortDirection(
+                                                currentList.id,
+                                              ),
+                                          onClearSort: () =>
+                                              notifier.setListSortOption(
+                                                currentList.id,
+                                                TaskSortOption.defaultOrder,
+                                              ),
+                                        ),
+                                      if (currentList.smartType ==
+                                              SmartListType.planned &&
+                                          _mode == TasksViewMode.browsing)
+                                        TasksPlannedFilterBanner(
+                                          l10n: l10n,
+                                          currentList: currentList,
+                                          currentFilter:
+                                              state.plannedDueDateFilter,
+                                          headerFg: headerFg,
+                                          onTap: () => showPlannedFilterSheet(
+                                            context: context,
+                                            currentFilter:
+                                                state.plannedDueDateFilter,
+                                            onSelectFilter: notifier
+                                                .setPlannedDueDateFilter,
+                                          ),
+                                        ),
+                                      ..._buildTaskSlivers(
+                                        l10n: l10n,
+                                        state: state,
+                                        currentList: currentList,
+                                        activeTasks: active,
+                                        completedTasks: completed,
+                                        accentColor: accentColor,
+                                        headerFg: headerFg,
+                                      ),
+                                      _buildRuledLinesSliver(
+                                        isDark,
+                                        collapseDelta: 0.0,
+                                      ),
+                                    ],
                                   ),
-                                  _buildRuledLinesSliver(
-                                    isDark,
-                                    collapseDelta:
-                                        (subtitle != null ? 144.0 : 116.0) -
-                                        kToolbarHeight,
-                                  ),
-                                  ],
-                                ),
-                              );
-                              if (!isMicrosoft ||
-                                  _mode == TasksViewMode.reordering) {
-                                return scrollView;
-                              }
-                              return RefreshIndicator(
-                                onRefresh: () =>
-                                    ref.read(syncProvider.notifier).syncNow(),
-                                color: accentColor,
-                                backgroundColor: isDark
-                                    ? TodoColors.primaryBackgroundDark
-                                    : TodoColors.primaryBackgroundLight,
-                                child: scrollView,
-                              );
-                            },
+                                );
+                                return ScrollConfiguration(
+                                  behavior: scrollBehavior,
+                                  child: scrollView,
+                                );
+                              },
+                            ),
                           ),
                         ),
-                        _buildScrollShadow(subtitle),
-                      ],
-                    ),
+                      );
+                      final topPadding = MediaQuery.paddingOf(context).top;
+                      final refreshableScroll =
+                          (!isMicrosoft || _mode == TasksViewMode.reordering)
+                          ? nestedScroll
+                          : RefreshIndicator(
+                              edgeOffset: topPadding,
+                              notificationPredicate: (notification) =>
+                                  notification.depth <= 1,
+                              onRefresh: () =>
+                                  ref.read(syncProvider.notifier).syncNow(),
+                              color: accentColor,
+                              backgroundColor: isDark
+                                  ? TodoColors.primaryBackgroundDark
+                                  : TodoColors.primaryBackgroundLight,
+                              child: nestedScroll,
+                            );
+                      return Stack(
+                        children: [
+                          refreshableScroll,
+                          _buildScrollShadow(subtitle),
+                        ],
+                      );
+                    },
                   ),
                 ),
               ],

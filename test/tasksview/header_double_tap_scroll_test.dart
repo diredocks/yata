@@ -42,13 +42,17 @@ void main() {
     await tester.pumpAndSettle();
 
     // Scroll down so the header collapses and top task is off-screen
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));
+    await tester.drag(find.byType(CustomScrollView).last, const Offset(0, -600));
     await tester.pumpAndSettle();
 
-    final scrollView = tester.widget<CustomScrollView>(
-      find.byType(CustomScrollView),
+    final nestedScroll = tester.widget<NestedScrollView>(
+      find.byType(NestedScrollView),
     );
-    expect(scrollView.controller!.offset, greaterThan(0));
+    final nestedState = tester.state<NestedScrollViewState>(
+      find.byType(NestedScrollView),
+    );
+    expect(nestedScroll.controller!.offset, greaterThan(0));
+    expect(nestedState.innerController.offset, greaterThan(0));
 
     // Double-tap on the SliverAppBar header
     final appBarCenter = tester.getCenter(find.byType(FlexibleSpaceBar));
@@ -57,6 +61,7 @@ void main() {
     await tester.tapAt(appBarCenter);
     await tester.pumpAndSettle();
 
-    expect(scrollView.controller!.offset, 0.0);
+    expect(nestedScroll.controller!.offset, 0.0);
+    expect(nestedState.innerController.offset, 0.0);
   });
 }

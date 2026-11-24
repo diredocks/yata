@@ -40,12 +40,12 @@ void main() {
 
     final scrollViewFinder = find.descendant(
       of: tasksScreenFinder,
-      matching: find.byType(CustomScrollView),
+      matching: find.byType(NestedScrollView),
     );
     expect(scrollViewFinder, findsOneWidget);
 
     final scrollRect = tester.getRect(scrollViewFinder);
-    expect(scrollRect.top, 24.0);
+    expect(scrollRect.top, 0.0);
     expect(scrollRect.bottom, 800.0 - 34.0);
   });
 }

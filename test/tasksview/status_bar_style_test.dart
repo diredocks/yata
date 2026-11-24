@@ -21,7 +21,9 @@ void main() {
 
       tester.view.physicalSize = const Size(400, 800);
       tester.view.devicePixelRatio = 1.0;
+      tester.view.padding = const FakeViewPadding(top: 24);
       addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetPadding);
 
       await tester.pumpWidget(
         ProviderScope(
@@ -103,6 +105,20 @@ void main() {
         SystemChrome.latestStyle?.statusBarIconBrightness,
         Brightness.light,
       );
+      final headerPhotoFinder = find.byKey(
+        const ValueKey('header_photo_beach'),
+      );
+      expect(headerPhotoFinder, findsOneWidget);
+      expect(tester.getRect(headerPhotoFinder).top, 0.0);
+      final headerScrim = tester.widget<Container>(
+        find
+            .descendant(
+              of: headerPhotoFinder,
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      expect(headerScrim.color, Colors.black.withValues(alpha: 0.12));
 
       // Open DetailViewScreen in light mode -> dark status bar icons.
       await tester.tap(find.text('Status bar task'));

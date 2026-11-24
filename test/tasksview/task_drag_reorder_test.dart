@@ -101,7 +101,7 @@ void main() {
       await pumpAppWithTasks(tester);
 
       final headerTitleFinder = find.descendant(
-        of: find.byType(CustomScrollView).last,
+        of: find.byType(NestedScrollView),
         matching: find.text('My Day'),
       );
       final beforeHeaderRect = tester.getRect(headerTitleFinder);
@@ -149,10 +149,10 @@ void main() {
         const Offset(0, 60),
       );
       await tester.pumpAndSettle();
-      final scrollView = tester.widget<CustomScrollView>(
-        find.byType(CustomScrollView).last,
+      final nestedScroll = tester.widget<NestedScrollView>(
+        find.byType(NestedScrollView),
       );
-      expect(scrollView.controller!.offset, 0.0);
+      expect(nestedScroll.controller!.offset, 0.0);
     },
   );
 

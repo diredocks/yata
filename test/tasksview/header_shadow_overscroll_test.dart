@@ -41,7 +41,7 @@ void main() {
     await tester.tap(find.text('Tasks'));
     await tester.pumpAndSettle();
 
-    await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));
+    await tester.drag(find.byType(CustomScrollView).last, const Offset(0, -600));
     await tester.pumpAndSettle();
 
     final shadow = find.byWidgetPredicate(
@@ -51,29 +51,27 @@ void main() {
     );
     expect(shadow, findsOneWidget);
 
-    // The stretch overscroll effect wraps the scroll view and the shadow
-    // together, so the shadow stays glued to the header while overscrolling.
-    final scrollViewIndicator = find.ancestor(
-      of: find.byType(CustomScrollView),
+    // Overscroll stretch applies only to the inner content CustomScrollView's
+    // viewport, leaving the header and its bottom shadow stationary.
+    final contentIndicator = find.descendant(
+      of: find.byType(CustomScrollView).last,
+      matching: find.byType(StretchingOverscrollIndicator),
+    );
+    final headerIndicator = find.ancestor(
+      of: find.byType(SliverAppBar),
       matching: find.byType(StretchingOverscrollIndicator),
     );
     final shadowIndicator = find.ancestor(
       of: shadow,
       matching: find.byType(StretchingOverscrollIndicator),
     );
-    expect(scrollViewIndicator, findsOneWidget);
-    expect(shadowIndicator, findsOneWidget);
-    expect(
-      identical(
-        tester.widget(scrollViewIndicator),
-        tester.widget(shadowIndicator),
-      ),
-      isTrue,
-    );
+    expect(contentIndicator, findsOneWidget);
+    expect(headerIndicator, findsNothing);
+    expect(shadowIndicator, findsNothing);
 
-    // Overscrolling past the end must not detach the shadow from the header.
+    // Overscrolling past the end must not throw or detach the shadow.
     final gesture = await tester.startGesture(
-      tester.getCenter(find.byType(CustomScrollView)),
+      tester.getCenter(find.byType(CustomScrollView).last),
     );
     await gesture.moveBy(const Offset(0, -400));
     await tester.pump();

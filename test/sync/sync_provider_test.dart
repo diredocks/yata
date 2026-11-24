@@ -1276,5 +1276,67 @@ void main() {
         1,
       );
     });
+
+    testWidgets('pull-to-refresh on TasksViewScreen triggers syncNow', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      await AuthTokenStorage(prefs).saveTokens(
+        'acct_ptr',
+        MicrosoftAuthTokens(
+          accessToken: 'tok-1',
+          refreshToken: 'rt-1',
+          expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+          userId: 'cid1',
+        ),
+      );
+      final account = MicrosoftAccount(
+        id: 'acct_ptr',
+        displayName: 'Alice',
+        email: 'alice@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        lastSyncedAt: DateTime(2026, 11, 22, 12, 0),
+        microsoftUserId: 'cid1',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId(account.id);
+
+      final fakeApi = FakeSubstrateApi();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+            microsoftTodoApiProvider.overrideWithValue(fakeApi),
+            realtimeSyncEnabledProvider.overrideWithValue(false),
+            periodicSyncEnabledProvider.overrideWithValue(false),
+          ],
+          child: const YataApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Tasks'));
+      await tester.pumpAndSettle();
+
+      final callsBefore = fakeApi.callLog
+          .where((c) => c.startsWith('GET foldergroups'))
+          .length;
+
+      // Pull down on the task list content area to trigger RefreshIndicator.
+      await tester.drag(find.byType(CustomScrollView).last, const Offset(0, 500));
+      await tester.pump();
+      expect(find.byType(RefreshProgressIndicator), findsOneWidget);
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await tester.pumpAndSettle();
+
+      final callsAfter = fakeApi.callLog
+          .where((c) => c.startsWith('GET foldergroups'))
+          .length;
+      expect(callsAfter, greaterThan(callsBefore));
+    });
   });
 }
