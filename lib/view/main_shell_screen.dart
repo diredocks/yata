@@ -123,15 +123,18 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
           (l) => l.id == action.listId,
           orElse: () => state.selectedList,
         );
-        ref.read(todoProvider.notifier).selectList(targetList.id);
-        _openQuickAddSheet(state, targetList);
+        _handleSelectList(targetList, isWide, animated: false);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _openQuickAddSheet(ref.read(todoProvider), targetList);
+        });
       case HomeWidgetActionType.openList:
         Navigator.of(context).popUntil((route) => route.isFirst);
         final targetList = state.lists.firstWhere(
           (l) => l.id == action.listId,
           orElse: () => state.selectedList,
         );
-        _handleSelectList(targetList, isWide);
+        _handleSelectList(targetList, isWide, animated: false);
       case HomeWidgetActionType.openTask:
         final taskId = action.taskId;
         if (taskId == null) return;
@@ -143,7 +146,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
                 (l) => l.id == (action.listId ?? task.listId),
                 orElse: () => state.selectedList,
               );
-              _pushTasksView(taskList);
+              _pushTasksView(taskList, animated: false);
             }
             _handleOpenTask(task, isExtraWide);
             break;
@@ -330,28 +333,26 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
     _pushTasksView(targetList);
   }
 
-  void _pushTasksView(TodoList list) {
+  void _pushTasksView(TodoList list, {bool animated = true}) {
     ref.read(todoProvider.notifier).selectList(list.id);
     ref.read(todoProvider.notifier).setLastEnteredListId(list.id);
-    Navigator.of(context)
-        .push(
-          MaterialPageRoute<void>(
-            builder: (routeCtx) => TasksViewScreen(
-              onBackPressed: () => Navigator.of(routeCtx).pop(),
-              onOpenTask: (task) => _handleOpenTask(task, false),
-            ),
-          ),
-        )
-        .then((_) {
-          if (mounted) {
-            ref.read(todoProvider.notifier).setLastEnteredListId(null);
-          }
-        });
+    Widget buildScreen(BuildContext routeCtx) => TasksViewScreen(
+      onBackPressed: () => Navigator.of(routeCtx).pop(),
+      onOpenTask: (task) => _handleOpenTask(task, false),
+    );
+    final route = animated
+        ? MaterialPageRoute<void>(builder: buildScreen)
+        : _InstantEnterMaterialPageRoute<void>(builder: buildScreen);
+    Navigator.of(context).push(route).then((_) {
+      if (mounted) {
+        ref.read(todoProvider.notifier).setLastEnteredListId(null);
+      }
+    });
   }
 
-  void _handleSelectList(TodoList list, bool isWide) {
+  void _handleSelectList(TodoList list, bool isWide, {bool animated = true}) {
     if (!isWide) {
-      _pushTasksView(list);
+      _pushTasksView(list, animated: animated);
     } else {
       ref.read(todoProvider.notifier).selectList(list.id);
     }
@@ -460,4 +461,13 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
       ),
     );
   }
+}
+
+/// Material route that enters immediately without an opening transition,
+/// while preserving standard Material pop/back-swipe animation.
+class _InstantEnterMaterialPageRoute<T> extends MaterialPageRoute<T> {
+  _InstantEnterMaterialPageRoute({required super.builder});
+
+  @override
+  Duration get transitionDuration => Duration.zero;
 }
