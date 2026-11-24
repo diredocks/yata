@@ -936,14 +936,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   }
 
   Widget _buildRuledLinesSliver(
-    TodoList currentList,
     bool isDark, {
     required double collapseDelta,
   }) {
-    final useLightLines =
-        currentList.themePhoto == null &&
-        TodoColors.isLightTheme(currentList.themeColor) &&
-        !isDark;
     return SliverLayoutBuilder(
       builder: (context, constraints) {
         final minHeight =
@@ -958,9 +953,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
             constraints: BoxConstraints(minHeight: minHeight),
             child: CustomPaint(
               painter: RuledLinesPainter(
-                lineColor: useLightLines
-                    ? TodoColors.taskViewDividerLight
-                    : TodoColors.taskViewDividerDark,
+                lineColor: isDark
+                    ? TodoColors.taskViewDividerDark
+                    : TodoColors.taskViewDividerLight,
                 rowHeight: 66.0,
                 horizontalInset: 8.0,
               ),
@@ -1331,7 +1326,6 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                                     headerFg: headerFg,
                                   ),
                                   _buildRuledLinesSliver(
-                                    currentList,
                                     isDark,
                                     collapseDelta:
                                         (subtitle != null ? 144.0 : 116.0) -
