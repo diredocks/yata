@@ -1034,7 +1034,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       right: 0,
       child: IgnorePointer(
         child: AnimatedOpacity(
-          opacity: (_scrollOffset > 4 && _mode != TasksViewMode.multiSelecting)
+          opacity: (_scrollOffset > 4 && _mode == TasksViewMode.browsing)
               ? 1.0
               : 0.0,
           duration: const Duration(milliseconds: 150),

@@ -80,4 +80,68 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
   });
+
+  testWidgets('Header shadow is hidden in reorder mode even when scrolled', (
+    WidgetTester tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'yata.accounts':
+          '[{"id":"acct_a","displayName":"Alice","email":"alice@example.com","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.active_account_id': 'acct_a',
+    });
+    final prefs = await SharedPreferences.getInstance();
+
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+        child: const YataApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(YataApp)),
+    );
+    final presenter = container.read(tasksViewPresenterProvider);
+    for (var i = 1; i <= 25; i++) {
+      presenter.addTask(title: 'Scroll task $i', targetListId: 'tasks');
+    }
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Tasks'));
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byType(CustomScrollView).last, const Offset(0, -600));
+    await tester.pumpAndSettle();
+
+    final shadow = find.byWidgetPredicate(
+      (widget) =>
+          widget is Container &&
+          widget.decoration == TodoColors.horizontalShadowDecoration,
+    );
+    final shadowOpacity = find.ancestor(
+      of: shadow,
+      matching: find.byType(AnimatedOpacity),
+    );
+    expect(tester.widget<AnimatedOpacity>(shadowOpacity).opacity, 1.0);
+
+    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Reorder'));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<AnimatedOpacity>(shadowOpacity).opacity, 0.0);
+
+    await tester.drag(find.byType(CustomScrollView).last, const Offset(0, -200));
+    await tester.pumpAndSettle();
+    expect(tester.widget<AnimatedOpacity>(shadowOpacity).opacity, 0.0);
+
+    await tester.tap(find.byIcon(Icons.check));
+    await tester.pumpAndSettle();
+    expect(tester.widget<AnimatedOpacity>(shadowOpacity).opacity, 1.0);
+  });
 }
