@@ -1351,26 +1351,26 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                         ),
                       );
                       final topPadding = MediaQuery.paddingOf(context).top;
-                      final refreshableScroll =
-                          (!isMicrosoft || _mode == TasksViewMode.reordering)
-                          ? nestedScroll
-                          : RefreshIndicator(
-                              edgeOffset: topPadding,
-                              notificationPredicate: (notification) =>
-                                  notification.depth <= 1,
-                              onRefresh: () =>
-                                  ref.read(syncProvider.notifier).syncNow(),
-                              color: accentColor,
-                              backgroundColor: isDark
-                                  ? TodoColors.primaryBackgroundDark
-                                  : TodoColors.primaryBackgroundLight,
-                              child: nestedScroll,
-                            );
-                      return Stack(
+                      final scrollWithShadow = Stack(
                         children: [
-                          refreshableScroll,
+                          nestedScroll,
                           _buildScrollShadow(subtitle),
                         ],
+                      );
+                      if (!isMicrosoft || _mode == TasksViewMode.reordering) {
+                        return scrollWithShadow;
+                      }
+                      return RefreshIndicator(
+                        edgeOffset: topPadding,
+                        notificationPredicate: (notification) =>
+                            notification.depth <= 1,
+                        onRefresh: () =>
+                            ref.read(syncProvider.notifier).syncNow(),
+                        color: accentColor,
+                        backgroundColor: isDark
+                            ? TodoColors.primaryBackgroundDark
+                            : TodoColors.primaryBackgroundLight,
+                        child: scrollWithShadow,
                       );
                     },
                   ),
