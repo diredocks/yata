@@ -122,6 +122,10 @@ PreferredSizeWidget buildReorderingAppBar({
         ? TodoColors.primaryBackgroundDark
         : TodoColors.secondaryTextLight,
     foregroundColor: Colors.white,
+    surfaceTintColor: Colors.transparent,
+    elevation: 4,
+    scrolledUnderElevation: 4,
+    shadowColor: Colors.black.withValues(alpha: 0.25),
     leading: IconButton(
       onPressed: onExitReordering,
       icon: const Icon(Icons.arrow_back),
@@ -169,6 +173,10 @@ PreferredSizeWidget buildMultiSelectAppBar({
         ? TodoColors.primaryBackgroundDark
         : TodoColors.secondaryTextLight,
     foregroundColor: Colors.white,
+    surfaceTintColor: Colors.transparent,
+    elevation: 4,
+    scrolledUnderElevation: 4,
+    shadowColor: Colors.black.withValues(alpha: 0.25),
     leading: IconButton(
       onPressed: onClearSelection,
       icon: const Icon(Icons.close),
