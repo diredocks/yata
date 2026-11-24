@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -34,9 +36,27 @@ class TaskEntrySheet extends StatefulWidget {
 
 class _TaskEntrySheetState extends State<TaskEntrySheet>
     with WidgetsBindingObserver {
+  static const _windowFocusChannel = MethodChannel(
+    'top.clickfling.yata/window_focus',
+  );
+  static final StreamController<void> _windowFocusGainedController =
+      StreamController<void>.broadcast();
+  static bool _windowFocusHandlerRegistered = false;
+
+  static void _ensureWindowFocusHandler() {
+    if (_windowFocusHandlerRegistered) return;
+    _windowFocusHandlerRegistered = true;
+    _windowFocusChannel.setMethodCallHandler((call) async {
+      if (call.method == 'windowFocusGained') {
+        _windowFocusGainedController.add(null);
+      }
+    });
+  }
+
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   Animation<double>? _routeAnimation;
+  StreamSubscription<void>? _windowFocusSub;
   late String _targetListId;
   DateTime? _dueDate;
   DateTime? _reminderAt;
@@ -58,6 +78,14 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _ensureWindowFocusHandler();
+    _windowFocusSub = _windowFocusGainedController.stream.listen((_) {
+      if (!mounted) return;
+      if (_routeAnimation?.status == AnimationStatus.completed &&
+          MediaQuery.viewInsetsOf(context).bottom == 0) {
+        _requestKeyboard();
+      }
+    });
     _targetListId = widget.currentList.isSmartList
         ? 'tasks'
         : widget.currentList.id;
@@ -105,6 +133,7 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
 
   @override
   void dispose() {
+    _windowFocusSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _routeAnimation?.removeStatusListener(_onRouteAnimationStatus);
     _controller.dispose();
