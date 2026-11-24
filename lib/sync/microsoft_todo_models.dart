@@ -164,6 +164,8 @@ class RemoteTodoTask {
     this.createdDateTime,
     this.lastModifiedDateTime,
     this.recurrence = RecurrenceType.none,
+    this.rawRecurrence,
+    this.uncommittedDue = false,
     this.subtasks = const [],
     this.isDeleted = false,
   });
@@ -189,12 +191,18 @@ class RemoteTodoTask {
   final DateTime? createdDateTime;
   final DateTime? lastModifiedDateTime;
   final RecurrenceType recurrence;
+  final Map<String, dynamic>? rawRecurrence;
+  final bool uncommittedDue;
   final List<RemoteTaskStep> subtasks;
   final bool isDeleted;
 
   bool get isCompleted => status.toLowerCase() == 'completed';
 
   bool get isImportant => importance.toLowerCase() == 'high';
+
+  bool get hasRecurrence =>
+      recurrence != RecurrenceType.none ||
+      (rawRecurrence != null && rawRecurrence!.isNotEmpty);
 
   String get plainTextNote =>
       stripHtmlToPlainText(bodyContent, contentType: bodyContentType);
@@ -204,6 +212,7 @@ class RemoteTodoTask {
     final bodyMap = asJsonMap(json['Body']);
     final bodyContent = (bodyMap?['Content'] as String?) ?? '';
     final bodyContentType = bodyMap?['ContentType'] as String?;
+    final recurrenceMap = asJsonMap(json['Recurrence']);
     final subtasksRaw = json['Subtasks'] as List<dynamic>?;
     final subtasks = subtasksRaw == null
         ? const <RemoteTaskStep>[]
@@ -245,7 +254,9 @@ class RemoteTodoTask {
       lastModifiedDateTime: parseSubstrateTimestamp(
         json['LastModifiedDateTime'] as String?,
       ),
-      recurrence: decodeSubstrateRecurrence(asJsonMap(json['Recurrence'])),
+      recurrence: decodeSubstrateRecurrence(recurrenceMap),
+      rawRecurrence: normalizeRawRecurrence(recurrenceMap),
+      uncommittedDue: json['UncommittedDue'] as bool? ?? false,
       subtasks: subtasks,
       isDeleted: reason == 'deleted',
     );

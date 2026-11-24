@@ -521,7 +521,8 @@ class WidgetEventProcessor {
 
   Future<bool> _runBoundedSync(Duration timeout, String operation) async {
     final syncCall =
-        _runCloudSync ?? () => _read(syncProvider.notifier).syncNow();
+        _runCloudSync ??
+        () => _read(syncProvider.notifier).syncNow(reason: 'home_widget');
     var timedOut = false;
     final result = await guardAsyncUnit(
       () => syncCall().timeout(

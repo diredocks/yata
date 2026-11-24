@@ -9,8 +9,10 @@ import 'package:yata/account/account_local_storage.dart';
 import 'package:yata/account/account_provider.dart';
 import 'package:yata/core/error/app_error.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
+import 'package:yata/core/result/app_result.dart';
 import 'package:yata/data/todo_repository.dart';
 import 'package:yata/data/todo_settings_store.dart';
+import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/models/default_lists.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/homeview/home_view_presenter.dart';
@@ -1161,7 +1163,1237 @@ void main() {
           .firstWhere((l) => l.id == 'list_shop');
       expect(syncedShop.themePhoto, ListThemePhoto.beach);
     });
+
+    test('realtime Task payload directly updates OrderDateTime and CommittedOrder without fetching delta, preserves missing Subtasks, and respects dirty tasks', () async {
+      final prefs = await SharedPreferences.getInstance();
+      final storage = _session(prefs, 'acct_rt_payload');
+      await AuthTokenStorage(prefs).saveTokens(
+        'acct_rt_payload',
+        MicrosoftAuthTokens(
+          accessToken: 'tok-1',
+          refreshToken: 'rt-1',
+          expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+          userId: 'cid1',
+        ),
+      );
+      final account = MicrosoftAccount(
+        id: 'acct_rt_payload',
+        displayName: 'Alice',
+        email: 'alice@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        microsoftUserId: 'cid1',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId(account.id);
+
+      final today = DateTime.now();
+      final tOld = DateTime.utc(2026, 11, 22, 8);
+      final tMid = DateTime.utc(2026, 11, 22, 10);
+      final tNewest = DateTime.utc(2026, 11, 22, 14);
+
+      await storage.repository.saveLists([
+        ...defaultSmartLists().map(
+          (l) => l.smartType == SmartListType.tasks
+              ? l.copyWith(remoteId: 'rf-default')
+              : l,
+        ),
+      ]);
+      await storage.repository.saveTasks([
+        TaskItem(
+          id: 't_1',
+          listId: 'tasks',
+          title: 'Task 1',
+          createdAt: tOld,
+          orderDateTime: tMid,
+          isInMyDay: true,
+          myDayDate: DateTime(today.year, today.month, today.day),
+          committedOrder: tMid,
+          remoteId: 'rt-1',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-1',
+          steps: const [
+            TaskStep(id: 's_1', title: 'Local Step', remoteId: 'rs-1'),
+          ],
+        ),
+        TaskItem(
+          id: 't_2',
+          listId: 'tasks',
+          title: 'Task 2',
+          createdAt: tOld,
+          orderDateTime: tOld,
+          isInMyDay: true,
+          myDayDate: DateTime(today.year, today.month, today.day),
+          committedOrder: tOld,
+          remoteId: 'rt-2',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-2',
+        ),
+        TaskItem(
+          id: 't_3',
+          listId: 'tasks',
+          title: 'Dirty Title',
+          createdAt: tOld,
+          orderDateTime: tOld,
+          remoteId: 'rt-3',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-3',
+        ),
+      ]);
+      await storage.repository.saveDirtyTaskIds({'t_3'});
+
+      final fakeApi = FakeSubstrateApi();
+      addTearDown(fakeApi.realtimeController.close);
+      var taskFetches = 0;
+      fakeApi.onFetchTasksDelta = (folderId, dl) {
+        taskFetches += 1;
+        return DeltaPageResult(items: const [], deltaLink: 'dl-$folderId');
+      };
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+          microsoftTodoApiProvider.overrideWithValue(fakeApi),
+          realtimeSyncEnabledProvider.overrideWithValue(true),
+          periodicSyncEnabledProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(syncProvider);
+      await pumpEventQueue();
+      expect(fakeApi.callLog, contains('GET realtime'));
+
+      final initialMutationVersion = container
+          .read(todoProvider)
+          .mutationVersion;
+
+      // Remote Task/Updated reorder for t_2 with full Payload (both OrderDateTime and CommittedOrder).
+      fakeApi.realtimeController.add(
+        RealtimeEvent(
+          id: 'rt-2',
+          type: 'Task',
+          operation: 'Updated',
+          requestId: 'other-device-req',
+          payload: {
+            'Id': 'rt-2',
+            'ChangeKey': 'ck-2-new',
+            'ParentFolderId': 'rf-default',
+            'Subject': 'Task 2',
+            'OrderDateTime': formatSubstrateUtcTimestamp(tNewest),
+            'CommittedDay': formatDayString(today),
+            'CommittedOrder': formatSubstrateUtcTimestamp(tNewest),
+          },
+        ),
+      );
+
+      // Remote update for t_1 without Subtasks key preserves existing steps.
+      fakeApi.realtimeController.add(
+        RealtimeEvent(
+          id: 'rt-1',
+          type: 'Task',
+          operation: 'Updated',
+          requestId: 'other-device-req-2',
+          payload: {
+            'Id': 'rt-1',
+            'ChangeKey': 'ck-1-new',
+            'ParentFolderId': 'rf-default',
+            'Subject': 'Task 1',
+            'OrderDateTime': formatSubstrateUtcTimestamp(tMid),
+            'CommittedDay': formatDayString(today),
+            'CommittedOrder': formatSubstrateUtcTimestamp(tMid),
+          },
+        ),
+      );
+
+      // Remote update for dirty task t_3 only updates ChangeKey, preserving local edits.
+      fakeApi.realtimeController.add(
+        RealtimeEvent(
+          id: 'rt-3',
+          type: 'Task',
+          operation: 'Updated',
+          requestId: 'other-device-req-3',
+          payload: {
+            'Id': 'rt-3',
+            'ChangeKey': 'ck-3-new',
+            'ParentFolderId': 'rf-default',
+            'Subject': 'Remote Overwrite',
+            'OrderDateTime': formatSubstrateUtcTimestamp(tNewest),
+          },
+        ),
+      );
+
+      await pumpEventQueue();
+
+      final todoState = container.read(todoProvider);
+      final tasksList = todoState.lists.firstWhere((l) => l.id == 'tasks');
+      final myDayList = todoState.lists.firstWhere((l) => l.id == 'my_day');
+      expect(
+        todoState.tasksForList(tasksList).map((t) => t.id).toList(),
+        ['t_2', 't_1', 't_3'],
+      );
+      expect(
+        todoState.tasksForList(myDayList).map((t) => t.id).toList(),
+        ['t_2', 't_1'],
+      );
+
+      final updatedT1 = todoState.tasks.firstWhere((t) => t.id == 't_1');
+      expect(updatedT1.steps.single.title, 'Local Step');
+
+      final updatedT3 = todoState.tasks.firstWhere((t) => t.id == 't_3');
+      expect(updatedT3.title, 'Dirty Title');
+      expect(updatedT3.changeKey, 'ck-3-new');
+
+      expect(taskFetches, 0);
+      expect(todoState.mutationVersion, initialMutationVersion);
+      expect(storage.repository.loadDirtyTaskIds(), ['t_3']);
+    });
+
+    test('realtime Task/Deleted removes non-dirty task and mid-sync Task/Updated is deferred without marking dirty', () async {
+      final prefs = await SharedPreferences.getInstance();
+      final storage = _session(prefs, 'acct_rt_defer');
+      await AuthTokenStorage(prefs).saveTokens(
+        'acct_rt_defer',
+        MicrosoftAuthTokens(
+          accessToken: 'tok-1',
+          refreshToken: 'rt-1',
+          expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+          userId: 'cid1',
+        ),
+      );
+      final account = MicrosoftAccount(
+        id: 'acct_rt_defer',
+        displayName: 'Alice',
+        email: 'alice@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        microsoftUserId: 'cid1',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId(account.id);
+
+      final tOld = DateTime.utc(2026, 11, 22, 8);
+      final tMid = DateTime.utc(2026, 11, 22, 10);
+      final tNew = DateTime.utc(2026, 11, 22, 16);
+
+      await storage.repository.saveLists([
+        ...defaultSmartLists().map(
+          (l) => l.smartType == SmartListType.tasks
+              ? l.copyWith(remoteId: 'rf-default')
+              : l,
+        ),
+      ]);
+      await storage.repository.saveTasks([
+        TaskItem(
+          id: 't_1',
+          listId: 'tasks',
+          title: 'Task 1',
+          createdAt: tOld,
+          orderDateTime: tMid,
+          remoteId: 'rt-1',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-1',
+        ),
+        TaskItem(
+          id: 't_2',
+          listId: 'tasks',
+          title: 'Task 2',
+          createdAt: tOld,
+          orderDateTime: tOld,
+          remoteId: 'rt-2',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-2',
+        ),
+        TaskItem(
+          id: 't_del',
+          listId: 'tasks',
+          title: 'To Delete Remotely',
+          createdAt: tOld,
+          orderDateTime: tOld,
+          remoteId: 'rt-del',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-del',
+        ),
+      ]);
+      await storage.settings.saveTaskDeltaLinks({'rf-default': 'dl-1'});
+
+      final taskFetchStarted = Completer<void>();
+      final allowTaskFetchFinish = Completer<void>();
+      final fakeApi = _BlockingTasksDeltaApi(
+        taskFetchStarted,
+        allowTaskFetchFinish,
+      );
+      addTearDown(fakeApi.realtimeController.close);
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+          microsoftTodoApiProvider.overrideWithValue(fakeApi),
+          realtimeSyncEnabledProvider.overrideWithValue(true),
+          periodicSyncEnabledProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(syncProvider);
+      await pumpEventQueue();
+
+      // Immediate remote delete via realtime.
+      fakeApi.realtimeController.add(
+        const RealtimeEvent(
+          id: 'rt-del',
+          type: 'Task',
+          operation: 'Deleted',
+          requestId: 'other-device-req',
+        ),
+      );
+      await pumpEventQueue();
+      expect(
+        container.read(todoProvider).tasks.any((t) => t.id == 't_del'),
+        isFalse,
+      );
+
+      // Start a delta sync that blocks during Phase 10b and returns [] (omitting reorder).
+      final syncFuture = container.read(syncProvider.notifier).syncNow();
+      await taskFetchStarted.future;
+
+      // Mid-sync realtime Task/Updated reorder arrives and must be deferred until sync ends.
+      fakeApi.realtimeController.add(
+        RealtimeEvent(
+          id: 'rt-2',
+          type: 'Task',
+          operation: 'Updated',
+          requestId: 'other-device-req-2',
+          payload: {
+            'Id': 'rt-2',
+            'ChangeKey': 'ck-2-new',
+            'ParentFolderId': 'rf-default',
+            'Subject': 'Task 2',
+            'OrderDateTime': formatSubstrateUtcTimestamp(tNew),
+          },
+        ),
+      );
+      await pumpEventQueue();
+
+      allowTaskFetchFinish.complete();
+      await syncFuture;
+
+      final state = container.read(todoProvider);
+      final tasksList = state.lists.firstWhere((l) => l.id == 'tasks');
+      expect(state.tasksForList(tasksList).map((t) => t.id).toList(), [
+        't_2',
+        't_1',
+      ]);
+      expect(
+        state.tasks.firstWhere((t) => t.id == 't_2').orderDateTime,
+        tNew,
+      );
+      expect(storage.repository.loadDirtyTaskIds(), isEmpty);
+    });
+
+    test('forceFullSync bypasses saved taskDeltaLinks, syncs reordered OrderDateTime, and prunes stale deleted tasks while keeping moved and dirty tasks', () async {
+      final prefs = await SharedPreferences.getInstance();
+      final storage = _session(prefs, 'acct_force_full');
+      await AuthTokenStorage(prefs).saveTokens(
+        'acct_force_full',
+        MicrosoftAuthTokens(
+          accessToken: 'tok-1',
+          refreshToken: 'rt-1',
+          expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+          userId: 'cid1',
+        ),
+      );
+      final account = MicrosoftAccount(
+        id: 'acct_force_full',
+        displayName: 'Alice',
+        email: 'alice@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        microsoftUserId: 'cid1',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId(account.id);
+
+      final t03 = DateTime.utc(2026, 11, 22, 3);
+      final t04 = DateTime.utc(2026, 11, 22, 4);
+      final t05 = DateTime.utc(2026, 11, 22, 5);
+      final t10 = DateTime.utc(2026, 11, 22, 10);
+      final t15 = DateTime.utc(2026, 11, 22, 15);
+      final t20 = DateTime.utc(2026, 11, 22, 20);
+      final t30 = DateTime.utc(2026, 11, 22, 23);
+
+      await storage.repository.saveLists([
+        ...defaultSmartLists().map(
+          (l) => l.smartType == SmartListType.tasks
+              ? l.copyWith(remoteId: 'rf-default')
+              : l,
+        ),
+        const TodoList(id: 'list_b', title: 'List B', remoteId: 'rf-b'),
+      ]);
+      await storage.repository.saveTasks([
+        TaskItem(
+          id: 't_1',
+          listId: 'tasks',
+          title: 'Task 1',
+          createdAt: t03,
+          orderDateTime: t20,
+          remoteId: 'rt-1',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-1',
+        ),
+        TaskItem(
+          id: 't_2',
+          listId: 'tasks',
+          title: 'Task 2',
+          createdAt: t03,
+          orderDateTime: t10,
+          remoteId: 'rt-2',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-2',
+        ),
+        TaskItem(
+          id: 't_del',
+          listId: 'tasks',
+          title: 'Deleted On Original App',
+          createdAt: t03,
+          orderDateTime: t05,
+          remoteId: 'rt-del',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-del',
+        ),
+        TaskItem(
+          id: 't_moved',
+          listId: 'tasks',
+          title: 'Moved Remotely',
+          createdAt: t03,
+          orderDateTime: t04,
+          remoteId: 'rt-moved',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-moved',
+        ),
+        TaskItem(
+          id: 't_dirty',
+          listId: 'tasks',
+          title: 'Locally Dirty Task',
+          createdAt: t03,
+          orderDateTime: t03,
+          remoteId: 'rt-dirty',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-dirty',
+        ),
+      ]);
+      await storage.settings.saveFoldersDeltaLink('dl-folders-1');
+      await storage.settings.saveTaskDeltaLinks({
+        'rf-default': 'dl-def-1',
+        'rf-b': 'dl-b-1',
+      });
+
+      final fakeApi = FakeSubstrateApi();
+      fakeApi.onFetchFoldersDelta = (dl) => dl != null
+          ? const DeltaPageResult(items: [], deltaLink: 'dl-folders-2')
+          : const DeltaPageResult(
+              items: [
+                RemoteTodoFolder(
+                  id: 'rf-default',
+                  name: 'Tasks',
+                  isDefaultFolder: true,
+                ),
+                RemoteTodoFolder(id: 'rf-b', name: 'List B'),
+              ],
+              deltaLink: 'dl-folders-2',
+            );
+      fakeApi.onFetchTasksDelta = (folderId, dl) {
+        if (dl != null) {
+          // Simulate Substrate delta bug omitting position-only reorder.
+          return DeltaPageResult(items: const [], deltaLink: dl);
+        }
+        if (folderId == 'rf-default') {
+          return DeltaPageResult(
+            items: [
+              RemoteTodoTask(
+                id: 'rt-1',
+                changeKey: 'ck-1-new',
+                parentFolderId: 'rf-default',
+                subject: 'Task 1',
+                orderDateTime: t10,
+              ),
+              RemoteTodoTask(
+                id: 'rt-2',
+                changeKey: 'ck-2-new',
+                parentFolderId: 'rf-default',
+                subject: 'Task 2',
+                orderDateTime: t30,
+              ),
+            ],
+            deltaLink: 'dl-def-new',
+          );
+        }
+        if (folderId == 'rf-b') {
+          return DeltaPageResult(
+            items: [
+              RemoteTodoTask(
+                id: 'rt-moved',
+                changeKey: 'ck-moved-new',
+                parentFolderId: 'rf-b',
+                subject: 'Moved Remotely',
+                orderDateTime: t15,
+              ),
+            ],
+            deltaLink: 'dl-b-new',
+          );
+        }
+        return const DeltaPageResult(items: []);
+      };
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+          microsoftTodoApiProvider.overrideWithValue(fakeApi),
+          realtimeSyncEnabledProvider.overrideWithValue(false),
+          periodicSyncEnabledProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      // Incremental delta sync returns empty, keeping old order and stale task.
+      await container.read(syncProvider.notifier).syncNow();
+      var state = container.read(todoProvider);
+      final tasksList = state.lists.firstWhere((l) => l.id == 'tasks');
+      expect(
+        state.tasksForList(tasksList).take(2).map((t) => t.id).toList(),
+        ['t_1', 't_2'],
+      );
+      expect(state.tasks.any((t) => t.id == 't_del'), isTrue);
+
+      // Edit t_dirty locally right before forced full sync so it is dirty and
+      // pushed in Phase 10a; Phase 10b full-sync pruning must keep it even if
+      // the full snapshot omits it.
+      container
+          .read(todoProvider.notifier)
+          .commit(
+            state.copyWith(
+              tasks: [
+                for (final t in state.tasks)
+                  if (t.id == 't_dirty')
+                    t.copyWith(title: 'Locally Dirty Edited')
+                  else
+                    t,
+              ],
+            ),
+          );
+
+      // Forced full sync bypasses saved deltaLinks and reconciles state.
+      await container
+          .read(syncProvider.notifier)
+          .syncNow(forceFullSync: true, reason: 'test_force');
+
+      expect(fakeApi.callLog, contains('GET tasks(rf-default,null)'));
+      expect(fakeApi.callLog, contains('GET tasks(rf-b,null)'));
+
+      state = container.read(todoProvider);
+      expect(
+        state.tasksForList(tasksList).map((t) => t.id).toList(),
+        ['t_2', 't_1', 't_dirty'],
+      );
+      expect(state.tasks.any((t) => t.id == 't_del'), isFalse);
+
+      final moved = state.tasks.firstWhere((t) => t.id == 't_moved');
+      expect(moved.listId, 'list_b');
+      expect(moved.orderDateTime, t15);
+
+      expect(storage.settings.loadTaskDeltaLinks(), {
+        'rf-default': 'dl-def-new',
+        'rf-b': 'dl-b-new',
+      });
+    });
+
+    test('completing synced recurring task on Microsoft account lets server spawn next occurrence without duplicate POST', () async {
+      final prefs = await SharedPreferences.getInstance();
+      final storage = _session(prefs, 'acct_recur_done');
+      await AuthTokenStorage(prefs).saveTokens(
+        'acct_recur_done',
+        MicrosoftAuthTokens(
+          accessToken: 'tok-1',
+          refreshToken: 'rt-1',
+          expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+          userId: 'cid1',
+        ),
+      );
+      final account = MicrosoftAccount(
+        id: 'acct_recur_done',
+        displayName: 'Alice',
+        email: 'alice@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        microsoftUserId: 'cid1',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId(account.id);
+
+      await storage.repository.saveLists([
+        ...defaultSmartLists().map(
+          (l) => l.smartType == SmartListType.tasks
+              ? l.copyWith(remoteId: 'rf-default')
+              : l,
+        ),
+      ]);
+      await storage.repository.saveTasks([
+        TaskItem(
+          id: 't_rec',
+          listId: 'tasks',
+          title: 'Daily Review',
+          createdAt: DateTime.utc(2026, 11, 20),
+          dueDate: DateTime(2026, 11, 25),
+          recurrence: RecurrenceType.daily,
+          remoteId: 'rt-rec',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-rec-1',
+        ),
+      ]);
+      await storage.settings.saveFoldersDeltaLink('dl-f-1');
+      await storage.settings.saveTaskDeltaLinks({'rf-default': 'dl-t-1'});
+
+      Map<String, dynamic>? capturedPatch;
+      final fakeApi = FakeSubstrateApi();
+      fakeApi.onFetchFoldersDelta = (dl) =>
+          const DeltaPageResult(items: [], deltaLink: 'dl-f-2');
+      fakeApi.onPatchTask = (id, patch, ck) async {
+        capturedPatch = Map<String, dynamic>.from(patch);
+        return RemoteTodoTask(
+          id: id,
+          changeKey: 'ck-rec-done',
+          parentFolderId: 'rf-default',
+          subject: 'Daily Review',
+          status: 'Completed',
+        );
+      };
+      fakeApi.onFetchTasksDelta = (folderId, dl) {
+        if (folderId == 'rf-default') {
+          return DeltaPageResult(
+            items: [
+              RemoteTodoTask(
+                id: 'rt-rec',
+                changeKey: 'ck-rec-done',
+                parentFolderId: 'rf-default',
+                subject: 'Daily Review',
+                status: 'Completed',
+                dueDate: DateTime(2026, 11, 25),
+                recurrence: RecurrenceType.daily,
+              ),
+              RemoteTodoTask(
+                id: 'rt-rec-next',
+                changeKey: 'ck-rec-next',
+                parentFolderId: 'rf-default',
+                subject: 'Daily Review',
+                status: 'NotStarted',
+                dueDate: DateTime(2026, 11, 26),
+                recurrence: RecurrenceType.daily,
+              ),
+            ],
+            deltaLink: 'dl-t-2',
+          );
+        }
+        return const DeltaPageResult(items: []);
+      };
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+          microsoftTodoApiProvider.overrideWithValue(fakeApi),
+          realtimeSyncEnabledProvider.overrideWithValue(false),
+          periodicSyncEnabledProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container
+          .read(tasksViewPresenterProvider)
+          .setTaskCompleted('t_rec', completed: true);
+
+      // Only the completed task exists locally (no premature duplicate created).
+      expect(container.read(todoProvider).tasks.length, 1);
+
+      await container.read(syncProvider.notifier).syncNow();
+
+      expect(
+        fakeApi.callLog.any((c) => c.startsWith('POST taskfolders/')),
+        isFalse,
+      );
+      expect(capturedPatch?.keys.toSet(), {'Status', 'CompletedDateTime'});
+      expect(capturedPatch?['Status'], 'Completed');
+
+      final finalTasks = container.read(todoProvider).tasks;
+      expect(finalTasks.length, 2);
+      expect(
+        finalTasks.where((t) => !t.isCompleted).single.remoteId,
+        'rt-rec-next',
+      );
+    });
+
+    test('preserves custom Recurrence rawRecurrence across unrelated field PATCH and dueDate edits, clearing only when user changes recurrence', () async {
+      final prefs = await SharedPreferences.getInstance();
+      final storage = _session(prefs, 'acct_custom_recur');
+      await AuthTokenStorage(prefs).saveTokens(
+        'acct_custom_recur',
+        MicrosoftAuthTokens(
+          accessToken: 'tok-1',
+          refreshToken: 'rt-1',
+          expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+          userId: 'cid1',
+        ),
+      );
+      final account = MicrosoftAccount(
+        id: 'acct_custom_recur',
+        displayName: 'Alice',
+        email: 'alice@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        microsoftUserId: 'cid1',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId(account.id);
+
+      final customRule = {
+        'RecurrenceType': 'Custom',
+        'IntervalType': 'Weeks',
+        'Interval': 2,
+        'WeekDays': ['Monday', 'Wednesday'],
+        'FirstDayOfWeek': 'Sunday',
+      };
+
+      final capturedPatches = <Map<String, dynamic>>[];
+      final fakeApi = FakeSubstrateApi();
+      fakeApi.onFetchFoldersDelta = (dl) => dl != null
+          ? const DeltaPageResult(items: [], deltaLink: 'dl-f-2')
+          : const DeltaPageResult(
+              items: [
+                RemoteTodoFolder(
+                  id: 'rf-default',
+                  name: 'Tasks',
+                  isDefaultFolder: true,
+                ),
+              ],
+              deltaLink: 'dl-f-1',
+            );
+      fakeApi.onFetchTasksDelta = (folderId, dl) => dl != null
+          ? DeltaPageResult(items: const [], deltaLink: dl)
+          : DeltaPageResult(
+              items: [
+                RemoteTodoTask.fromJson({
+                  'Id': 'rt-custom',
+                  'ChangeKey': 'ck-1',
+                  'ParentFolderId': 'rf-default',
+                  'Subject': 'Biweekly Sync',
+                  'DueDate': '2026-11-25',
+                  'Recurrence': customRule,
+                }),
+              ],
+              deltaLink: 'dl-t-1',
+            );
+      fakeApi.onPatchTask = (id, patch, ck) async {
+        capturedPatches.add(Map<String, dynamic>.from(patch));
+        return RemoteTodoTask(
+          id: id,
+          changeKey: 'ck-${capturedPatches.length + 1}',
+          parentFolderId: 'rf-default',
+          subject: patch['Subject'] as String? ?? 'Biweekly Sync',
+        );
+      };
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+          microsoftTodoApiProvider.overrideWithValue(fakeApi),
+          realtimeSyncEnabledProvider.overrideWithValue(false),
+          periodicSyncEnabledProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      // Initial pull stores rawRecurrence.
+      await container.read(syncProvider.notifier).syncNow();
+      var task = container.read(todoProvider).tasks.single;
+      expect(task.rawRecurrence?['Interval'], 2);
+      expect(task.rawRecurrence?['WeekDays'], ['Monday', 'Wednesday']);
+
+      // 1) Editing only title omits Recurrence, Body, Status, etc.
+      final detail = container.read(detailViewPresenterProvider);
+      detail.updateTaskTitle(task.id, 'Biweekly Sync Updated');
+      await container.read(syncProvider.notifier).syncNow();
+      expect(capturedPatches.last.keys.toSet(), {'Subject'});
+
+      // 2) Editing dueDate keeps custom Interval=2 & WeekDays intact!
+      detail.setTaskDueDate(task.id, DateTime(2026, 12, 2));
+      await container.read(syncProvider.notifier).syncNow();
+      expect(
+        capturedPatches.last.keys.toSet(),
+        containsAll(['DueDateTime', 'Recurrence']),
+      );
+      expect(capturedPatches.last['Recurrence'], customRule);
+      expect(storage.repository.readCachedTasks().single.rawRecurrence, customRule);
+
+      // 3) Explicitly choosing a preset clears rawRecurrence and encodes Daily.
+      detail.setTaskRecurrence(task.id, RecurrenceType.daily);
+      await container.read(syncProvider.notifier).syncNow();
+      expect(capturedPatches.last['Recurrence']['RecurrenceType'], 'Daily');
+      expect(capturedPatches.last['Recurrence']['Interval'], 1);
+    });
+
+    test('realtime FolderGroup/TaskFolder/Setting events apply directly and forceFullSync refreshes groups and folders', () async {
+      final prefs = await SharedPreferences.getInstance();
+      final storage = _session(prefs, 'acct_multi_rt');
+      await AuthTokenStorage(prefs).saveTokens(
+        'acct_multi_rt',
+        MicrosoftAuthTokens(
+          accessToken: 'tok-1',
+          refreshToken: 'rt-1',
+          expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+          userId: 'cid1',
+        ),
+      );
+      final account = MicrosoftAccount(
+        id: 'acct_multi_rt',
+        displayName: 'Alice',
+        email: 'alice@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        microsoftUserId: 'cid1',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId(account.id);
+
+      final tOld = DateTime.utc(2026, 11, 22, 8);
+      final tMid = DateTime.utc(2026, 11, 22, 10);
+      final tNew = DateTime.utc(2026, 11, 22, 14);
+
+      await storage.repository.saveGroups([
+        ListGroup(
+          id: 'g_1',
+          title: 'Group 1',
+          remoteId: 'rg-1',
+          orderDateTime: tMid,
+        ),
+        ListGroup(
+          id: 'g_2',
+          title: 'Group 2',
+          remoteId: 'rg-2',
+          orderDateTime: tOld,
+        ),
+        ListGroup(
+          id: 'g_rt_del',
+          title: 'Temp Group',
+          remoteId: 'rg-rt-del',
+          orderDateTime: tOld.subtract(const Duration(hours: 1)),
+        ),
+      ]);
+      await storage.repository.saveLists([
+        ...defaultSmartLists().map(
+          (l) => l.smartType == SmartListType.tasks
+              ? l.copyWith(remoteId: 'rf-default')
+              : l,
+        ),
+        TodoList(
+          id: 'l_1',
+          title: 'List 1',
+          remoteId: 'rf-1',
+          groupId: 'g_1',
+          orderDateTime: tMid,
+        ),
+        TodoList(
+          id: 'l_2',
+          title: 'List 2',
+          remoteId: 'rf-2',
+          groupId: 'g_2',
+          orderDateTime: tOld,
+        ),
+        TodoList(
+          id: 'l_ungroup',
+          title: 'Ungrouped',
+          remoteId: 'rf-ungroup',
+          groupId: 'g_rt_del',
+          orderDateTime: tOld.subtract(const Duration(hours: 1)),
+        ),
+      ]);
+      await storage.settings.saveGroupsDeltaLink('dl-g-1');
+      await storage.settings.saveFoldersDeltaLink('dl-f-1');
+
+      final fakeApi = FakeSubstrateApi();
+      addTearDown(fakeApi.realtimeController.close);
+      var groupFetches = 0;
+      var folderFetches = 0;
+      fakeApi.onFetchGroupsDelta = (dl) {
+        groupFetches += 1;
+        if (dl != null) return DeltaPageResult(items: const [], deltaLink: dl);
+        return DeltaPageResult(
+          items: [
+            RemoteFolderGroup(
+              id: 'rg-1',
+              name: 'Group 1',
+              orderDateTime: tNew.add(const Duration(hours: 2)),
+            ),
+          ],
+          deltaLink: 'dl-g-2',
+        );
+      };
+      fakeApi.onFetchFoldersDelta = (dl) {
+        folderFetches += 1;
+        if (dl != null) return DeltaPageResult(items: const [], deltaLink: dl);
+        return DeltaPageResult(
+          items: [
+            const RemoteTodoFolder(
+              id: 'rf-default',
+              name: 'Tasks',
+              isDefaultFolder: true,
+            ),
+            RemoteTodoFolder(
+              id: 'rf-1',
+              name: 'List 1 Full',
+              orderDateTime: tNew.add(const Duration(hours: 3)),
+            ),
+            RemoteTodoFolder(
+              id: 'rf-ungroup',
+              name: 'Ungrouped',
+              orderDateTime: tOld.subtract(const Duration(hours: 1)),
+            ),
+          ],
+          deltaLink: 'dl-f-2',
+        );
+      };
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+          microsoftTodoApiProvider.overrideWithValue(fakeApi),
+          realtimeSyncEnabledProvider.overrideWithValue(true),
+          periodicSyncEnabledProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(syncProvider);
+      await pumpEventQueue();
+      final initialMutationVersion = container
+          .read(todoProvider)
+          .mutationVersion;
+
+      // 1) FolderGroup reorder/delete + TaskFolder reorder/theme + Setting via realtime with 0 HTTP fetches.
+      fakeApi.realtimeController.add(
+        RealtimeEvent(
+          id: 'rg-2',
+          type: 'FolderGroup',
+          operation: 'Updated',
+          requestId: 'other-req-1',
+          payload: {
+            'Id': 'rg-2',
+            'Name': 'Group 2',
+            'OrderDateTime': formatSubstrateUtcTimestamp(tNew),
+          },
+        ),
+      );
+      fakeApi.realtimeController.add(
+        RealtimeEvent(
+          id: 'rf-2',
+          type: 'TaskFolder',
+          operation: 'Updated',
+          requestId: 'other-req-2',
+          payload: {
+            'Id': 'rf-2',
+            'Name': 'List 2',
+            'ThemeColor': 'dark_rose',
+            'OrderDateTime': formatSubstrateUtcTimestamp(tNew),
+          },
+        ),
+      );
+      fakeApi.realtimeController.add(
+        const RealtimeEvent(
+          id: 'ConfirmOnDelete',
+          type: 'Setting',
+          operation: 'Updated',
+          requestId: 'other-req-3',
+          payload: {'Key': 'ConfirmOnDelete', 'Value': 'false'},
+        ),
+      );
+      fakeApi.realtimeController.add(
+        const RealtimeEvent(
+          id: 'rg-rt-del',
+          type: 'FolderGroup',
+          operation: 'Deleted',
+          requestId: 'other-req-4',
+        ),
+      );
+      await pumpEventQueue();
+
+      expect(groupFetches, 0);
+      expect(folderFetches, 0);
+      var todoState = container.read(todoProvider);
+      expect(todoState.groups.map((g) => g.id).toList(), ['g_2', 'g_1']);
+      expect(
+        todoState.lists.firstWhere((l) => l.id == 'l_ungroup').groupId,
+        isNull,
+      );
+      expect(
+        todoState.lists.firstWhere((l) => l.id == 'l_2').themeColor,
+        ListThemeColor.rose,
+      );
+      expect(
+        todoState.lists
+            .where((l) => !l.isSmartList)
+            .map((l) => l.id)
+            .toList(),
+        ['l_2', 'l_1', 'l_ungroup'],
+      );
+      expect(todoState.confirmBeforeDeleting, isFalse);
+      expect(todoState.mutationVersion, initialMutationVersion);
+
+      // 2) forceFullSync bypasses groupsDeltaLink and foldersDeltaLink and prunes stale group/list.
+      await container
+          .read(syncProvider.notifier)
+          .syncNow(forceFullSync: true, reason: 'manual_header_sync');
+      expect(fakeApi.callLog, contains('GET foldergroups(null)'));
+      expect(fakeApi.callLog, contains('GET taskfolders(null)'));
+
+      todoState = container.read(todoProvider);
+      expect(todoState.groups.map((g) => g.id).toList(), ['g_1']);
+      expect(
+        todoState.lists.where((l) => !l.isSmartList).map((l) => l.id).toList(),
+        ['l_1', 'l_ungroup'],
+      );
+      expect(todoState.lists.firstWhere((l) => l.id == 'l_1').title, 'List 1 Full');
+    });
+
+    test('conflict 409/412 performs 3-way plain-text note merge and recurring status preservation, and step push skips unchanged steps', () async {
+      final prefs = await SharedPreferences.getInstance();
+      final storage = _session(prefs, 'acct_conflict_steps');
+      await AuthTokenStorage(prefs).saveTokens(
+        'acct_conflict_steps',
+        MicrosoftAuthTokens(
+          accessToken: 'tok-1',
+          refreshToken: 'rt-1',
+          expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+          userId: 'cid1',
+        ),
+      );
+      final account = MicrosoftAccount(
+        id: 'acct_conflict_steps',
+        displayName: 'Alice',
+        email: 'alice@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        microsoftUserId: 'cid1',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId(account.id);
+
+      await storage.repository.saveLists([
+        ...defaultSmartLists().map(
+          (l) => l.smartType == SmartListType.tasks
+              ? l.copyWith(remoteId: 'rf-default')
+              : l,
+        ),
+      ]);
+      await storage.repository.saveTasks([
+        TaskItem(
+          id: 't_note',
+          listId: 'tasks',
+          title: 'Merge Note Task',
+          createdAt: DateTime.utc(2026, 11, 22),
+          note: 'Line 1\nLine 2\nLine 3',
+          remoteId: 'rt-note',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-note-1',
+        ),
+        TaskItem(
+          id: 't_adv',
+          listId: 'tasks',
+          title: 'Already Advanced Recur',
+          createdAt: DateTime.utc(2026, 11, 22),
+          dueDate: DateTime(2026, 11, 25),
+          recurrence: RecurrenceType.daily,
+          remoteId: 'rt-adv',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-adv-1',
+        ),
+        TaskItem(
+          id: 't_steps',
+          listId: 'tasks',
+          title: 'Multi Step Task',
+          createdAt: DateTime.utc(2026, 11, 22),
+          remoteId: 'rt-steps',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-steps-1',
+          steps: const [
+            TaskStep(id: 's_1', title: 'S1', remoteId: 'rs-1'),
+            TaskStep(id: 's_2', title: 'S2', remoteId: 'rs-2'),
+            TaskStep(id: 's_3', title: 'S3', remoteId: 'rs-3'),
+          ],
+        ),
+      ]);
+      await storage.settings.saveFoldersDeltaLink('dl-f-1');
+      await storage.settings.saveTaskDeltaLinks({'rf-default': 'dl-t-1'});
+
+      final fakeApi = FakeSubstrateApi();
+      fakeApi.onFetchFoldersDelta = (dl) =>
+          const DeltaPageResult(items: [], deltaLink: 'dl-f-2');
+      fakeApi.onGetTask = (id) async {
+        if (id == 'rt-note') {
+          return const RemoteTodoTask(
+            id: 'rt-note',
+            changeKey: 'ck-note-remote',
+            parentFolderId: 'rf-default',
+            subject: 'Merge Note Task',
+            bodyContent: 'Line 1 (remote)\nLine 2\nLine 3',
+            bodyContentType: 'Text',
+          );
+        }
+        return RemoteTodoTask(
+          id: 'rt-adv',
+          changeKey: 'ck-adv-remote',
+          parentFolderId: 'rf-default',
+          subject: 'Already Advanced Recur',
+          status: 'NotStarted',
+          dueDate: DateTime(2026, 11, 26),
+          recurrence: RecurrenceType.daily,
+        );
+      };
+
+      Map<String, dynamic>? retriedNotePatch;
+      Map<String, dynamic>? retriedAdvPatch;
+      Map<String, dynamic>? retriedStepsTaskPatch;
+      fakeApi.onPatchTask = (id, patch, ck) async {
+        if (ck == 'ck-note-1' || ck == 'ck-adv-1') {
+          throw const AppError.network(
+            statusCode: 409,
+            code: 'ErrorIrresolvableConflict',
+            message: 'conflict',
+          );
+        }
+        if (id == 'rt-note') {
+          retriedNotePatch = Map<String, dynamic>.from(patch);
+          return const RemoteTodoTask(
+            id: 'rt-note',
+            changeKey: 'ck-note-2',
+            parentFolderId: 'rf-default',
+            subject: 'Merge Note Task',
+          );
+        }
+        if (id == 'rt-adv') {
+          retriedAdvPatch = Map<String, dynamic>.from(patch);
+          return RemoteTodoTask(
+            id: 'rt-adv',
+            changeKey: 'ck-adv-2',
+            parentFolderId: 'rf-default',
+            subject: 'Already Advanced Recur',
+            status: 'NotStarted',
+            dueDate: DateTime(2026, 11, 26),
+            recurrence: RecurrenceType.daily,
+          );
+        }
+        if (id == 'rt-steps') {
+          retriedStepsTaskPatch = Map<String, dynamic>.from(patch);
+          return RemoteTodoTask(
+            id: 'rt-steps',
+            changeKey: 'ck-steps-2',
+            parentFolderId: 'rf-default',
+            subject: patch['Subject'] as String? ?? 'Multi Step Task',
+          );
+        }
+        throw StateError('Unexpected task PATCH on $id: $patch');
+      };
+
+      final patchedSteps = <String>[];
+      fakeApi.onPatchStep = (taskRemoteId, stepRemoteId, patch) async {
+        patchedSteps.add(stepRemoteId);
+        return RemoteTaskStep(id: stepRemoteId, subject: 'S2', isCompleted: true);
+      };
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+          microsoftTodoApiProvider.overrideWithValue(fakeApi),
+          realtimeSyncEnabledProvider.overrideWithValue(false),
+          periodicSyncEnabledProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      // Edit note (preserving base 'Line 1\nLine 2\nLine 3'), complete t_adv, toggle only s_2.
+      container
+          .read(detailViewPresenterProvider)
+          .updateTaskNote('t_note', 'Line 1\nLine 2\nLine 3 (local)');
+      container
+          .read(tasksViewPresenterProvider)
+          .setTaskCompleted('t_adv', completed: true);
+      container
+          .read(detailViewPresenterProvider)
+          .toggleStepCompleted('t_steps', 's_2');
+
+      await container.read(syncProvider.notifier).syncNow();
+
+      // 3-way merged note sent on retry & persisted cleanly.
+      expect(retriedNotePatch?.keys.toSet(), {'Body', 'BodyLastModifiedTime'});
+      expect(
+        (retriedNotePatch?['Body'] as Map)['Content'],
+        'Line 1 (remote)\nLine 2\nLine 3 (local)',
+      );
+      final finalNoteTask = container
+          .read(todoProvider)
+          .tasks
+          .firstWhere((t) => t.id == 't_note');
+      expect(finalNoteTask.note, 'Line 1 (remote)\nLine 2\nLine 3 (local)');
+      expect(storage.repository.loadTaskBaseNotes(), isEmpty);
+
+      // Server-advanced recurring task kept remote status/dueDate on 409.
+      expect(retriedAdvPatch?['Status'], 'NotStarted');
+      final finalAdvTask = container
+          .read(todoProvider)
+          .tasks
+          .firstWhere((t) => t.id == 't_adv');
+      expect(finalAdvTask.isCompleted, isFalse);
+      expect(finalAdvTask.dueDate, DateTime(2026, 11, 26));
+
+      // Step-only edit skipped task PATCH completely and patched ONLY rs-2!
+      expect(retriedStepsTaskPatch, isNull);
+      expect(
+        fakeApi.callLog.any((c) => c.startsWith('PATCH tasks/rt-steps(')),
+        isFalse,
+      );
+      expect(patchedSteps, ['rs-2']);
+
+      // Editing ONLY task title patches Subject and skips all PATCH subtasks.
+      patchedSteps.clear();
+      container
+          .read(detailViewPresenterProvider)
+          .updateTaskTitle('t_steps', 'Multi Step Task Renamed');
+      await container.read(syncProvider.notifier).syncNow();
+      expect(retriedStepsTaskPatch?.keys.toSet(), {'Subject'});
+      expect(retriedStepsTaskPatch?['Subject'], 'Multi Step Task Renamed');
+      expect(patchedSteps, isEmpty);
+    });
   });
+}
+
+class _BlockingTasksDeltaApi extends FakeSubstrateApi {
+  _BlockingTasksDeltaApi(this.started, this.release);
+
+  final Completer<void> started;
+  final Completer<void> release;
+
+  @override
+  AsyncAppResult<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta(
+    SubstrateRequestContext ctx, {
+    required String folderRemoteId,
+    String? deltaLink,
+  }) async {
+    if (!started.isCompleted) {
+      started.complete();
+      await release.future;
+    }
+    return super.fetchTasksDelta(
+      ctx,
+      folderRemoteId: folderRemoteId,
+      deltaLink: deltaLink,
+    );
+  }
 }
 
 ({TodoRepository repository, TodoSettingsStore settings}) _session(

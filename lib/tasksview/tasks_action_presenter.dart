@@ -194,6 +194,7 @@ class TasksActionPresenter {
         task.copyWith(
           dueDate: dueDate,
           recurrence: dueDate == null ? RecurrenceType.none : task.recurrence,
+          rawRecurrence: dueDate == null ? null : task.rawRecurrence,
           postponedDay: clearPostponed ? null : task.postponedDay,
         ),
         now: now,

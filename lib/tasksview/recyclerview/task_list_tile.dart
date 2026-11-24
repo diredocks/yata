@@ -118,7 +118,7 @@ class TaskListTile extends StatelessWidget {
               label: formatRelativeDate(context, task.dueDate!),
               color: dueColor,
             ),
-            if (task.recurrence != RecurrenceType.none) ...[
+            if (task.hasRecurrence) ...[
               const SizedBox(width: 4),
               Icon(Icons.repeat, size: 13, color: secondaryColor),
             ],

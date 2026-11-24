@@ -4,6 +4,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:material_ui/material_ui.dart' show TimeOfDay;
 import 'package:uuid/uuid.dart';
 
+import '../core/time/local_timezone.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 
@@ -457,12 +458,15 @@ Map<String, dynamic> formatDateTimeTimeZoneUtc(DateTime dt) {
   return {'DateTime': formatSubstrateUtcTimestamp(dt), 'TimeZone': 'UTC'};
 }
 
-/// Formats calendar [date] into Substrate `DateTimeTimeZone` at midnight UTC.
-Map<String, dynamic> formatDueDateTimeZone(DateTime date) {
-  final midnightUtc = DateTime.utc(date.year, date.month, date.day);
+/// Formats calendar [date] into Substrate `DateTimeTimeZone` (`YYYY-MM-DD`
+/// with local IANA timezone, matching `GswTask` / `DateTimeTimeZone.fromLocalTime`).
+Map<String, dynamic> formatDueDateTimeZone(
+  DateTime date, {
+  String? timeZoneId,
+}) {
   return {
-    'DateTime': formatSubstrateUtcTimestamp(midnightUtc),
-    'TimeZone': 'UTC',
+    'DateTime': formatDayString(date),
+    'TimeZone': timeZoneId ?? resolveLocalIanaTimeZone(),
   };
 }
 
@@ -475,15 +479,28 @@ DateTime? parseSubstrateDateTimeTimeZone(Map<String, dynamic>? map) {
   if (trimmed.isEmpty || trimmed.startsWith('0001-01-01')) {
     return null;
   }
-  final tz = (map['TimeZone'] as String?)?.trim().toLowerCase();
   final hasExplicitOffset =
-      trimmed.endsWith('Z') || RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(trimmed);
-  final candidate = (!hasExplicitOffset && tz == 'utc')
-      ? '${trimmed}Z'
-      : trimmed;
-  final parsed = DateTime.tryParse(candidate);
-  if (!_isValidSubstrateTimestamp(parsed)) return null;
-  return parsed!.toUtc();
+      trimmed.endsWith('Z') ||
+      trimmed.endsWith('z') ||
+      RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(trimmed);
+  if (hasExplicitOffset) {
+    final parsed = DateTime.tryParse(trimmed);
+    if (!_isValidSubstrateTimestamp(parsed)) return null;
+    return parsed!.toUtc();
+  }
+
+  final rawTz = (map['TimeZone'] as String?)?.trim();
+  final tzLower = rawTz?.toLowerCase();
+  if (rawTz == null || rawTz.isEmpty || tzLower == 'utc') {
+    final parsed = DateTime.tryParse('${trimmed}Z');
+    if (!_isValidSubstrateTimestamp(parsed)) return null;
+    return parsed!.toUtc();
+  }
+
+  final parsedInTz =
+      parseDateTimeInTimeZone(trimmed, rawTz) ?? DateTime.tryParse(trimmed)?.toUtc();
+  if (!_isValidSubstrateTimestamp(parsedInTz)) return null;
+  return parsedInTz!.toUtc();
 }
 
 /// Parses Substrate day values (`DueDate`, `DueDateTime`, `CommittedDay`,
@@ -740,6 +757,24 @@ RecurrenceType decodeSubstrateRecurrence(Map<String, dynamic>? map) {
     default:
       return RecurrenceType.none;
   }
+}
+
+/// Returns a shallow defensive copy of a raw Substrate `Recurrence` map, or
+/// `null` when absent/empty so custom intervals/weekdays survive round-trips.
+Map<String, dynamic>? normalizeRawRecurrence(Map<String, dynamic>? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  final copy = <String, dynamic>{};
+  for (final entry in raw.entries) {
+    final val = entry.value;
+    if (val is List) {
+      copy[entry.key] = List<dynamic>.from(val);
+    } else if (val is Map) {
+      copy[entry.key] = Map<String, dynamic>.from(val);
+    } else {
+      copy[entry.key] = val;
+    }
+  }
+  return copy;
 }
 
 const Set<String> _htmlBlockTags = {

@@ -10,11 +10,15 @@ import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/core/error/app_error.dart';
 import 'package:yata/data/todo_repository.dart';
 import 'package:yata/data/todo_provider.dart';
+import 'package:yata/data/todo_settings_store.dart';
 import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/homeview/home_view_ordering.dart';
 import 'package:yata/homeview/home_view_presenter.dart';
 import 'package:yata/main.dart';
 import 'package:yata/models/account.dart';
+import 'package:yata/models/default_lists.dart';
+import 'package:yata/models/task_item.dart';
+import 'package:yata/models/todo_list.dart';
 import 'package:yata/sync/microsoft_todo_api.dart';
 import 'package:yata/sync/sync_provider.dart';
 import 'package:yata/sync/todo_wire_codecs.dart';
@@ -1340,6 +1344,293 @@ void main() {
           .where((c) => c.startsWith('GET foldergroups'))
           .length;
       expect(callsAfter, greaterThan(callsBefore));
+    });
+
+    test('onAppResumed forces full task sync bypassing saved taskDeltaLinks even when coalesced with normal debounced sync', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      await AuthTokenStorage(prefs).saveTokens(
+        'acct_resume_full',
+        MicrosoftAuthTokens(
+          accessToken: 'tok-1',
+          refreshToken: 'rt-1',
+          expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+          userId: 'cid1',
+        ),
+      );
+      final account = MicrosoftAccount(
+        id: 'acct_resume_full',
+        displayName: 'Alice',
+        email: 'alice@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        lastSyncedAt: DateTime(2026, 11, 22, 12, 0),
+        microsoftUserId: 'cid1',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId(account.id);
+
+      final tOld = DateTime.utc(2026, 11, 22, 8);
+      final tMid = DateTime.utc(2026, 11, 22, 10);
+      final tNew = DateTime.utc(2026, 11, 22, 14);
+
+      final settings = TodoSettingsStore(prefs, accountId: account.id);
+      final repo = TodoRepository.forSession(
+        sharedFallbackTodoDatabase,
+        settings,
+      );
+      await repo.saveLists([
+        ...defaultSmartLists().map(
+          (l) => l.smartType == SmartListType.tasks
+              ? l.copyWith(remoteId: 'rf-default')
+              : l,
+        ),
+      ]);
+      await repo.saveTasks([
+        TaskItem(
+          id: 't_1',
+          listId: 'tasks',
+          title: 'Task One',
+          createdAt: tOld,
+          orderDateTime: tMid,
+          remoteId: 'rt-1',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-1',
+        ),
+        TaskItem(
+          id: 't_2',
+          listId: 'tasks',
+          title: 'Task Two',
+          createdAt: tOld,
+          orderDateTime: tOld,
+          remoteId: 'rt-2',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-2',
+        ),
+      ]);
+      await settings.saveFoldersDeltaLink('dl-folders-1');
+      await settings.saveTaskDeltaLinks({'rf-default': 'dl-tasks-1'});
+
+      final fakeApi = FakeSubstrateApi();
+      fakeApi.onFetchFoldersDelta = (dl) => dl != null
+          ? const DeltaPageResult(items: [], deltaLink: 'dl-folders-2')
+          : const DeltaPageResult(
+              items: [
+                RemoteTodoFolder(
+                  id: 'rf-default',
+                  name: 'Tasks',
+                  isDefaultFolder: true,
+                ),
+              ],
+              deltaLink: 'dl-folders-2',
+            );
+      fakeApi.onFetchTasksDelta = (folderId, dl) {
+        if (dl != null) {
+          return DeltaPageResult(items: const [], deltaLink: dl);
+        }
+        return DeltaPageResult(
+          items: [
+            RemoteTodoTask(
+              id: 'rt-1',
+              changeKey: 'ck-1-new',
+              parentFolderId: 'rf-default',
+              subject: 'Task One',
+              orderDateTime: tOld,
+            ),
+            RemoteTodoTask(
+              id: 'rt-2',
+              changeKey: 'ck-2-new',
+              parentFolderId: 'rf-default',
+              subject: 'Task Two',
+              orderDateTime: tNew,
+            ),
+          ],
+          deltaLink: 'dl-tasks-2',
+        );
+      };
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+          microsoftTodoApiProvider.overrideWithValue(fakeApi),
+          realtimeSyncEnabledProvider.overrideWithValue(false),
+          periodicSyncEnabledProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      container.read(syncProvider);
+
+      container.read(syncProvider.notifier).onAppPaused();
+      container.read(syncProvider.notifier).onAppResumed();
+      // Sticky coalescing: a shorter normal debounced sync must keep forceFullSync=true.
+      container
+          .read(syncProvider.notifier)
+          .scheduleDebouncedSync(
+            delay: const Duration(milliseconds: 50),
+            forceFullSync: false,
+            reason: 'local_mutation',
+          );
+
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+
+      expect(fakeApi.callLog, contains('GET tasks(rf-default,null)'));
+      final todoState = container.read(todoProvider);
+      final tasksList = todoState.lists.firstWhere((l) => l.id == 'tasks');
+      expect(
+        todoState.tasksForList(tasksList).map((t) => t.id).toList(),
+        ['t_2', 't_1'],
+      );
+    });
+
+    testWidgets('pull-to-refresh bypasses saved taskDeltaLinks and visually reorders tasks', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      await AuthTokenStorage(prefs).saveTokens(
+        'acct_ptr_reorder',
+        MicrosoftAuthTokens(
+          accessToken: 'tok-1',
+          refreshToken: 'rt-1',
+          expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+          userId: 'cid1',
+        ),
+      );
+      final account = MicrosoftAccount(
+        id: 'acct_ptr_reorder',
+        displayName: 'Alice',
+        email: 'alice@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        lastSyncedAt: DateTime(2026, 11, 22, 12, 0),
+        microsoftUserId: 'cid1',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId(account.id);
+
+      final tOld = DateTime.utc(2026, 11, 22, 8);
+      final tMid = DateTime.utc(2026, 11, 22, 10);
+      final tNew = DateTime.utc(2026, 11, 22, 14);
+
+      final settings = TodoSettingsStore(prefs, accountId: account.id);
+      final repo = TodoRepository.forSession(
+        sharedFallbackTodoDatabase,
+        settings,
+      );
+      await repo.saveLists([
+        ...defaultSmartLists().map(
+          (l) => l.smartType == SmartListType.tasks
+              ? l.copyWith(remoteId: 'rf-default')
+              : l,
+        ),
+      ]);
+      await repo.saveTasks([
+        TaskItem(
+          id: 't_1',
+          listId: 'tasks',
+          title: 'Task One',
+          createdAt: tOld,
+          orderDateTime: tMid,
+          remoteId: 'rt-1',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-1',
+        ),
+        TaskItem(
+          id: 't_2',
+          listId: 'tasks',
+          title: 'Task Two',
+          createdAt: tOld,
+          orderDateTime: tOld,
+          remoteId: 'rt-2',
+          remoteParentFolderId: 'rf-default',
+          changeKey: 'ck-2',
+        ),
+      ]);
+      await settings.saveFoldersDeltaLink('dl-folders-1');
+      await settings.saveTaskDeltaLinks({'rf-default': 'dl-tasks-1'});
+
+      final fakeApi = FakeSubstrateApi();
+      fakeApi.onFetchFoldersDelta = (dl) => dl != null
+          ? const DeltaPageResult(items: [], deltaLink: 'dl-folders-2')
+          : const DeltaPageResult(
+              items: [
+                RemoteTodoFolder(
+                  id: 'rf-default',
+                  name: 'Tasks',
+                  isDefaultFolder: true,
+                ),
+              ],
+              deltaLink: 'dl-folders-2',
+            );
+      fakeApi.onFetchTasksDelta = (folderId, dl) {
+        if (dl != null) {
+          return DeltaPageResult(items: const [], deltaLink: dl);
+        }
+        return DeltaPageResult(
+          items: [
+            RemoteTodoTask(
+              id: 'rt-1',
+              changeKey: 'ck-1-new',
+              parentFolderId: 'rf-default',
+              subject: 'Task One',
+              orderDateTime: tOld,
+            ),
+            RemoteTodoTask(
+              id: 'rt-2',
+              changeKey: 'ck-2-new',
+              parentFolderId: 'rf-default',
+              subject: 'Task Two',
+              orderDateTime: tNew,
+            ),
+          ],
+          deltaLink: 'dl-tasks-2',
+        );
+      };
+
+      tester.view.physicalSize = const Size(420, 900);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+            microsoftTodoApiProvider.overrideWithValue(fakeApi),
+            realtimeSyncEnabledProvider.overrideWithValue(false),
+            periodicSyncEnabledProvider.overrideWithValue(false),
+            startupSyncEnabledProvider.overrideWithValue(false),
+          ],
+          child: const YataApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Tasks'));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getTopLeft(find.text('Task One')).dy,
+        lessThan(tester.getTopLeft(find.text('Task Two')).dy),
+      );
+
+      // Pull down to trigger RefreshIndicator -> full task sync.
+      await tester.drag(
+        find.byType(CustomScrollView).last,
+        const Offset(0, 500),
+      );
+      await tester.pump();
+      expect(find.byType(RefreshProgressIndicator), findsOneWidget);
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(fakeApi.callLog, contains('GET tasks(rf-default,null)'));
+      expect(
+        tester.getTopLeft(find.text('Task Two')).dy,
+        lessThan(tester.getTopLeft(find.text('Task One')).dy),
+      );
     });
   });
 }

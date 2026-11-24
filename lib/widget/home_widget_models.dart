@@ -331,7 +331,7 @@ class HomeWidgetSnapshotSerializer {
       'dueDateYmd': dueDate == null ? null : formatDateYmd(dueDate),
       'hasReminder': task.reminderAt != null,
       'reminderAtMs': task.reminderAt?.toUtc().millisecondsSinceEpoch,
-      'isRecurring': task.recurrence != RecurrenceType.none,
+      'isRecurring': task.hasRecurrence,
       'isOverdue': isOverdue,
       'dueLabel': _formatDueDate(
         dueDate,

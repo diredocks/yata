@@ -6,9 +6,11 @@ import 'package:http/http.dart' as http;
 import 'package:result_dart/result_dart.dart';
 
 import '../core/error/app_error.dart';
+import '../core/logging/app_logger.dart';
 import '../core/result/app_result.dart';
 import 'microsoft_todo_models.dart';
 import 'sync_guard.dart';
+import 'sync_log_format.dart';
 import 'todo_wire_codecs.dart';
 
 export 'microsoft_todo_models.dart';
@@ -363,9 +365,8 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
     required T Function(Map<String, dynamic> json) parser,
     String? deltaLink,
   }) async {
-    Uri? nextUri = (deltaLink != null && deltaLink.trim().isNotEmpty)
-        ? Uri.parse(deltaLink.trim())
-        : initialUri;
+    final usedDelta = deltaLink != null && deltaLink.trim().isNotEmpty;
+    Uri? nextUri = usedDelta ? Uri.parse(deltaLink.trim()) : initialUri;
     final items = <T>[];
     String? resolvedDeltaLink;
     var pages = 0;
@@ -399,6 +400,16 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
           ? Uri.parse(next.trim())
           : null;
     }
+
+    final folderParam = initialUri.queryParameters['parentFolderId'];
+    final folderHint = folderParam != null
+        ? ' folder=${shortSyncId(folderParam)}'
+        : '';
+    appLog(
+      'fetchDelta ${initialUri.path}$folderHint mode=${usedDelta ? "delta" : "full"} '
+      'pages=$pages items=${items.length} hasDeltaLink=${resolvedDeltaLink != null}',
+      label: 'SyncApi',
+    );
 
     return Success(
       DeltaPageResult<T>(items: items, deltaLink: resolvedDeltaLink),
@@ -634,10 +645,12 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
 
   @override
   Stream<RealtimeEvent> connectRealtime(SubstrateRequestContext ctx) async* {
+    appLog('connecting GET realtime', label: 'SyncRealtime');
     final request = http.Request('GET', ctx.endpointUri('realtime'));
     request.headers.addAll(_buildHeaders(ctx, longPolling: true));
 
     final streamed = await _http.send(request).timeout(_requestTimeout);
+    appLog('connected status=${streamed.statusCode}', label: 'SyncRealtime');
     if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
       throw appErrorFromHttpStatus(
         statusCode: streamed.statusCode,
@@ -654,11 +667,24 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
       try {
         final decoded = jsonDecode(trimmed);
         if (decoded is Map) {
-          yield RealtimeEvent.fromJson(Map<String, dynamic>.from(decoded));
+          final event = RealtimeEvent.fromJson(
+            Map<String, dynamic>.from(decoded),
+          );
+          if (!event.isKeepAlive) {
+            appLog(
+              'recv type=${event.type} op=${event.operation} '
+              'id=${shortSyncId(event.id)} req=${event.requestId} '
+              'hasPayload=${event.payload != null} '
+              'keys=${event.payload?.keys.toList()}',
+              label: 'SyncRealtime',
+            );
+          }
+          yield event;
         }
       } on FormatException catch (_) {
         // Ignore non-JSON keepalive / delimiter lines.
       }
     }
+    appLog('stream closed', label: 'SyncRealtime');
   }
 }

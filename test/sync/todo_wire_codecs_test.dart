@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart' show TimeOfDay;
+import 'package:yata/core/time/local_timezone.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
+import 'package:yata/sync/text_merge.dart';
 import 'package:yata/sync/todo_wire_codecs.dart';
 
 void main() {
@@ -452,6 +454,80 @@ void main() {
       expect(afterNull.keys.toList(), [0, 1, 2]);
       expect(afterNull[0]!.isAfter(afterNull[1]!), isTrue);
       expect(afterNull[1]!.isAfter(afterNull[2]!), isTrue);
+    });
+
+    test('formats DueDateTime with local IANA timezone and decodes non-UTC DateTimeTimeZone accurately', () {
+      final resolvedTz = resolveLocalIanaTimeZone();
+      expect(resolvedTz, isNotEmpty);
+
+      final duePayload = formatDueDateTimeZone(
+        DateTime(2026, 11, 25),
+        timeZoneId: 'Asia/Shanghai',
+      );
+      expect(duePayload, {
+        'DateTime': '2026-11-25',
+        'TimeZone': 'Asia/Shanghai',
+      });
+
+      final shanghaiParsed = parseSubstrateDateTimeTimeZone({
+        'DateTime': '2026-11-25T09:30:00',
+        'TimeZone': 'Asia/Shanghai',
+      });
+      expect(shanghaiParsed, DateTime.utc(2026, 11, 25, 1, 30));
+
+      final windowsParsed = parseSubstrateDateTimeTimeZone({
+        'DateTime': '2026-11-25T09:30:00',
+        'TimeZone': 'China Standard Time',
+      });
+      expect(windowsParsed, DateTime.utc(2026, 11, 25, 1, 30));
+
+      final pstParsed = parseSubstrateDateTimeTimeZone({
+        'DateTime': '2026-11-25T08:00:00',
+        'TimeZone': 'Pacific Standard Time',
+      });
+      expect(pstParsed, DateTime.utc(2026, 11, 25, 16, 0));
+    });
+
+    test('mergeThreeWayNoteText preserves disjoint multi-line and single-line concurrent edits', () {
+      // Disjoint lines edited on each device.
+      expect(
+        mergeThreeWayNoteText(
+          base: 'Line 1\nLine 2\nLine 3',
+          local: 'Line 1 (local)\nLine 2\nLine 3',
+          remote: 'Line 1\nLine 2\nLine 3 (remote)',
+        ),
+        'Line 1 (local)\nLine 2\nLine 3 (remote)',
+      );
+
+      // Disjoint segments within the same line.
+      expect(
+        mergeThreeWayNoteText(
+          base: 'alpha middle omega',
+          local: 'ALPHA middle omega',
+          remote: 'alpha middle OMEGA',
+        ),
+        'ALPHA middle OMEGA',
+      );
+
+      // Missing base falls back non-destructively.
+      expect(
+        mergeThreeWayNoteText(
+          base: null,
+          local: 'Local thought',
+          remote: 'Remote thought',
+        ),
+        'Local thought\nRemote thought',
+      );
+
+      // Overlapping multi-line conflict cluster does not duplicate shared lines.
+      expect(
+        mergeThreeWayNoteText(
+          base: 'A\nB\nC',
+          local: 'A1\nShared\nC',
+          remote: 'A2\nShared\nC',
+        ),
+        'A1\nShared\nA2\nC',
+      );
     });
   });
 }

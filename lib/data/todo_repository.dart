@@ -7,6 +7,7 @@ import '../core/result/app_result.dart';
 import '../models/pending_step_deletion.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
+import 'sync_dirty_fields.dart';
 import 'todo_database.dart';
 import 'todo_settings_store.dart';
 
@@ -19,6 +20,7 @@ class _AccountCache {
   List<TaskItem> tasks = const [];
   final Map<String, List<String>> mutationKeys = {};
   List<PendingStepDeletion> pendingDeletedSteps = const [];
+  Map<String, String> taskBaseNotes = const {};
   Future<void> writeQueue = Future<void>.value();
 }
 
@@ -52,6 +54,7 @@ class TodoRepository {
   );
 
   static const _deletedStepKind = 'deleted_step';
+  static const _taskBaseNoteKind = 'task_base_note';
 
   /// Cache buckets are shared by every repository over the same database, so a
   /// second instance for the same session sees the same data.
@@ -107,11 +110,18 @@ class TodoRepository {
       ];
       final mutationRows = <String, List<String>>{};
       final steps = <PendingStepDeletion>[];
+      final baseNotes = <String, String>{};
       for (final row in allMutations) {
         if (row.kind == _deletedStepKind) {
           steps.add(
             PendingStepDeletion.fromJson(_decodePayload(row.payloadJson)),
           );
+        } else if (row.kind == _taskBaseNoteKind) {
+          final map = _decodePayload(row.payloadJson);
+          final note = map['note'] as String?;
+          if (note != null) {
+            baseNotes[row.itemKey] = note;
+          }
         } else {
           (mutationRows[row.kind] ??= <String>[]).add(row.itemKey);
         }
@@ -128,6 +138,7 @@ class TodoRepository {
             entry.key: List<String>.unmodifiable(entry.value),
         });
       cache.pendingDeletedSteps = List<PendingStepDeletion>.unmodifiable(steps);
+      cache.taskBaseNotes = Map<String, String>.unmodifiable(baseNotes);
       return unit;
     }, operation: 'preloadAccount');
   }
@@ -306,6 +317,68 @@ class TodoRepository {
 
   AsyncAppResult<Unit> saveDirtyTaskIds(Set<String> ids) =>
       saveMutationKeys('dirty_task', ids);
+
+  Map<String, Set<GroupDirtyField>> loadDirtyGroupFields() =>
+      decodeEntityFieldMap(
+        _readMutationKeys('dirty_group_fields'),
+        GroupDirtyField.values,
+      );
+
+  AsyncAppResult<Unit> saveDirtyGroupFields(
+    Map<String, Set<GroupDirtyField>> fields,
+  ) => saveMutationKeys('dirty_group_fields', encodeEntityFieldMap(fields));
+
+  Map<String, Set<ListDirtyField>> loadDirtyListFields() =>
+      decodeEntityFieldMap(
+        _readMutationKeys('dirty_list_fields'),
+        ListDirtyField.values,
+      );
+
+  AsyncAppResult<Unit> saveDirtyListFields(
+    Map<String, Set<ListDirtyField>> fields,
+  ) => saveMutationKeys('dirty_list_fields', encodeEntityFieldMap(fields));
+
+  Map<String, Set<TaskDirtyField>> loadDirtyTaskFields() =>
+      decodeEntityFieldMap(
+        _readMutationKeys('dirty_task_fields'),
+        TaskDirtyField.values,
+      );
+
+  AsyncAppResult<Unit> saveDirtyTaskFields(
+    Map<String, Set<TaskDirtyField>> fields,
+  ) => saveMutationKeys('dirty_task_fields', encodeEntityFieldMap(fields));
+
+  Map<String, Set<String>> loadDirtyStepIds() =>
+      decodeEntityStringSetMap(_readMutationKeys('dirty_step_ids'));
+
+  AsyncAppResult<Unit> saveDirtyStepIds(Map<String, Set<String>> stepIds) =>
+      saveMutationKeys('dirty_step_ids', encodeEntityStringSetMap(stepIds));
+
+  Map<String, String> loadTaskBaseNotes() =>
+      Map<String, String>.from(_cache.taskBaseNotes);
+
+  AsyncAppResult<Unit> saveTaskBaseNotes(Map<String, String> notes) {
+    final snapshot = Map<String, String>.unmodifiable(notes);
+    _cache.taskBaseNotes = snapshot;
+    final entries = snapshot.entries.toList(growable: false);
+    return _persistWrite(
+      'saveTaskBaseNotes',
+      () => _db.replaceSyncMutationRecords(
+        accountKey,
+        kind: _taskBaseNoteKind,
+        rows: [
+          for (var i = 0; i < entries.length; i++)
+            SyncMutationRecordsCompanion.insert(
+              accountKey: accountKey,
+              kind: _taskBaseNoteKind,
+              itemKey: entries[i].key,
+              position: i,
+              payloadJson: jsonEncode({'note': entries[i].value}),
+            ),
+        ],
+      ),
+    );
+  }
 
   Map<String, dynamic> _decodePayload(String payloadJson) {
     final decoded = jsonDecode(payloadJson);

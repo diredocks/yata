@@ -114,6 +114,7 @@ class DetailViewPresenter {
         task.copyWith(
           dueDate: dueDate,
           recurrence: dueDate == null ? RecurrenceType.none : task.recurrence,
+          rawRecurrence: dueDate == null ? null : task.rawRecurrence,
           postponedDay: clearPostponed ? null : task.postponedDay,
         ),
         now: now,
@@ -137,7 +138,11 @@ class DetailViewPresenter {
           ? defaultDueDateForRecurrence(recurrence, reminderAt: task.reminderAt)
           : task.dueDate;
       return TodoNotifier.syncMyDayFlag(
-        task.copyWith(recurrence: recurrence, dueDate: nextDue),
+        task.copyWith(
+          recurrence: recurrence,
+          rawRecurrence: null,
+          dueDate: nextDue,
+        ),
         now: now,
         showDueTodayInMyDay: _state.showDueTodayInMyDay,
       );

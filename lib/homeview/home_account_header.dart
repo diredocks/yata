@@ -293,7 +293,12 @@ class HomeAccountMenuList extends ConsumerWidget {
             onTap: syncState.isSyncing
                 ? null
                 : () {
-                    ref.read(syncProvider.notifier).syncNow();
+                    ref
+                        .read(syncProvider.notifier)
+                        .syncNow(
+                          forceFullSync: true,
+                          reason: 'manual_header_sync',
+                        );
                   },
           ),
         ListTile(

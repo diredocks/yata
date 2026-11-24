@@ -171,7 +171,14 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
     if (!accountChanged && !ref.read(startupSyncEnabledProvider)) return;
     final account = ref.read(accountProvider).activeAccount;
     if (account is! MicrosoftAccount) return;
-    unawaited(ref.read(syncProvider.notifier).syncNow());
+    unawaited(
+      ref
+          .read(syncProvider.notifier)
+          .syncNow(
+            forceFullSync: true,
+            reason: accountChanged ? 'account_changed' : 'startup',
+          ),
+    );
   }
 
   @override

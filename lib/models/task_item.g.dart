@@ -47,6 +47,7 @@ _TaskItem _$TaskItemFromJson(Map<String, dynamic> json) => _TaskItem(
         unknownValue: RecurrenceType.none,
       ) ??
       RecurrenceType.none,
+  rawRecurrence: json['rawRecurrence'] as Map<String, dynamic>?,
   note: json['note'] as String? ?? '',
   noteUpdatedAt: nullableUtcDateTimeFromJson(json['noteUpdatedAt'] as String?),
   completedAt: nullableUtcDateTimeFromJson(json['completedAt'] as String?),
@@ -78,6 +79,7 @@ Map<String, dynamic> _$TaskItemToJson(_TaskItem instance) => <String, dynamic>{
   'dueDate': instance.dueDate?.toIso8601String(),
   'reminderAt': nullableUtcDateTimeToJson(instance.reminderAt),
   'recurrence': _$RecurrenceTypeEnumMap[instance.recurrence]!,
+  'rawRecurrence': instance.rawRecurrence,
   'note': instance.note,
   'noteUpdatedAt': nullableUtcDateTimeToJson(instance.noteUpdatedAt),
   'completedAt': nullableUtcDateTimeToJson(instance.completedAt),

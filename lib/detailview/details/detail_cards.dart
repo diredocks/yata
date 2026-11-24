@@ -125,18 +125,12 @@ class TaskSchedulingCardView extends StatelessWidget {
           const Divider(height: 1, indent: 64),
           DetailActionRow(
             icon: Icons.repeat,
-            iconColor: task.recurrence != RecurrenceType.none
-                ? accent
-                : secondaryText,
+            iconColor: task.hasRecurrence ? accent : secondaryText,
             label: recurrenceLabel,
-            labelColor: task.recurrence != RecurrenceType.none
-                ? accent
-                : secondaryText,
+            labelColor: task.hasRecurrence ? accent : secondaryText,
             removeColor: secondaryText,
             onTap: onPickRecurrence,
-            onRemove: task.recurrence != RecurrenceType.none
-                ? onClearRecurrence
-                : null,
+            onRemove: task.hasRecurrence ? onClearRecurrence : null,
           ),
         ],
       ),

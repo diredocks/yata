@@ -49,6 +49,7 @@ abstract class TaskItem with _$TaskItem {
     @Default(RecurrenceType.none)
     @JsonKey(unknownEnumValue: RecurrenceType.none)
     RecurrenceType recurrence,
+    Map<String, dynamic>? rawRecurrence,
     @Default('') String note,
     @JsonKey(
       fromJson: nullableUtcDateTimeFromJson,
@@ -83,6 +84,10 @@ abstract class TaskItem with _$TaskItem {
 
   factory TaskItem.fromJson(Map<String, dynamic> json) =>
       _$TaskItemFromJson(json);
+
+  bool get hasRecurrence =>
+      recurrence != RecurrenceType.none ||
+      (rawRecurrence != null && rawRecurrence!.isNotEmpty);
 
   int get completedStepsCount => steps.where((step) => step.isCompleted).length;
 

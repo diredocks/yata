@@ -741,7 +741,12 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen>
                     onPointerDown: (y) => _dragPointerStartY = y,
                     onPointerMove: _handlePointerMove,
                     onPointerEnd: _stopDragAutoScroll,
-                    onRefresh: () => ref.read(syncProvider.notifier).syncNow(),
+                    onRefresh: () => ref
+                        .read(syncProvider.notifier)
+                        .syncNow(
+                          forceFullSync: true,
+                          reason: 'pull_to_refresh',
+                        ),
                   ),
                 ),
                 floatingActionButton: TasksViewFab(
