@@ -303,10 +303,24 @@ class TasksSliverAppBar extends StatelessWidget {
                         ),
                         fit: StackFit.expand,
                         children: [
-                          Image.asset(
-                            TodoColors.photoAssetFor(currentList.themePhoto!),
-                            fit: BoxFit.cover,
-                            alignment: Alignment.topCenter,
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final fullHeight =
+                                  MediaQuery.sizeOf(context).height;
+                              return OverflowBox(
+                                minWidth: constraints.maxWidth,
+                                maxWidth: constraints.maxWidth,
+                                minHeight: fullHeight,
+                                maxHeight: fullHeight,
+                                alignment: Alignment.topCenter,
+                                child: Image.asset(
+                                  TodoColors.photoAssetFor(
+                                    currentList.themePhoto!,
+                                  ),
+                                  fit: BoxFit.cover,
+                                ),
+                              );
+                            },
                           ),
                           Container(
                             color: Colors.black.withValues(

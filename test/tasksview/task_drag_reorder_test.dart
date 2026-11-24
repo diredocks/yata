@@ -190,4 +190,45 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'Header photo image keeps full-screen height across browsing, multi-select, and reorder modes',
+    (WidgetTester tester) async {
+      final container = await pumpAppWithTasks(tester);
+      final presenter = container.read(tasksViewPresenterProvider);
+      presenter.changeListTheme(
+        container.read(todoProvider).selectedListId,
+        ListThemeColor.blue,
+        themePhoto: ListThemePhoto.beach,
+      );
+      await tester.pumpAndSettle();
+
+      final bgImageFinder = find.descendant(
+        of: find.byKey(const ValueKey('bg_photo_beach')),
+        matching: find.byType(Image),
+      );
+      final headerImageFinder = find.descendant(
+        of: find.byKey(const ValueKey('header_photo_beach')),
+        matching: find.byType(Image),
+      );
+
+      final expectedRect = tester.getRect(bgImageFinder);
+      expect(expectedRect.height, 800.0);
+      expect(tester.getRect(headerImageFinder), expectedRect);
+
+      // Multi-select mode
+      await tester.longPress(find.text('Second task'));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(bgImageFinder), expectedRect);
+
+      // Exit multi-select, enter reorder mode
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Reorder'));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(bgImageFinder), expectedRect);
+    },
+  );
 }
