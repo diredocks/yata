@@ -1431,8 +1431,18 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                       }
                       return RefreshIndicator(
                         edgeOffset: topPadding,
-                        notificationPredicate: (notification) =>
-                            notification.depth <= 1,
+                        notificationPredicate: (notification) {
+                          if (notification.depth > 1) return false;
+                          // Ignore outer header expand/collapse scroll updates so
+                          // pulling down while the header is collapsed expands
+                          // the header first before dragging the refresh indicator.
+                          if (notification is ScrollUpdateNotification &&
+                              notification.depth == 0 &&
+                              notification.metrics.pixels >= 0) {
+                            return false;
+                          }
+                          return true;
+                        },
                         onRefresh: () =>
                             ref.read(syncProvider.notifier).syncNow(),
                         color: accentColor,
