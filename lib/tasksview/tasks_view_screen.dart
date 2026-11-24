@@ -1151,20 +1151,21 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         },
         child: ScaffoldMessenger(
           key: _scaffoldMessengerKey,
-          child: Scaffold(
-            appBar: _buildAppBar(
-              l10n: l10n,
-              state: state,
-              currentList: currentList,
-              allTasks: allTasks,
-              isDark: isDark,
-              overlayStyle: overlayStyle,
-            ),
-            body: Stack(
-              fit: StackFit.expand,
-              children: [
-                _buildBackground(currentList, backgroundColor),
-                SafeArea(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _buildBackground(currentList, backgroundColor),
+              Scaffold(
+                backgroundColor: Colors.transparent,
+                appBar: _buildAppBar(
+                  l10n: l10n,
+                  state: state,
+                  currentList: currentList,
+                  allTasks: allTasks,
+                  isDark: isDark,
+                  overlayStyle: overlayStyle,
+                ),
+                body: SafeArea(
                   top: false,
                   child: Builder(
                     builder: (context) {
@@ -1443,15 +1444,15 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                     },
                   ),
                 ),
-              ],
-            ),
-            floatingActionButton: _buildFab(
-              l10n: l10n,
-              state: state,
-              currentList: currentList,
-              brightness: brightness,
-              isDark: isDark,
-            ),
+                floatingActionButton: _buildFab(
+                  l10n: l10n,
+                  state: state,
+                  currentList: currentList,
+                  brightness: brightness,
+                  isDark: isDark,
+                ),
+              ),
+            ],
           ),
         ),
       ),
