@@ -173,7 +173,10 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
               ListTile(
                 leading: Icon(
                   list.icon,
-                  color: TodoColors.accentFor(list.themeColor),
+                  color: TodoColors.listAccentFor(
+                    list,
+                    brightness: Theme.of(ctx).brightness,
+                  ),
                 ),
                 title: Text(list.title),
                 trailing: list.id == _targetListId
@@ -274,7 +277,10 @@ class _TaskEntrySheetState extends State<TaskEntrySheet> {
                       avatar: Icon(
                         targetList.icon,
                         size: 16,
-                        color: TodoColors.accentFor(targetList.themeColor),
+                        color: TodoColors.listAccentFor(
+                          targetList,
+                          brightness: Theme.of(context).brightness,
+                        ),
                       ),
                       label: Text(
                         targetList.smartType == SmartListType.tasks

@@ -1102,9 +1102,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         (currentList.emoji != null && currentList.emoji!.isNotEmpty)
         ? '${currentList.emoji!} $baseTitle'
         : baseTitle;
-    final accentColor = currentList.themePhoto != null
-        ? TodoColors.photoFabBackgroundFor(currentList.themePhoto!)
-        : TodoColors.accentFor(currentList.themeColor, brightness: brightness);
+    final accentColor = TodoColors.listAccentFor(
+      currentList,
+      brightness: brightness,
+    );
     final backgroundColor = TodoColors.backgroundColorFor(
       currentList.themeColor,
       brightness: brightness,

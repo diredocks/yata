@@ -273,6 +273,16 @@ class TodoColors {
     return 'assets/themes/$fileName';
   }
 
+  static Color listAccentFor(
+    TodoList list, {
+    Brightness brightness = Brightness.light,
+  }) {
+    if (list.themePhoto != null) {
+      return photoFabBackgroundFor(list.themePhoto!);
+    }
+    return accentFor(list.themeColor, brightness: brightness);
+  }
+
   /// Exact photo FAB colors from mstodo.apk (`colors.xml` `image_*_fab_color`).
   static Color photoFabBackgroundFor(ListThemePhoto photo) {
     return switch (photo) {

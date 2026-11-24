@@ -136,8 +136,9 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
                               return HomeListTile(
                                 title: localizedListTitle(l10n, list),
                                 icon: list.icon,
-                                iconColor: TodoColors.accentFor(
-                                  list.themeColor,
+                                iconColor: TodoColors.listAccentFor(
+                                  list,
+                                  brightness: theme.brightness,
                                 ),
                                 count: state.activeCountForList(list),
                                 isSelected:
@@ -180,8 +181,9 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
                                         title: list.title,
                                         emoji: list.emoji,
                                         icon: list.icon,
-                                        iconColor: TodoColors.accentFor(
-                                          list.themeColor,
+                                        iconColor: TodoColors.listAccentFor(
+                                          list,
+                                          brightness: theme.brightness,
                                         ),
                                         count: state.activeCountForList(list),
                                         isSelected:
@@ -281,8 +283,11 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
                                                               emoji: list.emoji,
                                                               icon: list.icon,
                                                               iconColor:
-                                                                  TodoColors.accentFor(
-                                                                    list.themeColor,
+                                                                  TodoColors.listAccentFor(
+                                                                    list,
+                                                                    brightness:
+                                                                        theme
+                                                                            .brightness,
                                                                   ),
                                                               count: state
                                                                   .activeCountForList(
@@ -313,8 +318,11 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
                                                               emoji: list.emoji,
                                                               icon: list.icon,
                                                               iconColor:
-                                                                  TodoColors.accentFor(
-                                                                    list.themeColor,
+                                                                  TodoColors.listAccentFor(
+                                                                    list,
+                                                                    brightness:
+                                                                        theme
+                                                                            .brightness,
                                                                   ),
                                                               count: state
                                                                   .activeCountForList(

@@ -229,12 +229,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
         .firstOrNull;
     final listAccent = originList == null
         ? (isDark ? TodoColors.attentionDark : TodoColors.attentionLight)
-        : (originList.themePhoto != null
-              ? TodoColors.photoFabBackgroundFor(originList.themePhoto!)
-              : TodoColors.accentFor(
-                  originList.themeColor,
-                  brightness: theme.brightness,
-                ));
+        : TodoColors.listAccentFor(originList, brightness: theme.brightness);
     final originListTitle =
         widget.listTitle ??
         (originList == null

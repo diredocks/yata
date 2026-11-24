@@ -251,7 +251,10 @@ Future<String?> pickTargetListSheet({
                   ListTile(
                     leading: Icon(
                       list.icon,
-                      color: TodoColors.accentFor(list.themeColor),
+                      color: TodoColors.listAccentFor(
+                        list,
+                        brightness: Theme.of(ctx).brightness,
+                      ),
                     ),
                     title: Text(
                       list.smartType == SmartListType.tasks

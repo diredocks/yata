@@ -109,7 +109,10 @@ class _GroupListsDialogState extends State<_GroupListsDialog> {
                     ? Text(list.emoji!, style: const TextStyle(fontSize: 20))
                     : Icon(
                         list.icon,
-                        color: TodoColors.accentFor(list.themeColor),
+                        color: TodoColors.listAccentFor(
+                          list,
+                          brightness: Theme.of(context).brightness,
+                        ),
                       ),
                 contentPadding: EdgeInsets.zero,
               ),
