@@ -183,3 +183,119 @@ List<String> encodeEntityStringSetMap(Map<String, Set<String>> map) {
   }
   return result;
 }
+
+/// Per-field dirty tracking bundle cleared incrementally by [applySyncResult].
+class SyncedDirtyFields {
+  const SyncedDirtyFields({
+    this.groupFields = const {},
+    this.listFields = const {},
+    this.taskFields = const {},
+    this.stepIds = const {},
+  });
+
+  final Map<String, Set<GroupDirtyField>> groupFields;
+  final Map<String, Set<ListDirtyField>> listFields;
+  final Map<String, Set<TaskDirtyField>> taskFields;
+  final Map<String, Set<String>> stepIds;
+}
+
+/// Clears pushed fields for [syncedIds] and re-records mid-sync edits for
+/// [preserveDirtyIds] strictly in order.
+void reconcileEntityDirtyFields<TItem, TField>({
+  required Map<String, Set<TField>> dirtyFields,
+  required Set<String> syncedIds,
+  required Map<String, Set<TField>>? syncedFields,
+  required Set<String> preserveDirtyIds,
+  required List<TItem>? snapshotItems,
+  required List<TItem> currentItems,
+  required String Function(TItem item) idOf,
+  required Set<TField> Function(TItem? prev, TItem next) diffFields,
+}) {
+  for (final id in syncedIds) {
+    final pushed = syncedFields?[id];
+    if (pushed == null) {
+      dirtyFields.remove(id);
+    } else {
+      final cur = dirtyFields[id];
+      if (cur != null) {
+        cur.removeAll(pushed);
+        if (cur.isEmpty) dirtyFields.remove(id);
+      }
+    }
+  }
+  if (preserveDirtyIds.isEmpty) return;
+
+  final snapById = {
+    if (snapshotItems != null)
+      for (final item in snapshotItems) idOf(item): item,
+  };
+  final curById = {for (final item in currentItems) idOf(item): item};
+  for (final id in preserveDirtyIds) {
+    final cur = curById[id];
+    if (cur == null) continue;
+    final mid = diffFields(snapById[id], cur);
+    if (mid.isNotEmpty) {
+      (dirtyFields[id] ??= <TField>{}).addAll(mid);
+    }
+  }
+}
+
+/// Reconciles task-specific [nextStepIds] and [nextBaseNotes] alongside
+/// [reconcileEntityDirtyFields], clearing pushed step/base-note markers before
+/// capturing any mid-sync edits from [snapshotTasks].
+void reconcileTaskExtraDirtyState({
+  required Map<String, Set<String>> nextStepIds,
+  required Map<String, String> nextBaseNotes,
+  required Set<String> syncedTaskIds,
+  required Map<String, Set<TaskDirtyField>> syncedTaskFields,
+  required Map<String, Set<String>> syncedStepIds,
+  required Set<String> preserveDirtyTasks,
+  required List<TaskItem>? snapshotTasks,
+  required List<TaskItem> currentTasks,
+}) {
+  for (final id in syncedTaskIds) {
+    final pushedFields = syncedTaskFields[id];
+    if (pushedFields == null) {
+      nextStepIds.remove(id);
+      nextBaseNotes.remove(id);
+    } else {
+      final pushedSteps = syncedStepIds[id];
+      if (pushedSteps == null) {
+        if (pushedFields.contains(TaskDirtyField.steps)) {
+          nextStepIds.remove(id);
+        }
+      } else {
+        final curSteps = nextStepIds[id];
+        if (curSteps != null) {
+          curSteps.removeAll(pushedSteps);
+          if (curSteps.isEmpty) nextStepIds.remove(id);
+        }
+      }
+      if (pushedFields.contains(TaskDirtyField.body)) {
+        nextBaseNotes.remove(id);
+      }
+    }
+  }
+  if (preserveDirtyTasks.isEmpty) return;
+
+  final snapById = {
+    if (snapshotTasks != null)
+      for (final t in snapshotTasks) t.id: t,
+  };
+  final curById = {for (final t in currentTasks) t.id: t};
+  for (final id in preserveDirtyTasks) {
+    final cur = curById[id];
+    if (cur == null) continue;
+    final snap = snapById[id];
+    final midFields = diffTaskDirtyFields(snap, cur);
+    final midSteps = diffDirtyStepIds(snap, cur);
+    if (midSteps.isNotEmpty) {
+      (nextStepIds[id] ??= <String>{}).addAll(midSteps);
+    }
+    if (midFields.contains(TaskDirtyField.body) &&
+        snap != null &&
+        !nextBaseNotes.containsKey(id)) {
+      nextBaseNotes[id] = snap.note;
+    }
+  }
+}

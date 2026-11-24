@@ -9,10 +9,8 @@ import '../core/logging/app_logger.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
 import 'cloud_sync_service.dart';
-import 'microsoft_todo_api.dart';
-import 'substrate_sync_mappers.dart';
+import 'realtime_sync_controller.dart';
 import 'sync_guard.dart';
-import 'sync_log_format.dart';
 
 part 'sync_provider.freezed.dart';
 
@@ -53,14 +51,10 @@ class SyncNotifier extends Notifier<SyncState> {
   static const _debounceDuration = Duration(milliseconds: 1500);
   static const _foregroundDebounceDuration = Duration(milliseconds: 500);
   static const _periodicSyncInterval = Duration(seconds: 120);
-  static const _realtimeInitialBackoff = Duration(seconds: 2);
-  static const _realtimeMaxBackoff = Duration(seconds: 60);
-  static const _maxPendingRealtimeEvents = 200;
 
   Timer? _debounceTimer;
   Timer? _periodicTimer;
-  Timer? _realtimeReconnectTimer;
-  StreamSubscription<RealtimeEvent>? _realtimeSub;
+  RealtimeSyncController? _realtimeController;
 
   bool _disposed = false;
   bool _isForeground = true;
@@ -70,22 +64,31 @@ class SyncNotifier extends Notifier<SyncState> {
   String _pendingDebouncedReason = 'debounced';
   bool _queuedForceFullSync = false;
   String _queuedReason = 'queued';
-  final List<RealtimeEvent> _pendingRealtimeEvents = [];
-  bool _realtimeNeedsFullSyncOnConnect = false;
-  Duration _realtimeBackoff = _realtimeInitialBackoff;
-  String? _realtimeAccountId;
 
-  static bool _shouldForceFullSyncForEvent(RealtimeEvent event) {
-    final typeLower = event.type.trim().toLowerCase();
-    return typeLower == 'task' ||
-        typeLower == 'taskfolder' ||
-        typeLower == 'foldergroup';
+  RealtimeSyncController _ensureRealtimeController() {
+    return _realtimeController ??= RealtimeSyncController(
+      ref: ref,
+      isSyncInFlight: () => _activeSync != null,
+      onScheduleFallbackSync: ({required delay, required forceFullSync, required reason}) {
+        scheduleDebouncedSync(
+          delay: delay,
+          forceFullSync: forceFullSync,
+          reason: reason,
+        );
+      },
+      onOverflowResync: (reason) {
+        _syncQueued = true;
+        _queuedForceFullSync = true;
+        _queuedReason = reason;
+      },
+    );
   }
 
   @override
   SyncState build() {
     _disposed = false;
     ref.onDispose(_disposeResources);
+    final realtime = _ensureRealtimeController();
 
     final accountIdentity = ref.watch(
       accountProvider.select(
@@ -107,7 +110,7 @@ class SyncNotifier extends Notifier<SyncState> {
     });
 
     if (!accountIdentity.isMicrosoft || activeAccount is! MicrosoftAccount) {
-      _stopRealtime();
+      realtime.stop(clearPending: true);
       _stopPeriodicSync();
       _debounceTimer?.cancel();
       _debounceTimer = null;
@@ -115,15 +118,12 @@ class SyncNotifier extends Notifier<SyncState> {
       _pendingDebouncedReason = 'debounced';
       _queuedForceFullSync = false;
       _queuedReason = 'queued';
-      _pendingRealtimeEvents.clear();
-      _realtimeNeedsFullSyncOnConnect = false;
       return const SyncState();
     }
 
     if (_isForeground) {
-      if (ref.watch(realtimeSyncEnabledProvider) &&
-          _realtimeAccountId != activeAccount.id) {
-        _startRealtimeFor(activeAccount);
+      if (ref.watch(realtimeSyncEnabledProvider)) {
+        realtime.ensureStartedFor(activeAccount);
       }
       if (ref.watch(periodicSyncEnabledProvider)) {
         _startPeriodicSync();
@@ -143,10 +143,9 @@ class SyncNotifier extends Notifier<SyncState> {
     _pendingDebouncedReason = 'debounced';
     _queuedForceFullSync = false;
     _queuedReason = 'queued';
-    _pendingRealtimeEvents.clear();
-    _realtimeNeedsFullSyncOnConnect = false;
     _stopPeriodicSync();
-    _stopRealtime();
+    _realtimeController?.dispose();
+    _realtimeController = null;
   }
 
   void _startPeriodicSync() {
@@ -168,10 +167,9 @@ class SyncNotifier extends Notifier<SyncState> {
   void onAppPaused() {
     if (_disposed || !_isForeground) return;
     _isForeground = false;
-    _realtimeNeedsFullSyncOnConnect = false;
     appLog('onAppPaused: stopping realtime & periodic sync', label: 'Sync');
     _stopPeriodicSync();
-    _stopRealtime();
+    _realtimeController?.onAppPaused();
   }
 
   /// Resumes foreground sync channels and triggers a debounced sync when the
@@ -186,9 +184,8 @@ class SyncNotifier extends Notifier<SyncState> {
       'onAppResumed: restarting realtime & scheduling full sync',
       label: 'Sync',
     );
-    if (ref.read(realtimeSyncEnabledProvider) &&
-        _realtimeAccountId != active.id) {
-      _startRealtimeFor(active);
+    if (ref.read(realtimeSyncEnabledProvider)) {
+      _ensureRealtimeController().ensureStartedFor(active);
     }
     if (ref.read(periodicSyncEnabledProvider)) {
       _startPeriodicSync();
@@ -200,12 +197,21 @@ class SyncNotifier extends Notifier<SyncState> {
     );
   }
 
-  void _stopRealtime() {
-    _realtimeAccountId = null;
-    _realtimeReconnectTimer?.cancel();
-    _realtimeReconnectTimer = null;
-    unawaited(_realtimeSub?.cancel());
-    _realtimeSub = null;
+  /// Triggers an immediate full sync for manual user refreshes (header, settings, pull-to-refresh).
+  Future<void> refresh({String reason = 'manual'}) =>
+      syncNow(forceFullSync: true, reason: reason);
+
+  /// Starts an initial full sync on cold start (when enabled) or account switch.
+  void syncOnSessionStart({bool accountChanged = false}) {
+    if (!accountChanged && !ref.read(startupSyncEnabledProvider)) return;
+    final account = ref.read(accountProvider).activeAccount;
+    if (account is! MicrosoftAccount) return;
+    unawaited(
+      syncNow(
+        forceFullSync: true,
+        reason: accountChanged ? 'account_changed' : 'startup',
+      ),
+    );
   }
 
   void scheduleDebouncedSync({
@@ -306,8 +312,9 @@ class SyncNotifier extends Notifier<SyncState> {
       _queuedReason = 'queued';
       _activeSync = null;
     }
-    if (!_disposed && _pendingRealtimeEvents.isNotEmpty) {
-      await _drainPendingRealtimeEvents();
+    final realtime = _realtimeController;
+    if (!_disposed && realtime != null && realtime.hasPendingEvents) {
+      await realtime.drainPendingIfReady();
     }
   }
 
@@ -371,10 +378,7 @@ class SyncNotifier extends Notifier<SyncState> {
             syncedListIds: outcome.syncedListIds,
             syncedTaskIds: outcome.syncedTaskIds,
             syncedSettingKeys: outcome.syncedSettingKeys,
-            syncedGroupFields: outcome.syncedGroupFields,
-            syncedListFields: outcome.syncedListFields,
-            syncedTaskFields: outcome.syncedTaskFields,
-            syncedStepIds: outcome.syncedStepIds,
+            syncedDirtyFields: outcome.syncedDirtyFields,
           );
         }
         await ref
@@ -470,318 +474,6 @@ class SyncNotifier extends Notifier<SyncState> {
             avatarBase64: nextAvatar,
           );
     }, operation: 'refreshProfile');
-
-    // Best-effort; failures are logged by the guard.
-  }
-
-  void _startRealtimeFor(MicrosoftAccount account) {
-    final accountChanged =
-        _realtimeAccountId != null && _realtimeAccountId != account.id;
-    _stopRealtime();
-    if (accountChanged) {
-      _pendingRealtimeEvents.clear();
-      _realtimeNeedsFullSyncOnConnect = false;
-    }
-    _realtimeAccountId = account.id;
-    _realtimeBackoff = _realtimeInitialBackoff;
-    unawaited(_connectRealtime(account));
-  }
-
-  Future<void> _connectRealtime(MicrosoftAccount account) async {
-    if (_disposed || _realtimeAccountId != account.id) return;
-    if (!ref.read(realtimeSyncEnabledProvider)) return;
-
-    final service = ref.read(cloudSyncServiceProvider);
-    final settings = ref.read(todoProvider.notifier).settings;
-    final ctxResult = await service.resolveContext(account, settings);
-
-    if (_disposed || _realtimeAccountId != account.id) return;
-
-    final ctx = ctxResult.fold((ctx) => ctx, (_) => null);
-    if (ctx == null) {
-      _scheduleRealtimeReconnect(account, reason: 'no_context');
-      return;
-    }
-
-    final stream = service.todoApi.connectRealtime(ctx);
-    _realtimeSub = stream.listen(
-      (event) {
-        if (_disposed || _realtimeAccountId != account.id) return;
-        _realtimeBackoff = _realtimeInitialBackoff;
-        if (_realtimeNeedsFullSyncOnConnect) {
-          _realtimeNeedsFullSyncOnConnect = false;
-          appLog('reconnected; scheduling full sync', label: 'SyncRealtime');
-          scheduleDebouncedSync(
-            delay: _foregroundDebounceDuration,
-            forceFullSync: true,
-            reason: 'realtime_reconnected',
-          );
-        }
-        if (event.isKeepAlive) return;
-        if (service.todoApi.isOwnRequestId(event.requestId)) {
-          appLog(
-            'ignore own event type=${event.type} op=${event.operation} '
-            'id=${shortSyncId(event.id)} req=${event.requestId}',
-            label: 'SyncRealtime',
-          );
-          return;
-        }
-        unawaited(_handleRemoteRealtimeEvent(account, event));
-      },
-      onError: (Object error) {
-        appLog('stream error=$error', label: 'SyncRealtime');
-        _realtimeNeedsFullSyncOnConnect = true;
-        _scheduleRealtimeReconnect(account, reason: 'error');
-      },
-      onDone: () {
-        appLog('stream done', label: 'SyncRealtime');
-        _realtimeNeedsFullSyncOnConnect = true;
-        _scheduleRealtimeReconnect(account, reason: 'done');
-      },
-      cancelOnError: true,
-    );
-  }
-
-  Future<void> _handleRemoteRealtimeEvent(
-    MicrosoftAccount account,
-    RealtimeEvent event,
-  ) async {
-    if (_disposed ||
-        _realtimeAccountId != account.id ||
-        ref.read(accountProvider).activeAccount?.id != account.id) {
-      return;
-    }
-
-    if (_activeSync != null) {
-      if (_pendingRealtimeEvents.length >= _maxPendingRealtimeEvents) {
-        _pendingRealtimeEvents.clear();
-        _syncQueued = true;
-        _queuedForceFullSync = true;
-        _queuedReason = 'realtime_overflow';
-        appLog(
-          'deferred queue overflow ($_maxPendingRealtimeEvents); '
-          'scheduling full resync',
-          label: 'SyncRealtime',
-        );
-        return;
-      }
-      _pendingRealtimeEvents.add(event);
-      appLog(
-        'deferred event while syncing: type=${event.type} '
-        'op=${event.operation} id=${shortSyncId(event.id)} '
-        'queued=${_pendingRealtimeEvents.length}',
-        label: 'SyncRealtime',
-      );
-      return;
-    }
-
-    final handled = await _applyRealtimeEventNow(account, event);
-    if (!handled && !_disposed) {
-      scheduleDebouncedSync(
-        delay: const Duration(milliseconds: 200),
-        forceFullSync: _shouldForceFullSyncForEvent(event),
-        reason: 'realtime_${event.type}_${event.operation ?? 'unknown'}',
-      );
-    }
-  }
-
-  Future<void> _drainPendingRealtimeEvents() async {
-    if (_disposed || _pendingRealtimeEvents.isEmpty) return;
-    final initialActive = ref.read(accountProvider).activeAccount;
-    if (initialActive is! MicrosoftAccount ||
-        _realtimeAccountId != initialActive.id) {
-      _pendingRealtimeEvents.clear();
-      return;
-    }
-
-    appLog(
-      'draining ${_pendingRealtimeEvents.length} deferred realtime event(s)',
-      label: 'SyncRealtime',
-    );
-
-    var needsFallbackSync = false;
-    var fallbackForceFullSync = false;
-    var fallbackReason = 'realtime_deferred';
-
-    while (!_disposed &&
-        _activeSync == null &&
-        _pendingRealtimeEvents.isNotEmpty) {
-      final currentActive = ref.read(accountProvider).activeAccount;
-      if (currentActive is! MicrosoftAccount ||
-          _realtimeAccountId != currentActive.id) {
-        _pendingRealtimeEvents.clear();
-        return;
-      }
-      final event = _pendingRealtimeEvents.removeAt(0);
-      final handled = await _applyRealtimeEventNow(
-        currentActive,
-        event,
-        fromQueue: true,
-      );
-      if (!handled) {
-        needsFallbackSync = true;
-        if (_shouldForceFullSyncForEvent(event)) {
-          fallbackForceFullSync = true;
-        }
-        fallbackReason =
-            'realtime_${event.type}_${event.operation ?? 'unknown'}';
-      }
-    }
-
-    if (needsFallbackSync && !_disposed) {
-      scheduleDebouncedSync(
-        delay: const Duration(milliseconds: 200),
-        forceFullSync: fallbackForceFullSync,
-        reason: fallbackReason,
-      );
-    }
-  }
-
-  Future<bool> _applyRealtimeEventNow(
-    MicrosoftAccount account,
-    RealtimeEvent event, {
-    bool fromQueue = false,
-  }) async {
-    if (_disposed ||
-        _realtimeAccountId != account.id ||
-        ref.read(accountProvider).activeAccount?.id != account.id) {
-      return true;
-    }
-
-    final todoNotifier = ref.read(todoProvider.notifier);
-    final currentState = ref.read(todoProvider);
-    final typeLower = event.type.trim().toLowerCase();
-    final prefix = fromQueue ? '(drained) ' : '';
-
-    switch (typeLower) {
-      case 'task':
-        final result = mergeRealtimeTaskEvent(
-          event: event,
-          lists: currentState.lists,
-          currentTasks: currentState.tasks,
-          dirtyTaskIds: todoNotifier.repository.loadDirtyTaskIds().toSet(),
-          pendingDeletedTaskRemoteIds: todoNotifier.repository
-              .loadPendingDeletedTaskRemoteIds()
-              .toSet(),
-          idGenerator: todoNotifier.nextId,
-        );
-        if (result.handled) {
-          appLog('$prefix${result.summary}', label: 'SyncRealtime');
-          if (result.changed && result.tasks != null) {
-            await todoNotifier.applyRemoteTasksSnapshot(result.tasks!);
-          }
-          return true;
-        }
-        appLog(
-          '$prefix${result.summary}; fallback to sync (forceFullSync=true)',
-          label: 'SyncRealtime',
-        );
-        return false;
-
-      case 'taskfolder':
-        final result = mergeRealtimeFolderEvent(
-          event: event,
-          groups: currentState.groups,
-          currentLists: currentState.lists,
-          currentTasks: currentState.tasks,
-          dirtyListIds: todoNotifier.repository.loadDirtyListIds().toSet(),
-          pendingDeletedListRemoteIds: todoNotifier.repository
-              .loadPendingDeletedListRemoteIds()
-              .toSet(),
-          idGenerator: todoNotifier.nextId,
-        );
-        if (result.handled) {
-          appLog('$prefix${result.summary}', label: 'SyncRealtime');
-          if (result.changed && result.lists != null) {
-            await todoNotifier.applyRemoteListsSnapshot(
-              nextLists: result.lists!,
-              nextTasks: result.tasks,
-            );
-          }
-          return true;
-        }
-        appLog(
-          '$prefix${result.summary}; fallback to sync (forceFullSync=true)',
-          label: 'SyncRealtime',
-        );
-        return false;
-
-      case 'foldergroup':
-        final result = mergeRealtimeFolderGroupEvent(
-          event: event,
-          currentGroups: currentState.groups,
-          dirtyGroupIds: todoNotifier.repository.loadDirtyGroupIds().toSet(),
-          pendingDeletedGroupRemoteIds: todoNotifier.repository
-              .loadPendingDeletedGroupRemoteIds()
-              .toSet(),
-          idGenerator: todoNotifier.nextId,
-        );
-        if (result.handled) {
-          appLog('$prefix${result.summary}', label: 'SyncRealtime');
-          if (result.changed && result.groups != null) {
-            await todoNotifier.applyRemoteGroupsSnapshot(result.groups!);
-          }
-          return true;
-        }
-        appLog(
-          '$prefix${result.summary}; fallback to sync (forceFullSync=true)',
-          label: 'SyncRealtime',
-        );
-        return false;
-
-      case 'setting':
-        final result = mergeRealtimeSettingEvent(
-          event: event,
-          dirtySettingKeys: todoNotifier.settings
-              .loadDirtySettingKeys()
-              .toSet(),
-        );
-        if (result.handled) {
-          appLog('$prefix${result.summary}', label: 'SyncRealtime');
-          if (result.changed && result.patch != null) {
-            await todoNotifier.applyRemoteSettingsPatch(result.patch!);
-          }
-          return true;
-        }
-        appLog(
-          '$prefix${result.summary}; fallback to sync (forceFullSync=false)',
-          label: 'SyncRealtime',
-        );
-        return false;
-
-      default:
-        appLog(
-          '${prefix}non-direct event type=${event.type} op=${event.operation}; '
-          'fallback to sync (forceFullSync=false)',
-          label: 'SyncRealtime',
-        );
-        return false;
-    }
-  }
-
-  void _scheduleRealtimeReconnect(
-    MicrosoftAccount account, {
-    required String reason,
-  }) {
-    if (_disposed || _realtimeAccountId != account.id) return;
-    if (!ref.read(realtimeSyncEnabledProvider)) return;
-    _realtimeSub = null;
-    _realtimeReconnectTimer?.cancel();
-    final wait = _realtimeBackoff;
-    final nextSecs = (wait.inSeconds * 2).clamp(
-      _realtimeInitialBackoff.inSeconds,
-      _realtimeMaxBackoff.inSeconds,
-    );
-    _realtimeBackoff = Duration(seconds: nextSecs);
-    appLog(
-      'scheduling reconnect reason=$reason wait=${wait.inSeconds}s',
-      label: 'SyncRealtime',
-    );
-    _realtimeReconnectTimer = Timer(wait, () {
-      if (!_disposed && _realtimeAccountId == account.id) {
-        unawaited(_connectRealtime(account));
-      }
-    });
   }
 }
 

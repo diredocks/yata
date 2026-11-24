@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../account/account_provider.dart';
 import '../homeview/home_view_ordering.dart';
+import '../models/account.dart';
 import '../models/default_lists.dart';
 import '../models/pending_step_deletion.dart';
 import '../models/task_item.dart';
@@ -61,8 +62,7 @@ class TodoNotifier extends Notifier<TodoState> {
   String _todayKey(DateTime dt) =>
       '${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
 
-  static bool isSameDay(DateTime a, DateTime b) =>
-      a.year == b.year && a.month == b.month && a.day == b.day;
+  static bool isSameDay(DateTime a, DateTime b) => isSameCalendarDay(a, b);
 
   /// Recomputes [TaskItem.isInMyDay] from [TaskItem.myDayDate],
   /// [TaskItem.dueDate], and [TaskItem.postponedDay], matching `MyDayContract.kt`.
@@ -70,18 +70,64 @@ class TodoNotifier extends Notifier<TodoState> {
     TaskItem task, {
     required DateTime now,
     required bool showDueTodayInMyDay,
+  }) => computeTaskMyDayFlag(
+    task,
+    now: now,
+    showDueTodayInMyDay: showDueTodayInMyDay,
+  );
+
+  /// Whether completing [task] should immediately spawn the next local occurrence.
+  ///
+  /// For synced Microsoft account tasks (`remoteId != null`), Exchange/Substrate
+  /// spawns the next instance on completion PATCH.
+  bool shouldSpawnRecurringLocally(TaskItem task) =>
+      task.remoteId == null ||
+      ref.read(accountProvider).activeAccount is! MicrosoftAccount;
+
+  /// Updates [task]'s due date, clearing recurrence if removed and updating My Day.
+  static TaskItem applyDueDate(
+    TaskItem task,
+    DateTime? dueDate, {
+    required DateTime now,
+    required bool showDueTodayInMyDay,
   }) {
-    final committedToday =
-        task.myDayDate != null && isSameDay(task.myDayDate!, now);
-    final postponedToday =
-        task.postponedDay != null && isSameDay(task.postponedDay!, now);
-    final dueToday =
+    final clearPostponed =
+        dueDate != null &&
         showDueTodayInMyDay &&
-        task.dueDate != null &&
-        isSameDay(task.dueDate!, now);
-    final effectiveInMyDay = committedToday || (dueToday && !postponedToday);
-    if (task.isInMyDay == effectiveInMyDay) return task;
-    return task.copyWith(isInMyDay: effectiveInMyDay);
+        task.postponedDay != null &&
+        isSameDay(dueDate, task.postponedDay!);
+    return syncMyDayFlag(
+      task.copyWith(
+        dueDate: dueDate,
+        recurrence: dueDate == null ? RecurrenceType.none : task.recurrence,
+        rawRecurrence: dueDate == null ? null : task.rawRecurrence,
+        postponedDay: clearPostponed ? null : task.postponedDay,
+      ),
+      now: now,
+      showDueTodayInMyDay: showDueTodayInMyDay,
+    );
+  }
+
+  /// Updates [task]'s recurrence preset, clearing any preserved raw custom rule.
+  static TaskItem applyRecurrence(
+    TaskItem task,
+    RecurrenceType recurrence, {
+    required DateTime now,
+    required bool showDueTodayInMyDay,
+    DateTime? fallbackDueDate,
+  }) {
+    final nextDue = (recurrence != RecurrenceType.none && task.dueDate == null)
+        ? fallbackDueDate
+        : task.dueDate;
+    return syncMyDayFlag(
+      task.copyWith(
+        recurrence: recurrence,
+        rawRecurrence: null,
+        dueDate: nextDue,
+      ),
+      now: now,
+      showDueTodayInMyDay: showDueTodayInMyDay,
+    );
   }
 
   @override
@@ -91,21 +137,13 @@ class TodoNotifier extends Notifier<TodoState> {
     final settings = settingsStore.load();
     final now = DateTime.now();
     final todayKey = _todayKey(now);
-    var changed = false;
-    final tasks = <TaskItem>[];
-    for (final task in repository.readCachedTasks()) {
-      final synced = syncMyDayFlag(
-        task,
-        now: now,
-        showDueTodayInMyDay: settings.showDueTodayInMyDay,
-      );
-      if (!identical(synced, task)) {
-        changed = true;
-      }
-      tasks.add(synced);
-    }
-    if (changed) {
-      repository.saveTasks(tasks);
+    final synced = syncTasksMyDayFlags(
+      repository.readCachedTasks(),
+      now: now,
+      showDueTodayInMyDay: settings.showDueTodayInMyDay,
+    );
+    if (synced.changed) {
+      repository.saveTasks(synced.tasks);
     }
     if (settings.lastMyDayResetDate != todayKey) {
       settingsStore.saveLastMyDayResetDate(todayKey);
@@ -114,7 +152,7 @@ class TodoNotifier extends Notifier<TodoState> {
     return TodoState(
       lists: normalizeSmartLists(repository.readCachedLists()),
       groups: [...repository.readCachedGroups()],
-      tasks: tasks,
+      tasks: [...synced.tasks],
       selectedListId: settings.selectedListId,
       themeMode: settings.themeMode,
       addNewTasksOnTop: settings.addNewTasksOnTop,
@@ -147,213 +185,59 @@ class TodoNotifier extends Notifier<TodoState> {
   }
 
   void commit(TodoState nextState) {
-    final prevState = state;
-    final prevGroups = prevState.groups;
-    final prevLists = prevState.lists;
-    final prevTasks = prevState.tasks;
-    final nowUtc = DateTime.now().toUtc();
-
-    final dirtyGroups = repository.loadDirtyGroupIds().toSet();
-    final dirtyGroupFields = repository.loadDirtyGroupFields();
-    final dirtyLists = repository.loadDirtyListIds().toSet();
-    final dirtyListFields = repository.loadDirtyListFields();
-    final dirtyTasks = repository.loadDirtyTaskIds().toSet();
-    final dirtyTaskFields = repository.loadDirtyTaskFields();
-    final dirtyStepIds = repository.loadDirtyStepIds();
-    final taskBaseNotes = repository.loadTaskBaseNotes();
-    final dirtySettings = settings.loadDirtySettingKeys().toSet();
-
-    var stampedGroups = nextState.groups;
-    var groupSyncNeeded = false;
-    if (!identical(prevGroups, nextState.groups)) {
-      final nextGroupIds = {for (final g in nextState.groups) g.id};
-      dirtyGroupFields.removeWhere((id, _) => !nextGroupIds.contains(id));
-
-      final prevGroupById = {for (final g in prevGroups) g.id: g};
-      final groupDeletions = collectPendingRemoteDeletions<ListGroup>(
-        prevItems: prevGroups,
-        nextIds: nextGroupIds,
-        idOf: (g) => g.id,
-        remoteIdOf: (g) => g.remoteId,
-        dirtyIds: dirtyGroups,
-        existingDeletedRemoteIds: repository.loadPendingDeletedGroupRemoteIds(),
-      );
-      groupSyncNeeded = groupDeletions.changed;
-      repository.savePendingDeletedGroupRemoteIds(
-        groupDeletions.deletedRemoteIds,
-      );
-
-      stampedGroups = [
-        for (final group in nextState.groups)
-          () {
-            final prev = prevGroupById[group.id];
-            if (prev == null || isGroupSyncDirty(prev, group)) {
-              groupSyncNeeded = true;
-              dirtyGroups.add(group.id);
-              final changed = diffGroupDirtyFields(prev, group);
-              if (changed.isNotEmpty) {
-                (dirtyGroupFields[group.id] ??= <GroupDirtyField>{}).addAll(
-                  changed,
-                );
-              }
-              return group.copyWith(updatedAt: nowUtc);
-            }
-            return group;
-          }(),
-      ];
-    }
-
-    var stampedLists = nextState.lists;
-    var listSyncNeeded = false;
-    if (!identical(prevLists, nextState.lists)) {
-      final nextListIds = {for (final l in nextState.lists) l.id};
-      dirtyListFields.removeWhere((id, _) => !nextListIds.contains(id));
-
-      final prevListById = {for (final l in prevLists) l.id: l};
-      final listDeletions = collectPendingRemoteDeletions<TodoList>(
-        prevItems: prevLists,
-        nextIds: nextListIds,
-        idOf: (l) => l.id,
-        remoteIdOf: (l) => l.remoteId,
-        dirtyIds: dirtyLists,
-        existingDeletedRemoteIds: repository.loadPendingDeletedListRemoteIds(),
-        canDeleteRemotely: (l) => !l.isSmartList,
-      );
-      listSyncNeeded = listDeletions.changed;
-      repository.savePendingDeletedListRemoteIds(
-        listDeletions.deletedRemoteIds,
-      );
-
-      stampedLists = [
-        for (final list in nextState.lists)
-          () {
-            final prev = prevListById[list.id];
-            if (isSyncableFolderList(list)) {
-              if (prev == null || isListSyncDirty(prev, list)) {
-                listSyncNeeded = true;
-                dirtyLists.add(list.id);
-                final changed = diffListDirtyFields(prev, list);
-                if (changed.isNotEmpty) {
-                  (dirtyListFields[list.id] ??= <ListDirtyField>{}).addAll(
-                    changed,
-                  );
-                }
-                return list.copyWith(updatedAt: nowUtc);
-              }
-              return list;
-            }
-            if (prev != null) {
-              final changedSmartKeys = smartListChangedSettingKeys(prev, list);
-              if (changedSmartKeys.isNotEmpty) {
-                listSyncNeeded = true;
-                dirtySettings.addAll(changedSmartKeys);
-              }
-            }
-            return list;
-          }(),
-      ];
-    }
-
-    var stampedTasks = nextState.tasks;
-    var taskSyncNeeded = false;
-    if (!identical(prevTasks, nextState.tasks)) {
-      final nextTaskIds = {for (final t in nextState.tasks) t.id};
-      dirtyTaskFields.removeWhere((id, _) => !nextTaskIds.contains(id));
-      dirtyStepIds.removeWhere((id, _) => !nextTaskIds.contains(id));
-      taskBaseNotes.removeWhere((id, _) => !nextTaskIds.contains(id));
-
-      final prevTaskById = {for (final t in prevTasks) t.id: t};
-      final taskDeletions = collectPendingRemoteDeletions<TaskItem>(
-        prevItems: prevTasks,
-        nextIds: nextTaskIds,
-        idOf: (t) => t.id,
-        remoteIdOf: (t) => t.remoteId,
-        dirtyIds: dirtyTasks,
-        existingDeletedRemoteIds: repository.loadPendingDeletedTaskRemoteIds(),
-      );
-      taskSyncNeeded = taskDeletions.changed;
-      repository.savePendingDeletedTaskRemoteIds(
-        taskDeletions.deletedRemoteIds,
-      );
-
-      final stepDeletions = collectPendingStepDeletions(
-        prevTaskById: prevTaskById,
-        nextTasks: nextState.tasks,
-        existingDeletedSteps: repository.loadPendingDeletedSteps(),
-      );
-      if (stepDeletions.changed) taskSyncNeeded = true;
-      repository.savePendingDeletedSteps(stepDeletions.deletedSteps);
-
-      final prevListRemoteById = {
-        for (final l in prevLists)
-          if (l.remoteId != null) l.id: l.remoteId!,
-      };
-      stampedTasks = [
-        for (final task in nextState.tasks)
-          () {
-            final prev = prevTaskById[task.id];
-            if (!doesTaskNeedSyncStamp(prev, task)) return task;
-            taskSyncNeeded = true;
-            dirtyTasks.add(task.id);
-            final changedFields = diffTaskDirtyFields(prev, task);
-            if (changedFields.isNotEmpty) {
-              (dirtyTaskFields[task.id] ??= <TaskDirtyField>{}).addAll(
-                changedFields,
-              );
-            }
-            final changedSteps = diffDirtyStepIds(prev, task);
-            if (changedSteps.isNotEmpty) {
-              (dirtyStepIds[task.id] ??= <String>{}).addAll(changedSteps);
-            }
-            if (changedFields.contains(TaskDirtyField.body) &&
-                prev != null &&
-                !taskBaseNotes.containsKey(task.id)) {
-              taskBaseNotes[task.id] = prev.note;
-            }
-            final resolvedRemoteParent =
-                (prev != null &&
-                    prev.listId != task.listId &&
-                    task.remoteId != null &&
-                    task.remoteParentFolderId == null)
-                ? prevListRemoteById[prev.listId]
-                : task.remoteParentFolderId;
-            return task.copyWith(
-              remoteParentFolderId: resolvedRemoteParent,
-              updatedAt: nowUtc,
-            );
-          }(),
-      ];
-    }
-
-    final changedGlobalSettingKeys = detectGlobalSettingChanges(
-      prevState,
-      nextState,
+    final tracked = trackLocalCommit(
+      prevState: state,
+      nextState: nextState,
+      nowUtc: DateTime.now().toUtc(),
+      dirtyGroupIds: repository.loadDirtyGroupIds().toSet(),
+      dirtyGroupFields: repository.loadDirtyGroupFields(),
+      dirtyListIds: repository.loadDirtyListIds().toSet(),
+      dirtyListFields: repository.loadDirtyListFields(),
+      dirtyTaskIds: repository.loadDirtyTaskIds().toSet(),
+      dirtyTaskFields: repository.loadDirtyTaskFields(),
+      dirtyStepIds: repository.loadDirtyStepIds(),
+      taskBaseNotes: repository.loadTaskBaseNotes(),
+      dirtySettingKeys: settings.loadDirtySettingKeys().toSet(),
+      loadDeletedGroupRemoteIds: repository.loadPendingDeletedGroupRemoteIds,
+      loadDeletedListRemoteIds: repository.loadPendingDeletedListRemoteIds,
+      loadDeletedTaskRemoteIds: repository.loadPendingDeletedTaskRemoteIds,
+      loadDeletedSteps: repository.loadPendingDeletedSteps,
     );
-    var settingSyncNeeded = false;
-    if (changedGlobalSettingKeys.isNotEmpty) {
-      settingSyncNeeded = true;
-      dirtySettings.addAll(changedGlobalSettingKeys);
+
+    if (tracked.pendingDeletedGroupRemoteIds != null) {
+      repository.savePendingDeletedGroupRemoteIds(
+        tracked.pendingDeletedGroupRemoteIds!,
+      );
+    }
+    if (tracked.pendingDeletedListRemoteIds != null) {
+      repository.savePendingDeletedListRemoteIds(
+        tracked.pendingDeletedListRemoteIds!,
+      );
+    }
+    if (tracked.pendingDeletedTaskRemoteIds != null) {
+      repository.savePendingDeletedTaskRemoteIds(
+        tracked.pendingDeletedTaskRemoteIds!,
+      );
+    }
+    if (tracked.pendingDeletedSteps != null) {
+      repository.savePendingDeletedSteps(tracked.pendingDeletedSteps!);
     }
 
-    repository.saveDirtyGroupIds(dirtyGroups);
-    repository.saveDirtyGroupFields(dirtyGroupFields);
-    repository.saveDirtyListIds(dirtyLists);
-    repository.saveDirtyListFields(dirtyListFields);
-    repository.saveDirtyTaskIds(dirtyTasks);
-    repository.saveDirtyTaskFields(dirtyTaskFields);
-    repository.saveDirtyStepIds(dirtyStepIds);
-    repository.saveTaskBaseNotes(taskBaseNotes);
-    settings.saveDirtySettingKeys(dirtySettings);
+    repository.saveDirtyGroupIds(tracked.dirtyGroupIds);
+    repository.saveDirtyGroupFields(tracked.dirtyGroupFields);
+    repository.saveDirtyListIds(tracked.dirtyListIds);
+    repository.saveDirtyListFields(tracked.dirtyListFields);
+    repository.saveDirtyTaskIds(tracked.dirtyTaskIds);
+    repository.saveDirtyTaskFields(tracked.dirtyTaskFields);
+    repository.saveDirtyStepIds(tracked.dirtyStepIds);
+    repository.saveTaskBaseNotes(tracked.taskBaseNotes);
+    settings.saveDirtySettingKeys(tracked.dirtySettingKeys);
 
     state = nextState.copyWith(
-      groups: stampedGroups,
-      lists: stampedLists,
-      tasks: stampedTasks,
-      mutationVersion:
-          (groupSyncNeeded ||
-              listSyncNeeded ||
-              taskSyncNeeded ||
-              settingSyncNeeded)
+      groups: tracked.groups,
+      lists: tracked.lists,
+      tasks: tracked.tasks,
+      mutationVersion: tracked.syncNeeded
           ? state.mutationVersion + 1
           : state.mutationVersion,
     );
@@ -376,10 +260,7 @@ class TodoNotifier extends Notifier<TodoState> {
     Set<String>? syncedListIds,
     Set<String>? syncedTaskIds,
     Set<String>? syncedSettingKeys,
-    Map<String, Set<GroupDirtyField>>? syncedGroupFields,
-    Map<String, Set<ListDirtyField>>? syncedListFields,
-    Map<String, Set<TaskDirtyField>>? syncedTaskFields,
-    Map<String, Set<String>>? syncedStepIds,
+    SyncedDirtyFields syncedDirtyFields = const SyncedDirtyFields(),
   }) async {
     List<T> filterProcessed<T>(List<T> pending, List<T>? processed) =>
         processed == null
@@ -432,118 +313,53 @@ class TodoNotifier extends Notifier<TodoState> {
         : tasks;
 
     final nextGroupFields = repository.loadDirtyGroupFields();
-    for (final id in syncedGroupIds ?? const <String>{}) {
-      final pushed = syncedGroupFields?[id];
-      if (pushed == null) {
-        nextGroupFields.remove(id);
-      } else {
-        final cur = nextGroupFields[id];
-        if (cur != null) {
-          cur.removeAll(pushed);
-          if (cur.isEmpty) nextGroupFields.remove(id);
-        }
-      }
-    }
-    if (preserveDirtyGroups.isNotEmpty) {
-      final snapById = {
-        for (final g in snapshotGroups ?? const <ListGroup>[]) g.id: g,
-      };
-      final curById = {for (final g in state.groups) g.id: g};
-      for (final id in preserveDirtyGroups) {
-        final cur = curById[id];
-        if (cur == null) continue;
-        final mid = diffGroupDirtyFields(snapById[id], cur);
-        if (mid.isNotEmpty) {
-          (nextGroupFields[id] ??= <GroupDirtyField>{}).addAll(mid);
-        }
-      }
-    }
+    reconcileEntityDirtyFields<ListGroup, GroupDirtyField>(
+      dirtyFields: nextGroupFields,
+      syncedIds: syncedGroupIds ?? const <String>{},
+      syncedFields: syncedDirtyFields.groupFields,
+      preserveDirtyIds: preserveDirtyGroups,
+      snapshotItems: snapshotGroups,
+      currentItems: state.groups,
+      idOf: (g) => g.id,
+      diffFields: diffGroupDirtyFields,
+    );
 
     final nextListFields = repository.loadDirtyListFields();
-    for (final id in syncedListIds ?? const <String>{}) {
-      final pushed = syncedListFields?[id];
-      if (pushed == null) {
-        nextListFields.remove(id);
-      } else {
-        final cur = nextListFields[id];
-        if (cur != null) {
-          cur.removeAll(pushed);
-          if (cur.isEmpty) nextListFields.remove(id);
-        }
-      }
-    }
-    if (preserveDirtyLists.isNotEmpty) {
-      final snapById = {
-        for (final l in snapshotLists ?? const <TodoList>[]) l.id: l,
-      };
-      final curById = {for (final l in state.lists) l.id: l};
-      for (final id in preserveDirtyLists) {
-        final cur = curById[id];
-        if (cur == null) continue;
-        final mid = diffListDirtyFields(snapById[id], cur);
-        if (mid.isNotEmpty) {
-          (nextListFields[id] ??= <ListDirtyField>{}).addAll(mid);
-        }
-      }
-    }
+    reconcileEntityDirtyFields<TodoList, ListDirtyField>(
+      dirtyFields: nextListFields,
+      syncedIds: syncedListIds ?? const <String>{},
+      syncedFields: syncedDirtyFields.listFields,
+      preserveDirtyIds: preserveDirtyLists,
+      snapshotItems: snapshotLists,
+      currentItems: state.lists,
+      idOf: (l) => l.id,
+      diffFields: diffListDirtyFields,
+    );
 
     final nextTaskFields = repository.loadDirtyTaskFields();
+    reconcileEntityDirtyFields<TaskItem, TaskDirtyField>(
+      dirtyFields: nextTaskFields,
+      syncedIds: syncedTaskIds ?? const <String>{},
+      syncedFields: syncedDirtyFields.taskFields,
+      preserveDirtyIds: preserveDirtyTasks,
+      snapshotItems: snapshotTasks,
+      currentItems: state.tasks,
+      idOf: (t) => t.id,
+      diffFields: diffTaskDirtyFields,
+    );
+
     final nextStepIds = repository.loadDirtyStepIds();
     final nextBaseNotes = repository.loadTaskBaseNotes();
-    for (final id in syncedTaskIds ?? const <String>{}) {
-      final pushedFields = syncedTaskFields?[id];
-      if (pushedFields == null) {
-        nextTaskFields.remove(id);
-        nextStepIds.remove(id);
-        nextBaseNotes.remove(id);
-      } else {
-        final curFields = nextTaskFields[id];
-        if (curFields != null) {
-          curFields.removeAll(pushedFields);
-          if (curFields.isEmpty) nextTaskFields.remove(id);
-        }
-        final pushedSteps = syncedStepIds?[id];
-        if (pushedSteps == null) {
-          if (pushedFields.contains(TaskDirtyField.steps)) {
-            nextStepIds.remove(id);
-          }
-        } else {
-          final curSteps = nextStepIds[id];
-          if (curSteps != null) {
-            curSteps.removeAll(pushedSteps);
-            if (curSteps.isEmpty) nextStepIds.remove(id);
-          }
-        }
-        if (pushedFields.contains(TaskDirtyField.body) &&
-            nextTaskFields[id]?.contains(TaskDirtyField.body) != true) {
-          nextBaseNotes.remove(id);
-        }
-      }
-    }
-    if (preserveDirtyTasks.isNotEmpty) {
-      final snapById = {
-        for (final t in snapshotTasks ?? const <TaskItem>[]) t.id: t,
-      };
-      final curById = {for (final t in state.tasks) t.id: t};
-      for (final id in preserveDirtyTasks) {
-        final cur = curById[id];
-        if (cur == null) continue;
-        final snap = snapById[id];
-        final midFields = diffTaskDirtyFields(snap, cur);
-        final midSteps = diffDirtyStepIds(snap, cur);
-        if (midFields.isNotEmpty) {
-          (nextTaskFields[id] ??= <TaskDirtyField>{}).addAll(midFields);
-        }
-        if (midSteps.isNotEmpty) {
-          (nextStepIds[id] ??= <String>{}).addAll(midSteps);
-        }
-        if (midFields.contains(TaskDirtyField.body) &&
-            snap != null &&
-            !nextBaseNotes.containsKey(id)) {
-          nextBaseNotes[id] = snap.note;
-        }
-      }
-    }
+    reconcileTaskExtraDirtyState(
+      nextStepIds: nextStepIds,
+      nextBaseNotes: nextBaseNotes,
+      syncedTaskIds: syncedTaskIds ?? const <String>{},
+      syncedTaskFields: syncedDirtyFields.taskFields,
+      syncedStepIds: syncedDirtyFields.stepIds,
+      preserveDirtyTasks: preserveDirtyTasks,
+      snapshotTasks: snapshotTasks,
+      currentTasks: state.tasks,
+    );
 
     final remainingDirtyGroups =
         (repository.loadDirtyGroupIds().toSet()
@@ -582,47 +398,19 @@ class TodoNotifier extends Notifier<TodoState> {
     final sortedGroups = sortGroupsByOrder(reconciledGroups);
     final sortedLists = sortListsPreservingSmartLists(reconciledLists);
 
-    final nextExpanded = Map<String, bool>.from(
-      nextState.completedExpandedByList,
+    final expandedOutcome = recomputeCompletedExpandedByList(
+      currentExpanded: nextState.completedExpandedByList,
+      lists: sortedLists,
+      dirtyListIds: remainingDirtyLists,
+      dirtySettingKeys: remainingDirtySettings,
+      settingsPatch: settingsPatch,
     );
-    var expandedChanged = false;
-    for (final list in sortedLists) {
-      if (list.smartType == SmartListType.all ||
-          list.smartType == SmartListType.completed ||
-          list.smartType == SmartListType.important) {
-        continue;
-      }
-      if (isSyncableFolderList(list)) {
-        if (list.remoteId != null && !remainingDirtyLists.contains(list.id)) {
-          if (nextExpanded[list.id] != list.showCompleted) {
-            nextExpanded[list.id] = list.showCompleted;
-            expandedChanged = true;
-          }
-        }
-      } else {
-        final showKey = smartListSettingKeyMap[list.id]?.showCompletedKey;
-        final patchedShow =
-            settingsPatch?.smartListPatches[list.id]?.showCompleted;
-        if (patchedShow != null &&
-            showKey != null &&
-            !remainingDirtySettings.contains(showKey)) {
-          if (nextExpanded[list.id] != list.showCompleted) {
-            nextExpanded[list.id] = list.showCompleted;
-            expandedChanged = true;
-          }
-        }
-      }
-    }
 
-    final now = DateTime.now();
-    final syncedTasks = [
-      for (final task in reconciledTasks)
-        syncMyDayFlag(
-          task,
-          now: now,
-          showDueTodayInMyDay: nextState.showDueTodayInMyDay,
-        ),
-    ];
+    final syncedTasks = syncTasksMyDayFlags(
+      reconciledTasks,
+      now: DateTime.now(),
+      showDueTodayInMyDay: nextState.showDueTodayInMyDay,
+    ).tasks;
 
     final remainingDeletedGroups = filterProcessed(
       repository.loadPendingDeletedGroupRemoteIds(),
@@ -669,7 +457,8 @@ class TodoNotifier extends Notifier<TodoState> {
       repository.saveGroups(sortedGroups),
       repository.saveLists(sortedLists),
       repository.saveTasks(syncedTasks),
-      if (expandedChanged) settings.saveCompletedExpandedByList(nextExpanded),
+      if (expandedOutcome.changed)
+        settings.saveCompletedExpandedByList(expandedOutcome.expanded),
       repository.savePendingDeletedGroupRemoteIds(remainingDeletedGroups),
       repository.savePendingDeletedListRemoteIds(remainingDeletedLists),
       repository.savePendingDeletedTaskRemoteIds(remainingDeletedTasks),
@@ -690,7 +479,7 @@ class TodoNotifier extends Notifier<TodoState> {
       lists: sortedLists,
       tasks: syncedTasks,
       selectedListId: validSelectedListId,
-      completedExpandedByList: nextExpanded,
+      completedExpandedByList: expandedOutcome.expanded,
     );
 
     await Future.wait(persistFutures);
@@ -699,15 +488,11 @@ class TodoNotifier extends Notifier<TodoState> {
   /// Applies a remote task snapshot update (e.g. from realtime events) without
   /// bumping [TodoState.mutationVersion] or marking tasks dirty.
   Future<void> applyRemoteTasksSnapshot(List<TaskItem> nextTasks) async {
-    final now = DateTime.now();
-    final syncedTasks = [
-      for (final task in nextTasks)
-        syncMyDayFlag(
-          task,
-          now: now,
-          showDueTodayInMyDay: state.showDueTodayInMyDay,
-        ),
-    ];
+    final syncedTasks = syncTasksMyDayFlags(
+      nextTasks,
+      now: DateTime.now(),
+      showDueTodayInMyDay: state.showDueTodayInMyDay,
+    ).tasks;
     final validSelectedTaskId =
         state.selectedTaskId != null &&
             syncedTasks.any((t) => t.id == state.selectedTaskId)
@@ -759,18 +544,11 @@ class TodoNotifier extends Notifier<TodoState> {
     List<TaskItem>? nextTasks,
   }) async {
     final sortedLists = sortListsPreservingSmartLists(nextLists);
-    final dirtyListIds = repository.loadDirtyListIds().toSet();
-    final nextExpanded = Map<String, bool>.from(state.completedExpandedByList);
-    var expandedChanged = false;
-    for (final list in sortedLists) {
-      if (isSyncableFolderList(list) &&
-          list.remoteId != null &&
-          !dirtyListIds.contains(list.id) &&
-          nextExpanded[list.id] != list.showCompleted) {
-        nextExpanded[list.id] = list.showCompleted;
-        expandedChanged = true;
-      }
-    }
+    final expandedOutcome = recomputeCompletedExpandedByList(
+      currentExpanded: state.completedExpandedByList,
+      lists: sortedLists,
+      dirtyListIds: repository.loadDirtyListIds().toSet(),
+    );
     final validSelectedListId =
         sortedLists.any((l) => l.id == state.selectedListId)
         ? state.selectedListId
@@ -785,14 +563,15 @@ class TodoNotifier extends Notifier<TodoState> {
     final persistFutures = <Future<Object?>>[
       repository.saveLists(sortedLists),
       if (nextTasks != null) repository.saveTasks(effectiveTasks),
-      if (expandedChanged) settings.saveCompletedExpandedByList(nextExpanded),
+      if (expandedOutcome.changed)
+        settings.saveCompletedExpandedByList(expandedOutcome.expanded),
     ];
     state = state.copyWith(
       lists: sortedLists,
       tasks: effectiveTasks,
       selectedListId: validSelectedListId,
       selectedTaskId: validSelectedTaskId,
-      completedExpandedByList: nextExpanded,
+      completedExpandedByList: expandedOutcome.expanded,
     );
     await Future.wait(persistFutures);
   }
@@ -812,55 +591,33 @@ class TodoNotifier extends Notifier<TodoState> {
     final nextState = applied.state;
     final nextLists = applied.lists;
 
-    final nextExpanded = Map<String, bool>.from(
-      nextState.completedExpandedByList,
+    final expandedOutcome = recomputeCompletedExpandedByList(
+      currentExpanded: nextState.completedExpandedByList,
+      lists: nextLists,
+      dirtySettingKeys: remainingDirtySettings,
+      settingsPatch: patch,
+      includeSyncableFolders: false,
     );
-    var expandedChanged = false;
-    for (final list in nextLists) {
-      if (isSyncableFolderList(list) ||
-          list.smartType == SmartListType.all ||
-          list.smartType == SmartListType.completed ||
-          list.smartType == SmartListType.important) {
-        continue;
-      }
-      final showKey = smartListSettingKeyMap[list.id]?.showCompletedKey;
-      final patchedShow = patch.smartListPatches[list.id]?.showCompleted;
-      if (patchedShow != null &&
-          showKey != null &&
-          !remainingDirtySettings.contains(showKey) &&
-          nextExpanded[list.id] != list.showCompleted) {
-        nextExpanded[list.id] = list.showCompleted;
-        expandedChanged = true;
-      }
-    }
 
-    final now = DateTime.now();
-    var tasksChanged = false;
-    final updatedTasks = [
-      for (final task in nextState.tasks)
-        () {
-          final updated = syncMyDayFlag(
-            task,
-            now: now,
-            showDueTodayInMyDay: nextState.showDueTodayInMyDay,
-          );
-          if (!identical(updated, task)) tasksChanged = true;
-          return updated;
-        }(),
-    ];
+    final synced = syncTasksMyDayFlags(
+      nextState.tasks,
+      now: DateTime.now(),
+      showDueTodayInMyDay: nextState.showDueTodayInMyDay,
+    );
 
     final listsChanged = !identical(nextLists, state.lists);
     final persistFutures = <Future<Object?>>[
       ...applied.persistFutures,
       if (listsChanged) repository.saveLists(nextLists),
-      if (tasksChanged) repository.saveTasks(updatedTasks),
-      if (expandedChanged) settings.saveCompletedExpandedByList(nextExpanded),
+      if (synced.changed) repository.saveTasks(synced.tasks),
+      if (expandedOutcome.changed)
+        settings.saveCompletedExpandedByList(expandedOutcome.expanded),
     ];
 
     state = nextState.copyWith(
       lists: nextLists,
-      tasks: tasksChanged ? updatedTasks : nextState.tasks,
-      completedExpandedByList: nextExpanded,
+      tasks: synced.tasks,
+      completedExpandedByList: expandedOutcome.expanded,
     );
     if (persistFutures.isNotEmpty) {
       await Future.wait(persistFutures);
