@@ -1005,6 +1005,96 @@ void main() {
         expect(recreated.steps.single.remoteId, isNot('rs-old'));
       },
     );
+
+    test(
+      'clearing photo background to solid color sends ThemeBackground=mountain and stays solid after delta sync',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final account = Account.microsoft(
+          id: 'acct_theme',
+          displayName: 'Alice',
+          email: 'alice@outlook.com',
+          createdAt: DateTime(2026, 11, 22),
+          microsoftUserId: 'cid1',
+        );
+        await AccountLocalStorage(prefs).saveAccounts([account]);
+        await AccountLocalStorage(prefs).saveActiveAccountId('acct_theme');
+
+        final storage = _session(prefs, 'acct_theme');
+        await storage.repository.saveLists([
+          ...defaultSmartLists().map(
+            (l) => l.smartType == SmartListType.tasks
+                ? l.copyWith(remoteId: 'rf-default')
+                : l,
+          ),
+          const TodoList(
+            id: 'list_shop',
+            title: 'Shopping',
+            remoteId: 'rf-shop',
+            themeColor: ListThemeColor.rose,
+            themePhoto: null,
+          ),
+        ]);
+        await storage.repository.saveDirtyListIds({'list_shop'});
+
+        final fakeApi = FakeSubstrateApi();
+        var serverThemeColor = 'dark_blue';
+        var serverThemeBackground = 'photo_beach';
+
+        fakeApi.onPatchFolder = (id, patch) async {
+          expect(id, 'rf-shop');
+          expect(patch['ThemeColor'], 'dark_rose');
+          // Substrate ignores null ThemeBackground; clearing requires 'mountain'.
+          expect(patch['ThemeBackground'], 'mountain');
+          serverThemeColor = patch['ThemeColor'] as String;
+          if (patch['ThemeBackground'] != null) {
+            serverThemeBackground = patch['ThemeBackground'] as String;
+          }
+          return RemoteTodoFolder(
+            id: id,
+            name: 'Shopping',
+            themeColor: serverThemeColor,
+            themeBackground: serverThemeBackground,
+          );
+        };
+        fakeApi.onFetchFoldersDelta = (dl) => DeltaPageResult(
+          items: [
+            const RemoteTodoFolder(
+              id: 'rf-default',
+              name: 'Tasks',
+              isDefaultFolder: true,
+            ),
+            RemoteTodoFolder(
+              id: 'rf-shop',
+              name: 'Shopping',
+              themeColor: serverThemeColor,
+              themeBackground: serverThemeBackground,
+            ),
+          ],
+          deltaLink: 'dl-folders-1',
+        );
+
+        final container = ProviderContainer(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+            microsoftTodoApiProvider.overrideWithValue(fakeApi),
+            realtimeSyncEnabledProvider.overrideWithValue(false),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        await container.read(syncProvider.notifier).syncNow();
+
+        final syncedShop = container
+            .read(todoProvider)
+            .lists
+            .firstWhere((l) => l.id == 'list_shop');
+        expect(syncedShop.themeColor, ListThemeColor.rose);
+        expect(syncedShop.themePhoto, isNull);
+      },
+    );
   });
 }
 

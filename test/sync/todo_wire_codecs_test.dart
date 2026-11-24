@@ -64,7 +64,13 @@ void main() {
         expect(decodedFolder.themePhoto, photo);
       }
 
-      expect(encodeFolderThemeBackground(null), isNull);
+      expect(encodeFolderThemeBackground(null), 'mountain');
+      final clearedFolder = decodeFolderTheme(
+        themeColor: 'dark_blue',
+        themeBackground: 'mountain',
+      );
+      expect(clearedFolder.themeColor, ListThemeColor.blue);
+      expect(clearedFolder.themePhoto, isNull);
     });
 
     test('maps legacy color aliases cleanly', () {

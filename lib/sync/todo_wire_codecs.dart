@@ -188,9 +188,12 @@ String encodeFolderThemeColor(ListThemeColor color) {
   return _colorToWire[color] ?? 'dark_blue';
 }
 
-/// Encodes [photo] for Substrate `TaskFolder.ThemeBackground` (`photo_*` or null).
-String? encodeFolderThemeBackground(ListThemePhoto? photo) {
-  if (photo == null) return null;
+/// Encodes [photo] for Substrate `TaskFolder.ThemeBackground` (`photo_*` or `'mountain'`).
+///
+/// Substrate ignores `null` in `PATCH /taskfolders/{id}` and leaves the previous
+/// photo background intact; official To Do sends `'mountain'` when no photo is set.
+String encodeFolderThemeBackground(ListThemePhoto? photo) {
+  if (photo == null) return 'mountain';
   return _photoToWire[photo] ?? 'photo_beach';
 }
 

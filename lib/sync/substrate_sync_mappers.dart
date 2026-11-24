@@ -13,7 +13,7 @@ Map<String, dynamic> buildFolderCreatePayload(
     'Name': encodeFolderName(list.title, list.emoji),
     'OrderDateTime': formatSubstrateUtcTimestamp(list.orderDateTime ?? nowUtc),
     'ThemeColor': encodeFolderThemeColor(list.themeColor),
-    'ThemeBackground': ?encodeFolderThemeBackground(list.themePhoto),
+    'ThemeBackground': encodeFolderThemeBackground(list.themePhoto),
     'ShowCompletedTasks': list.showCompleted,
     'SortType': encodeSortType(list.sortOption),
     'SortAscending': list.sortAscending,
