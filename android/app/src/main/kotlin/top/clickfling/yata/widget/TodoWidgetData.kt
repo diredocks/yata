@@ -114,14 +114,6 @@ object TodoWidgetData {
     private const val KEY_IS_REFRESHING = "widget_is_refreshing"
     private const val KEY_REFRESH_STARTED_MS = "widget_refresh_started_ms"
 
-    private const val LEGACY_KEY_LISTS = "widget_lists_json"
-    private const val LEGACY_KEY_TASKS = "widget_tasks_json"
-    private const val LEGACY_KEY_LIST_TASK_IDS = "widget_list_task_ids_json"
-    private const val LEGACY_KEY_ACCOUNT_NAME = "widget_account_name"
-    private const val LEGACY_KEY_EMPTY_MESSAGE = "widget_empty_message"
-    private const val LEGACY_KEY_MY_DAY_LABEL = "widget_my_day_label"
-    private const val LEGACY_KEY_MOVE_STARRED_TO_TOP = "widget_move_starred_to_top"
-
     private const val CONFIG_PREFS_NAME = "yata_widget_configs"
     private const val REFRESH_TIMEOUT_MS = 30_000L
 
@@ -278,30 +270,12 @@ object TodoWidgetData {
         )
     }
 
-    fun loadLists(context: Context): List<WidgetListInfo> =
-        loadEffectiveSnapshot(context).lists
-
-    fun resolveList(context: Context, listId: String): WidgetListInfo? =
-        loadEffectiveSnapshot(context).resolveList(listId)
-
-    fun loadAccountName(context: Context): String? =
-        loadEffectiveSnapshot(context).accountName.takeIf { it.isNotBlank() }
-
-    fun loadEmptyMessage(context: Context): String? =
-        loadEffectiveSnapshot(context).emptyMessage.takeIf { it.isNotBlank() }
-
-    fun loadMyDayLabel(context: Context): String? =
-        loadEffectiveSnapshot(context).myDayLabel.takeIf { it.isNotBlank() }
-
     fun tasksForWidget(snapshot: WidgetSnapshot, config: WidgetConfig): List<WidgetTaskItem> {
         val taskMap = snapshot.tasks.associateBy { it.id }
         val ids = snapshot.listTaskIds[config.listId]
             ?: snapshot.listTaskIds[WidgetConfig.DEFAULT_LIST_ID]
-        val orderedTasks = if (ids != null) {
-            ids.mapNotNull { taskMap[it] }
-        } else {
-            snapshot.tasks.filter { it.listId == config.listId }
-        }
+            ?: return emptyList()
+        val orderedTasks = ids.mapNotNull { taskMap[it] }
         val effectiveList = snapshot.lists.firstOrNull { it.id == config.listId }
         val isCompletedList =
             effectiveList?.smartType == "completed" || config.listId == "completed"
@@ -310,10 +284,6 @@ object TodoWidgetData {
         } else {
             orderedTasks.filter { !it.isCompleted }
         }
-    }
-
-    fun loadTasksForWidget(context: Context, config: WidgetConfig): List<WidgetTaskItem> {
-        return tasksForWidget(loadEffectiveSnapshot(context), config)
     }
 
     fun isRefreshing(context: Context): Boolean {
@@ -426,14 +396,12 @@ object TodoWidgetData {
 
     private fun loadBaseSnapshot(p: SharedPreferences): WidgetSnapshot {
         val raw = p.getString(KEY_SNAPSHOT, null)
-        if (!raw.isNullOrBlank()) {
-            return try {
-                parseSnapshot(JSONObject(raw))
-            } catch (_: Exception) {
-                WidgetSnapshot()
-            }
+        if (raw.isNullOrBlank()) return WidgetSnapshot()
+        return try {
+            parseSnapshot(JSONObject(raw))
+        } catch (_: Exception) {
+            WidgetSnapshot()
         }
-        return loadLegacySnapshot(p)
     }
 
     private fun parseSnapshot(obj: JSONObject): WidgetSnapshot {
@@ -461,33 +429,6 @@ object TodoWidgetData {
             tasks = tasks,
             listTaskIds = listTaskIds,
         )
-    }
-
-    private fun loadLegacySnapshot(p: SharedPreferences): WidgetSnapshot {
-        val listsRaw = p.getString(LEGACY_KEY_LISTS, null)
-        val tasksRaw = p.getString(LEGACY_KEY_TASKS, null)
-        val listTaskIdsRaw = p.getString(LEGACY_KEY_LIST_TASK_IDS, null)
-        if (listsRaw == null && tasksRaw == null) return WidgetSnapshot()
-        return try {
-            val lists = if (listsRaw != null) parseLists(JSONArray(listsRaw)) else emptyList()
-            val tasks = if (tasksRaw != null) parseTasks(JSONArray(tasksRaw)) else emptyList()
-            val listTaskIds = if (listTaskIdsRaw != null) {
-                parseListTaskIds(JSONObject(listTaskIdsRaw))
-            } else {
-                emptyMap()
-            }
-            WidgetSnapshot(
-                accountName = p.getString(LEGACY_KEY_ACCOUNT_NAME, null) ?: "",
-                emptyMessage = p.getString(LEGACY_KEY_EMPTY_MESSAGE, null) ?: "",
-                myDayLabel = p.getString(LEGACY_KEY_MY_DAY_LABEL, null) ?: "",
-                moveStarredToTop = p.getBoolean(LEGACY_KEY_MOVE_STARRED_TO_TOP, true),
-                lists = lists,
-                tasks = tasks,
-                listTaskIds = listTaskIds,
-            )
-        } catch (_: Exception) {
-            WidgetSnapshot()
-        }
     }
 
     private fun parseLists(array: JSONArray): List<WidgetListInfo> {

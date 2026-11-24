@@ -37,16 +37,6 @@ const String kWidgetRefreshRequestedKey = 'widget_refresh_requested';
 const String kWidgetIsRefreshingKey = 'widget_is_refreshing';
 const String kWidgetRefreshStartedMsKey = 'widget_refresh_started_ms';
 
-const List<String> _legacyWidgetKeys = [
-  'widget_lists_json',
-  'widget_tasks_json',
-  'widget_list_task_ids_json',
-  'widget_account_name',
-  'widget_empty_message',
-  'widget_my_day_label',
-  'widget_move_starred_to_top',
-];
-
 typedef ProviderReader = T Function<T>(ProviderListenable<T> provider);
 
 abstract class HomeWidgetTransport {
@@ -180,9 +170,6 @@ class HomeWidgetService {
 
   final HomeWidgetTransport _transport;
 
-  HomeWidgetStrings _lastStrings = const HomeWidgetStrings();
-  String? _lastAccountId;
-  String? _lastAccountName;
   String? _lastCommittedCanonicalJson;
   String? _lastConsumedInitialUri;
 
@@ -206,23 +193,19 @@ class HomeWidgetService {
   Future<void> syncWithState(
     TodoState state, {
     String? accountId,
-    String? accountName,
-    HomeWidgetStrings? strings,
+    String accountName = '',
+    HomeWidgetStrings strings = const HomeWidgetStrings(),
     int ackedOpId = 0,
     bool clearRefreshing = false,
     bool force = false,
     bool notifyWidget = true,
     DateTime? now,
   }) {
-    if (strings != null) _lastStrings = strings;
-    if (accountId != null) _lastAccountId = accountId;
-    if (accountName != null) _lastAccountName = accountName;
-
     final canonicalPayload = HomeWidgetSnapshotSerializer.buildCanonicalPayload(
       state,
-      accountId: accountId ?? _lastAccountId,
-      accountName: accountName ?? _lastAccountName ?? '',
-      strings: strings ?? _lastStrings,
+      accountId: accountId,
+      accountName: accountName,
+      strings: strings,
       now: now,
     );
     final encoded = HomeWidgetSnapshotSerializer.encodePayload(
@@ -323,8 +306,6 @@ class HomeWidgetService {
 
   Future<void> _executeClear(Completer<void> clear) async {
     _lastCommittedCanonicalJson = null;
-    _lastAccountId = null;
-    _lastAccountName = null;
     await guardAsyncUnit(() async {
       for (final key in [
         kWidgetSnapshotKey,
@@ -332,7 +313,6 @@ class HomeWidgetService {
         kWidgetRefreshRequestedKey,
         kWidgetIsRefreshingKey,
         kWidgetRefreshStartedMsKey,
-        ..._legacyWidgetKeys,
       ]) {
         await _transport.saveData(key, null);
       }

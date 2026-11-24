@@ -105,7 +105,7 @@ class _FakeHomeWidgetTransport implements HomeWidgetTransport {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   group('HomeWidgetAction.fromUri', () {
-    test('parses all widget URI actions', () {
+    test('parses launch widget URI actions', () {
       final add = HomeWidgetAction.fromUri(
         Uri.parse('yata://widget/add?listId=my_day'),
       );
@@ -124,31 +124,28 @@ void main() {
       expect(open?.type, HomeWidgetActionType.openTask);
       expect(open?.taskId, 't1');
       expect(open?.listId, 'tasks');
-
-      final complete = HomeWidgetAction.fromUri(
-        Uri.parse('yata://widget/toggle_complete?taskId=t2&completed=true'),
-      );
-      expect(complete?.type, HomeWidgetActionType.toggleComplete);
-      expect(complete?.taskId, 't2');
-      expect(complete?.flagValue, isTrue);
-
-      final important = HomeWidgetAction.fromUri(
-        Uri.parse('yata://widget/toggle_important?taskId=t3&important=false'),
-      );
-      expect(important?.type, HomeWidgetActionType.toggleImportant);
-      expect(important?.taskId, 't3');
-      expect(important?.flagValue, isFalse);
-
-      final refresh = HomeWidgetAction.fromUri(
-        Uri.parse('yata://widget/refresh'),
-      );
-      expect(refresh?.type, HomeWidgetActionType.refresh);
     });
 
-    test('returns null for unrelated URIs', () {
+    test('returns null for legacy and unrelated URIs', () {
       expect(HomeWidgetAction.fromUri(null), isNull);
       expect(
         HomeWidgetAction.fromUri(Uri.parse('https://example.com')),
+        isNull,
+      );
+      expect(
+        HomeWidgetAction.fromUri(
+          Uri.parse('yata://widget/toggle_complete?taskId=t2&completed=true'),
+        ),
+        isNull,
+      );
+      expect(
+        HomeWidgetAction.fromUri(
+          Uri.parse('yata://widget/toggle_important?taskId=t3&important=false'),
+        ),
+        isNull,
+      );
+      expect(
+        HomeWidgetAction.fromUri(Uri.parse('yata://widget/refresh')),
         isNull,
       );
     });

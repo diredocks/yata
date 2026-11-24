@@ -125,10 +125,6 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
             break;
           }
         }
-      case HomeWidgetActionType.toggleComplete:
-      case HomeWidgetActionType.toggleImportant:
-      case HomeWidgetActionType.refresh:
-        break;
     }
     if (isWide && action.listId != null) {
       final matched = state.lists

@@ -9,35 +9,21 @@ import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../theme/todo_theme.dart';
 
-enum HomeWidgetActionType {
-  quickAdd,
-  openList,
-  openTask,
-  toggleComplete,
-  toggleImportant,
-  refresh,
-}
+enum HomeWidgetActionType { quickAdd, openList, openTask }
 
 class HomeWidgetAction {
-  const HomeWidgetAction({
-    required this.type,
-    this.listId,
-    this.taskId,
-    this.flagValue,
-  });
+  const HomeWidgetAction({required this.type, this.listId, this.taskId});
 
   final HomeWidgetActionType type;
   final String? listId;
   final String? taskId;
-  final bool? flagValue;
 
   static HomeWidgetAction? fromUri(Uri? uri) {
     if (uri == null || uri.scheme != 'yata' || uri.host != 'widget') {
       return null;
     }
-    final path = uri.path;
     final params = uri.queryParameters;
-    return switch (path) {
+    return switch (uri.path) {
       '/add' => HomeWidgetAction(
         type: HomeWidgetActionType.quickAdd,
         listId: params['listId'],
@@ -51,25 +37,8 @@ class HomeWidgetAction {
         taskId: params['taskId'],
         listId: params['listId'],
       ),
-      '/toggle_complete' => HomeWidgetAction(
-        type: HomeWidgetActionType.toggleComplete,
-        taskId: params['taskId'],
-        flagValue: _parseBool(params['completed']),
-      ),
-      '/toggle_important' => HomeWidgetAction(
-        type: HomeWidgetActionType.toggleImportant,
-        taskId: params['taskId'],
-        flagValue: _parseBool(params['important']),
-      ),
-      '/refresh' => const HomeWidgetAction(type: HomeWidgetActionType.refresh),
       _ => null,
     };
-  }
-
-  static bool? _parseBool(String? raw) {
-    if (raw == 'true') return true;
-    if (raw == 'false') return false;
-    return null;
   }
 }
 
@@ -215,9 +184,8 @@ class WidgetPendingOp {
       return null;
     }
     final type = switch (rawType) {
-      'toggle_complete' || 'toggleComplete' => WidgetPendingOpType.toggleComplete,
-      'toggle_important' ||
-      'toggleImportant' => WidgetPendingOpType.toggleImportant,
+      'toggle_complete' => WidgetPendingOpType.toggleComplete,
+      'toggle_important' => WidgetPendingOpType.toggleImportant,
       _ => null,
     };
     if (type == null) return null;
