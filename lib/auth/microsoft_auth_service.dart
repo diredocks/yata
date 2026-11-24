@@ -221,8 +221,9 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
 
   final http.Client _http;
 
-  static String _resolveUaid(String? uaid) =>
-      (uaid != null && uaid.isNotEmpty) ? uaid : MsaAuthConfig.generateMsaUaid();
+  static String _resolveUaid(String? uaid) => (uaid != null && uaid.isNotEmpty)
+      ? uaid
+      : MsaAuthConfig.generateMsaUaid();
 
   @override
   String buildAuthorizeUrl({String? loginHint, String? uaid}) {

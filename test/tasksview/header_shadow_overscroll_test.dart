@@ -41,7 +41,10 @@ void main() {
     await tester.tap(find.text('Tasks'));
     await tester.pumpAndSettle();
 
-    await tester.drag(find.byType(CustomScrollView).last, const Offset(0, -600));
+    await tester.drag(
+      find.byType(CustomScrollView).last,
+      const Offset(0, -600),
+    );
     await tester.pumpAndSettle();
 
     final shadow = find.byWidgetPredicate(
@@ -85,8 +88,7 @@ void main() {
     WidgetTester tester,
   ) async {
     SharedPreferences.setMockInitialValues({
-      'yata.accounts':
-          '[{"id":"acct_a","displayName":"Alice","email":"alice@example.com","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.accounts': '[{"id":"acct_a","displayName":"Alice","email":"alice@example.com","createdAt":"2026-01-01T00:00:00.000"}]',
       'yata.active_account_id': 'acct_a',
     });
     final prefs = await SharedPreferences.getInstance();
@@ -115,7 +117,10 @@ void main() {
     await tester.tap(find.text('Tasks'));
     await tester.pumpAndSettle();
 
-    await tester.drag(find.byType(CustomScrollView).last, const Offset(0, -600));
+    await tester.drag(
+      find.byType(CustomScrollView).last,
+      const Offset(0, -600),
+    );
     await tester.pumpAndSettle();
 
     final shadow = find.byWidgetPredicate(
@@ -136,7 +141,10 @@ void main() {
 
     expect(tester.widget<AnimatedOpacity>(shadowOpacity).opacity, 0.0);
 
-    await tester.drag(find.byType(CustomScrollView).last, const Offset(0, -200));
+    await tester.drag(
+      find.byType(CustomScrollView).last,
+      const Offset(0, -200),
+    );
     await tester.pumpAndSettle();
     expect(tester.widget<AnimatedOpacity>(shadowOpacity).opacity, 0.0);
 

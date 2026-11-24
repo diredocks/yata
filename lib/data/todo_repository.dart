@@ -123,16 +123,17 @@ class TodoRepository {
           for (final entry in mutationRows.entries)
             entry.key: List<String>.unmodifiable(entry.value),
         });
-      cache.pendingDeletedSteps = List<PendingStepDeletion>.unmodifiable(
-        steps,
-      );
+      cache.pendingDeletedSteps = List<PendingStepDeletion>.unmodifiable(steps);
       return unit;
     }, operation: 'preloadAccount');
   }
 
   Future<T> _enqueueWrite<T>(Future<T> Function() action) {
     final cache = _cache;
-    final next = cache.writeQueue.then((_) => action(), onError: (_) => action());
+    final next = cache.writeQueue.then(
+      (_) => action(),
+      onError: (_) => action(),
+    );
     cache.writeQueue = next.then((_) {}, onError: (_) {});
     return next;
   }

@@ -80,48 +80,57 @@ void main() {
     expect(registered, hasLength(1));
   });
 
-  test('tracks lastFingerprint and only commits after registration succeeds', () async {
-    var shouldFailRegistration = true;
-    final loader = createLoader(
-      registrar: (family, fonts) async {
-        if (shouldFailRegistration) {
-          throw StateError('font load failed');
-        }
-        registered.add((family, fonts.length));
-      },
-    );
+  test(
+    'tracks lastFingerprint and only commits after registration succeeds',
+    () async {
+      var shouldFailRegistration = true;
+      final loader = createLoader(
+        registrar: (family, fonts) async {
+          if (shouldFailRegistration) {
+            throw StateError('font load failed');
+          }
+          registered.add((family, fonts.length));
+        },
+      );
 
-    reply(<String, Object?>{
-      'changed': true,
-      'fingerprint': 'fp-1',
-      'regular': regular,
-    });
-    expect(await loader.refresh(), isFalse);
-    expect(calls.single.arguments, isNull);
-    expect(loader.family, isNull);
-    expect(registered, isEmpty);
+      reply(<String, Object?>{
+        'changed': true,
+        'fingerprint': 'fp-1',
+        'regular': regular,
+      });
+      expect(await loader.refresh(), isFalse);
+      expect(calls.single.arguments, isNull);
+      expect(loader.family, isNull);
+      expect(registered, isEmpty);
 
-    shouldFailRegistration = false;
-    expect(await loader.refresh(), isTrue);
-    expect(calls.last.arguments, isNull);
-    expect(registered, hasLength(1));
+      shouldFailRegistration = false;
+      expect(await loader.refresh(), isTrue);
+      expect(calls.last.arguments, isNull);
+      expect(registered, hasLength(1));
 
-    reply(<String, Object?>{'changed': false});
-    expect(await loader.refresh(), isFalse);
-    expect(calls.last.arguments, <String, Object?>{'lastFingerprint': 'fp-1'});
+      reply(<String, Object?>{'changed': false});
+      expect(await loader.refresh(), isFalse);
+      expect(calls.last.arguments, <String, Object?>{
+        'lastFingerprint': 'fp-1',
+      });
 
-    reply(<String, Object?>{
-      'changed': true,
-      'fingerprint': 'fp-2',
-      'regular': regular,
-    });
-    expect(await loader.refresh(), isTrue);
-    expect(calls.last.arguments, <String, Object?>{'lastFingerprint': 'fp-1'});
+      reply(<String, Object?>{
+        'changed': true,
+        'fingerprint': 'fp-2',
+        'regular': regular,
+      });
+      expect(await loader.refresh(), isTrue);
+      expect(calls.last.arguments, <String, Object?>{
+        'lastFingerprint': 'fp-1',
+      });
 
-    reply(<String, Object?>{'changed': false});
-    expect(await loader.refresh(), isFalse);
-    expect(calls.last.arguments, <String, Object?>{'lastFingerprint': 'fp-2'});
-  });
+      reply(<String, Object?>{'changed': false});
+      expect(await loader.refresh(), isFalse);
+      expect(calls.last.arguments, <String, Object?>{
+        'lastFingerprint': 'fp-2',
+      });
+    },
+  );
 
   test('coalesces concurrent refresh calls onto a single request', () async {
     final gate = Completer<void>();
@@ -141,7 +150,10 @@ void main() {
     final second = loader.refresh();
     gate.complete();
 
-    expect(await Future.wait(<Future<bool>>[first, second]), <bool>[true, true]);
+    expect(await Future.wait(<Future<bool>>[first, second]), <bool>[
+      true,
+      true,
+    ]);
     expect(calls, hasLength(1));
     expect(registered, hasLength(1));
   });

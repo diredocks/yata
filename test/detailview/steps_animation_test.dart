@@ -48,9 +48,7 @@ void main() {
       final addStepRowFinder = find.byWidgetPredicate(
         (w) => w is TextField && w.textInputAction == TextInputAction.next,
       );
-      final initialAddStepY = tester
-          .getTopLeft(addStepRowFinder)
-          .dy;
+      final initialAddStepY = tester.getTopLeft(addStepRowFinder).dy;
 
       // Add a new step.
       setHostState(() {
@@ -75,52 +73,51 @@ void main() {
     },
   );
 
-  testWidgets(
-    'Removing a step plays exit animation before disappearing',
-    (WidgetTester tester) async {
-      var task = _makeTask('t1', const [
-        TaskStep(id: 's1', title: 'Step to delete'),
-      ]);
-      late StateSetter setHostState;
+  testWidgets('Removing a step plays exit animation before disappearing', (
+    WidgetTester tester,
+  ) async {
+    var task = _makeTask('t1', const [
+      TaskStep(id: 's1', title: 'Step to delete'),
+    ]);
+    late StateSetter setHostState;
 
-      await tester.pumpWidget(
-        MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(
-            body: StatefulBuilder(
-              builder: (context, setState) {
-                setHostState = setState;
-                return StepsSection(
-                  task: task,
-                  backgroundColor: Colors.white,
-                  onToggleStepCompleted: (_) {},
-                  onRenameStep: (_, _) {},
-                  onPromoteStepToTask: (_) {},
-                  onDeleteStep: (_) {},
-                  onAddStep: (_) {},
-                );
-              },
-            ),
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: StatefulBuilder(
+            builder: (context, setState) {
+              setHostState = setState;
+              return StepsSection(
+                task: task,
+                backgroundColor: Colors.white,
+                onToggleStepCompleted: (_) {},
+                onRenameStep: (_, _) {},
+                onPromoteStepToTask: (_) {},
+                onDeleteStep: (_) {},
+                onAddStep: (_) {},
+              );
+            },
           ),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      setHostState(() {
-        task = _makeTask('t1', const []);
-      });
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 80));
+    setHostState(() {
+      task = _makeTask('t1', const []);
+    });
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
 
-      // Still visible while animating out.
-      expect(find.byKey(const ValueKey('removing_step_s1')), findsOneWidget);
+    // Still visible while animating out.
+    expect(find.byKey(const ValueKey('removing_step_s1')), findsOneWidget);
 
-      await tester.pumpAndSettle();
-      expect(find.byKey(const ValueKey('removing_step_s1')), findsNothing);
-      expect(find.text('Step to delete'), findsNothing);
-    },
-  );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('removing_step_s1')), findsNothing);
+    expect(find.text('Step to delete'), findsNothing);
+  });
 
   testWidgets(
     'Switching to a different task updates steps without cross-task animation',

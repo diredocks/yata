@@ -25,8 +25,7 @@ void main() {
     'Task list background ruled lines use dark color in light mode regardless of list theme',
     (WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({
-        'yata.accounts':
-            '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+        'yata.accounts': '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
         'yata.active_account_id': 'test',
       });
       final prefs = await SharedPreferences.getInstance();

@@ -229,7 +229,9 @@ Map<String, dynamic> buildTaskWritePayload(
   );
   putNullable(
     'ReminderDateTime',
-    task.reminderAt != null ? formatDateTimeTimeZoneUtc(task.reminderAt!) : null,
+    task.reminderAt != null
+        ? formatDateTimeTimeZoneUtc(task.reminderAt!)
+        : null,
   );
   putNullable(
     'CompletedDateTime',

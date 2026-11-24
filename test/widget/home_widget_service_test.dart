@@ -120,9 +120,9 @@ void main() {
       expect(transport.saved['widget_account_name'], 'leo@example.com');
       expect(transport.saved['widget_my_day_label'], '我的一天');
 
-      final listsJson =
-          jsonDecode(transport.saved['widget_lists_json']! as String)
-              as List<dynamic>;
+      final listsJson = jsonDecode(
+        transport.saved['widget_lists_json']! as String,
+      ) as List<dynamic>;
       final workEntry = listsJson.firstWhere((e) => e['id'] == 'list_work');
       expect(workEntry['title'], 'Work');
       expect(workEntry['emoji'], '💼');
@@ -133,16 +133,16 @@ void main() {
       final myDayEntry = listsJson.firstWhere((e) => e['id'] == 'my_day');
       expect(myDayEntry['title'], '我的一天');
 
-      final listTaskIds =
-          jsonDecode(transport.saved['widget_list_task_ids_json']! as String)
-              as Map<String, dynamic>;
+      final listTaskIds = jsonDecode(
+        transport.saved['widget_list_task_ids_json']! as String,
+      ) as Map<String, dynamic>;
       expect(listTaskIds['my_day'], ['t1']);
       expect(listTaskIds['list_work'], ['t1']);
       expect(listTaskIds['completed'], ['t2']);
 
-      final tasksJson =
-          jsonDecode(transport.saved['widget_tasks_json']! as String)
-              as List<dynamic>;
+      final tasksJson = jsonDecode(
+        transport.saved['widget_tasks_json']! as String,
+      ) as List<dynamic>;
       final t1Json = tasksJson.firstWhere((e) => e['id'] == 't1');
       expect(t1Json['dueLabel'], '今天');
       expect(t1Json['isImportant'], isTrue);

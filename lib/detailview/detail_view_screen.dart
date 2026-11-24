@@ -238,10 +238,159 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                   ? l10n.tasks
                   : originList.title));
 
-    final detailContent = HeroMode(
+    final detailContent = _DetailHeroContainer(
+      taskId: widget.taskId,
       enabled: widget.onClose == null,
+      cardColor: cardBg,
+      bodyColor: bodyBg,
+      child: Scaffold(
+        backgroundColor: bodyBg,
+        body: Column(
+          children: [
+            ColoredBox(
+              color: primaryBg,
+              child: SafeArea(
+                bottom: false,
+                child: DetailsHeaderView(
+                  task: task,
+                  originListTitle: originListTitle,
+                  backgroundColor: primaryBg,
+                  accentColor: listAccent,
+                  onToggleCompleted: () {
+                    if (!task.isCompleted) {
+                      ref.read(completionSoundServiceProvider).playIfEnabled();
+                    }
+                    notifier.toggleTaskCompleted(task.id);
+                  },
+                  onToggleImportant: () =>
+                      notifier.toggleTaskImportant(task.id),
+                  onTitleSubmitted: (val) =>
+                      notifier.updateTaskTitle(task.id, val),
+                  onClose: widget.onClose,
+                ),
+              ),
+            ),
+            Expanded(
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: ListView(
+                        padding: EdgeInsets.zero,
+                        children: [
+                          StepsSection(
+                            task: task,
+                            backgroundColor: primaryBg,
+                            accentColor: listAccent,
+                            onToggleStepCompleted: (stepId) =>
+                                notifier.toggleStepCompleted(task.id, stepId),
+                            onRenameStep: (stepId, val) =>
+                                notifier.renameStep(task.id, stepId, val),
+                            onPromoteStepToTask: (stepId) =>
+                                notifier.promoteStepToTask(task.id, stepId),
+                            onDeleteStep: (stepId) =>
+                                _confirmDeleteStep(task, stepId),
+                            onAddStep: (val) => notifier.addStep(task.id, val),
+                          ),
+                          Container(
+                            height: 3,
+                            decoration: TodoColors.horizontalShadowDecoration,
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Column(
+                              children: [
+                                MyDayCardView(
+                                  task: task,
+                                  cardColor: cardBg,
+                                  accentColor: listAccent,
+                                  onToggleMyDay: () =>
+                                      notifier.toggleTaskMyDay(task.id),
+                                ),
+                                TaskSchedulingCardView(
+                                  task: task,
+                                  cardColor: cardBg,
+                                  accentColor: listAccent,
+                                  recurrenceLabel: _recurrenceLabel(
+                                    l10n,
+                                    task.recurrence,
+                                  ),
+                                  onPickReminder: () =>
+                                      _pickReminder(task, state.startOfWeek),
+                                  onClearReminder: () =>
+                                      notifier.setTaskReminder(task.id, null),
+                                  onPickDueDate: () =>
+                                      _pickDueDate(task, state.startOfWeek),
+                                  onClearDueDate: () =>
+                                      notifier.setTaskDueDate(task.id, null),
+                                  onPickRecurrence: () => _pickRecurrence(task),
+                                  onClearRecurrence: () =>
+                                      notifier.setTaskRecurrence(
+                                        task.id,
+                                        RecurrenceType.none,
+                                      ),
+                                ),
+                                NoteCardView(
+                                  task: task,
+                                  cardColor: cardBg,
+                                  onNoteChanged: (val) =>
+                                      notifier.updateTaskNote(task.id, val),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _DetailFooterBar(
+                      backgroundColor: primaryBg,
+                      textColor: secondaryText,
+                      createdAt: task.createdAt,
+                      deleteTooltip: l10n.delete,
+                      onDelete: () => _confirmDelete(task),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (widget.onClose != null) {
+      return detailContent;
+    }
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: TodoTheme.systemUiOverlayStyleFor(primaryBg),
+      child: detailContent,
+    );
+  }
+}
+
+class _DetailHeroContainer extends StatelessWidget {
+  const _DetailHeroContainer({
+    required this.taskId,
+    required this.enabled,
+    required this.cardColor,
+    required this.bodyColor,
+    required this.child,
+  });
+
+  final String taskId;
+  final bool enabled;
+  final Color cardColor;
+  final Color bodyColor;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return HeroMode(
+      enabled: enabled,
       child: Hero(
-        tag: 'task_card_${widget.taskId}',
+        tag: 'task_card_$taskId',
         flightShuttleBuilder:
             (
               flightContext,
@@ -259,170 +408,67 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                 builder: (context, _) {
                   final radius = 4.0 * (1.0 - curved.value);
                   return Material(
-                    color: Color.lerp(cardBg, bodyBg, curved.value),
+                    color: Color.lerp(cardColor, bodyColor, curved.value),
                     borderRadius: BorderRadius.circular(radius),
                     elevation: 1.0 * (1.0 - curved.value),
                   );
                 },
               );
             },
-        child: Scaffold(
-          backgroundColor: bodyBg,
-          body: Column(
-            children: [
-              ColoredBox(
-                color: primaryBg,
-                child: SafeArea(
-                  bottom: false,
-                  child: DetailsHeaderView(
-                    task: task,
-                    originListTitle: originListTitle,
-                    backgroundColor: primaryBg,
-                    accentColor: listAccent,
-                    onToggleCompleted: () {
-                      if (!task.isCompleted) {
-                        ref
-                            .read(completionSoundServiceProvider)
-                            .playIfEnabled();
-                      }
-                      notifier.toggleTaskCompleted(task.id);
-                    },
-                    onToggleImportant: () =>
-                        notifier.toggleTaskImportant(task.id),
-                    onTitleSubmitted: (val) =>
-                        notifier.updateTaskTitle(task.id, val),
-                    onClose: widget.onClose,
-                  ),
-                ),
-              ),
-              Expanded(
-                child: SafeArea(
-                  top: false,
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: ListView(
-                          padding: EdgeInsets.zero,
-                          children: [
-                            StepsSection(
-                              task: task,
-                              backgroundColor: primaryBg,
-                              accentColor: listAccent,
-                              onToggleStepCompleted: (stepId) =>
-                                  notifier.toggleStepCompleted(task.id, stepId),
-                              onRenameStep: (stepId, val) =>
-                                  notifier.renameStep(task.id, stepId, val),
-                              onPromoteStepToTask: (stepId) =>
-                                  notifier.promoteStepToTask(task.id, stepId),
-                              onDeleteStep: (stepId) =>
-                                  _confirmDeleteStep(task, stepId),
-                              onAddStep: (val) =>
-                                  notifier.addStep(task.id, val),
-                            ),
-                            Container(
-                              height: 3,
-                              decoration: TodoColors.horizontalShadowDecoration,
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.all(8),
-                              child: Column(
-                                children: [
-                                  MyDayCardView(
-                                    task: task,
-                                    cardColor: cardBg,
-                                    accentColor: listAccent,
-                                    onToggleMyDay: () =>
-                                        notifier.toggleTaskMyDay(task.id),
-                                  ),
-                                  TaskSchedulingCardView(
-                                    task: task,
-                                    cardColor: cardBg,
-                                    accentColor: listAccent,
-                                    recurrenceLabel: _recurrenceLabel(
-                                      l10n,
-                                      task.recurrence,
-                                    ),
-                                    onPickReminder: () =>
-                                        _pickReminder(task, state.startOfWeek),
-                                    onClearReminder: () =>
-                                        notifier.setTaskReminder(task.id, null),
-                                    onPickDueDate: () =>
-                                        _pickDueDate(task, state.startOfWeek),
-                                    onClearDueDate: () =>
-                                        notifier.setTaskDueDate(task.id, null),
-                                    onPickRecurrence: () =>
-                                        _pickRecurrence(task),
-                                    onClearRecurrence: () =>
-                                        notifier.setTaskRecurrence(
-                                          task.id,
-                                          RecurrenceType.none,
-                                        ),
-                                  ),
-                                  NoteCardView(
-                                    task: task,
-                                    cardColor: cardBg,
-                                    onNoteChanged: (val) =>
-                                        notifier.updateTaskNote(task.id, val),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Material(
-                        color: primaryBg,
-                        elevation: 3,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Divider(height: 1),
-                            SizedBox(
-                              height: 48,
-                              child: Row(
-                                children: [
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Text(
-                                      formatCreatedDateLabel(
-                                        context,
-                                        task.createdAt,
-                                      ),
-                                      style: theme.textTheme.bodyMedium
-                                          ?.copyWith(color: secondaryText),
-                                    ),
-                                  ),
-                                  IconButton(
-                                    onPressed: () => _confirmDelete(task),
-                                    icon: Icon(
-                                      Icons.delete_outline,
-                                      color: secondaryText,
-                                    ),
-                                    tooltip: l10n.delete,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+        child: child,
       ),
     );
+  }
+}
 
-    if (widget.onClose != null) {
-      return detailContent;
-    }
+class _DetailFooterBar extends StatelessWidget {
+  const _DetailFooterBar({
+    required this.backgroundColor,
+    required this.textColor,
+    required this.createdAt,
+    required this.deleteTooltip,
+    required this.onDelete,
+  });
 
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: TodoTheme.systemUiOverlayStyleFor(primaryBg),
-      child: detailContent,
+  final Color backgroundColor;
+  final Color textColor;
+  final DateTime createdAt;
+  final String deleteTooltip;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: backgroundColor,
+      elevation: 3,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Divider(height: 1),
+          SizedBox(
+            height: 48,
+            child: Row(
+              children: [
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    formatCreatedDateLabel(context, createdAt),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: textColor,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: onDelete,
+                  icon: Icon(Icons.delete_outline, color: textColor),
+                  tooltip: deleteTooltip,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -305,8 +305,8 @@ class TasksSliverAppBar extends StatelessWidget {
                         children: [
                           LayoutBuilder(
                             builder: (context, constraints) {
-                              final fullHeight =
-                                  MediaQuery.sizeOf(context).height;
+                              final fullHeight = MediaQuery.sizeOf(context)
+                                  .height;
                               return OverflowBox(
                                 minWidth: constraints.maxWidth,
                                 maxWidth: constraints.maxWidth,

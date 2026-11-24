@@ -1325,7 +1325,10 @@ void main() {
           .length;
 
       // Pull down on the task list content area to trigger RefreshIndicator.
-      await tester.drag(find.byType(CustomScrollView).last, const Offset(0, 500));
+      await tester.drag(
+        find.byType(CustomScrollView).last,
+        const Offset(0, 500),
+      );
       await tester.pump();
       expect(find.byType(RefreshProgressIndicator), findsOneWidget);
       await tester.runAsync(

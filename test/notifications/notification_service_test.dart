@@ -485,7 +485,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.scrollUntilVisible(find.text('Plan your day reminders'), 300);
+      await tester.scrollUntilVisible(
+        find.text('Plan your day reminders'),
+        300,
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('Plan your day reminders'));
       await tester.pumpAndSettle();
@@ -494,7 +497,10 @@ void main() {
       await tester.tap(find.text('Turn on reminder'));
       await tester.pumpAndSettle();
 
-      expect(find.text('What time do you want to be reminded?'), findsOneWidget);
+      expect(
+        find.text('What time do you want to be reminded?'),
+        findsOneWidget,
+      );
       expect(find.text('When do you want to be reminded?'), findsOneWidget);
 
       // Toggle off Sunday ('S' at the end when week starts on Monday).

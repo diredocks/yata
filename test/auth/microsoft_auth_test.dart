@@ -24,51 +24,54 @@ void main() {
   });
 
   group('HttpMicrosoftAuthClient', () {
-    test('builds MSA authorize URL and extracts code from redirect or raw code', () {
-      final client = HttpMicrosoftAuthClient();
-      final url = Uri.parse(
-        client.buildAuthorizeUrl(
-          loginHint: 'user@outlook.com',
-          uaid: 'uaid-fixed',
-        ),
-      );
-      expect(url.host, 'login.live.com');
-      expect(url.path, '/oauth20_authorize.srf');
-      expect(url.queryParameters['client_id'], '000000004C18365E');
-      expect(url.queryParameters['state'], 'ProjectCheshire');
-      expect(url.queryParameters['redirect_uri'], MsaAuthConfig.redirectUri);
-      expect(url.queryParameters['uaid'], 'uaid-fixed');
-      expect(url.queryParameters['username'], 'user@outlook.com');
+    test(
+      'builds MSA authorize URL and extracts code from redirect or raw code',
+      () {
+        final client = HttpMicrosoftAuthClient();
+        final url = Uri.parse(
+          client.buildAuthorizeUrl(
+            loginHint: 'user@outlook.com',
+            uaid: 'uaid-fixed',
+          ),
+        );
+        expect(url.host, 'login.live.com');
+        expect(url.path, '/oauth20_authorize.srf');
+        expect(url.queryParameters['client_id'], '000000004C18365E');
+        expect(url.queryParameters['state'], 'ProjectCheshire');
+        expect(url.queryParameters['redirect_uri'], MsaAuthConfig.redirectUri);
+        expect(url.queryParameters['uaid'], 'uaid-fixed');
+        expect(url.queryParameters['username'], 'user@outlook.com');
 
-      expect(
-        client
-            .extractAuthorizationCode(
-              'https://login.live.com/oauth20_desktop.srf?code=M.C509_ABC&state=ProjectCheshire&lc=1033',
-            )
-            .getOrThrow(),
-        'M.C509_ABC',
-      );
-      expect(
-        client.extractAuthorizationCode('M.RAW_CODE').getOrThrow(),
-        'M.RAW_CODE',
-      );
-      expect(
-        client
-            .extractAuthorizationCode(
-              'https://login.live.com/oauth20_desktop.srf?code=X&state=WrongState',
-            )
-            .exceptionOrNull(),
-        isA<AuthError>(),
-      );
-      expect(
-        client
-            .extractAuthorizationCode(
-              'https://login.live.com/oauth20_desktop.srf?error=access_denied&error_description=User+cancelled',
-            )
-            .exceptionOrNull(),
-        isA<AuthError>(),
-      );
-    });
+        expect(
+          client
+              .extractAuthorizationCode(
+                'https://login.live.com/oauth20_desktop.srf?code=M.C509_ABC&state=ProjectCheshire&lc=1033',
+              )
+              .getOrThrow(),
+          'M.C509_ABC',
+        );
+        expect(
+          client.extractAuthorizationCode('M.RAW_CODE').getOrThrow(),
+          'M.RAW_CODE',
+        );
+        expect(
+          client
+              .extractAuthorizationCode(
+                'https://login.live.com/oauth20_desktop.srf?code=X&state=WrongState',
+              )
+              .exceptionOrNull(),
+          isA<AuthError>(),
+        );
+        expect(
+          client
+              .extractAuthorizationCode(
+                'https://login.live.com/oauth20_desktop.srf?error=access_denied&error_description=User+cancelled',
+              )
+              .exceptionOrNull(),
+          isA<AuthError>(),
+        );
+      },
+    );
 
     test('exchanges code, fetches primary Graph /beta/me profile+photo, and discovers endpoint', () async {
       final mockClient = MockClient((request) async {
@@ -275,8 +278,7 @@ void main() {
       );
 
       final success = parseMsaRedirectUrl(
-        url:
-            'https://login.live.com/oauth20_desktop.srf?code=M.C509_XYZ&state=ProjectCheshire',
+        url: 'https://login.live.com/oauth20_desktop.srf?code=M.C509_XYZ&state=ProjectCheshire',
         redirectUri: MsaAuthConfig.redirectUri,
       );
       expect(success, isNotNull);
@@ -285,8 +287,7 @@ void main() {
       expect(success.code, 'M.C509_XYZ');
 
       final failure = parseMsaRedirectUrl(
-        url:
-            'https://login.live.com/oauth20_desktop.srf?error=access_denied&error_description=User+denied',
+        url: 'https://login.live.com/oauth20_desktop.srf?error=access_denied&error_description=User+denied',
         redirectUri: MsaAuthConfig.redirectUri,
       );
       expect(failure, isNotNull);

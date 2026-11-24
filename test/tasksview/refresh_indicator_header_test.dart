@@ -102,7 +102,10 @@ void main() {
       );
       expect(sizeTransitionAfterExpanded, findsOneWidget);
       expect(
-        tester.widget<SizeTransition>(sizeTransitionAfterExpanded).sizeFactor.value,
+        tester
+            .widget<SizeTransition>(sizeTransitionAfterExpanded)
+            .sizeFactor
+            .value,
         greaterThan(0.0),
       );
 

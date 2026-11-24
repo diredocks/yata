@@ -171,10 +171,7 @@ class _StepsSectionState extends State<StepsSection> {
                         setState(() => _editingStepId = null);
                       },
                       onTapOutside: (_) {
-                        widget.onRenameStep(
-                          step.id,
-                          _stepEditController.text,
-                        );
+                        widget.onRenameStep(step.id, _stepEditController.text);
                         setState(() => _editingStepId = null);
                       },
                     )

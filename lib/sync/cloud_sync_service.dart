@@ -128,22 +128,23 @@ class CloudSyncService {
   }) async {
     Future<AppResult<SyncOutcome>> runAttempt({
       required bool forceRefreshToken,
-    }) => resolveContext(
-      account,
-      settings,
-      forceRefreshToken: forceRefreshToken,
-    ).flatMap(
-      (ctx) => guardApiCall(
-        () => _executeSyncPhases(
-          ctx: ctx,
-          currentState: readLatestState?.call() ?? currentState,
-          repository: repository,
-          settings: settings,
-          idGenerator: idGenerator,
-        ),
-        operation: 'syncPhases',
-      ),
-    );
+    }) =>
+        resolveContext(
+          account,
+          settings,
+          forceRefreshToken: forceRefreshToken,
+        ).flatMap(
+          (ctx) => guardApiCall(
+            () => _executeSyncPhases(
+              ctx: ctx,
+              currentState: readLatestState?.call() ?? currentState,
+              repository: repository,
+              settings: settings,
+              idGenerator: idGenerator,
+            ),
+            operation: 'syncPhases',
+          ),
+        );
 
     final firstAttempt = await runAttempt(forceRefreshToken: false);
     if (firstAttempt.exceptionOrNull() is! AuthError) {
@@ -197,7 +198,8 @@ class CloudSyncService {
     // Phase 3: Push step, task, and folder deletions.
     final processedDeletedSteps = await _pushPendingDeletions(
       items: repository.loadPendingDeletedSteps(),
-      deleteCall: (s) => todoApi.deleteStep(ctx, s.taskRemoteId, s.stepRemoteId),
+      deleteCall: (s) =>
+          todoApi.deleteStep(ctx, s.taskRemoteId, s.stepRemoteId),
     );
     final processedDeletedTaskRemoteIds = await _pushPendingDeletions(
       items: repository.loadPendingDeletedTaskRemoteIds(),
@@ -404,7 +406,11 @@ class CloudSyncService {
         firstDayOfWeek: currentState.startOfWeek,
       );
       final remoteTask = isCreate
-          ? (await todoApi.createTask(ctx, folderRemoteId, payload)).getOrThrow()
+          ? (await todoApi.createTask(
+              ctx,
+              folderRemoteId,
+              payload,
+            )).getOrThrow()
           : await _patchTaskWithConflictRetry(
               ctx: ctx,
               task: task,
@@ -470,18 +476,15 @@ class CloudSyncService {
     final processed = <T>[];
     for (final item in items) {
       final result = await deleteCall(item);
-      result.fold(
-        (_) => processed.add(item),
-        (error) {
-          if ((treatAsDeletedOn ?? (err) => err.isNotFound)(error)) {
-            processed.add(item);
-          } else if (keepQueuedOn != null && keepQueuedOn(error)) {
-            // Leave queued for a future sync pass.
-          } else {
-            throw error;
-          }
-        },
-      );
+      result.fold((_) => processed.add(item), (error) {
+        if ((treatAsDeletedOn ?? (err) => err.isNotFound)(error)) {
+          processed.add(item);
+        } else if (keepQueuedOn != null && keepQueuedOn(error)) {
+          // Leave queued for a future sync pass.
+        } else {
+          throw error;
+        }
+      });
     }
     return processed;
   }
@@ -692,9 +695,7 @@ class CloudSyncService {
       final step = localSteps[i];
       final stepOrder =
           step.orderDateTime ??
-          nowUtc.subtract(
-            Duration(seconds: i * kOrderDateTimeStep.inSeconds),
-          );
+          nowUtc.subtract(Duration(seconds: i * kOrderDateTimeStep.inSeconds));
       if (step.remoteId == null) {
         syncedSteps.add(
           await _createAndSyncStep(

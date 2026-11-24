@@ -287,10 +287,7 @@ class HomeWidgetService {
       'widget_empty_message',
       activeStrings.emptyListMessage,
     );
-    await _transport.saveWidgetData(
-      'widget_my_day_label',
-      activeStrings.myDay,
-    );
+    await _transport.saveWidgetData('widget_my_day_label', activeStrings.myDay);
     await _transport.saveWidgetData(
       'widget_move_starred_to_top',
       state.moveStarredTasksToTop,
@@ -321,7 +318,11 @@ class HomeWidgetService {
       'isRecurring': task.recurrence != RecurrenceType.none,
       'isOverdue': task.isOverdue,
       'dueLabel': _formatDueDate(task.dueDate, strings: strings, now: now),
-      'reminderLabel': _formatReminder(task.reminderAt, strings: strings, now: now),
+      'reminderLabel': _formatReminder(
+        task.reminderAt,
+        strings: strings,
+        now: now,
+      ),
     };
   }
 
@@ -426,7 +427,10 @@ Future<void> _triggerDetachedWidgetSync() async {
             accountName: activeAccount?.displayName ?? '',
           );
         } catch (e) {
-          appLog('widget detached sync failed: $e', label: 'HomeWidgetBackground');
+          appLog(
+            'widget detached sync failed: $e',
+            label: 'HomeWidgetBackground',
+          );
         } finally {
           container?.dispose();
           await database.close();

@@ -40,7 +40,8 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _lastKnownWidgetMutationMs =
-        ref.read(sharedPreferencesProvider).getInt(kWidgetLastMutationMsKey) ?? 0;
+        ref.read(sharedPreferencesProvider).getInt(kWidgetLastMutationMsKey) ??
+        0;
 
     final notificationService = ref.read(notificationServiceProvider);
     _notificationSub = notificationService.events.listen(
@@ -68,11 +69,13 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
   void _syncHomeWidget(TodoState state, AppLocalizations l10n) {
     final accountName = ref.read(accountProvider).activeAccount?.displayName;
     unawaited(
-      ref.read(homeWidgetServiceProvider).syncWithState(
-        state,
-        accountName: accountName,
-        strings: HomeWidgetStrings.fromLocalizations(l10n),
-      ),
+      ref
+          .read(homeWidgetServiceProvider)
+          .syncWithState(
+            state,
+            accountName: accountName,
+            strings: HomeWidgetStrings.fromLocalizations(l10n),
+          ),
     );
   }
 
@@ -152,7 +155,9 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
         break;
     }
     if (isWide && action.listId != null) {
-      final matched = state.lists.where((l) => l.id == action.listId).firstOrNull;
+      final matched = state.lists
+          .where((l) => l.id == action.listId)
+          .firstOrNull;
       if (matched != null) {
         ref.read(todoProvider.notifier).selectList(matched.id);
       }

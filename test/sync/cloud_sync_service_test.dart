@@ -874,308 +874,293 @@ void main() {
       },
     );
 
-    test(
-      'recovers from ErrorItemNotFound (404) on deleted/missing task PATCH and clears pending deletes',
-      () async {
-        SharedPreferences.setMockInitialValues({});
-        final prefs = await SharedPreferences.getInstance();
-        const accountId = 'acct_404';
-        final tokenStorage = AuthTokenStorage(prefs);
-        await tokenStorage.saveTokens(
-          accountId,
-          MicrosoftAuthTokens(
-            accessToken: 'at',
-            refreshToken: 'rt',
-            expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
-            userId: 'cid404',
-          ),
-        );
-        final account = MicrosoftAccount(
-          id: accountId,
-          displayName: 'User',
-          email: 'user@outlook.com',
-          createdAt: DateTime(2026, 11, 22),
-          microsoftUserId: 'cid404',
-        );
-        await AccountLocalStorage(prefs).saveAccounts([account]);
-        await AccountLocalStorage(prefs).saveActiveAccountId(accountId);
+    test('recovers from ErrorItemNotFound (404) on deleted/missing task PATCH and clears pending deletes', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      const accountId = 'acct_404';
+      final tokenStorage = AuthTokenStorage(prefs);
+      await tokenStorage.saveTokens(
+        accountId,
+        MicrosoftAuthTokens(
+          accessToken: 'at',
+          refreshToken: 'rt',
+          expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+          userId: 'cid404',
+        ),
+      );
+      final account = MicrosoftAccount(
+        id: accountId,
+        displayName: 'User',
+        email: 'user@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        microsoftUserId: 'cid404',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId(accountId);
 
-        final session = _session(prefs, accountId);
-        final repo = session.repository;
-        final now = DateTime.utc(2026, 4, 15, 10, 0);
+      final session = _session(prefs, accountId);
+      final repo = session.repository;
+      final now = DateTime.utc(2026, 4, 15, 10, 0);
 
-        final defaultTasksList = TodoList(
-          id: 'tasks',
-          title: 'Tasks',
-          smartType: SmartListType.tasks,
-          remoteId: 'rf-default',
-        );
-        // Task 1: present in both pendingDeletedTaskRemoteIds AND dirty tasks
-        // with the same remoteId -> should NOT be patched or recreated.
-        final deletedGhostTask = TaskItem(
-          id: 't-ghost',
-          listId: 'tasks',
-          title: 'Ghost deleted task',
-          remoteId: 'rt-ghost',
-          changeKey: 'ck-ghost',
-          createdAt: now,
-          updatedAt: now,
-        );
-        // Task 2: dirty task whose remoteId returns 404 on PATCH -> should
-        // recreate via createTask and recreate its steps via createStep.
-        final missingRemoteTask = TaskItem(
-          id: 't-recreate',
-          listId: 'tasks',
-          title: 'Edited after remote delete',
-          remoteId: 'rt-missing',
-          changeKey: 'ck-missing',
-          steps: const [
-            TaskStep(
-              id: 's1',
-              title: 'Step 1',
-              remoteId: 'rs-old',
-            ),
-          ],
-          createdAt: now,
-          updatedAt: now,
-        );
+      final defaultTasksList = TodoList(
+        id: 'tasks',
+        title: 'Tasks',
+        smartType: SmartListType.tasks,
+        remoteId: 'rf-default',
+      );
+      // Task 1: present in both pendingDeletedTaskRemoteIds AND dirty tasks
+      // with the same remoteId -> should NOT be patched or recreated.
+      final deletedGhostTask = TaskItem(
+        id: 't-ghost',
+        listId: 'tasks',
+        title: 'Ghost deleted task',
+        remoteId: 'rt-ghost',
+        changeKey: 'ck-ghost',
+        createdAt: now,
+        updatedAt: now,
+      );
+      // Task 2: dirty task whose remoteId returns 404 on PATCH -> should
+      // recreate via createTask and recreate its steps via createStep.
+      final missingRemoteTask = TaskItem(
+        id: 't-recreate',
+        listId: 'tasks',
+        title: 'Edited after remote delete',
+        remoteId: 'rt-missing',
+        changeKey: 'ck-missing',
+        steps: const [TaskStep(id: 's1', title: 'Step 1', remoteId: 'rs-old')],
+        createdAt: now,
+        updatedAt: now,
+      );
 
-        await repo.saveLists([defaultTasksList]);
-        await repo.saveTasks([deletedGhostTask, missingRemoteTask]);
-        await repo.savePendingDeletedTaskRemoteIds(['rt-ghost']);
-        await repo.saveDirtyTaskIds({'t-ghost', 't-recreate'});
+      await repo.saveLists([defaultTasksList]);
+      await repo.saveTasks([deletedGhostTask, missingRemoteTask]);
+      await repo.savePendingDeletedTaskRemoteIds(['rt-ghost']);
+      await repo.saveDirtyTaskIds({'t-ghost', 't-recreate'});
 
-        final fakeApi = FakeSubstrateApi()
-          ..onDeleteTask = (taskRemoteId) async {
-            if (taskRemoteId == 'rt-ghost') {
-              throw const AppError.notFound(
-                message: 'Item not found',
-                id: 'ErrorItemNotFound',
-              );
-            }
+      final fakeApi = FakeSubstrateApi()
+        ..onDeleteTask = (taskRemoteId) async {
+          if (taskRemoteId == 'rt-ghost') {
+            throw const AppError.notFound(
+              message: 'Item not found',
+              id: 'ErrorItemNotFound',
+            );
           }
-          ..onPatchTask = (taskRemoteId, patch, changeKey) async {
-            if (taskRemoteId == 'rt-missing') {
-              throw const AppError.notFound(
-                message: 'Item not found',
-                id: 'ErrorItemNotFound',
-              );
-            }
-            throw StateError('Unexpected PATCH for $taskRemoteId');
-          };
-
-        final container = ProviderContainer(
-          overrides: [
-            sharedPreferencesProvider.overrideWithValue(prefs),
-            microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
-            microsoftTodoApiProvider.overrideWithValue(fakeApi),
-            realtimeSyncEnabledProvider.overrideWithValue(false),
-          ],
-        );
-        addTearDown(container.dispose);
-
-        await container.read(syncProvider.notifier).syncNow();
-
-        expect(container.read(syncProvider).status, SyncStatus.success);
-        expect(repo.loadPendingDeletedTaskRemoteIds(), isEmpty);
-        expect(repo.loadDirtyTaskIds(), isEmpty);
-
-        // Ghost task was never patched or recreated.
-        expect(
-          fakeApi.callLog.any((c) => c.contains('PATCH tasks/rt-ghost')),
-          isFalse,
-        );
-        expect(
-          fakeApi.callLog.any((c) => c.contains('Ghost deleted task')),
-          isFalse,
-        );
-
-        // Missing task was recreated and its step was recreated on the new task.
-        expect(
-          fakeApi.callLog,
-          contains(
-            'POST taskfolders/rf-default/tasks Edited after remote delete',
-          ),
-        );
-        final recreated = container
-            .read(todoProvider)
-            .tasks
-            .firstWhere((t) => t.id == 't-recreate');
-        expect(recreated.remoteId, isNot('rt-missing'));
-        expect(recreated.steps.single.remoteId, isNot('rs-old'));
-      },
-    );
-
-    test(
-      'clearing photo background to solid color sends ThemeBackground=mountain and stays solid after delta sync',
-      () async {
-        SharedPreferences.setMockInitialValues({});
-        final prefs = await SharedPreferences.getInstance();
-        final account = Account.microsoft(
-          id: 'acct_theme',
-          displayName: 'Alice',
-          email: 'alice@outlook.com',
-          createdAt: DateTime(2026, 11, 22),
-          microsoftUserId: 'cid1',
-        );
-        await AccountLocalStorage(prefs).saveAccounts([account]);
-        await AccountLocalStorage(prefs).saveActiveAccountId('acct_theme');
-
-        final storage = _session(prefs, 'acct_theme');
-        await storage.repository.saveLists([
-          ...defaultSmartLists().map(
-            (l) => l.smartType == SmartListType.tasks
-                ? l.copyWith(remoteId: 'rf-default')
-                : l,
-          ),
-          const TodoList(
-            id: 'list_shop',
-            title: 'Shopping',
-            remoteId: 'rf-shop',
-            themeColor: ListThemeColor.rose,
-            themePhoto: null,
-          ),
-        ]);
-        await storage.repository.saveDirtyListIds({'list_shop'});
-
-        final fakeApi = FakeSubstrateApi();
-        var serverThemeColor = 'dark_blue';
-        var serverThemeBackground = 'photo_beach';
-
-        fakeApi.onPatchFolder = (id, patch) async {
-          expect(id, 'rf-shop');
-          expect(patch['ThemeColor'], 'dark_rose');
-          // Substrate ignores null ThemeBackground; clearing requires 'mountain'.
-          expect(patch['ThemeBackground'], 'mountain');
-          serverThemeColor = patch['ThemeColor'] as String;
-          if (patch['ThemeBackground'] != null) {
-            serverThemeBackground = patch['ThemeBackground'] as String;
+        }
+        ..onPatchTask = (taskRemoteId, patch, changeKey) async {
+          if (taskRemoteId == 'rt-missing') {
+            throw const AppError.notFound(
+              message: 'Item not found',
+              id: 'ErrorItemNotFound',
+            );
           }
-          return RemoteTodoFolder(
-            id: id,
+          throw StateError('Unexpected PATCH for $taskRemoteId');
+        };
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+          microsoftTodoApiProvider.overrideWithValue(fakeApi),
+          realtimeSyncEnabledProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(syncProvider.notifier).syncNow();
+
+      expect(container.read(syncProvider).status, SyncStatus.success);
+      expect(repo.loadPendingDeletedTaskRemoteIds(), isEmpty);
+      expect(repo.loadDirtyTaskIds(), isEmpty);
+
+      // Ghost task was never patched or recreated.
+      expect(
+        fakeApi.callLog.any((c) => c.contains('PATCH tasks/rt-ghost')),
+        isFalse,
+      );
+      expect(
+        fakeApi.callLog.any((c) => c.contains('Ghost deleted task')),
+        isFalse,
+      );
+
+      // Missing task was recreated and its step was recreated on the new task.
+      expect(
+        fakeApi.callLog,
+        contains(
+          'POST taskfolders/rf-default/tasks Edited after remote delete',
+        ),
+      );
+      final recreated = container
+          .read(todoProvider)
+          .tasks
+          .firstWhere((t) => t.id == 't-recreate');
+      expect(recreated.remoteId, isNot('rt-missing'));
+      expect(recreated.steps.single.remoteId, isNot('rs-old'));
+    });
+
+    test('clearing photo background to solid color sends ThemeBackground=mountain and stays solid after delta sync', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final account = Account.microsoft(
+        id: 'acct_theme',
+        displayName: 'Alice',
+        email: 'alice@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        microsoftUserId: 'cid1',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId('acct_theme');
+
+      final storage = _session(prefs, 'acct_theme');
+      await storage.repository.saveLists([
+        ...defaultSmartLists().map(
+          (l) => l.smartType == SmartListType.tasks
+              ? l.copyWith(remoteId: 'rf-default')
+              : l,
+        ),
+        const TodoList(
+          id: 'list_shop',
+          title: 'Shopping',
+          remoteId: 'rf-shop',
+          themeColor: ListThemeColor.rose,
+          themePhoto: null,
+        ),
+      ]);
+      await storage.repository.saveDirtyListIds({'list_shop'});
+
+      final fakeApi = FakeSubstrateApi();
+      var serverThemeColor = 'dark_blue';
+      var serverThemeBackground = 'photo_beach';
+
+      fakeApi.onPatchFolder = (id, patch) async {
+        expect(id, 'rf-shop');
+        expect(patch['ThemeColor'], 'dark_rose');
+        // Substrate ignores null ThemeBackground; clearing requires 'mountain'.
+        expect(patch['ThemeBackground'], 'mountain');
+        serverThemeColor = patch['ThemeColor'] as String;
+        if (patch['ThemeBackground'] != null) {
+          serverThemeBackground = patch['ThemeBackground'] as String;
+        }
+        return RemoteTodoFolder(
+          id: id,
+          name: 'Shopping',
+          themeColor: serverThemeColor,
+          themeBackground: serverThemeBackground,
+        );
+      };
+      fakeApi.onFetchFoldersDelta = (dl) => DeltaPageResult(
+        items: [
+          const RemoteTodoFolder(
+            id: 'rf-default',
+            name: 'Tasks',
+            isDefaultFolder: true,
+          ),
+          RemoteTodoFolder(
+            id: 'rf-shop',
             name: 'Shopping',
             themeColor: serverThemeColor,
             themeBackground: serverThemeBackground,
-          );
-        };
-        fakeApi.onFetchFoldersDelta = (dl) => DeltaPageResult(
-          items: [
-            const RemoteTodoFolder(
-              id: 'rf-default',
-              name: 'Tasks',
-              isDefaultFolder: true,
-            ),
-            RemoteTodoFolder(
-              id: 'rf-shop',
-              name: 'Shopping',
-              themeColor: serverThemeColor,
-              themeBackground: serverThemeBackground,
-            ),
-          ],
-          deltaLink: 'dl-folders-1',
-        );
-
-        final container = ProviderContainer(
-          overrides: [
-            sharedPreferencesProvider.overrideWithValue(prefs),
-            microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
-            microsoftTodoApiProvider.overrideWithValue(fakeApi),
-            realtimeSyncEnabledProvider.overrideWithValue(false),
-          ],
-        );
-        addTearDown(container.dispose);
-
-        await container.read(syncProvider.notifier).syncNow();
-
-        final syncedShop = container
-            .read(todoProvider)
-            .lists
-            .firstWhere((l) => l.id == 'list_shop');
-        expect(syncedShop.themeColor, ListThemeColor.rose);
-        expect(syncedShop.themePhoto, isNull);
-      },
-    );
-
-    test(
-      'setting photo background sends photo_* in both ThemeColor and ThemeBackground for MS To Do compatibility',
-      () async {
-        SharedPreferences.setMockInitialValues({});
-        final prefs = await SharedPreferences.getInstance();
-        final account = Account.microsoft(
-          id: 'acct_photo',
-          displayName: 'Alice',
-          email: 'alice@outlook.com',
-          createdAt: DateTime(2026, 11, 22),
-          microsoftUserId: 'cid1',
-        );
-        await AccountLocalStorage(prefs).saveAccounts([account]);
-        await AccountLocalStorage(prefs).saveActiveAccountId('acct_photo');
-
-        final storage = _session(prefs, 'acct_photo');
-        await storage.repository.saveLists([
-          ...defaultSmartLists().map(
-            (l) => l.smartType == SmartListType.tasks
-                ? l.copyWith(remoteId: 'rf-default')
-                : l,
           ),
-          const TodoList(
-            id: 'list_shop',
-            title: 'Shopping',
-            remoteId: 'rf-shop',
-            themeColor: ListThemeColor.blue,
-            themePhoto: ListThemePhoto.beach,
-          ),
-        ]);
-        await storage.repository.saveDirtyListIds({'list_shop'});
+        ],
+        deltaLink: 'dl-folders-1',
+      );
 
-        final fakeApi = FakeSubstrateApi();
-        fakeApi.onPatchFolder = (id, patch) async {
-          expect(id, 'rf-shop');
-          expect(patch['ThemeColor'], 'photo_beach');
-          expect(patch['ThemeBackground'], 'mountain');
-          return const RemoteTodoFolder(
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+          microsoftTodoApiProvider.overrideWithValue(fakeApi),
+          realtimeSyncEnabledProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(syncProvider.notifier).syncNow();
+
+      final syncedShop = container
+          .read(todoProvider)
+          .lists
+          .firstWhere((l) => l.id == 'list_shop');
+      expect(syncedShop.themeColor, ListThemeColor.rose);
+      expect(syncedShop.themePhoto, isNull);
+    });
+
+    test('setting photo background sends photo_* in both ThemeColor and ThemeBackground for MS To Do compatibility', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final account = Account.microsoft(
+        id: 'acct_photo',
+        displayName: 'Alice',
+        email: 'alice@outlook.com',
+        createdAt: DateTime(2026, 11, 22),
+        microsoftUserId: 'cid1',
+      );
+      await AccountLocalStorage(prefs).saveAccounts([account]);
+      await AccountLocalStorage(prefs).saveActiveAccountId('acct_photo');
+
+      final storage = _session(prefs, 'acct_photo');
+      await storage.repository.saveLists([
+        ...defaultSmartLists().map(
+          (l) => l.smartType == SmartListType.tasks
+              ? l.copyWith(remoteId: 'rf-default')
+              : l,
+        ),
+        const TodoList(
+          id: 'list_shop',
+          title: 'Shopping',
+          remoteId: 'rf-shop',
+          themeColor: ListThemeColor.blue,
+          themePhoto: ListThemePhoto.beach,
+        ),
+      ]);
+      await storage.repository.saveDirtyListIds({'list_shop'});
+
+      final fakeApi = FakeSubstrateApi();
+      fakeApi.onPatchFolder = (id, patch) async {
+        expect(id, 'rf-shop');
+        expect(patch['ThemeColor'], 'photo_beach');
+        expect(patch['ThemeBackground'], 'mountain');
+        return const RemoteTodoFolder(
+          id: 'rf-shop',
+          name: 'Shopping',
+          themeColor: 'photo_beach',
+          themeBackground: 'mountain',
+        );
+      };
+      fakeApi.onFetchFoldersDelta = (dl) => const DeltaPageResult(
+        items: [
+          RemoteTodoFolder(
+            id: 'rf-default',
+            name: 'Tasks',
+            isDefaultFolder: true,
+          ),
+          RemoteTodoFolder(
             id: 'rf-shop',
             name: 'Shopping',
             themeColor: 'photo_beach',
             themeBackground: 'mountain',
-          );
-        };
-        fakeApi.onFetchFoldersDelta = (dl) => const DeltaPageResult(
-          items: [
-            RemoteTodoFolder(
-              id: 'rf-default',
-              name: 'Tasks',
-              isDefaultFolder: true,
-            ),
-            RemoteTodoFolder(
-              id: 'rf-shop',
-              name: 'Shopping',
-              themeColor: 'photo_beach',
-              themeBackground: 'mountain',
-            ),
-          ],
-          deltaLink: 'dl-folders-photo',
-        );
+          ),
+        ],
+        deltaLink: 'dl-folders-photo',
+      );
 
-        final container = ProviderContainer(
-          overrides: [
-            sharedPreferencesProvider.overrideWithValue(prefs),
-            microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
-            microsoftTodoApiProvider.overrideWithValue(fakeApi),
-            realtimeSyncEnabledProvider.overrideWithValue(false),
-          ],
-        );
-        addTearDown(container.dispose);
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+          microsoftTodoApiProvider.overrideWithValue(fakeApi),
+          realtimeSyncEnabledProvider.overrideWithValue(false),
+        ],
+      );
+      addTearDown(container.dispose);
 
-        await container.read(syncProvider.notifier).syncNow();
+      await container.read(syncProvider.notifier).syncNow();
 
-        final syncedShop = container
-            .read(todoProvider)
-            .lists
-            .firstWhere((l) => l.id == 'list_shop');
-        expect(syncedShop.themePhoto, ListThemePhoto.beach);
-      },
-    );
+      final syncedShop = container
+          .read(todoProvider)
+          .lists
+          .firstWhere((l) => l.id == 'list_shop');
+      expect(syncedShop.themePhoto, ListThemePhoto.beach);
+    });
   });
 }
 

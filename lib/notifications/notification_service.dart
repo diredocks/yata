@@ -283,8 +283,9 @@ class FlutterLocalNotificationTransport implements NotificationTransport {
   Future<void> openBatteryOptimizationSettings() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
     await _guardPlatform(
-      () =>
-          _settingsChannel.invokeMethod<void>('openBatteryOptimizationSettings'),
+      () => _settingsChannel.invokeMethod<void>(
+        'openBatteryOptimizationSettings',
+      ),
     );
   }
 

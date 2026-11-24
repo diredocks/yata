@@ -172,7 +172,11 @@ class TodoSettingsStore {
       playCompletionSound: _prefs.getBool(_playCompletionSoundKey) ?? true,
       confirmBeforeDeleting: _prefs.getBool(_confirmBeforeDeletingKey) ?? true,
       showDueTodayInMyDay: _prefs.getBool(_showDueTodayInMyDayKey) ?? true,
-      startOfWeek: _loadEnum(_startOfWeekKey, WeekStart.values, WeekStart.system),
+      startOfWeek: _loadEnum(
+        _startOfWeekKey,
+        WeekStart.values,
+        WeekStart.system,
+      ),
       showSmartListImportant: _prefs.getBool(_showImportantKey) ?? true,
       showSmartListPlanned: _prefs.getBool(_showPlannedKey) ?? true,
       showSmartListAll: _prefs.getBool(_showAllKey) ?? false,
@@ -216,13 +220,14 @@ class TodoSettingsStore {
     if (raw == null || raw.isEmpty) {
       return const <int>[1, 2, 3, 4, 5, 6, 7];
     }
-    final parsed = raw
-        .map(int.tryParse)
-        .whereType<int>()
-        .where((d) => d >= DateTime.monday && d <= DateTime.sunday)
-        .toSet()
-        .toList()
-      ..sort();
+    final parsed =
+        raw
+            .map(int.tryParse)
+            .whereType<int>()
+            .where((d) => d >= DateTime.monday && d <= DateTime.sunday)
+            .toSet()
+            .toList()
+          ..sort();
     return parsed.isEmpty ? const <int>[1, 2, 3, 4, 5, 6, 7] : parsed;
   }
 

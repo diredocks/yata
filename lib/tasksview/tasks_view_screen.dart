@@ -16,10 +16,6 @@ import '../theme/theme_picker_sheet.dart';
 import '../theme/todo_theme.dart';
 import '../view/delayed_task_completion.dart';
 import 'completion_sound_service.dart';
-import 'recyclerview/animated_task_sliver_list.dart';
-import 'recyclerview/ruled_lines_painter.dart';
-import 'recyclerview/swipeable_task_card.dart';
-import 'recyclerview/task_list_tile.dart';
 import 'renamelist/list_editor_dialog.dart';
 import 'richentry/task_entry_sheet.dart';
 import 'tasks_action_presenter.dart';
@@ -27,6 +23,9 @@ import 'tasks_view_bars.dart';
 import 'tasks_view_dialogs.dart';
 import 'tasks_view_grouping.dart';
 import 'tasks_view_presenter.dart';
+import 'tasks_view_scroll_body.dart';
+import 'tasks_view_slivers.dart';
+import 'tasks_view_widgets.dart';
 
 class TasksViewScreen extends ConsumerStatefulWidget {
   const TasksViewScreen({
@@ -93,30 +92,35 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       _dragAutoScrollTimer = null;
       return;
     }
-    _dragAutoScrollTimer ??= Timer.periodic(const Duration(milliseconds: 16), (
-      _,
-    ) {
-      final y = _dragPointerY;
-      if (!mounted || _draggingTaskId == null || y == null) {
-        _stopDragAutoScroll();
-        return;
-      }
-      final proximity =
-          ((_dragVisibleTop + edgeThreshold - y) / edgeThreshold).clamp(0.0, 1.0);
-      if (proximity <= 0.0) return;
-      final step = 4.0 + 10.0 * proximity;
-      final inner = _nestedScrollKey.currentState?.innerController;
-      if (inner != null && inner.hasClients && inner.offset > 0) {
-        inner.jumpTo((inner.offset - step).clamp(0.0, inner.position.maxScrollExtent));
-      } else if (_scrollController.hasClients && _scrollController.offset > 0) {
-        _scrollController.jumpTo(
-          (_scrollController.offset - step).clamp(
-            0.0,
-            _scrollController.position.maxScrollExtent,
-          ),
-        );
-      }
-    });
+    _dragAutoScrollTimer ??= Timer.periodic(
+      const Duration(milliseconds: 16),
+      (_) => _performDragAutoScrollStep(edgeThreshold),
+    );
+  }
+
+  void _performDragAutoScrollStep(double edgeThreshold) {
+    final y = _dragPointerY;
+    if (!mounted || _draggingTaskId == null || y == null) {
+      _stopDragAutoScroll();
+      return;
+    }
+    final proximity = ((_dragVisibleTop + edgeThreshold - y) / edgeThreshold)
+        .clamp(0.0, 1.0);
+    if (proximity <= 0.0) return;
+    final step = 4.0 + 10.0 * proximity;
+    final inner = _nestedScrollKey.currentState?.innerController;
+    if (inner != null && inner.hasClients && inner.offset > 0) {
+      inner.jumpTo(
+        (inner.offset - step).clamp(0.0, inner.position.maxScrollExtent),
+      );
+    } else if (_scrollController.hasClients && _scrollController.offset > 0) {
+      _scrollController.jumpTo(
+        (_scrollController.offset - step).clamp(
+          0.0,
+          _scrollController.position.maxScrollExtent,
+        ),
+      );
+    }
   }
 
   void _snapHeaderIfNeeded(double collapseDelta) {
@@ -174,9 +178,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
   void _enterReordering() {
     _selectionNotifier.value = const {};
-    setState(() {
-      _mode = TasksViewMode.reordering;
-    });
+    setState(() => _mode = TasksViewMode.reordering);
   }
 
   void _exitReordering() {
@@ -198,9 +200,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
   void _clearSelection() {
     _selectionNotifier.value = const {};
-    setState(() {
-      _mode = TasksViewMode.browsing;
-    });
+    setState(() => _mode = TasksViewMode.browsing);
   }
 
   void _selectAll(List<TaskItem> tasks) {
@@ -470,59 +470,73 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     );
   }
 
-  Widget _buildTaskTile({
-    required TaskItem task,
-    required TodoState state,
-    required Color accentColor,
-    required bool showMyDayBadge,
-    String? originListName,
-    bool enableLongPress = true,
-  }) {
+  void _toggleTaskCompleted(TaskItem task, TodoList currentList) {
     final notifier = ref.read(tasksViewPresenterProvider);
-    final actionPresenter = ref.read(tasksActionPresenterProvider);
-    final displayTask = _completionController.effectiveTask(task);
-    final isCompletedSmartList =
-        state.selectedList.smartType == SmartListType.completed;
-    return SwipeableTaskCard(
-      key: ValueKey('task_${task.id}'),
-      enabled: _mode == TasksViewMode.browsing,
-      isInMyDay: task.isInMyDay,
-      accentColor: accentColor,
-      onSwipeRight: () =>
-          actionPresenter.batchSetMyDay({task.id}, !task.isInMyDay),
-      onSwipeLeft: () => _swipeDeleteTask(task, state.tasks),
-      child: TaskListTile(
-        task: displayTask,
-        listName: originListName,
-        showMyDayBadge: showMyDayBadge,
-        accentColor: accentColor,
-        isSelected: state.selectedTaskId == task.id,
-        isMultiSelecting: _mode == TasksViewMode.multiSelecting,
-        isMultiSelected: _multiSelectedIds.contains(task.id),
-        onTap: () {
-          if (_mode == TasksViewMode.multiSelecting) {
-            _toggleSelection(task.id);
-          } else {
-            widget.onOpenTask(task);
-          }
-        },
-        onLongPress: enableLongPress ? () => _toggleSelection(task.id) : null,
-        onToggleCompleted: () {
-          if (!task.isCompleted && !_completionController.isPending(task.id)) {
-            ref.read(completionSoundServiceProvider).playIfEnabled();
-          }
-          _completionController.toggle(
-            task,
-            instant: isCompletedSmartList,
-            onCommit: notifier.setTaskCompleted,
-            onStateChanged: () {
-              if (mounted) setState(() {});
-            },
-          );
-        },
-        onToggleImportant: () => notifier.toggleTaskImportant(task.id),
-      ),
+    if (!task.isCompleted && !_completionController.isPending(task.id)) {
+      ref.read(completionSoundServiceProvider).playIfEnabled();
+    }
+    _completionController.toggle(
+      task,
+      instant: currentList.smartType == SmartListType.completed,
+      onCommit: notifier.setTaskCompleted,
+      onStateChanged: () {
+        if (mounted) setState(() {});
+      },
     );
+  }
+
+  void _handleDragReorderStart(int index, String taskId) {
+    _draggingTaskId = taskId;
+    _dragStartIndex = index;
+    _toggleSelection(taskId);
+  }
+
+  void _handleDragReorderComplete(
+    List<TaskItem> activeTasks,
+    int oldIndex,
+    int newIndex,
+  ) {
+    _draggingTaskId = null;
+    _dragStartIndex = null;
+    _dragPointerStartY = null;
+    _stopDragAutoScroll();
+    ref
+        .read(tasksViewPresenterProvider)
+        .reorderActiveTasks(activeTasks, oldIndex, newIndex);
+    if (_mode == TasksViewMode.multiSelecting && mounted) {
+      _clearSelection();
+    }
+  }
+
+  void _handleDragReorderEnd(int insertIndex) {
+    _stopDragAutoScroll();
+    final startIndex = _dragStartIndex;
+    final adjustedNew = startIndex != null && insertIndex > startIndex
+        ? insertIndex - 1
+        : insertIndex;
+    final willReorder = startIndex != null && adjustedNew != startIndex;
+    if (willReorder) {
+      // Keep _draggingTaskId non-null until onReorder fires after the
+      // drop animation so AnimatedReorderableTaskSliver stays mounted.
+      if (_mode == TasksViewMode.multiSelecting && mounted) {
+        _clearSelection();
+      }
+      return;
+    }
+    _draggingTaskId = null;
+    _dragStartIndex = null;
+    _dragPointerStartY = null;
+    if (mounted) setState(() {});
+  }
+
+  void _handlePointerMove(double pointerY, double visibleTop) {
+    if (_draggingTaskId == null) return;
+    _updateDragAutoScroll(pointerY, visibleTop);
+    if (_mode == TasksViewMode.multiSelecting &&
+        _dragPointerStartY != null &&
+        (pointerY - _dragPointerStartY!).abs() > 18) {
+      _clearSelection();
+    }
   }
 
   PreferredSizeWidget? _buildAppBar({
@@ -563,539 +577,18 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     };
   }
 
-  Widget _buildBackground(TodoList currentList, Color backgroundColor) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 260),
-      child: currentList.themePhoto != null
-          ? SizedBox.expand(
-              key: ValueKey('bg_photo_${currentList.themePhoto!.name}'),
-              child: Image.asset(
-                TodoColors.photoAssetFor(currentList.themePhoto!),
-                fit: BoxFit.cover,
-              ),
-            )
-          : SizedBox.expand(
-              key: const ValueKey('bg_color'),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOutCubic,
-                color: backgroundColor,
-              ),
-            ),
-    );
-  }
-
-  List<Widget> _buildTaskSlivers({
-    required AppLocalizations l10n,
-    required TodoState state,
-    required TodoList currentList,
-    required List<TaskItem> activeTasks,
-    required List<TaskItem> completedTasks,
-    required Color accentColor,
-    required Color headerFg,
-  }) {
-    if (activeTasks.isEmpty && completedTasks.isEmpty) {
-      return const [SliverToBoxAdapter(child: SizedBox.shrink())];
-    }
-
-    return [
-      if (_mode == TasksViewMode.reordering)
-        _buildReorderableSliver(
-          l10n: l10n,
-          state: state,
-          currentList: currentList,
-          activeTasks: activeTasks,
-          accentColor: accentColor,
-        )
-      else if (currentList.smartType == SmartListType.planned &&
-          currentList.sortOption == TaskSortOption.defaultOrder)
-        ...switch (state.plannedGroupOption) {
-          PlannedGroupOption.byDueDate => _buildPlannedBucketSlivers(
-            l10n: l10n,
-            state: state,
-            currentList: currentList,
-            activeTasks: activeTasks,
-            accentColor: accentColor,
-            headerFg: headerFg,
-          ),
-          PlannedGroupOption.byList => _buildListBucketSlivers(
-            l10n: l10n,
-            state: state,
-            currentList: currentList,
-            activeTasks: activeTasks,
-            accentColor: accentColor,
-            headerFg: headerFg,
-          ),
-          PlannedGroupOption.ungroup => [
-            _buildFlatTaskSliver(
-              l10n: l10n,
-              state: state,
-              currentList: currentList,
-              activeTasks: activeTasks,
-              accentColor: accentColor,
-            ),
-          ],
-        }
-      else if ((currentList.smartType == SmartListType.completed ||
-              currentList.smartType == SmartListType.all) &&
-          currentList.sortOption == TaskSortOption.defaultOrder)
-        ..._buildListBucketSlivers(
-          l10n: l10n,
-          state: state,
-          currentList: currentList,
-          activeTasks: activeTasks,
-          accentColor: accentColor,
-          headerFg: headerFg,
-        )
-      else
-        _buildFlatTaskSliver(
-          l10n: l10n,
-          state: state,
-          currentList: currentList,
-          activeTasks: activeTasks,
-          accentColor: accentColor,
-        ),
-      ..._buildCompletedBucketSlivers(
-        l10n: l10n,
-        state: state,
-        currentList: currentList,
-        completedTasks: completedTasks,
-        accentColor: accentColor,
-        headerFg: headerFg,
-      ),
-    ];
-  }
-
-  Widget _buildReorderableSliver({
-    required AppLocalizations l10n,
-    required TodoState state,
-    required TodoList currentList,
-    required List<TaskItem> activeTasks,
-    required Color accentColor,
-  }) {
-    final notifier = ref.read(tasksViewPresenterProvider);
-    final showMyDayBadge = currentList.smartType != SmartListType.myDay;
-    final showOriginList =
-        currentList.isSmartList && currentList.smartType != SmartListType.tasks;
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      sliver: AnimatedReorderableTaskSliver(
-        tasks: activeTasks,
-        onReorder: (oldIndex, newIndex) =>
-            notifier.reorderActiveTasks(activeTasks, oldIndex, newIndex),
-        itemBuilder: (context, index, task, onAnimatedStep) {
-          return Material(
-            key: ValueKey(task.id),
-            color: Colors.transparent,
-            child: TaskListTile(
-              task: task,
-              listName: showOriginList
-                  ? resolveOriginListName(l10n, state.lists, task.listId)
-                  : null,
-              showMyDayBadge: showMyDayBadge,
-              accentColor: accentColor,
-              isReordering: true,
-              onTap: () {},
-              onToggleCompleted: () {},
-              onToggleImportant: () {},
-              trailingHandle: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    onPressed: index > 0
-                        ? () => onAnimatedStep(index, index - 1)
-                        : null,
-                    icon: const Icon(Icons.keyboard_arrow_up),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  IconButton(
-                    onPressed: index < activeTasks.length - 1
-                        ? () => onAnimatedStep(index, index + 1)
-                        : null,
-                    icon: const Icon(Icons.keyboard_arrow_down),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  ReorderableDragStartListener(
-                    index: index,
-                    child: const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: Icon(Icons.drag_handle),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  List<Widget> _buildPlannedBucketSlivers({
-    required AppLocalizations l10n,
-    required TodoState state,
-    required TodoList currentList,
-    required List<TaskItem> activeTasks,
-    required Color accentColor,
-    required Color headerFg,
-  }) {
-    final groups = groupPlannedTasks(activeTasks, state.startOfWeek);
-    return [
-      for (final group in groups) ...[
-        SliverToBoxAdapter(
-          child: TasksBucketPill(
-            label: plannedBucketLabel(l10n, group.bucket),
-            count: group.tasks.length,
-            isExpanded: !_collapsedPlannedBuckets.contains(group.bucket.name),
-            onTap: () =>
-                _toggleBucket(_collapsedPlannedBuckets, group.bucket.name),
-            currentList: currentList,
-            headerFg: headerFg,
-          ),
-        ),
-        CollapsibleTaskBucketSliver(
-          key: ValueKey('planned_${group.bucket.name}'),
-          isExpanded: !_collapsedPlannedBuckets.contains(group.bucket.name),
-          tasks: group.tasks,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          itemBuilder: (context, task) => _buildTaskTile(
-            task: task,
-            state: state,
-            accentColor: accentColor,
-            showMyDayBadge: true,
-            originListName: resolveOriginListName(
-              l10n,
-              state.lists,
-              task.listId,
-            ),
-          ),
-        ),
-      ],
-    ];
-  }
-
-  List<Widget> _buildListBucketSlivers({
-    required AppLocalizations l10n,
-    required TodoState state,
-    required TodoList currentList,
-    required List<TaskItem> activeTasks,
-    required Color accentColor,
-    required Color headerFg,
-  }) {
-    final groups = groupTasksByList(l10n, activeTasks, state.lists);
-    return [
-      for (final group in groups) ...[
-        SliverToBoxAdapter(
-          child: TasksBucketPill(
-            label: group.title,
-            count: group.tasks.length,
-            isExpanded: !_collapsedCompletedListBuckets.contains(group.listId),
-            onTap: () =>
-                _toggleBucket(_collapsedCompletedListBuckets, group.listId),
-            currentList: currentList,
-            headerFg: headerFg,
-          ),
-        ),
-        CollapsibleTaskBucketSliver(
-          key: ValueKey('bucket_${currentList.id}_${group.listId}'),
-          isExpanded: !_collapsedCompletedListBuckets.contains(group.listId),
-          tasks: group.tasks,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          itemBuilder: (context, task) => _buildTaskTile(
-            task: task,
-            state: state,
-            accentColor: accentColor,
-            showMyDayBadge: true,
-          ),
-        ),
-      ],
-    ];
-  }
-
-  Widget _buildFlatTaskSliver({
-    required AppLocalizations l10n,
-    required TodoState state,
-    required TodoList currentList,
-    required List<TaskItem> activeTasks,
-    required Color accentColor,
-  }) {
-    final isMyDay = currentList.smartType == SmartListType.myDay;
-    final showOriginList =
-        currentList.isSmartList && currentList.smartType != SmartListType.tasks;
-    final canDragReorder =
-        supportsTaskReordering(currentList, activeTasks.length) &&
-        (_mode == TasksViewMode.browsing || _draggingTaskId != null);
-
-    if (canDragReorder) {
-      final notifier = ref.read(tasksViewPresenterProvider);
-      return SliverPadding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        sliver: AnimatedReorderableTaskSliver(
-          key: ValueKey('flat_reorder_${currentList.id}'),
-          tasks: activeTasks,
-          proxyDecorator: (child, index, animation) {
-            final task = activeTasks[index];
-            return ValueListenableBuilder<Set<String>>(
-              valueListenable: _selectionNotifier,
-              builder: (context, selectedIds, _) => Material(
-                elevation: 4,
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(4),
-                child: HeroMode(
-                  enabled: false,
-                  child: _buildTaskTile(
-                    task: task,
-                    state: state,
-                    accentColor: accentColor,
-                    showMyDayBadge: !isMyDay,
-                    originListName: showOriginList
-                        ? resolveOriginListName(l10n, state.lists, task.listId)
-                        : null,
-                    enableLongPress: false,
-                  ),
-                ),
-              ),
-            );
-          },
-          onReorderStart: (index) {
-            final taskId = activeTasks[index].id;
-            _draggingTaskId = taskId;
-            _dragStartIndex = index;
-            _toggleSelection(taskId);
-          },
-          onReorder: (oldIndex, newIndex) {
-            _draggingTaskId = null;
-            _dragStartIndex = null;
-            _dragPointerStartY = null;
-            _stopDragAutoScroll();
-            notifier.reorderActiveTasks(activeTasks, oldIndex, newIndex);
-            if (_mode == TasksViewMode.multiSelecting && mounted) {
-              _clearSelection();
-            }
-          },
-          onReorderEnd: (insertIndex) {
-            _stopDragAutoScroll();
-            final startIndex = _dragStartIndex;
-            final adjustedNew =
-                startIndex != null && insertIndex > startIndex
-                ? insertIndex - 1
-                : insertIndex;
-            final willReorder =
-                startIndex != null && adjustedNew != startIndex;
-            if (willReorder) {
-              // Keep _draggingTaskId non-null until onReorder fires after the
-              // drop animation so AnimatedReorderableTaskSliver stays mounted.
-              if (_mode == TasksViewMode.multiSelecting && mounted) {
-                _clearSelection();
-              }
-              return;
-            }
-            _draggingTaskId = null;
-            _dragStartIndex = null;
-            _dragPointerStartY = null;
-            if (mounted) setState(() {});
-          },
-          itemBuilder: (context, index, task, _) =>
-              ReorderableDelayedDragStartListener(
-                key: ValueKey('drag_${task.id}'),
-                index: index,
-                child: _buildTaskTile(
-                  task: task,
-                  state: state,
-                  accentColor: accentColor,
-                  showMyDayBadge: !isMyDay,
-                  originListName: showOriginList
-                      ? resolveOriginListName(l10n, state.lists, task.listId)
-                      : null,
-                  enableLongPress: false,
-                ),
-              ),
-        ),
-      );
-    }
-
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      sliver: AnimatedTaskSliverList(
-        key: ValueKey('flat_${currentList.id}'),
-        tasks: activeTasks,
-        itemBuilder: (context, task) => _buildTaskTile(
-          task: task,
-          state: state,
-          accentColor: accentColor,
-          showMyDayBadge: !isMyDay,
-          originListName: showOriginList
-              ? resolveOriginListName(l10n, state.lists, task.listId)
-              : null,
-        ),
-      ),
-    );
-  }
-
-  List<Widget> _buildCompletedBucketSlivers({
-    required AppLocalizations l10n,
-    required TodoState state,
-    required TodoList currentList,
-    required List<TaskItem> completedTasks,
-    required Color accentColor,
-    required Color headerFg,
-  }) {
-    final hasCompleted = completedTasks.isNotEmpty;
-    final completedExpanded = state.isCompletedExpanded(currentList.id);
-    final showItems = hasCompleted && completedExpanded;
-    return [
-      SliverToBoxAdapter(
-        child: AnimatedSize(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          alignment: Alignment.topCenter,
-          child: AnimatedOpacity(
-            opacity: hasCompleted ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOut,
-            child: hasCompleted
-                ? TasksBucketPill(
-                    label: l10n.completed,
-                    count: completedTasks.length,
-                    isExpanded: completedExpanded,
-                    onTap: () => ref
-                        .read(todoProvider.notifier)
-                        .setCompletedExpanded(
-                          currentList.id,
-                          !completedExpanded,
-                        ),
-                    currentList: currentList,
-                    headerFg: headerFg,
-                  )
-                : const SizedBox.shrink(),
-          ),
-        ),
-      ),
-      CollapsibleTaskBucketSliver(
-        key: ValueKey('completed_${currentList.id}'),
-        isExpanded: showItems,
-        tasks: completedTasks,
-        padding: const EdgeInsets.fromLTRB(8, 2, 8, 16),
-        itemBuilder: (context, task) {
-          final showOriginList =
-              currentList.isSmartList &&
-              currentList.smartType != SmartListType.tasks;
-          return _buildTaskTile(
-            task: task,
-            state: state,
-            accentColor: accentColor,
-            showMyDayBadge: currentList.smartType != SmartListType.myDay,
-            originListName: showOriginList
-                ? resolveOriginListName(l10n, state.lists, task.listId)
-                : null,
-          );
-        },
-      ),
-    ];
-  }
-
-  Widget _buildRuledLinesSliver(
-    bool isDark, {
-    required double collapseDelta,
-  }) {
-    return SliverLayoutBuilder(
-      builder: (context, constraints) {
-        final minHeight =
-            (constraints.viewportMainAxisExtent +
-                    collapseDelta -
-                    constraints.precedingScrollExtent)
-                .clamp(84.0, double.infinity);
-        return SliverFillRemaining(
-          hasScrollBody: false,
-          fillOverscroll: true,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: minHeight),
-            child: CustomPaint(
-              painter: RuledLinesPainter(
-                lineColor: isDark
-                    ? TodoColors.taskViewDividerDark
-                    : TodoColors.taskViewDividerLight,
-                rowHeight: 66.0,
-                horizontalInset: 8.0,
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildScrollShadow(String? subtitle) {
-    final topPadding = MediaQuery.paddingOf(context).top;
-    final maxTop = subtitle != null ? 144.0 : 116.0;
-    return Positioned(
-      top: (maxTop - _scrollOffset).clamp(kToolbarHeight, maxTop) + topPadding,
-      left: 0,
-      right: 0,
-      child: IgnorePointer(
-        child: AnimatedOpacity(
-          opacity: (_scrollOffset > 4 && _mode == TasksViewMode.browsing)
-              ? 1.0
-              : 0.0,
-          duration: const Duration(milliseconds: 150),
-          child: Container(
-            height: 3,
-            decoration: TodoColors.horizontalShadowDecoration,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFab({
-    required AppLocalizations l10n,
-    required TodoState state,
-    required TodoList currentList,
-    required Brightness brightness,
-    required bool isDark,
-  }) {
-    final hideFab =
-        _mode != TasksViewMode.browsing ||
-        currentList.smartType == SmartListType.completed;
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 200),
-      switchInCurve: Curves.easeOutBack,
-      switchOutCurve: Curves.easeIn,
-      transitionBuilder: (child, anim) => ScaleTransition(
-        scale: anim,
-        child: FadeTransition(opacity: anim, child: child),
-      ),
-      child: hideFab
-          ? const SizedBox.shrink(key: ValueKey('fab_hidden'))
-          : FloatingActionButton(
-              key: const ValueKey('fab_visible'),
-              onPressed: () => _openAddTaskSheet(state),
-              backgroundColor: currentList.themePhoto != null
-                  ? TodoColors.photoFabBackgroundFor(currentList.themePhoto!)
-                  : TodoColors.fabBackgroundFor(
-                      currentList.themeColor,
-                      brightness: brightness,
-                    ),
-              foregroundColor: currentList.themePhoto != null
-                  ? (isDark ? Colors.black : Colors.white)
-                  : TodoColors.fabForegroundFor(
-                      currentList.themeColor,
-                      brightness: brightness,
-                    ),
-              tooltip: l10n.addTaskPlaceholder,
-              child: const Icon(Icons.add),
-            ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(todoProvider);
+    final isMicrosoft = ref.watch(
+      accountProvider.select((s) => s.activeAccount?.isMicrosoft ?? false),
+    );
     final l10n = AppLocalizations.of(context);
     final brightness = Theme.of(context).brightness;
     final isDark = brightness == Brightness.dark;
     final currentList = state.selectedList;
     final notifier = ref.read(tasksViewPresenterProvider);
+    final actionPresenter = ref.read(tasksActionPresenterProvider);
 
     final baseTitle = localizedListTitle(l10n, currentList);
     final listTitle =
@@ -1135,19 +628,46 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       ),
     };
 
+    final taskSlivers = TasksSliverBuilder(
+      l10n: l10n,
+      state: state,
+      currentList: currentList,
+      accentColor: accentColor,
+      headerFg: headerFg,
+      mode: _mode,
+      multiSelectedIds: _multiSelectedIds,
+      selectionNotifier: _selectionNotifier,
+      draggingTaskId: _draggingTaskId,
+      collapsedPlannedBuckets: _collapsedPlannedBuckets,
+      collapsedCompletedListBuckets: _collapsedCompletedListBuckets,
+      completionController: _completionController,
+      onToggleBucket: _toggleBucket,
+      onToggleCompletedExpanded: (listId, expanded) => ref
+          .read(todoProvider.notifier)
+          .setCompletedExpanded(listId, expanded),
+      onOpenTask: widget.onOpenTask,
+      onToggleSelection: _toggleSelection,
+      onSwipeMyDay: (task) =>
+          actionPresenter.batchSetMyDay({task.id}, !task.isInMyDay),
+      onSwipeDelete: (task) => _swipeDeleteTask(task, state.tasks),
+      onToggleCompleted: (task) => _toggleTaskCompleted(task, currentList),
+      onToggleImportant: (task) => notifier.toggleTaskImportant(task.id),
+      onReorderActiveTasks: notifier.reorderActiveTasks,
+      onDragReorderStart: _handleDragReorderStart,
+      onDragReorderComplete: _handleDragReorderComplete,
+      onDragReorderEnd: _handleDragReorderEnd,
+    ).build(activeTasks: active, completedTasks: completed);
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: overlayStyle,
       child: PopScope(
         canPop: _mode == TasksViewMode.browsing,
         onPopInvokedWithResult: (didPop, _) {
           if (didPop) return;
-          switch (_mode) {
-            case TasksViewMode.browsing:
-              break;
-            case TasksViewMode.reordering:
-              _exitReordering();
-            case TasksViewMode.multiSelecting:
-              _clearSelection();
+          if (_mode == TasksViewMode.reordering) {
+            _exitReordering();
+          } else if (_mode == TasksViewMode.multiSelecting) {
+            _clearSelection();
           }
         },
         child: ScaffoldMessenger(
@@ -1155,7 +675,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              _buildBackground(currentList, backgroundColor),
+              TasksViewBackground(
+                currentList: currentList,
+                backgroundColor: backgroundColor,
+              ),
               Scaffold(
                 backgroundColor: Colors.transparent,
                 appBar: _buildAppBar(
@@ -1168,299 +691,55 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 ),
                 body: SafeArea(
                   top: false,
-                  child: Builder(
-                    builder: (context) {
-                      final scrollBehavior = ScrollConfiguration.of(context);
-                      final isMicrosoft = ref.watch(
-                        accountProvider.select(
-                          (s) => s.activeAccount?.isMicrosoft ?? false,
-                        ),
-                      );
-                      final nestedScroll =
-                          NotificationListener<ScrollNotification>(
-                            onNotification: (notification) {
-                              if (notification.depth != 0) return false;
-                              final offset = notification.metrics.pixels;
-                              if ((offset - _scrollOffset).abs() > 0.5) {
-                                setState(() => _scrollOffset = offset);
-                              }
-                              if (notification is ScrollEndNotification) {
-                                final collapseDelta =
-                                    (subtitle != null ? 144.0 : 116.0) -
-                                    kToolbarHeight;
-                                _snapHeaderIfNeeded(collapseDelta);
-                              }
-                              return false;
-                            },
-                            child: ScrollConfiguration(
-                              behavior: scrollBehavior.copyWith(
-                                overscroll: false,
-                              ),
-                              child: NestedScrollView(
-                            key: _nestedScrollKey,
-                            controller: _scrollController,
-                            physics: isMicrosoft
-                                ? const AlwaysScrollableScrollPhysics()
-                                : null,
-                            headerSliverBuilder: (context, _) => [
-                              SliverOverlapAbsorber(
-                                handle: NestedScrollView
-                                    .sliverOverlapAbsorberHandleFor(context),
-                                sliver: _mode == TasksViewMode.browsing
-                                    ? TasksSliverAppBar(
-                                        l10n: l10n,
-                                        currentList: currentList,
-                                        listTitle: listTitle,
-                                        subtitle: subtitle,
-                                        headerFg: headerFg,
-                                        backgroundColor: backgroundColor,
-                                        activeTasksCount: active.length,
-                                        isDark: isDark,
-                                        overlayStyle: overlayStyle,
-                                        onBackPressed: widget.onBackPressed,
-                                        onScrollToTop: _scrollToTop,
-                                        onSelectMenuAction: (action) =>
-                                            _handleMenuAction(
-                                              action,
-                                              state,
-                                              currentList,
-                                            ),
-                                      )
-                                    : SliverToBoxAdapter(
-                                        child: SizedBox(
-                                          height: subtitle != null
-                                              ? 88.0
-                                              : 60.0,
-                                          child: Stack(
-                                            children: [
-                                              Align(
-                                                alignment: AlignmentDirectional
-                                                    .bottomStart,
-                                                child: Padding(
-                                                  padding:
-                                                      EdgeInsetsDirectional.only(
-                                                        start:
-                                                            widget.onBackPressed !=
-                                                                null
-                                                            ? 16.0
-                                                            : 15.0,
-                                                        bottom: subtitle != null
-                                                            ? 42.0
-                                                            : 16.0,
-                                                        end: 56,
-                                                      ),
-                                                  child: Transform.scale(
-                                                    scale: 1.5,
-                                                    alignment:
-                                                        AlignmentDirectional
-                                                            .bottomStart,
-                                                    child: DefaultTextStyle(
-                                                      style:
-                                                          Theme.of(context)
-                                                              .primaryTextTheme
-                                                              .titleLarge ??
-                                                          const TextStyle(),
-                                                      child: Text(
-                                                        listTitle,
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow
-                                                            .ellipsis,
-                                                        style: TextStyle(
-                                                          color: headerFg,
-                                                          fontWeight:
-                                                              FontWeight.w500,
-                                                          fontSize: 20,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              if (subtitle != null)
-                                                Align(
-                                                  alignment:
-                                                      AlignmentDirectional
-                                                          .bottomStart,
-                                                  child: Padding(
-                                                    padding:
-                                                        EdgeInsetsDirectional.only(
-                                                          start:
-                                                              widget.onBackPressed !=
-                                                                  null
-                                                              ? 16.0
-                                                              : 15.0,
-                                                          bottom: 10.0,
-                                                          end: 56,
-                                                        ),
-                                                    child: Text(
-                                                      subtitle,
-                                                      maxLines: 1,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                      style: TextStyle(
-                                                        color: headerFg
-                                                            .withValues(
-                                                              alpha: 0.92,
-                                                            ),
-                                                        fontSize: 20,
-                                                        fontWeight:
-                                                            FontWeight.w400,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                              ),
-                            ],
-                            body: Builder(
-                              builder: (context) {
-                                final topPadding = MediaQuery.paddingOf(context).top;
-                                final collapsedHeight =
-                                    kToolbarHeight + topPadding;
-                                final expandedHeight =
-                                    (subtitle != null ? 144.0 : 116.0) +
-                                    topPadding;
-                                final visibleTop = _mode == TasksViewMode.browsing
-                                    ? (expandedHeight - _scrollOffset).clamp(
-                                        collapsedHeight,
-                                        expandedHeight,
-                                      )
-                                    : collapsedHeight;
-                                final scrollView = Listener(
-                                  onPointerDown: (event) =>
-                                      _dragPointerStartY = event.position.dy,
-                                  onPointerMove: (event) {
-                                    if (_draggingTaskId != null) {
-                                      _updateDragAutoScroll(
-                                        event.position.dy,
-                                        visibleTop,
-                                      );
-                                      if (_mode == TasksViewMode.multiSelecting &&
-                                          _dragPointerStartY != null &&
-                                          (event.position.dy -
-                                                      _dragPointerStartY!)
-                                                  .abs() >
-                                              18) {
-                                        _clearSelection();
-                                      }
-                                    }
-                                  },
-                                  onPointerUp: (_) => _stopDragAutoScroll(),
-                                  onPointerCancel: (_) => _stopDragAutoScroll(),
-                                  child: CustomScrollView(
-                                    physics: isMicrosoft
-                                        ? const AlwaysScrollableScrollPhysics()
-                                        : null,
-                                    slivers: [
-                                      SliverOverlapInjector(
-                                        handle: NestedScrollView
-                                            .sliverOverlapAbsorberHandleFor(
-                                              context,
-                                            ),
-                                      ),
-                                      if (currentList.sortOption !=
-                                              TaskSortOption.defaultOrder &&
-                                          _mode != TasksViewMode.reordering)
-                                        TasksSortBanner(
-                                          l10n: l10n,
-                                          currentList: currentList,
-                                          headerFg: headerFg,
-                                          onToggleSortDirection: () => notifier
-                                              .toggleListSortDirection(
-                                                currentList.id,
-                                              ),
-                                          onClearSort: () =>
-                                              notifier.setListSortOption(
-                                                currentList.id,
-                                                TaskSortOption.defaultOrder,
-                                              ),
-                                        ),
-                                      if (currentList.smartType ==
-                                              SmartListType.planned &&
-                                          _mode == TasksViewMode.browsing)
-                                        TasksPlannedFilterBanner(
-                                          l10n: l10n,
-                                          currentList: currentList,
-                                          currentFilter:
-                                              state.plannedDueDateFilter,
-                                          headerFg: headerFg,
-                                          onTap: () => showPlannedFilterSheet(
-                                            context: context,
-                                            currentFilter:
-                                                state.plannedDueDateFilter,
-                                            onSelectFilter: notifier
-                                                .setPlannedDueDateFilter,
-                                          ),
-                                        ),
-                                      ..._buildTaskSlivers(
-                                        l10n: l10n,
-                                        state: state,
-                                        currentList: currentList,
-                                        activeTasks: active,
-                                        completedTasks: completed,
-                                        accentColor: accentColor,
-                                        headerFg: headerFg,
-                                      ),
-                                      _buildRuledLinesSliver(
-                                        isDark,
-                                        collapseDelta: 0.0,
-                                      ),
-                                    ],
-                                  ),
-                                );
-                                return ScrollConfiguration(
-                                  behavior: scrollBehavior,
-                                  child: scrollView,
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      );
-                      final topPadding = MediaQuery.paddingOf(context).top;
-                      final scrollWithShadow = Stack(
-                        children: [
-                          nestedScroll,
-                          _buildScrollShadow(subtitle),
-                        ],
-                      );
-                      if (!isMicrosoft || _mode == TasksViewMode.reordering) {
-                        return scrollWithShadow;
-                      }
-                      return RefreshIndicator(
-                        edgeOffset: topPadding,
-                        notificationPredicate: (notification) {
-                          if (notification.depth > 1) return false;
-                          // Ignore outer header expand/collapse scroll updates so
-                          // pulling down while the header is collapsed expands
-                          // the header first before dragging the refresh indicator.
-                          if (notification is ScrollUpdateNotification &&
-                              notification.depth == 0 &&
-                              notification.metrics.pixels >= 0) {
-                            return false;
-                          }
-                          return true;
-                        },
-                        onRefresh: () =>
-                            ref.read(syncProvider.notifier).syncNow(),
-                        color: accentColor,
-                        backgroundColor: isDark
-                            ? TodoColors.primaryBackgroundDark
-                            : TodoColors.primaryBackgroundLight,
-                        child: scrollWithShadow,
-                      );
-                    },
+                  child: TasksViewScrollBody(
+                    l10n: l10n,
+                    state: state,
+                    currentList: currentList,
+                    listTitle: listTitle,
+                    subtitle: subtitle,
+                    headerFg: headerFg,
+                    backgroundColor: backgroundColor,
+                    accentColor: accentColor,
+                    activeTasksCount: active.length,
+                    isDark: isDark,
+                    isMicrosoft: isMicrosoft,
+                    mode: _mode,
+                    scrollOffset: _scrollOffset,
+                    scrollController: _scrollController,
+                    nestedScrollKey: _nestedScrollKey,
+                    overlayStyle: overlayStyle,
+                    hasBackButton: widget.onBackPressed != null,
+                    taskSlivers: taskSlivers,
+                    onBackPressed: widget.onBackPressed,
+                    onScrollToTop: _scrollToTop,
+                    onSelectMenuAction: (action) =>
+                        _handleMenuAction(action, state, currentList),
+                    onToggleSortDirection: () =>
+                        notifier.toggleListSortDirection(currentList.id),
+                    onClearSort: () => notifier.setListSortOption(
+                      currentList.id,
+                      TaskSortOption.defaultOrder,
+                    ),
+                    onOpenPlannedFilter: () => showPlannedFilterSheet(
+                      context: context,
+                      currentFilter: state.plannedDueDateFilter,
+                      onSelectFilter: notifier.setPlannedDueDateFilter,
+                    ),
+                    onScrollOffsetChanged: (offset) =>
+                        setState(() => _scrollOffset = offset),
+                    onScrollEnd: _snapHeaderIfNeeded,
+                    onPointerDown: (y) => _dragPointerStartY = y,
+                    onPointerMove: _handlePointerMove,
+                    onPointerEnd: _stopDragAutoScroll,
+                    onRefresh: () => ref.read(syncProvider.notifier).syncNow(),
                   ),
                 ),
-                floatingActionButton: _buildFab(
-                  l10n: l10n,
-                  state: state,
+                floatingActionButton: TasksViewFab(
+                  mode: _mode,
                   currentList: currentList,
+                  l10n: l10n,
                   brightness: brightness,
-                  isDark: isDark,
+                  onPressed: () => _openAddTaskSheet(state),
                 ),
               ),
             ],

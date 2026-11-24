@@ -42,7 +42,10 @@ void main() {
     await tester.pumpAndSettle();
 
     // Scroll down so the header collapses and top task is off-screen
-    await tester.drag(find.byType(CustomScrollView).last, const Offset(0, -600));
+    await tester.drag(
+      find.byType(CustomScrollView).last,
+      const Offset(0, -600),
+    );
     await tester.pumpAndSettle();
 
     final nestedScroll = tester.widget<NestedScrollView>(

@@ -318,14 +318,16 @@ class _MsaBrowserCodeDialogState extends State<_MsaBrowserCodeDialog> {
 
   void _submit() {
     final l10n = AppLocalizations.of(context);
-    widget.onExtractCode(_codeController.text).fold(
-      (code) => Navigator.of(context).pop(code),
-      (error) => setState(
-        () => _validationError = error is ValidationError
-            ? l10n.msaInvalidCodeError
-            : error.userMessage,
-      ),
-    );
+    widget
+        .onExtractCode(_codeController.text)
+        .fold(
+          (code) => Navigator.of(context).pop(code),
+          (error) => setState(
+            () => _validationError = error is ValidationError
+                ? l10n.msaInvalidCodeError
+                : error.userMessage,
+          ),
+        );
   }
 
   @override

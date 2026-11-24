@@ -129,27 +129,20 @@ void main() {
       expect(settings['ConfirmOnDelete'], 'false');
       expect(throttledCalls, 2);
 
-      final conflict409 = await api.patchTask(
-        ctx,
-        't1',
-        const {'Subject': 'x'},
-        changeKey: 'ck-1',
-      );
+      final conflict409 = await api.patchTask(ctx, 't1', const {
+        'Subject': 'x',
+      }, changeKey: 'ck-1');
       expect(conflict409.exceptionOrNull()?.isConflict, isTrue);
 
-      final conflict412 = await api.patchTask(
-        ctx,
-        't412',
-        const {'Subject': 'x'},
-        changeKey: 'ck-stale',
-      );
+      final conflict412 = await api.patchTask(ctx, 't412', const {
+        'Subject': 'x',
+      }, changeKey: 'ck-stale');
       expect(conflict412.exceptionOrNull()?.isConflict, isTrue);
 
       final expired410 = await api.fetchTasksDelta(
         ctx,
         folderRemoteId: 'f1',
-        deltaLink:
-            'https://substrate.office.com/todob2/api/v1/tasks?deltatoken=expired',
+        deltaLink: 'https://substrate.office.com/todob2/api/v1/tasks?deltatoken=expired',
       );
       expect(expired410.exceptionOrNull()?.isDeltaExpired, isTrue);
     });

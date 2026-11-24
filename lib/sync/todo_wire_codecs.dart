@@ -591,11 +591,12 @@ String encodeRoutineConfig(
   TimeOfDay time, {
   List<int> days = const [1, 2, 3, 4, 5, 6, 7],
 }) {
-  final dayNames = days
-      .where((d) => d >= DateTime.monday && d <= DateTime.sunday)
-      .toSet()
-      .toList()
-    ..sort();
+  final dayNames =
+      days
+          .where((d) => d >= DateTime.monday && d <= DateTime.sunday)
+          .toSet()
+          .toList()
+        ..sort();
   final encodedDays = dayNames.isEmpty
       ? _allDaysConfigurationList
       : [for (final d in dayNames) _isoWeekdayNames[d - 1]];

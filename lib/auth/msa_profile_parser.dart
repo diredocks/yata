@@ -79,11 +79,7 @@ String? extractMsaProfileEmail(Map<String, dynamic> json) {
     if (list == null || list.isEmpty) continue;
     final first = list.first;
     final candidate = first is Map
-        ? _firstCleanString(first, const [
-            'Address',
-            'address',
-            'EmailAddress',
-          ])
+        ? _firstCleanString(first, const ['Address', 'address', 'EmailAddress'])
         : _cleanNonNullString(first);
     if (candidate != null) return candidate;
   }

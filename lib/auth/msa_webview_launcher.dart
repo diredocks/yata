@@ -65,15 +65,16 @@ class PlatformMsaInteractiveSignInClient implements MsaInteractiveSignInClient {
     }
 
     try {
-      final result = await Navigator.of(context).push<MsaInteractiveSignInResult>(
-        MaterialPageRoute<MsaInteractiveSignInResult>(
-          builder: (_) => MsaWebViewSignInScreen(
-            authorizeUrl: authorizeUrl,
-            redirectUri: redirectUri,
-            clearCookies: clearCookies,
-          ),
-        ),
-      );
+      final result = await Navigator.of(context)
+          .push<MsaInteractiveSignInResult>(
+            MaterialPageRoute<MsaInteractiveSignInResult>(
+              builder: (_) => MsaWebViewSignInScreen(
+                authorizeUrl: authorizeUrl,
+                redirectUri: redirectUri,
+                clearCookies: clearCookies,
+              ),
+            ),
+          );
       return result ?? const MsaInteractiveSignInResult.cancelled();
     } catch (e) {
       return MsaInteractiveSignInResult.failure(e.toString());

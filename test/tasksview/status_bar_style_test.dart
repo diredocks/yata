@@ -112,10 +112,7 @@ void main() {
       expect(tester.getRect(headerPhotoFinder).top, 0.0);
       final headerScrim = tester.widget<Container>(
         find
-            .descendant(
-              of: headerPhotoFinder,
-              matching: find.byType(Container),
-            )
+            .descendant(of: headerPhotoFinder, matching: find.byType(Container))
             .first,
       );
       expect(headerScrim.color, Colors.black.withValues(alpha: 0.12));

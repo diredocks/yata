@@ -44,43 +44,37 @@ class _RecordingAudioPlayer extends Fake implements AudioPlayer {
 }
 
 void main() {
-  test(
-    'CompletionSoundService plays with AndroidAudioFocus.none so other music is not paused',
-    () async {
-      SharedPreferences.setMockInitialValues({
-        'yata.accounts':
-            '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
-        'yata.active_account_id': 'test',
-      });
-      final prefs = await SharedPreferences.getInstance();
-      final recordingPlayer = _RecordingAudioPlayer();
+  test('CompletionSoundService plays with AndroidAudioFocus.none so other music is not paused', () async {
+    SharedPreferences.setMockInitialValues({
+      'yata.accounts': '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.active_account_id': 'test',
+    });
+    final prefs = await SharedPreferences.getInstance();
+    final recordingPlayer = _RecordingAudioPlayer();
 
-      final container = ProviderContainer(
-        overrides: [
-          sharedPreferencesProvider.overrideWithValue(prefs),
-          completionSoundServiceProvider.overrideWith(
-            (ref) => CompletionSoundService(
-              ref,
-              playerFactory: () => recordingPlayer,
-            ),
-          ),
-        ],
-      );
-      addTearDown(container.dispose);
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        completionSoundServiceProvider.overrideWith(
+          (ref) =>
+              CompletionSoundService(ref, playerFactory: () => recordingPlayer),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
 
-      await container.read(completionSoundServiceProvider).playIfEnabled();
+    await container.read(completionSoundServiceProvider).playIfEnabled();
 
-      expect(recordingPlayer.stopCalls, 1);
-      expect(recordingPlayer.playCalls, hasLength(1));
-      final (source, ctx) = recordingPlayer.playCalls.single;
-      expect(source, isA<AssetSource>());
-      expect((source as AssetSource).path, 'sounds/wl_completion_sound.mp3');
-      expect(ctx, isNotNull);
-      expect(ctx!.android.audioFocus, AndroidAudioFocus.none);
-      expect(ctx.android.contentType, AndroidContentType.sonification);
-      expect(ctx.android.usageType, AndroidUsageType.assistanceSonification);
-    },
-  );
+    expect(recordingPlayer.stopCalls, 1);
+    expect(recordingPlayer.playCalls, hasLength(1));
+    final (source, ctx) = recordingPlayer.playCalls.single;
+    expect(source, isA<AssetSource>());
+    expect((source as AssetSource).path, 'sounds/wl_completion_sound.mp3');
+    expect(ctx, isNotNull);
+    expect(ctx!.android.audioFocus, AndroidAudioFocus.none);
+    expect(ctx.android.contentType, AndroidContentType.sonification);
+    expect(ctx.android.usageType, AndroidUsageType.assistanceSonification);
+  });
 
   testWidgets(
     'Play completion sound setting defaults to true, persists, and triggers on task completion',

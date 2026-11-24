@@ -41,7 +41,8 @@ bool doesTaskNeedSyncStamp(TaskItem? prev, TaskItem next) {
 
 /// Collects remote IDs of items present in [prevItems] that were removed from
 /// [nextIds], clearing their local IDs from [dirtyIds].
-({List<String> deletedRemoteIds, bool changed}) collectPendingRemoteDeletions<T>({
+({List<String> deletedRemoteIds, bool changed})
+collectPendingRemoteDeletions<T>({
   required List<T> prevItems,
   required Set<String> nextIds,
   required String Function(T item) idOf,
@@ -220,7 +221,8 @@ List<TaskItem> reconcileSyncedTasks({
       }
       continue;
     }
-    final editedDuringSync = snap != null && doesTaskNeedSyncStamp(snap, current);
+    final editedDuringSync =
+        snap != null && doesTaskNeedSyncStamp(snap, current);
     if (!editedDuringSync) {
       existingAndLocal.add(outcome);
     } else {
