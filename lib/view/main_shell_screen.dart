@@ -33,6 +33,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
     with WidgetsBindingObserver {
   StreamSubscription<NotificationActionEvent>? _notificationSub;
   StreamSubscription<Uri?>? _widgetClickSub;
+  ModalRoute<void>? _activeTasksRoute;
   int _lastKnownWidgetMutationMs = 0;
 
   @override
@@ -343,8 +344,10 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
     final route = animated
         ? MaterialPageRoute<void>(builder: buildScreen)
         : _InstantEnterMaterialPageRoute<void>(builder: buildScreen);
+    _activeTasksRoute = route;
     Navigator.of(context).push(route).then((_) {
-      if (mounted) {
+      if (mounted && identical(_activeTasksRoute, route)) {
+        _activeTasksRoute = null;
         ref.read(todoProvider.notifier).setLastEnteredListId(null);
       }
     });
