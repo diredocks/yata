@@ -9,6 +9,7 @@ import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
+import androidx.core.content.ContextCompat
 import top.clickfling.yata.R
 
 class TodoWidgetService : RemoteViewsService() {
@@ -31,7 +32,7 @@ private class TodoWidgetRemoteViewsFactory(
     private var isSmartList = true
     private var isMyDayList = true
     private var myDayLabel = ""
-    private var listAccentColor: Int? = null
+    private var listAccentColor: Int = 0
     private var tasks: List<WidgetTaskItem> = emptyList()
 
     override fun onCreate() {
@@ -48,17 +49,19 @@ private class TodoWidgetRemoteViewsFactory(
 
     private fun loadData() {
         config = TodoWidgetData.loadConfig(context, appWidgetId)
-        val resolved = TodoWidgetData.resolveList(context, config.listId)
+        val snapshot = TodoWidgetData.loadEffectiveSnapshot(context)
+        val resolved = snapshot.resolveList(config.listId)
         resolvedListId = resolved?.id ?: config.listId
         isSmartList = resolved?.smartType != null
         isMyDayList = resolved?.smartType == "myDay" || resolvedListId == "my_day"
         val isNight = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
-        listAccentColor = if (isNight) resolved?.accentColorDark else resolved?.accentColorLight
-        myDayLabel = TodoWidgetData.loadMyDayLabel(context)
+        listAccentColor = (if (isNight) resolved?.accentColorDark else resolved?.accentColorLight)
+            ?: ContextCompat.getColor(context, R.color.widget_accent)
+        myDayLabel = snapshot.myDayLabel.takeIf { it.isNotBlank() }
             ?: context.getString(R.string.widget_my_day)
-        tasks = TodoWidgetData.loadTasksForWidget(
-            context,
+        tasks = TodoWidgetData.tasksForWidget(
+            snapshot,
             config.copy(listId = resolvedListId),
         )
     }
@@ -111,7 +114,7 @@ private class TodoWidgetRemoteViewsFactory(
         views.setInt(
             R.id.widget_completed_task,
             "setColorFilter",
-            listAccentColor ?: 0,
+            listAccentColor,
         )
         views.setImageViewResource(
             R.id.widget_important_task,
@@ -124,7 +127,7 @@ private class TodoWidgetRemoteViewsFactory(
         views.setInt(
             R.id.widget_important_task,
             "setColorFilter",
-            listAccentColor ?: 0,
+            listAccentColor,
         )
 
         // Metadata row

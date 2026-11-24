@@ -1,9 +1,5 @@
-import 'dart:io';
-
 import 'package:dynamic_color/dynamic_color.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:home_widget/home_widget.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -16,17 +12,11 @@ import 'onboarding/landing_screen.dart';
 import 'theme/system_font_loader.dart';
 import 'theme/todo_theme.dart';
 import 'view/main_shell_screen.dart';
-import 'widget/home_widget_service.dart';
+import 'widget/home_widget_sync.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (!kIsWeb &&
-      !Platform.environment.containsKey('FLUTTER_TEST') &&
-      (Platform.isAndroid || Platform.isIOS)) {
-    await HomeWidget.registerInteractivityCallback(
-      homeWidgetBackgroundCallback,
-    );
-  }
+  await HomeWidgetService.registerBackgroundCallback();
   final prefs = await SharedPreferences.getInstance();
   final database = TodoDatabase();
   final accountSnapshot = AccountLocalStorage(prefs).load();
@@ -84,6 +74,7 @@ class _YataAppState extends ConsumerState<YataApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(homeWidgetAutoSyncProvider);
     final activeAccount = ref.watch(
       accountProvider.select((s) => s.activeAccount),
     );

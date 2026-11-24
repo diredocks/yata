@@ -5,6 +5,12 @@ import android.content.SharedPreferences
 import es.antonborri.home_widget.HomeWidgetPlugin
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import java.util.concurrent.TimeUnit
 
 data class WidgetListInfo(
     val id: String,
@@ -12,6 +18,7 @@ data class WidgetListInfo(
     val smartType: String?,
     val emoji: String?,
     val activeCount: Int,
+    val sortOption: String = "defaultOrder",
     val accentColorLight: Int? = null,
     val accentColorDark: Int? = null,
 ) {
@@ -28,7 +35,9 @@ data class WidgetTaskItem(
     val isImportant: Boolean,
     val isInMyDay: Boolean,
     val hasDueDate: Boolean,
+    val dueDateYmd: String? = null,
     val hasReminder: Boolean,
+    val reminderAtMs: Long? = null,
     val isRecurring: Boolean,
     val isOverdue: Boolean,
     val dueLabel: String,
@@ -63,17 +72,58 @@ data class WidgetConfig(
     }
 }
 
+data class WidgetPendingOp(
+    val opId: Int,
+    val type: String,
+    val taskId: String,
+    val value: Boolean,
+    val accountId: String?,
+    val timestampMs: Long,
+)
+
+data class WidgetSnapshot(
+    val accountId: String? = null,
+    val accountName: String = "",
+    val dateKey: String = "",
+    val emptyMessage: String = "",
+    val myDayLabel: String = "",
+    val todayLabel: String = "",
+    val tomorrowLabel: String = "",
+    val yesterdayLabel: String = "",
+    val moveStarredToTop: Boolean = true,
+    val lists: List<WidgetListInfo> = emptyList(),
+    val tasks: List<WidgetTaskItem> = emptyList(),
+    val listTaskIds: Map<String, List<String>> = emptyMap(),
+) {
+    fun resolveList(listId: String): WidgetListInfo? {
+        return lists.firstOrNull { it.id == listId }
+            ?: lists.firstOrNull { it.id == WidgetConfig.DEFAULT_LIST_ID }
+            ?: lists.firstOrNull()
+    }
+}
+
 object TodoWidgetData {
-    private const val KEY_LISTS = "widget_lists_json"
-    private const val KEY_TASKS = "widget_tasks_json"
-    private const val KEY_LIST_TASK_IDS = "widget_list_task_ids_json"
-    private const val KEY_ACCOUNT_NAME = "widget_account_name"
-    private const val KEY_EMPTY_MESSAGE = "widget_empty_message"
-    private const val KEY_MY_DAY_LABEL = "widget_my_day_label"
-    private const val KEY_MOVE_STARRED_TO_TOP = "widget_move_starred_to_top"
+    const val OP_TOGGLE_COMPLETE = "toggle_complete"
+    const val OP_TOGGLE_IMPORTANT = "toggle_important"
+
+    private const val KEY_SNAPSHOT = "widget_snapshot_json"
+    private const val KEY_PENDING_OPS = "widget_pending_ops_json"
+    private const val KEY_NEXT_OP_ID = "widget_next_op_id"
+    private const val KEY_ACKED_OP_ID = "widget_acked_op_id"
+    private const val KEY_REFRESH_REQUESTED = "widget_refresh_requested"
     private const val KEY_IS_REFRESHING = "widget_is_refreshing"
+    private const val KEY_REFRESH_STARTED_MS = "widget_refresh_started_ms"
+
+    private const val LEGACY_KEY_LISTS = "widget_lists_json"
+    private const val LEGACY_KEY_TASKS = "widget_tasks_json"
+    private const val LEGACY_KEY_LIST_TASK_IDS = "widget_list_task_ids_json"
+    private const val LEGACY_KEY_ACCOUNT_NAME = "widget_account_name"
+    private const val LEGACY_KEY_EMPTY_MESSAGE = "widget_empty_message"
+    private const val LEGACY_KEY_MY_DAY_LABEL = "widget_my_day_label"
+    private const val LEGACY_KEY_MOVE_STARRED_TO_TOP = "widget_move_starred_to_top"
 
     private const val CONFIG_PREFS_NAME = "yata_widget_configs"
+    private const val REFRESH_TIMEOUT_MS = 30_000L
 
     fun prefs(context: Context): SharedPreferences = HomeWidgetPlugin.getData(context)
 
@@ -117,209 +167,355 @@ object TodoWidgetData {
             .apply()
     }
 
-    fun loadLists(context: Context): List<WidgetListInfo> {
-        val raw = prefs(context).getString(KEY_LISTS, null) ?: return emptyList()
-        return try {
-            val array = JSONArray(raw)
-            buildList(array.length()) {
-                for (i in 0 until array.length()) {
-                    val obj = array.optJSONObject(i) ?: continue
-                    add(
-                        WidgetListInfo(
-                            id = obj.optString("id"),
-                            title = obj.optString("title"),
-                            smartType = obj.optString("smartType").takeIf { it.isNotEmpty() && it != "null" },
-                            emoji = obj.optString("emoji").takeIf { it.isNotEmpty() && it != "null" },
-                            activeCount = obj.optInt("activeCount", 0),
-                            accentColorLight = if (obj.has("accentColorLight") && !obj.isNull("accentColorLight")) {
-                                obj.optInt("accentColorLight")
-                            } else {
-                                null
-                            },
-                            accentColorDark = if (obj.has("accentColorDark") && !obj.isNull("accentColorDark")) {
-                                obj.optInt("accentColorDark")
-                            } else {
-                                null
-                            },
-                        ),
+    fun currentLocalDateYmd(): String {
+        return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    }
+
+    private fun readAckedOpId(p: SharedPreferences): Int {
+        return (p.all[KEY_ACKED_OP_ID] as? Number)?.toInt() ?: 0
+    }
+
+    fun loadEffectiveSnapshot(context: Context): WidgetSnapshot {
+        val p = prefs(context)
+        val base = loadBaseSnapshot(p)
+        val ackedOpId = readAckedOpId(p)
+        val pendingOps = loadPendingOps(p)
+            .filter { it.opId > ackedOpId }
+            .sortedBy { it.opId }
+        val listById = base.lists.associateBy { it.id }
+
+        val taskOrder = ArrayList<String>(base.tasks.size)
+        val tasksById = LinkedHashMap<String, WidgetTaskItem>(base.tasks.size)
+        for (task in base.tasks) {
+            taskOrder.add(task.id)
+            tasksById[task.id] = task
+        }
+
+        val mutableListTaskIds = LinkedHashMap<String, MutableList<String>>(base.listTaskIds.size)
+        for ((listId, ids) in base.listTaskIds) {
+            mutableListTaskIds[listId] = ids.toMutableList()
+        }
+
+        for (op in pendingOps) {
+            if (op.accountId != null && base.accountId != null && op.accountId != base.accountId) {
+                continue
+            }
+            val current = tasksById[op.taskId] ?: continue
+            when (op.type) {
+                OP_TOGGLE_COMPLETE -> {
+                    tasksById[op.taskId] = current.copy(isCompleted = op.value)
+                    mutableListTaskIds["completed"]?.let { ids ->
+                        ids.remove(op.taskId)
+                        if (op.value) ids.add(0, op.taskId)
+                    }
+                    mutableListTaskIds["all"]?.let { ids ->
+                        ids.remove(op.taskId)
+                        if (!op.value) ids.add(0, op.taskId)
+                    }
+                }
+
+                OP_TOGGLE_IMPORTANT -> {
+                    tasksById[op.taskId] = current.copy(isImportant = op.value)
+                    mutableListTaskIds["important"]?.let { ids ->
+                        ids.remove(op.taskId)
+                        if (op.value) ids.add(0, op.taskId)
+                    }
+                    if (op.value && base.moveStarredToTop) {
+                        for ((listId, ids) in mutableListTaskIds) {
+                            if (listId == "important") continue
+                            val listInfo = listById[listId]
+                            if (listInfo?.smartType == "completed") continue
+                            val sortOption = listInfo?.sortOption ?: "defaultOrder"
+                            if (sortOption == "defaultOrder" && ids.contains(op.taskId)) {
+                                ids.remove(op.taskId)
+                                ids.add(0, op.taskId)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val todayDay = parseYmdEpochDays(currentLocalDateYmd())
+        if (todayDay != null) {
+            for (id in taskOrder) {
+                val task = tasksById[id] ?: continue
+                val dueYmd = task.dueDateYmd ?: continue
+                val dueDay = parseYmdEpochDays(dueYmd) ?: continue
+                val dynamicOverdue = !task.isCompleted && dueDay < todayDay
+                val dynamicDueLabel = computeDynamicDueLabel(
+                    task = task,
+                    dueDay = dueDay,
+                    todayDay = todayDay,
+                    dueYmd = dueYmd,
+                    snapshot = base,
+                )
+                if (dynamicOverdue != task.isOverdue || dynamicDueLabel != task.dueLabel) {
+                    tasksById[id] = task.copy(
+                        isOverdue = dynamicOverdue,
+                        dueLabel = dynamicDueLabel,
                     )
                 }
             }
-        } catch (_: Exception) {
-            emptyList()
         }
+
+        val finalTasks = taskOrder.mapNotNull { tasksById[it] }
+        val finalListTaskIds = mutableListTaskIds.mapValues { it.value.toList() }
+        val finalLists = base.lists.map { list ->
+            val ids = finalListTaskIds[list.id] ?: emptyList()
+            val count = if (list.smartType == "completed") {
+                ids.count { tasksById.containsKey(it) }
+            } else {
+                ids.count { id -> tasksById[id]?.isCompleted == false }
+            }
+            list.copy(activeCount = count)
+        }
+
+        return base.copy(
+            lists = finalLists,
+            tasks = finalTasks,
+            listTaskIds = finalListTaskIds,
+        )
     }
 
-    fun resolveList(context: Context, listId: String): WidgetListInfo? {
-        val lists = loadLists(context)
-        return lists.firstOrNull { it.id == listId }
-            ?: lists.firstOrNull { it.id == WidgetConfig.DEFAULT_LIST_ID }
-            ?: lists.firstOrNull()
-    }
+    fun loadLists(context: Context): List<WidgetListInfo> =
+        loadEffectiveSnapshot(context).lists
 
-    fun loadAccountName(context: Context): String? {
-        return prefs(context).getString(KEY_ACCOUNT_NAME, null)?.takeIf { it.isNotBlank() }
-    }
+    fun resolveList(context: Context, listId: String): WidgetListInfo? =
+        loadEffectiveSnapshot(context).resolveList(listId)
 
-    fun loadEmptyMessage(context: Context): String? {
-        return prefs(context).getString(KEY_EMPTY_MESSAGE, null)?.takeIf { it.isNotBlank() }
-    }
+    fun loadAccountName(context: Context): String? =
+        loadEffectiveSnapshot(context).accountName.takeIf { it.isNotBlank() }
 
-    fun loadMyDayLabel(context: Context): String? {
-        return prefs(context).getString(KEY_MY_DAY_LABEL, null)?.takeIf { it.isNotBlank() }
-    }
+    fun loadEmptyMessage(context: Context): String? =
+        loadEffectiveSnapshot(context).emptyMessage.takeIf { it.isNotBlank() }
 
-    fun isRefreshing(context: Context): Boolean {
-        return prefs(context).getBoolean(KEY_IS_REFRESHING, false)
-    }
+    fun loadMyDayLabel(context: Context): String? =
+        loadEffectiveSnapshot(context).myDayLabel.takeIf { it.isNotBlank() }
 
-    fun setRefreshing(context: Context, refreshing: Boolean) {
-        prefs(context).edit().putBoolean(KEY_IS_REFRESHING, refreshing).apply()
+    fun tasksForWidget(snapshot: WidgetSnapshot, config: WidgetConfig): List<WidgetTaskItem> {
+        val taskMap = snapshot.tasks.associateBy { it.id }
+        val ids = snapshot.listTaskIds[config.listId]
+            ?: snapshot.listTaskIds[WidgetConfig.DEFAULT_LIST_ID]
+        val orderedTasks = if (ids != null) {
+            ids.mapNotNull { taskMap[it] }
+        } else {
+            snapshot.tasks.filter { it.listId == config.listId }
+        }
+        val effectiveList = snapshot.lists.firstOrNull { it.id == config.listId }
+        val isCompletedList =
+            effectiveList?.smartType == "completed" || config.listId == "completed"
+        return if (config.showCompleted || isCompletedList) {
+            orderedTasks
+        } else {
+            orderedTasks.filter { !it.isCompleted }
+        }
     }
 
     fun loadTasksForWidget(context: Context, config: WidgetConfig): List<WidgetTaskItem> {
+        return tasksForWidget(loadEffectiveSnapshot(context), config)
+    }
+
+    fun isRefreshing(context: Context): Boolean {
         val p = prefs(context)
-        val tasksRaw = p.getString(KEY_TASKS, null) ?: return emptyList()
-        val listTaskIdsRaw = p.getString(KEY_LIST_TASK_IDS, null)
-        return try {
-            val tasksArray = JSONArray(tasksRaw)
-            val taskMap = HashMap<String, WidgetTaskItem>(tasksArray.length())
-            val fallbackTasks = ArrayList<WidgetTaskItem>(tasksArray.length())
-            for (i in 0 until tasksArray.length()) {
-                val obj = tasksArray.optJSONObject(i) ?: continue
-                val item = parseTask(obj)
-                taskMap[item.id] = item
-                fallbackTasks.add(item)
-            }
-
-            val orderedTasks: List<WidgetTaskItem> = if (listTaskIdsRaw != null) {
-                val mapObj = JSONObject(listTaskIdsRaw)
-                val idsArray = mapObj.optJSONArray(config.listId)
-                    ?: mapObj.optJSONArray(WidgetConfig.DEFAULT_LIST_ID)
-                if (idsArray != null) {
-                    buildList(idsArray.length()) {
-                        for (i in 0 until idsArray.length()) {
-                            val id = idsArray.optString(i)
-                            taskMap[id]?.let { add(it) }
-                        }
-                    }
-                } else {
-                    fallbackTasks.filter { it.listId == config.listId }
-                }
-            } else {
-                fallbackTasks.filter { it.listId == config.listId }
-            }
-
-            if (config.showCompleted || config.listId == "completed") {
-                orderedTasks
-            } else {
-                orderedTasks.filter { !it.isCompleted }
-            }
-        } catch (_: Exception) {
-            emptyList()
+        if (!p.getBoolean(KEY_IS_REFRESHING, false)) return false
+        val startedMs = (p.all[KEY_REFRESH_STARTED_MS] as? Number)?.toLong() ?: 0L
+        if (startedMs > 0L && System.currentTimeMillis() - startedMs > REFRESH_TIMEOUT_MS) {
+            p.edit()
+                .putBoolean(KEY_IS_REFRESHING, false)
+                .remove(KEY_REFRESH_STARTED_MS)
+                .apply()
+            return false
         }
+        return true
     }
 
-    fun optimisticToggleComplete(context: Context, taskId: String): Boolean? {
-        return updateTaskField(context, taskId) { obj ->
-            val next = !obj.optBoolean("isCompleted", false)
-            obj.put("isCompleted", next)
-            next
-        }
+    fun markRefreshRequested(context: Context) {
+        prefs(context).edit()
+            .putBoolean(KEY_REFRESH_REQUESTED, true)
+            .putBoolean(KEY_IS_REFRESHING, true)
+            .putLong(KEY_REFRESH_STARTED_MS, System.currentTimeMillis())
+            .commit()
     }
 
-    fun optimisticToggleImportant(context: Context, taskId: String): Boolean? {
-        val next = updateTaskField(context, taskId) { obj ->
-            val value = !obj.optBoolean("isImportant", false)
-            obj.put("isImportant", value)
-            value
-        } ?: return null
-
-        updateListTaskIdsOnImportantChange(context, taskId, next)
-        return next
+    fun isDateStale(context: Context): Boolean {
+        val base = loadBaseSnapshot(prefs(context))
+        return base.dateKey.isNotEmpty() && base.dateKey != currentLocalDateYmd()
     }
 
-    private fun updateListTaskIdsOnImportantChange(
+    fun enqueueOptimisticOp(
         context: Context,
+        type: String,
         taskId: String,
-        isImportant: Boolean,
-    ) {
+    ): WidgetPendingOp? {
+        if (type != OP_TOGGLE_COMPLETE && type != OP_TOGGLE_IMPORTANT) return null
+        val snapshot = loadEffectiveSnapshot(context)
+        val task = snapshot.tasks.firstOrNull { it.id == taskId } ?: return null
+        val nextValue = when (type) {
+            OP_TOGGLE_COMPLETE -> !task.isCompleted
+            OP_TOGGLE_IMPORTANT -> !task.isImportant
+            else -> return null
+        }
+
         val p = prefs(context)
-        val raw = p.getString(KEY_LIST_TASK_IDS, null) ?: return
-        val moveStarredToTop = p.getBoolean(KEY_MOVE_STARRED_TO_TOP, true)
-        try {
-            val mapObj = JSONObject(raw)
-            var changed = false
-            val keys = mapObj.keys()
-            while (keys.hasNext()) {
-                val listId = keys.next()
-                val arr = mapObj.optJSONArray(listId) ?: continue
-                if (listId == "important") {
-                    val updated = JSONArray()
-                    if (isImportant) {
-                        updated.put(taskId)
-                    }
-                    for (i in 0 until arr.length()) {
-                        val id = arr.optString(i)
-                        if (id != taskId) {
-                            updated.put(id)
-                        }
-                    }
-                    mapObj.put(listId, updated)
-                    changed = true
-                } else if (isImportant && moveStarredToTop) {
-                    var found = false
-                    for (i in 0 until arr.length()) {
-                        if (arr.optString(i) == taskId) {
-                            found = true
-                            break
-                        }
-                    }
-                    if (found) {
-                        val updated = JSONArray()
-                        updated.put(taskId)
-                        for (i in 0 until arr.length()) {
-                            val id = arr.optString(i)
-                            if (id != taskId) {
-                                updated.put(id)
-                            }
-                        }
-                        mapObj.put(listId, updated)
-                        changed = true
-                    }
-                }
+        val ackedOpId = readAckedOpId(p)
+        val unackedOps = loadPendingOps(p).filter { it.opId > ackedOpId }
+        val nextOpId = ((p.all[KEY_NEXT_OP_ID] as? Number)?.toInt() ?: 0) + 1
+        val op = WidgetPendingOp(
+            opId = nextOpId,
+            type = type,
+            taskId = taskId,
+            value = nextValue,
+            accountId = snapshot.accountId,
+            timestampMs = System.currentTimeMillis(),
+        )
+        p.edit()
+            .putInt(KEY_NEXT_OP_ID, nextOpId)
+            .putString(KEY_PENDING_OPS, encodeOps(unackedOps + op))
+            .commit()
+        return op
+    }
+
+    private fun computeDynamicDueLabel(
+        task: WidgetTaskItem,
+        dueDay: Long,
+        todayDay: Long,
+        dueYmd: String,
+        snapshot: WidgetSnapshot,
+    ): String {
+        val diff = dueDay - todayDay
+        if (diff == 0L && snapshot.todayLabel.isNotEmpty()) return snapshot.todayLabel
+        if (diff == 1L && snapshot.tomorrowLabel.isNotEmpty()) return snapshot.tomorrowLabel
+        if (diff == -1L && snapshot.yesterdayLabel.isNotEmpty()) return snapshot.yesterdayLabel
+        val wasRelativeLabel =
+            task.dueLabel.isNotEmpty() &&
+                (task.dueLabel == snapshot.todayLabel ||
+                    task.dueLabel == snapshot.tomorrowLabel ||
+                    task.dueLabel == snapshot.yesterdayLabel)
+        if (wasRelativeLabel) {
+            return formatMonthDayFallback(dueYmd) ?: task.dueLabel
+        }
+        return task.dueLabel
+    }
+
+    private fun parseYmdEpochDays(ymd: String): Long? {
+        val parts = ymd.split("-")
+        if (parts.size != 3) return null
+        val year = parts[0].toIntOrNull() ?: return null
+        val month = parts[1].toIntOrNull() ?: return null
+        val day = parts[2].toIntOrNull() ?: return null
+        val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+            clear()
+            set(year, month - 1, day, 0, 0, 0)
+        }
+        return TimeUnit.MILLISECONDS.toDays(cal.timeInMillis)
+    }
+
+    private fun formatMonthDayFallback(ymd: String): String? {
+        val parts = ymd.split("-")
+        if (parts.size != 3) return null
+        val year = parts[0].toIntOrNull() ?: return null
+        val month = parts[1].toIntOrNull() ?: return null
+        val day = parts[2].toIntOrNull() ?: return null
+        val cal = Calendar.getInstance().apply {
+            clear()
+            set(year, month - 1, day, 12, 0, 0)
+        }
+        return SimpleDateFormat("MMM d", Locale.getDefault()).format(cal.time)
+    }
+
+    private fun loadBaseSnapshot(p: SharedPreferences): WidgetSnapshot {
+        val raw = p.getString(KEY_SNAPSHOT, null)
+        if (!raw.isNullOrBlank()) {
+            return try {
+                parseSnapshot(JSONObject(raw))
+            } catch (_: Exception) {
+                WidgetSnapshot()
             }
-            if (changed) {
-                p.edit().putString(KEY_LIST_TASK_IDS, mapObj.toString()).apply()
+        }
+        return loadLegacySnapshot(p)
+    }
+
+    private fun parseSnapshot(obj: JSONObject): WidgetSnapshot {
+        val listsArray = obj.optJSONArray("lists")
+        val lists = if (listsArray != null) parseLists(listsArray) else emptyList()
+        val tasksArray = obj.optJSONArray("tasks")
+        val tasks = if (tasksArray != null) parseTasks(tasksArray) else emptyList()
+        val listTaskIdsObj = obj.optJSONObject("listTaskIds")
+        val listTaskIds = if (listTaskIdsObj != null) {
+            parseListTaskIds(listTaskIdsObj)
+        } else {
+            emptyMap()
+        }
+        return WidgetSnapshot(
+            accountId = obj.optNullableString("accountId"),
+            accountName = obj.optNullableString("accountName") ?: "",
+            dateKey = obj.optNullableString("dateKey") ?: "",
+            emptyMessage = obj.optNullableString("emptyMessage") ?: "",
+            myDayLabel = obj.optNullableString("myDayLabel") ?: "",
+            todayLabel = obj.optNullableString("todayLabel") ?: "",
+            tomorrowLabel = obj.optNullableString("tomorrowLabel") ?: "",
+            yesterdayLabel = obj.optNullableString("yesterdayLabel") ?: "",
+            moveStarredToTop = obj.optBoolean("moveStarredToTop", true),
+            lists = lists,
+            tasks = tasks,
+            listTaskIds = listTaskIds,
+        )
+    }
+
+    private fun loadLegacySnapshot(p: SharedPreferences): WidgetSnapshot {
+        val listsRaw = p.getString(LEGACY_KEY_LISTS, null)
+        val tasksRaw = p.getString(LEGACY_KEY_TASKS, null)
+        val listTaskIdsRaw = p.getString(LEGACY_KEY_LIST_TASK_IDS, null)
+        if (listsRaw == null && tasksRaw == null) return WidgetSnapshot()
+        return try {
+            val lists = if (listsRaw != null) parseLists(JSONArray(listsRaw)) else emptyList()
+            val tasks = if (tasksRaw != null) parseTasks(JSONArray(tasksRaw)) else emptyList()
+            val listTaskIds = if (listTaskIdsRaw != null) {
+                parseListTaskIds(JSONObject(listTaskIdsRaw))
+            } else {
+                emptyMap()
             }
+            WidgetSnapshot(
+                accountName = p.getString(LEGACY_KEY_ACCOUNT_NAME, null) ?: "",
+                emptyMessage = p.getString(LEGACY_KEY_EMPTY_MESSAGE, null) ?: "",
+                myDayLabel = p.getString(LEGACY_KEY_MY_DAY_LABEL, null) ?: "",
+                moveStarredToTop = p.getBoolean(LEGACY_KEY_MOVE_STARRED_TO_TOP, true),
+                lists = lists,
+                tasks = tasks,
+                listTaskIds = listTaskIds,
+            )
         } catch (_: Exception) {
-            // Best-effort optimistic reorder.
+            WidgetSnapshot()
         }
     }
 
-    private fun updateTaskField(
-        context: Context,
-        taskId: String,
-        mutator: (JSONObject) -> Boolean,
-    ): Boolean? {
-        val p = prefs(context)
-        val tasksRaw = p.getString(KEY_TASKS, null) ?: return null
-        return try {
-            val tasksArray = JSONArray(tasksRaw)
-            var result: Boolean? = null
-            for (i in 0 until tasksArray.length()) {
-                val obj = tasksArray.optJSONObject(i) ?: continue
-                if (obj.optString("id") == taskId) {
-                    result = mutator(obj)
-                    break
-                }
+    private fun parseLists(array: JSONArray): List<WidgetListInfo> {
+        return buildList(array.length()) {
+            for (i in 0 until array.length()) {
+                val obj = array.optJSONObject(i) ?: continue
+                add(
+                    WidgetListInfo(
+                        id = obj.optString("id"),
+                        title = obj.optString("title"),
+                        smartType = obj.optNullableString("smartType"),
+                        emoji = obj.optNullableString("emoji"),
+                        activeCount = obj.optInt("activeCount", 0),
+                        sortOption = obj.optNullableString("sortOption") ?: "defaultOrder",
+                        accentColorLight = obj.optNullableInt("accentColorLight"),
+                        accentColorDark = obj.optNullableInt("accentColorDark"),
+                    ),
+                )
             }
-            if (result != null) {
-                p.edit().putString(KEY_TASKS, tasksArray.toString()).apply()
+        }
+    }
+
+    private fun parseTasks(array: JSONArray): List<WidgetTaskItem> {
+        return buildList(array.length()) {
+            for (i in 0 until array.length()) {
+                val obj = array.optJSONObject(i) ?: continue
+                add(parseTask(obj))
             }
-            result
-        } catch (_: Exception) {
-            null
         }
     }
 
@@ -333,11 +529,91 @@ object TodoWidgetData {
             isImportant = obj.optBoolean("isImportant", false),
             isInMyDay = obj.optBoolean("isInMyDay", false),
             hasDueDate = obj.optBoolean("hasDueDate", false),
+            dueDateYmd = obj.optNullableString("dueDateYmd"),
             hasReminder = obj.optBoolean("hasReminder", false),
+            reminderAtMs = obj.optNullableLong("reminderAtMs"),
             isRecurring = obj.optBoolean("isRecurring", false),
             isOverdue = obj.optBoolean("isOverdue", false),
             dueLabel = obj.optString("dueLabel"),
             reminderLabel = obj.optString("reminderLabel"),
         )
+    }
+
+    private fun parseListTaskIds(mapObj: JSONObject): Map<String, List<String>> {
+        val result = LinkedHashMap<String, List<String>>()
+        val keys = mapObj.keys()
+        while (keys.hasNext()) {
+            val listId = keys.next()
+            val arr = mapObj.optJSONArray(listId) ?: continue
+            result[listId] = buildList(arr.length()) {
+                for (i in 0 until arr.length()) {
+                    val id = arr.optString(i)
+                    if (id.isNotEmpty()) add(id)
+                }
+            }
+        }
+        return result
+    }
+
+    private fun loadPendingOps(p: SharedPreferences): List<WidgetPendingOp> {
+        val raw = p.getString(KEY_PENDING_OPS, null) ?: return emptyList()
+        return try {
+            val array = JSONArray(raw)
+            buildList(array.length()) {
+                for (i in 0 until array.length()) {
+                    val obj = array.optJSONObject(i) ?: continue
+                    val opId = obj.optInt("opId", 0)
+                    val type = obj.optNullableString("type") ?: continue
+                    val taskId = obj.optNullableString("taskId") ?: continue
+                    if (opId <= 0) continue
+                    add(
+                        WidgetPendingOp(
+                            opId = opId,
+                            type = type,
+                            taskId = taskId,
+                            value = obj.optBoolean("value", false),
+                            accountId = obj.optNullableString("accountId"),
+                            timestampMs = obj.optLong("timestampMs", 0L),
+                        ),
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun encodeOps(ops: List<WidgetPendingOp>): String {
+        val array = JSONArray()
+        for (op in ops) {
+            val obj = JSONObject().apply {
+                put("opId", op.opId)
+                put("type", op.type)
+                put("taskId", op.taskId)
+                put("value", op.value)
+                if (op.accountId != null) {
+                    put("accountId", op.accountId)
+                } else {
+                    put("accountId", JSONObject.NULL)
+                }
+                put("timestampMs", op.timestampMs)
+            }
+            array.put(obj)
+        }
+        return array.toString()
+    }
+
+    private fun JSONObject.optNullableString(key: String): String? {
+        if (!has(key) || isNull(key)) return null
+        val value = optString(key)
+        return value.takeIf { it.isNotEmpty() && it != "null" }
+    }
+
+    private fun JSONObject.optNullableInt(key: String): Int? {
+        return if (has(key) && !isNull(key)) optInt(key) else null
+    }
+
+    private fun JSONObject.optNullableLong(key: String): Long? {
+        return if (has(key) && !isNull(key)) optLong(key) else null
     }
 }

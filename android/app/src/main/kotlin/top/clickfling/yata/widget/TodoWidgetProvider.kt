@@ -1,5 +1,6 @@
 package top.clickfling.yata.widget
 
+import android.app.ActivityOptions
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
@@ -12,6 +13,7 @@ import android.view.View
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetBackgroundReceiver
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
+import es.antonborri.home_widget.HomeWidgetPlugin
 import es.antonborri.home_widget.HomeWidgetProvider
 import top.clickfling.yata.MainActivity
 import top.clickfling.yata.R
@@ -24,8 +26,18 @@ class TodoWidgetProvider : HomeWidgetProvider() {
         appWidgetIds: IntArray,
         widgetData: SharedPreferences,
     ) {
+        val snapshot = TodoWidgetData.loadEffectiveSnapshot(context)
         for (appWidgetId in appWidgetIds) {
-            updateAppWidget(context, appWidgetManager, appWidgetId)
+            updateAppWidget(
+                context,
+                appWidgetManager,
+                appWidgetId,
+                notifyDataChanged = true,
+                snapshot = snapshot,
+            )
+        }
+        if (TodoWidgetData.isDateStale(context)) {
+            dispatchSync(context, "date_rollover")
         }
     }
 
@@ -39,9 +51,9 @@ class TodoWidgetProvider : HomeWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         if (intent.action == ACTION_WIDGET_REFRESH) {
-            TodoWidgetData.setRefreshing(context, true)
-            refreshAllWidgets(context)
-            dispatchBackgroundEvent(context, Uri.parse("yata://widget/refresh"))
+            TodoWidgetData.markRefreshRequested(context)
+            refreshAllWidgets(context, notifyList = false)
+            dispatchSync(context, "refresh")
             return
         }
         if (intent.action != ACTION_WIDGET_ITEM_CLICK) return
@@ -52,23 +64,29 @@ class TodoWidgetProvider : HomeWidgetProvider() {
 
         when (itemAction) {
             ITEM_ACTION_TOGGLE_COMPLETE -> {
-                val newValue = TodoWidgetData.optimisticToggleComplete(context, taskId)
-                notifyTaskListChanged(context)
-                val uri = Uri.parse(
-                    "yata://widget/toggle_complete?taskId=${Uri.encode(taskId)}" +
-                        if (newValue != null) "&completed=$newValue" else "",
-                )
-                dispatchBackgroundEvent(context, uri)
+                if (TodoWidgetData.enqueueOptimisticOp(
+                        context,
+                        TodoWidgetData.OP_TOGGLE_COMPLETE,
+                        taskId,
+                    ) != null
+                ) {
+                    notifyTaskListChanged(context)
+                    dispatchSync(context, "op")
+                }
             }
+
             ITEM_ACTION_TOGGLE_IMPORTANT -> {
-                val newValue = TodoWidgetData.optimisticToggleImportant(context, taskId)
-                notifyTaskListChanged(context)
-                val uri = Uri.parse(
-                    "yata://widget/toggle_important?taskId=${Uri.encode(taskId)}" +
-                        if (newValue != null) "&important=$newValue" else "",
-                )
-                dispatchBackgroundEvent(context, uri)
+                if (TodoWidgetData.enqueueOptimisticOp(
+                        context,
+                        TodoWidgetData.OP_TOGGLE_IMPORTANT,
+                        taskId,
+                    ) != null
+                ) {
+                    notifyTaskListChanged(context)
+                    dispatchSync(context, "op")
+                }
             }
+
             ITEM_ACTION_OPEN_TASK -> {
                 val launchIntent = Intent(context, MainActivity::class.java).apply {
                     action = HomeWidgetLaunchIntent.HOME_WIDGET_LAUNCH_ACTION
@@ -77,17 +95,37 @@ class TodoWidgetProvider : HomeWidgetProvider() {
                     )
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 }
-                context.startActivity(launchIntent)
+                startActivityForWidget(context, launchIntent)
             }
         }
     }
 
-    private fun dispatchBackgroundEvent(context: Context, uri: Uri) {
+    private fun dispatchSync(context: Context, reason: String) {
+        if (WidgetSyncChannel.dispatchIfAttached(reason)) return
+        if (HomeWidgetPlugin.getDispatcherHandle(context) == 0L) return
         val bgIntent = Intent(context, HomeWidgetBackgroundReceiver::class.java).apply {
             action = "es.antonborri.home_widget.action.BACKGROUND"
-            data = uri
+            data = Uri.parse("yata://widget/sync?reason=${Uri.encode(reason)}")
         }
         HomeWidgetBackgroundReceiver().onReceive(context, bgIntent)
+    }
+
+    private fun startActivityForWidget(context: Context, intent: Intent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val options = ActivityOptions.makeBasic()
+            if (Build.VERSION.SDK_INT >= 35) {
+                options.setPendingIntentCreatorBackgroundActivityStartMode(
+                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED,
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                options.pendingIntentBackgroundActivityStartMode =
+                    ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED
+            }
+            context.startActivity(intent, options.toBundle())
+        } else {
+            context.startActivity(intent)
+        }
     }
 
     companion object {
@@ -109,28 +147,39 @@ class TodoWidgetProvider : HomeWidgetProvider() {
             manager.notifyAppWidgetViewDataChanged(ids, R.id.widget_tasks_list_view)
         }
 
-        fun refreshAllWidgets(context: Context) {
+        fun refreshAllWidgets(context: Context, notifyList: Boolean = true) {
             val manager = AppWidgetManager.getInstance(context)
             val component = ComponentName(context, TodoWidgetProvider::class.java)
             val ids = manager.getAppWidgetIds(component)
             if (ids.isEmpty()) return
+            val snapshot = TodoWidgetData.loadEffectiveSnapshot(context)
             for (id in ids) {
-                updateAppWidget(context, manager, id)
+                updateAppWidget(
+                    context,
+                    manager,
+                    id,
+                    notifyDataChanged = false,
+                    snapshot = snapshot,
+                )
             }
-            manager.notifyAppWidgetViewDataChanged(ids, R.id.widget_tasks_list_view)
+            if (notifyList) {
+                manager.notifyAppWidgetViewDataChanged(ids, R.id.widget_tasks_list_view)
+            }
         }
 
         fun updateAppWidget(
             context: Context,
             appWidgetManager: AppWidgetManager,
             appWidgetId: Int,
+            notifyDataChanged: Boolean = true,
+            snapshot: WidgetSnapshot = TodoWidgetData.loadEffectiveSnapshot(context),
         ) {
             val config = TodoWidgetData.loadConfig(context, appWidgetId)
-            val resolvedList = TodoWidgetData.resolveList(context, config.listId)
+            val resolvedList = snapshot.resolveList(config.listId)
             val effectiveListId = resolvedList?.id ?: config.listId
             val listTitle = resolvedList?.displayTitle
                 ?: context.getString(R.string.widget_my_day)
-            val emptyMessage = TodoWidgetData.loadEmptyMessage(context)
+            val emptyMessage = snapshot.emptyMessage.takeIf { it.isNotBlank() }
                 ?: context.getString(R.string.widget_empty_state)
 
             val views = RemoteViews(context.packageName, R.layout.todo_widget_layout)
@@ -243,7 +292,12 @@ class TodoWidgetProvider : HomeWidgetProvider() {
             )
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
-            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_tasks_list_view)
+            if (notifyDataChanged) {
+                appWidgetManager.notifyAppWidgetViewDataChanged(
+                    appWidgetId,
+                    R.id.widget_tasks_list_view,
+                )
+            }
         }
 
         private fun immutableFlags(): Int {

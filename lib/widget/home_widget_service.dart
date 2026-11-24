@@ -1,201 +1,138 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show ProviderListenable;
 import 'package:home_widget/home_widget.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../account/account_local_storage.dart';
 import '../account/account_provider.dart';
 import '../core/logging/app_logger.dart';
+import '../core/result/app_result.dart';
 import '../data/todo_provider.dart';
 import '../data/todo_repository.dart';
-import '../l10n/app_localizations.dart';
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
+import '../models/account.dart';
 import '../sync/sync_provider.dart';
 import '../tasksview/tasks_view_presenter.dart';
-import '../theme/todo_theme.dart';
+import 'home_widget_models.dart';
 
-/// Key in [SharedPreferences] recording the last time the widget background
-/// callback mutated the database, so the foreground app can reload on resume.
+export 'home_widget_models.dart';
+
 const String kWidgetLastMutationMsKey = 'yata.widget_last_mutation_ms';
-
 const String kAndroidWidgetProviderName =
     'top.clickfling.yata.widget.TodoWidgetProvider';
+const String kWidgetSyncChannelName = 'top.clickfling.yata/widget_sync';
 
-enum HomeWidgetActionType {
-  quickAdd,
-  openList,
-  openTask,
-  toggleComplete,
-  toggleImportant,
-  refresh,
-}
+const String kWidgetSnapshotKey = 'widget_snapshot_json';
+const String kWidgetPendingOpsKey = 'widget_pending_ops_json';
+const String kWidgetAckedOpIdKey = 'widget_acked_op_id';
+const String kWidgetRefreshRequestedKey = 'widget_refresh_requested';
+const String kWidgetIsRefreshingKey = 'widget_is_refreshing';
+const String kWidgetRefreshStartedMsKey = 'widget_refresh_started_ms';
 
-class HomeWidgetAction {
-  const HomeWidgetAction({
-    required this.type,
-    this.listId,
-    this.taskId,
-    this.flagValue,
-  });
+const List<String> _legacyWidgetKeys = [
+  'widget_lists_json',
+  'widget_tasks_json',
+  'widget_list_task_ids_json',
+  'widget_account_name',
+  'widget_empty_message',
+  'widget_my_day_label',
+  'widget_move_starred_to_top',
+];
 
-  final HomeWidgetActionType type;
-  final String? listId;
-  final String? taskId;
-  final bool? flagValue;
-
-  static HomeWidgetAction? fromUri(Uri? uri) {
-    if (uri == null || uri.scheme != 'yata' || uri.host != 'widget') {
-      return null;
-    }
-    final path = uri.path;
-    final params = uri.queryParameters;
-    return switch (path) {
-      '/add' => HomeWidgetAction(
-        type: HomeWidgetActionType.quickAdd,
-        listId: params['listId'],
-      ),
-      '/open_list' => HomeWidgetAction(
-        type: HomeWidgetActionType.openList,
-        listId: params['listId'],
-      ),
-      '/open_task' => HomeWidgetAction(
-        type: HomeWidgetActionType.openTask,
-        taskId: params['taskId'],
-        listId: params['listId'],
-      ),
-      '/toggle_complete' => HomeWidgetAction(
-        type: HomeWidgetActionType.toggleComplete,
-        taskId: params['taskId'],
-        flagValue: _parseBool(params['completed']),
-      ),
-      '/toggle_important' => HomeWidgetAction(
-        type: HomeWidgetActionType.toggleImportant,
-        taskId: params['taskId'],
-        flagValue: _parseBool(params['important']),
-      ),
-      '/refresh' => const HomeWidgetAction(type: HomeWidgetActionType.refresh),
-      _ => null,
-    };
-  }
-
-  static bool? _parseBool(String? raw) {
-    if (raw == 'true') return true;
-    if (raw == 'false') return false;
-    return null;
-  }
-}
-
-class HomeWidgetStrings {
-  const HomeWidgetStrings({
-    this.myDay = 'My Day',
-    this.important = 'Important',
-    this.planned = 'Planned',
-    this.all = 'All',
-    this.completedList = 'Completed',
-    this.tasks = 'Tasks',
-    this.today = 'Today',
-    this.tomorrow = 'Tomorrow',
-    this.yesterday = 'Yesterday',
-    this.emptyListMessage = 'No tasks in this list',
-  });
-
-  factory HomeWidgetStrings.fromLocalizations(AppLocalizations l10n) {
-    return HomeWidgetStrings(
-      myDay: l10n.myDay,
-      important: l10n.important,
-      planned: l10n.planned,
-      all: l10n.all,
-      completedList: l10n.completedList,
-      tasks: l10n.tasks,
-      today: l10n.today,
-      tomorrow: l10n.tomorrow,
-      yesterday: l10n.createdYesterday,
-      emptyListMessage: l10n.emptyListTitle,
-    );
-  }
-
-  final String myDay;
-  final String important;
-  final String planned;
-  final String all;
-  final String completedList;
-  final String tasks;
-  final String today;
-  final String tomorrow;
-  final String yesterday;
-  final String emptyListMessage;
-
-  String titleForList(TodoList list) {
-    return switch (list.smartType) {
-      SmartListType.myDay => myDay,
-      SmartListType.important => important,
-      SmartListType.planned => planned,
-      SmartListType.all => all,
-      SmartListType.completed => completedList,
-      SmartListType.tasks => tasks,
-      null => list.title,
-    };
-  }
-}
+typedef ProviderReader = T Function<T>(ProviderListenable<T> provider);
 
 abstract class HomeWidgetTransport {
-  Future<void> saveWidgetData(String id, Object? data);
-  Future<void> updateWidget({String? qualifiedAndroidName});
+  Future<T?> getData<T>(String key);
+  Future<void> saveData(String key, Object? value);
+  Future<void> updateWidget();
   Future<Uri?> initiallyLaunchedFromHomeWidget();
   Stream<Uri?> get widgetClicked;
+  Stream<String> get widgetSyncRequests;
 }
 
 class FlutterHomeWidgetTransport implements HomeWidgetTransport {
   const FlutterHomeWidgetTransport();
 
-  bool get _isSupportedPlatform {
+  static const MethodChannel _channel = MethodChannel(kWidgetSyncChannelName);
+  static final StreamController<String> _syncRequestsController =
+      StreamController<String>.broadcast();
+  static bool _handlerInstalled = false;
+
+  static bool get isSupportedPlatform {
     if (kIsWeb) return false;
     if (Platform.environment.containsKey('FLUTTER_TEST')) return false;
-    return Platform.isAndroid || Platform.isIOS;
+    return Platform.isAndroid;
   }
 
-  Future<T?> _guardPlatform<T>(Future<T?> Function() action) async {
-    if (!_isSupportedPlatform) return null;
+  static void _ensureSyncHandlerInstalled() {
+    if (_handlerInstalled) return;
+    _handlerInstalled = true;
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'syncWidget') {
+        _syncRequestsController.add(call.arguments as String? ?? '');
+      }
+      return null;
+    });
+  }
+
+  Future<T?> _guardPlatform<T>(
+    String operation,
+    Future<T?> Function() action,
+  ) async {
+    if (!isSupportedPlatform) return null;
     try {
       return await action();
     } on MissingPluginException catch (e) {
-      appLog('plugin unavailable: $e', label: 'HomeWidgetTransport');
+      appLog('$operation plugin unavailable: $e', label: 'HomeWidgetTransport');
       return null;
     } on PlatformException catch (e) {
-      appLog('platform error: $e', label: 'HomeWidgetTransport');
+      appLog('$operation platform error: $e', label: 'HomeWidgetTransport');
       return null;
     }
   }
 
   @override
-  Future<void> saveWidgetData(String id, Object? data) async {
-    await _guardPlatform(() => HomeWidget.saveWidgetData<Object?>(id, data));
-  }
+  Future<T?> getData<T>(String key) =>
+      _guardPlatform('getData($key)', () => HomeWidget.getWidgetData<T>(key));
 
   @override
-  Future<void> updateWidget({String? qualifiedAndroidName}) async {
-    await _guardPlatform(
-      () => HomeWidget.updateWidget(qualifiedAndroidName: qualifiedAndroidName),
-    );
-  }
+  Future<void> saveData(String key, Object? value) => _guardPlatform(
+    'saveData($key)',
+    () => HomeWidget.saveWidgetData<Object?>(key, value),
+  );
 
   @override
-  Future<Uri?> initiallyLaunchedFromHomeWidget() async {
-    return await _guardPlatform(HomeWidget.initiallyLaunchedFromHomeWidget);
-  }
+  Future<void> updateWidget() => _guardPlatform(
+    'updateWidget',
+    () => HomeWidget.updateWidget(
+      qualifiedAndroidName: kAndroidWidgetProviderName,
+    ),
+  );
 
   @override
-  Stream<Uri?> get widgetClicked {
-    if (!_isSupportedPlatform) return const Stream<Uri?>.empty();
-    return HomeWidget.widgetClicked;
+  Future<Uri?> initiallyLaunchedFromHomeWidget() => _guardPlatform(
+    'initiallyLaunchedFromHomeWidget',
+    HomeWidget.initiallyLaunchedFromHomeWidget,
+  );
+
+  @override
+  Stream<Uri?> get widgetClicked => isSupportedPlatform
+      ? HomeWidget.widgetClicked
+      : const Stream<Uri?>.empty();
+
+  @override
+  Stream<String> get widgetSyncRequests {
+    if (!isSupportedPlatform) return const Stream<String>.empty();
+    _ensureSyncHandlerInstalled();
+    return _syncRequestsController.stream;
   }
 }
 
@@ -203,265 +140,471 @@ final homeWidgetServiceProvider = Provider<HomeWidgetService>((ref) {
   return HomeWidgetService(const FlutterHomeWidgetTransport());
 });
 
+class _PendingCommit {
+  _PendingCommit({
+    required this.canonicalJson,
+    required this.wireJson,
+    required this.ackedOpId,
+    required this.clearRefreshing,
+    required this.force,
+    required this.notifyWidget,
+  });
+
+  String canonicalJson;
+  String wireJson;
+  int ackedOpId;
+  bool clearRefreshing;
+  bool force;
+  bool notifyWidget;
+  final Completer<void> done = Completer<void>();
+
+  void coalesce({
+    required String canonicalJson,
+    required String wireJson,
+    required int ackedOpId,
+    required bool clearRefreshing,
+    required bool force,
+    required bool notifyWidget,
+  }) {
+    this.canonicalJson = canonicalJson;
+    this.wireJson = wireJson;
+    this.ackedOpId = max(this.ackedOpId, ackedOpId);
+    this.clearRefreshing = this.clearRefreshing || clearRefreshing;
+    this.force = this.force || force;
+    this.notifyWidget = this.notifyWidget || notifyWidget;
+  }
+}
+
 class HomeWidgetService {
   HomeWidgetService(this._transport);
 
   final HomeWidgetTransport _transport;
+
   HomeWidgetStrings _lastStrings = const HomeWidgetStrings();
+  String? _lastAccountId;
   String? _lastAccountName;
+  String? _lastCommittedCanonicalJson;
+  String? _lastConsumedInitialUri;
+
+  Future<void>? _flushTask;
+  _PendingCommit? _pendingCommit;
+  Completer<void>? _pendingClear;
 
   Stream<Uri?> get widgetClicked => _transport.widgetClicked;
 
-  Future<Uri?> initiallyLaunchedFromHomeWidget() =>
-      _transport.initiallyLaunchedFromHomeWidget();
+  Stream<String> get widgetSyncRequests => _transport.widgetSyncRequests;
+
+  Future<Uri?> consumeInitialLaunchUri() async {
+    final uri = await _transport.initiallyLaunchedFromHomeWidget();
+    if (uri == null) return null;
+    final raw = uri.toString();
+    if (raw == _lastConsumedInitialUri) return null;
+    _lastConsumedInitialUri = raw;
+    return uri;
+  }
 
   Future<void> syncWithState(
     TodoState state, {
+    String? accountId,
     String? accountName,
     HomeWidgetStrings? strings,
+    int ackedOpId = 0,
+    bool clearRefreshing = false,
+    bool force = false,
+    bool notifyWidget = true,
+    DateTime? now,
+  }) {
+    if (strings != null) _lastStrings = strings;
+    if (accountId != null) _lastAccountId = accountId;
+    if (accountName != null) _lastAccountName = accountName;
+
+    final canonicalPayload = HomeWidgetSnapshotSerializer.buildCanonicalPayload(
+      state,
+      accountId: accountId ?? _lastAccountId,
+      accountName: accountName ?? _lastAccountName ?? '',
+      strings: strings ?? _lastStrings,
+      now: now,
+    );
+    final encoded = HomeWidgetSnapshotSerializer.encodePayload(
+      canonicalPayload,
+      now: now,
+    );
+
+    final pending = _pendingCommit;
+    if (pending != null) {
+      pending.coalesce(
+        canonicalJson: encoded.canonicalJson,
+        wireJson: encoded.wireJson,
+        ackedOpId: ackedOpId,
+        clearRefreshing: clearRefreshing,
+        force: force,
+        notifyWidget: notifyWidget,
+      );
+      return pending.done.future;
+    }
+
+    final created = _PendingCommit(
+      canonicalJson: encoded.canonicalJson,
+      wireJson: encoded.wireJson,
+      ackedOpId: ackedOpId,
+      clearRefreshing: clearRefreshing,
+      force: force,
+      notifyWidget: notifyWidget,
+    );
+    _pendingCommit = created;
+    _ensureFlushLoop();
+    return created.done.future;
+  }
+
+  Future<void> clearWidgetData() {
+    final discarded = _pendingCommit;
+    if (discarded != null) {
+      _pendingCommit = null;
+      if (!discarded.done.isCompleted) discarded.done.complete();
+    }
+    final clear = _pendingClear ??= Completer<void>();
+    _ensureFlushLoop();
+    return clear.future;
+  }
+
+  void _ensureFlushLoop() {
+    _flushTask ??= _runFlushLoop().whenComplete(() {
+      _flushTask = null;
+      if (_pendingClear != null || _pendingCommit != null) {
+        _ensureFlushLoop();
+      }
+    });
+  }
+
+  Future<void> _runFlushLoop() async {
+    while (_pendingClear != null || _pendingCommit != null) {
+      final clear = _pendingClear;
+      if (clear != null) {
+        _pendingClear = null;
+        await _executeClear(clear);
+        continue;
+      }
+      final commit = _pendingCommit;
+      if (commit != null) {
+        _pendingCommit = null;
+        await _executeCommit(commit);
+      }
+    }
+  }
+
+  Future<void> _executeCommit(_PendingCommit req) async {
+    if (!req.force &&
+        req.ackedOpId == 0 &&
+        !req.clearRefreshing &&
+        req.canonicalJson == _lastCommittedCanonicalJson) {
+      req.done.complete();
+      return;
+    }
+
+    final result = await guardAsyncUnit(() async {
+      await _transport.saveData(kWidgetSnapshotKey, req.wireJson);
+      if (req.ackedOpId > 0) {
+        await _transport.saveData(kWidgetAckedOpIdKey, req.ackedOpId);
+      }
+      if (req.clearRefreshing) {
+        await _transport.saveData(kWidgetIsRefreshingKey, false);
+        await _transport.saveData(kWidgetRefreshStartedMsKey, null);
+      }
+      if (req.notifyWidget) {
+        await _transport.updateWidget();
+      }
+    }, operation: 'syncWidgetSnapshot');
+
+    if (result.isSuccess()) {
+      _lastCommittedCanonicalJson = req.canonicalJson;
+    }
+    req.done.complete();
+  }
+
+  Future<void> _executeClear(Completer<void> clear) async {
+    _lastCommittedCanonicalJson = null;
+    _lastAccountId = null;
+    _lastAccountName = null;
+    await guardAsyncUnit(() async {
+      for (final key in [
+        kWidgetSnapshotKey,
+        kWidgetPendingOpsKey,
+        kWidgetRefreshRequestedKey,
+        kWidgetIsRefreshingKey,
+        kWidgetRefreshStartedMsKey,
+        ..._legacyWidgetKeys,
+      ]) {
+        await _transport.saveData(key, null);
+      }
+      await _transport.updateWidget();
+    }, operation: 'clearWidgetData');
+    clear.complete();
+  }
+
+  static Future<void> registerBackgroundCallback() async {
+    if (!FlutterHomeWidgetTransport.isSupportedPlatform) return;
+    await HomeWidget.registerInteractivityCallback(
+      homeWidgetBackgroundCallback,
+    );
+  }
+
+  static Future<HomeWidgetStrings> resolveSystemStrings({
+    List<Locale>? locales,
   }) async {
-    if (strings != null) {
-      _lastStrings = strings;
-    }
-    if (accountName != null) {
-      _lastAccountName = accountName;
-    }
-    final activeStrings = strings ?? _lastStrings;
-    final effectiveAccountName = accountName ?? _lastAccountName ?? '';
-
-    final listById = {for (final l in state.lists) l.id: l};
-    final listTaskIds = <String, List<String>>{};
-    final serializedLists = <Map<String, dynamic>>[];
-
-    for (final list in state.lists) {
-      final tasksInList = state.tasksForList(list);
-      listTaskIds[list.id] = [for (final t in tasksInList) t.id];
-      final activeCount = list.smartType == SmartListType.completed
-          ? tasksInList.length
-          : tasksInList.where((t) => !t.isCompleted).length;
-      serializedLists.add({
-        'id': list.id,
-        'title': activeStrings.titleForList(list),
-        'smartType': list.smartType?.name,
-        'emoji': list.emoji,
-        'activeCount': activeCount,
-        'accentColorLight': TodoColors.accentFor(
-          list.themeColor,
-          brightness: Brightness.light,
-        ).toARGB32(),
-        'accentColorDark': TodoColors.accentFor(
-          list.themeColor,
-          brightness: Brightness.dark,
-        ).toARGB32(),
-      });
-    }
-
-    final now = DateTime.now();
-    final serializedTasks = <Map<String, dynamic>>[
-      for (final task in state.tasks)
-        _serializeTask(
-          task,
-          list: listById[task.listId],
-          strings: activeStrings,
-          now: now,
-        ),
-    ];
-
-    await _transport.saveWidgetData(
-      'widget_lists_json',
-      jsonEncode(serializedLists),
+    final strings = HomeWidgetStrings.fromLocales(
+      locales ?? PlatformDispatcher.instance.locales,
     );
-    await _transport.saveWidgetData(
-      'widget_tasks_json',
-      jsonEncode(serializedTasks),
+    await guardAsyncUnit(
+      () => initializeDateFormatting(strings.localeName),
+      operation: 'initWidgetDateFormatting',
     );
-    await _transport.saveWidgetData(
-      'widget_list_task_ids_json',
-      jsonEncode(listTaskIds),
-    );
-    await _transport.saveWidgetData(
-      'widget_account_name',
-      effectiveAccountName,
-    );
-    await _transport.saveWidgetData(
-      'widget_empty_message',
-      activeStrings.emptyListMessage,
-    );
-    await _transport.saveWidgetData('widget_my_day_label', activeStrings.myDay);
-    await _transport.saveWidgetData(
-      'widget_move_starred_to_top',
-      state.moveStarredTasksToTop,
-    );
-    await _transport.saveWidgetData('widget_is_refreshing', false);
-    await _transport.updateWidget(
-      qualifiedAndroidName: kAndroidWidgetProviderName,
-    );
-  }
-
-  static Map<String, dynamic> _serializeTask(
-    TaskItem task, {
-    required TodoList? list,
-    required HomeWidgetStrings strings,
-    required DateTime now,
-  }) {
-    final listTitle = list == null ? '' : strings.titleForList(list);
-    return {
-      'id': task.id,
-      'listId': task.listId,
-      'listTitle': listTitle,
-      'title': task.title,
-      'isCompleted': task.isCompleted,
-      'isImportant': task.isImportant,
-      'isInMyDay': task.isInMyDay,
-      'hasDueDate': task.dueDate != null,
-      'hasReminder': task.reminderAt != null,
-      'isRecurring': task.recurrence != RecurrenceType.none,
-      'isOverdue': task.isOverdue,
-      'dueLabel': _formatDueDate(task.dueDate, strings: strings, now: now),
-      'reminderLabel': _formatReminder(
-        task.reminderAt,
-        strings: strings,
-        now: now,
-      ),
-    };
-  }
-
-  static String _formatDueDate(
-    DateTime? date, {
-    required HomeWidgetStrings strings,
-    required DateTime now,
-  }) {
-    if (date == null) return '';
-    final today = DateTime(now.year, now.month, now.day);
-    final target = DateTime(date.year, date.month, date.day);
-    final diff = target.difference(today).inDays;
-    if (diff == 0) return strings.today;
-    if (diff == 1) return strings.tomorrow;
-    if (diff == -1) return strings.yesterday;
-    return DateFormat.MMMd().format(date);
-  }
-
-  static String _formatReminder(
-    DateTime? reminder, {
-    required HomeWidgetStrings strings,
-    required DateTime now,
-  }) {
-    if (reminder == null) return '';
-    final localReminder = reminder.toLocal();
-    final localNow = now.toLocal();
-    final timeStr = DateFormat.Hm().format(localReminder);
-    final today = DateTime.utc(localNow.year, localNow.month, localNow.day);
-    final target = DateTime.utc(
-      localReminder.year,
-      localReminder.month,
-      localReminder.day,
-    );
-    final diff = target.difference(today).inDays;
-    if (diff == 0) return timeStr;
-    if (diff == 1) return '${strings.tomorrow} $timeStr';
-    return '${DateFormat.MMMd().format(localReminder)} $timeStr';
+    return strings;
   }
 }
 
-Future<void> _widgetBgChain = Future<void>.value();
-Timer? _widgetSyncDebounceTimer;
-bool _widgetSyncRunning = false;
-bool _widgetSyncQueued = false;
-
-Future<T> _enqueueWidgetBgWork<T>(Future<T> Function() work) {
-  final next = _widgetBgChain.then((_) => work(), onError: (_) => work());
-  _widgetBgChain = next.then((_) {}, onError: (_, _) {});
-  return next;
-}
-
-void _scheduleDetachedWidgetSync() {
-  _widgetSyncDebounceTimer?.cancel();
-  _widgetSyncDebounceTimer = Timer(const Duration(milliseconds: 600), () {
-    unawaited(_triggerDetachedWidgetSync());
+@immutable
+class WidgetEventProcessResult {
+  const WidgetEventProcessResult({
+    this.didMutate = false,
+    this.didSync = false,
   });
+
+  final bool didMutate;
+  final bool didSync;
 }
 
-Future<void> _triggerDetachedWidgetSync() async {
-  if (_widgetSyncRunning) {
-    _widgetSyncQueued = true;
-    return;
+class WidgetEventProcessor {
+  WidgetEventProcessor({
+    required this._widgetService,
+    required this._read,
+    required this._strings,
+    required this._isBackground,
+    this._isAppForeground = true,
+    this._isActive,
+    this._runCloudSync,
+    this._scheduleBackgroundedAppCloudSync,
+  });
+
+  static const Duration _refreshSyncTimeout = Duration(seconds: 20);
+  static const Duration _bgMutationSyncTimeout = Duration(seconds: 15);
+
+  final HomeWidgetService _widgetService;
+  final ProviderReader _read;
+  final HomeWidgetStrings _strings;
+  final bool _isBackground;
+  final bool _isAppForeground;
+  final bool Function()? _isActive;
+  final Future<void> Function()? _runCloudSync;
+  final VoidCallback? _scheduleBackgroundedAppCloudSync;
+
+  bool _didMutate = false;
+  bool _didSync = false;
+  int _highestAckedOpId = 0;
+
+  bool get _active => _isActive == null || _isActive();
+
+  WidgetEventProcessResult get _result => WidgetEventProcessResult(
+    didMutate: _didMutate,
+    didSync: _didSync,
+  );
+
+  Future<WidgetEventProcessResult> process({String reason = ''}) async {
+    if (!_active) return const WidgetEventProcessResult();
+
+    final prevAckedOpId =
+        await _widgetService._transport.getData<int>(kWidgetAckedOpIdKey) ?? 0;
+    final pendingOps = await _readUnackedOps(prevAckedOpId);
+    final refreshRequested =
+        await _widgetService._transport.getData<bool>(
+          kWidgetRefreshRequestedKey,
+        ) ??
+        false;
+    if (!_active) return _result;
+
+    final activeAccountId = _read(accountProvider).activeAccount?.id;
+    if (activeAccountId == null) {
+      await _widgetService.clearWidgetData();
+      return _result;
+    }
+
+    _highestAckedOpId = _applyOps(pendingOps, activeAccountId, prevAckedOpId);
+    if (_didMutate) {
+      await _read(todoRepositoryProvider).flushPendingWrites();
+      if (!_active) return _result;
+    }
+
+    if (refreshRequested) {
+      await _handleRefreshRequest();
+    } else {
+      if (_highestAckedOpId > prevAckedOpId || reason == 'date_rollover') {
+        await _pushSnapshot(force: true);
+      }
+      await _handlePostMutationSync();
+    }
+
+    return _result;
   }
-  _widgetSyncRunning = true;
-  try {
-    do {
-      _widgetSyncQueued = false;
-      await _enqueueWidgetBgWork(() async {
-        final prefs = await SharedPreferences.getInstance();
-        final database = TodoDatabase();
-        ProviderContainer? container;
-        try {
-          final snapshot = AccountLocalStorage(prefs).load();
-          final activeId = snapshot.activeAccountId;
-          if (activeId != null) {
-            await TodoRepository.forAccount(
-              prefs,
-              accountId: activeId,
-              database: database,
-            ).preload();
-          }
-          container = ProviderContainer(
-            overrides: [
-              sharedPreferencesProvider.overrideWithValue(prefs),
-              todoDatabaseProvider.overrideWithValue(database),
-              realtimeSyncEnabledProvider.overrideWithValue(false),
-              periodicSyncEnabledProvider.overrideWithValue(false),
-            ],
-          );
-          await container
-              .read(syncProvider.notifier)
-              .syncNow()
-              .timeout(const Duration(seconds: 10), onTimeout: () {});
-          await prefs.setInt(
-            kWidgetLastMutationMsKey,
-            DateTime.now().millisecondsSinceEpoch,
-          );
-          final activeAccount = container.read(accountProvider).activeAccount;
-          final service = HomeWidgetService(const FlutterHomeWidgetTransport());
-          await service.syncWithState(
-            container.read(todoProvider),
-            accountName: activeAccount?.displayName ?? '',
-          );
-        } catch (e) {
-          appLog(
-            'widget detached sync failed: $e',
-            label: 'HomeWidgetBackground',
-          );
-        } finally {
-          container?.dispose();
-          await database.close();
-        }
-      });
-    } while (_widgetSyncQueued);
-  } finally {
-    _widgetSyncRunning = false;
+
+  Future<List<WidgetPendingOp>> _readUnackedOps(int ackedOpId) async {
+    final raw = await _widgetService._transport.getData<String>(
+      kWidgetPendingOpsKey,
+    );
+    if (raw == null || raw.isEmpty) return const [];
+    final decoded = guardSync<List<WidgetPendingOp>>(() {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list
+          .whereType<Map<Object?, Object?>>()
+          .map(WidgetPendingOp.fromMap)
+          .nonNulls
+          .where((op) => op.opId > ackedOpId)
+          .toList()
+        ..sort((a, b) => a.opId.compareTo(b.opId));
+    }, operation: 'decodeWidgetPendingOps');
+    return decoded.getOrElse((_) => const []);
+  }
+
+  int _applyOps(
+    List<WidgetPendingOp> ops,
+    String activeAccountId,
+    int prevAckedOpId,
+  ) {
+    var maxOpId = prevAckedOpId;
+    for (final op in ops) {
+      maxOpId = max(maxOpId, op.opId);
+      if (op.accountId != null &&
+          op.accountId!.isNotEmpty &&
+          op.accountId != activeAccountId) {
+        continue;
+      }
+      _applySingleOp(op);
+    }
+    return maxOpId;
+  }
+
+  void _applySingleOp(WidgetPendingOp op) {
+    final target = _read(todoProvider).tasks
+        .where((t) => t.id == op.taskId)
+        .firstOrNull;
+    if (target == null) return;
+
+    final presenter = _read(tasksViewPresenterProvider);
+    switch (op.type) {
+      case WidgetPendingOpType.toggleComplete
+          when target.isCompleted != op.value:
+        presenter.setTaskCompleted(op.taskId, completed: op.value);
+        _didMutate = true;
+      case WidgetPendingOpType.toggleImportant
+          when target.isImportant != op.value:
+        presenter.toggleTaskImportant(op.taskId);
+        _didMutate = true;
+      case WidgetPendingOpType.toggleComplete ||
+          WidgetPendingOpType.toggleImportant:
+        break;
+    }
+  }
+
+  Future<void> _handleRefreshRequest() async {
+    await _widgetService._transport.saveData(kWidgetRefreshRequestedKey, false);
+    if (!_active) return;
+    try {
+      _didSync = await _runBoundedSync(
+        _refreshSyncTimeout,
+        'widgetRefreshSync',
+      );
+    } finally {
+      if (_active) {
+        await _flushAndPushSnapshot(clearRefreshing: true);
+      }
+    }
+  }
+
+  Future<void> _handlePostMutationSync() async {
+    if (!_didMutate || !_active) return;
+    if (!_isBackground) {
+      if (!_isAppForeground) {
+        _scheduleBackgroundedSync();
+      }
+      return;
+    }
+
+    final activeAccount = _read(accountProvider).activeAccount;
+    if (activeAccount is! MicrosoftAccount) return;
+
+    _didSync = await _runBoundedSync(
+      _bgMutationSyncTimeout,
+      'widgetBackgroundSync',
+    );
+    if (_active) {
+      await _flushAndPushSnapshot();
+    }
+  }
+
+  Future<bool> _runBoundedSync(Duration timeout, String operation) async {
+    final syncCall =
+        _runCloudSync ?? () => _read(syncProvider.notifier).syncNow();
+    var timedOut = false;
+    final result = await guardAsyncUnit(
+      () => syncCall().timeout(
+        timeout,
+        onTimeout: () {
+          timedOut = true;
+        },
+      ),
+      operation: operation,
+    );
+    return result.isSuccess() && !timedOut;
+  }
+
+  void _scheduleBackgroundedSync() {
+    if (_scheduleBackgroundedAppCloudSync != null) {
+      _scheduleBackgroundedAppCloudSync();
+      return;
+    }
+    _read(
+      syncProvider.notifier,
+    ).scheduleDebouncedSync(delay: const Duration(milliseconds: 400));
+  }
+
+  Future<void> _flushAndPushSnapshot({bool clearRefreshing = false}) async {
+    await _read(todoRepositoryProvider).flushPendingWrites();
+    if (!_active) return;
+    if (_read(accountProvider).activeAccount?.id == null) {
+      await _widgetService.clearWidgetData();
+      return;
+    }
+    await _pushSnapshot(clearRefreshing: clearRefreshing, force: true);
+  }
+
+  Future<void> _pushSnapshot({
+    bool clearRefreshing = false,
+    bool force = false,
+  }) {
+    final account = _read(accountProvider).activeAccount;
+    return _widgetService.syncWithState(
+      _read(todoProvider),
+      accountId: account?.id,
+      accountName: account?.displayName ?? '',
+      strings: _strings,
+      ackedOpId: _highestAckedOpId,
+      clearRefreshing: clearRefreshing,
+      force: force,
+    );
   }
 }
 
-/// Background entry point invoked by `home_widget` when the user taps a
-/// checkbox or star directly on the Android home screen widget.
+/// Background entry point invoked by `home_widget` when `MainActivity` is not alive.
 @pragma('vm:entry-point')
 Future<void> homeWidgetBackgroundCallback(Uri? uri) async {
-  final action = HomeWidgetAction.fromUri(uri);
-  if (action == null) return;
-  final isMutation =
-      action.type == HomeWidgetActionType.toggleComplete ||
-      action.type == HomeWidgetActionType.toggleImportant;
-  if (isMutation && action.taskId == null) return;
-  if (!isMutation && action.type != HomeWidgetActionType.refresh) return;
-
+  final reason = uri?.queryParameters['reason'] ?? '';
   WidgetsFlutterBinding.ensureInitialized();
-  await _enqueueWidgetBgWork(() async {
-    final prefs = await SharedPreferences.getInstance();
-    final database = TodoDatabase();
-    ProviderContainer? container;
-    try {
-      final snapshot = AccountLocalStorage(prefs).load();
-      final activeId = snapshot.activeAccountId;
+  final database = TodoDatabase();
+  ProviderContainer? container;
+  try {
+    await guardAsyncUnit(() async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final strings = await HomeWidgetService.resolveSystemStrings();
+      final activeId = AccountLocalStorage(prefs).load().activeAccountId;
       if (activeId != null) {
         await TodoRepository.forAccount(
           prefs,
@@ -469,7 +612,6 @@ Future<void> homeWidgetBackgroundCallback(Uri? uri) async {
           database: database,
         ).preload();
       }
-
       container = ProviderContainer(
         overrides: [
           sharedPreferencesProvider.overrideWithValue(prefs),
@@ -478,59 +620,22 @@ Future<void> homeWidgetBackgroundCallback(Uri? uri) async {
           periodicSyncEnabledProvider.overrideWithValue(false),
         ],
       );
-
-      final presenter = container.read(tasksViewPresenterProvider);
-      final state = container.read(todoProvider);
-      final activeAccount = container.read(accountProvider).activeAccount;
-
-      var didMutate = false;
-      if (isMutation) {
-        final taskId = action.taskId!;
-        final target = state.tasks.where((t) => t.id == taskId).firstOrNull;
-        if (target != null) {
-          if (action.type == HomeWidgetActionType.toggleComplete) {
-            final completed = action.flagValue ?? !target.isCompleted;
-            presenter.setTaskCompleted(taskId, completed: completed);
-            didMutate = true;
-          } else {
-            final desiredImportant = action.flagValue ?? !target.isImportant;
-            if (target.isImportant != desiredImportant) {
-              presenter.toggleTaskImportant(taskId);
-              didMutate = true;
-            }
-          }
-          // Flush async Drift writes before closing the background database.
-          final repo = container.read(todoRepositoryProvider);
-          await repo.saveTasks(container.read(todoProvider).tasks);
-          await repo.saveDirtyTaskIds(repo.loadDirtyTaskIds());
-        }
+      final result = await WidgetEventProcessor(
+        widgetService: HomeWidgetService(const FlutterHomeWidgetTransport()),
+        read: container!.read,
+        strings: strings,
+        isBackground: true,
+        isAppForeground: false,
+      ).process(reason: reason);
+      if (result.didMutate || result.didSync) {
         await prefs.setInt(
           kWidgetLastMutationMsKey,
           DateTime.now().millisecondsSinceEpoch,
         );
       }
-
-      if (action.type == HomeWidgetActionType.refresh) {
-        await container.read(syncProvider.notifier).syncNow();
-        await prefs.setInt(
-          kWidgetLastMutationMsKey,
-          DateTime.now().millisecondsSinceEpoch,
-        );
-        final service = HomeWidgetService(const FlutterHomeWidgetTransport());
-        await service.syncWithState(
-          container.read(todoProvider),
-          accountName: activeAccount?.displayName ?? '',
-        );
-      } else if (didMutate) {
-        // Debounce & coalesce background sync so rapid widget taps stay instant
-        // and never overlap on SQLite or SharedPreferences.
-        _scheduleDetachedWidgetSync();
-      }
-    } catch (e, st) {
-      appLog('failed handling $uri: $e\n$st', label: 'HomeWidgetBackground');
-    } finally {
-      container?.dispose();
-      await database.close();
-    }
-  });
+    }, operation: 'widgetBackgroundCallback($reason)');
+  } finally {
+    container?.dispose();
+    await database.close();
+  }
 }

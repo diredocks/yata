@@ -39,7 +39,7 @@ class TodoWidgetFolderPickerActivity : Activity() {
             finish()
         }
 
-        val lists = TodoWidgetData.loadLists(this).ifEmpty {
+        val lists = TodoWidgetData.loadEffectiveSnapshot(this).lists.ifEmpty {
             listOf(
                 WidgetListInfo(
                     id = WidgetConfig.DEFAULT_LIST_ID,

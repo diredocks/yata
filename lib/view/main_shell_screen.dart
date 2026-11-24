@@ -20,7 +20,7 @@ import '../sync/sync_provider.dart';
 import '../tasksview/richentry/task_entry_sheet.dart';
 import '../tasksview/tasks_view_presenter.dart';
 import '../tasksview/tasks_view_screen.dart';
-import '../widget/home_widget_service.dart';
+import '../widget/home_widget_sync.dart';
 
 class MainShellScreen extends ConsumerStatefulWidget {
   const MainShellScreen({super.key});
@@ -32,25 +32,22 @@ class MainShellScreen extends ConsumerStatefulWidget {
 class _MainShellScreenState extends ConsumerState<MainShellScreen>
     with WidgetsBindingObserver {
   StreamSubscription<NotificationActionEvent>? _notificationSub;
-  StreamSubscription<Uri?>? _widgetClickSub;
+  StreamSubscription<HomeWidgetAction>? _widgetActionSub;
   ModalRoute<void>? _activeTasksRoute;
-  int _lastKnownWidgetMutationMs = 0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _lastKnownWidgetMutationMs =
-        ref.read(sharedPreferencesProvider).getInt(kWidgetLastMutationMsKey) ??
-        0;
 
     final notificationService = ref.read(notificationServiceProvider);
     _notificationSub = notificationService.events.listen(
       _handleNotificationAction,
     );
-
-    final widgetService = ref.read(homeWidgetServiceProvider);
-    _widgetClickSub = widgetService.widgetClicked.listen(_handleWidgetUri);
+    _widgetActionSub = ref
+        .read(homeWidgetSyncProvider)
+        .actions
+        .listen(_handleWidgetAction);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -58,26 +55,18 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
       final l10n = AppLocalizations.of(context);
       final strings = NotificationStrings.fromLocalizations(l10n);
       unawaited(notificationService.syncWithState(state, strings: strings));
-      _syncHomeWidget(state, l10n);
       _restoreLastEnteredListIfNeeded();
-      _startSyncForActiveAccount();
-      unawaited(
-        widgetService.initiallyLaunchedFromHomeWidget().then(_handleWidgetUri),
-      );
+      unawaited(_bootstrapAndStartSync());
     });
   }
 
-  void _syncHomeWidget(TodoState state, AppLocalizations l10n) {
-    final accountName = ref.read(accountProvider).activeAccount?.displayName;
-    unawaited(
-      ref
-          .read(homeWidgetServiceProvider)
-          .syncWithState(
-            state,
-            accountName: accountName,
-            strings: HomeWidgetStrings.fromLocalizations(l10n),
-          ),
-    );
+  Future<void> _bootstrapAndStartSync() async {
+    final initialAction = await ref.read(homeWidgetSyncProvider).bootstrap();
+    if (!mounted) return;
+    _startSyncForActiveAccount();
+    if (initialAction != null) {
+      _handleWidgetAction(initialAction);
+    }
   }
 
   @override
@@ -90,28 +79,13 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
   }
 
   Future<void> _onAppResumed() async {
-    await _reloadIfWidgetMutated();
+    await ref.read(homeWidgetSyncProvider).syncFromWidget(reason: 'resume');
     if (!mounted) return;
     ref.read(syncProvider.notifier).onAppResumed();
   }
 
-  Future<void> _reloadIfWidgetMutated() async {
-    final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.reload();
-    final latestMs = prefs.getInt(kWidgetLastMutationMsKey) ?? 0;
-    if (latestMs > _lastKnownWidgetMutationMs) {
-      _lastKnownWidgetMutationMs = latestMs;
-      await ref.read(todoRepositoryProvider).preload();
-      if (mounted) {
-        ref.invalidate(todoProvider);
-      }
-    }
-  }
-
-  void _handleWidgetUri(Uri? uri) {
+  void _handleWidgetAction(HomeWidgetAction action) {
     if (!mounted) return;
-    final action = HomeWidgetAction.fromUri(uri);
-    if (action == null) return;
 
     final state = ref.read(todoProvider);
     final isWide = MediaQuery.sizeOf(context).width >= 600;
@@ -208,7 +182,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_notificationSub?.cancel());
-    unawaited(_widgetClickSub?.cancel());
+    unawaited(_widgetActionSub?.cancel());
     super.dispose();
   }
 
@@ -414,7 +388,6 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
               strings: NotificationStrings.fromLocalizations(l10n),
             ),
       );
-      _syncHomeWidget(next, l10n);
     });
     final state = ref.watch(todoProvider);
     final width = MediaQuery.sizeOf(context).width;

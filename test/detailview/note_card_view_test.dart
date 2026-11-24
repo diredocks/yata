@@ -699,10 +699,12 @@ void main() {
           ],
           selectedListId: 'tasks',
         ),
+        accountId: 'acct_1',
+        accountName: 'Test',
       );
-      final tasksJson = jsonDecode(
-        transport.saved['widget_tasks_json']! as String,
-      ) as List<dynamic>;
+      final snapshot = jsonDecode(transport.saved[kWidgetSnapshotKey]! as String)
+          as Map<String, dynamic>;
+      final tasksJson = snapshot['tasks'] as List<dynamic>;
       final entry = tasksJson.single as Map<String, dynamic>;
       expect(entry['reminderLabel'], DateFormat.Hm().format(todayNoonLocal));
     });
@@ -713,16 +715,26 @@ class _TestHomeWidgetTransport implements HomeWidgetTransport {
   final Map<String, Object?> saved = {};
 
   @override
+  Future<T?> getData<T>(String key) async => saved[key] as T?;
+
+  @override
   Future<Uri?> initiallyLaunchedFromHomeWidget() async => null;
 
   @override
-  Future<void> saveWidgetData(String id, Object? data) async {
-    saved[id] = data;
+  Future<void> saveData(String key, Object? value) async {
+    if (value == null) {
+      saved.remove(key);
+    } else {
+      saved[key] = value;
+    }
   }
 
   @override
-  Future<void> updateWidget({String? qualifiedAndroidName}) async {}
+  Future<void> updateWidget() async {}
 
   @override
   Stream<Uri?> get widgetClicked => const Stream.empty();
+
+  @override
+  Stream<String> get widgetSyncRequests => const Stream.empty();
 }
