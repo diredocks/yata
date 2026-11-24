@@ -1130,7 +1130,6 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
               children: [
                 _buildBackground(currentList, backgroundColor),
                 SafeArea(
-                  bottom: false,
                   child: _buildOverscrollIndicator(
                     context,
                     Stack(
