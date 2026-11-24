@@ -330,7 +330,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
       ref.read(todoProvider.notifier).setLastEnteredListId(null);
       return;
     }
-    _pushTasksView(targetList);
+    _pushTasksView(targetList, animated: false);
   }
 
   void _pushTasksView(TodoList list, {bool animated = true}) {
