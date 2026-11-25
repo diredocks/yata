@@ -9,6 +9,7 @@ import 'package:yata/data/todo_provider.dart';
 import 'package:yata/data/todo_repository.dart';
 import 'package:yata/data/todo_settings_store.dart';
 import 'package:yata/models/account.dart';
+import 'package:yata/models/pending_step_deletion.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/sync/cloud_sync_service.dart';
@@ -245,4 +246,93 @@ void main() {
       expect(rows.single.id, 't_flush');
     },
   );
+
+  test('applySyncResult queues remote deletion when a newly created task is deleted mid-sync', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+
+    final createdLocally = TaskItem(
+      id: 't_new',
+      listId: 'tasks',
+      title: '5',
+      createdAt: DateTime.utc(2026, 11, 25, 8),
+    );
+    final repo = TodoRepository.forAccount(prefs);
+    await repo.saveTasks([createdLocally]);
+
+    final container = ProviderContainer(
+      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(todoProvider.notifier);
+    final snapshot = container.read(todoProvider);
+
+    // User deletes the task locally before the in-flight create sync finishes.
+    notifier.commit(snapshot.copyWith(tasks: const []));
+    final versionAfterDelete = container.read(todoProvider).mutationVersion;
+    expect(repo.loadPendingDeletedTaskRemoteIds(), isEmpty);
+
+    await notifier.applySyncResult(
+      lists: snapshot.lists,
+      tasks: [createdLocally.copyWith(remoteId: 'rt_5')],
+      snapshotLists: snapshot.lists,
+      snapshotTasks: snapshot.tasks,
+      snapshotState: snapshot,
+      syncedTaskIds: const {'t_new'},
+    );
+
+    final finalState = container.read(todoProvider);
+    expect(finalState.tasks, isEmpty);
+    expect(repo.loadPendingDeletedTaskRemoteIds(), ['rt_5']);
+    expect(finalState.mutationVersion, versionAfterDelete + 1);
+  });
+
+  test('applySyncResult queues step deletion when a newly created step is deleted mid-sync', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+
+    const step = TaskStep(id: 's_new', title: 'Step 1');
+    final task = TaskItem(
+      id: 't1',
+      listId: 'tasks',
+      title: 'Parent',
+      createdAt: DateTime.utc(2026, 11, 25, 8),
+      remoteId: 'rt1',
+      steps: const [step],
+    );
+    final repo = TodoRepository.forAccount(prefs);
+    await repo.saveTasks([task]);
+
+    final container = ProviderContainer(
+      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+    );
+    addTearDown(container.dispose);
+
+    final notifier = container.read(todoProvider.notifier);
+    final snapshot = container.read(todoProvider);
+
+    // User deletes the step locally while the sync creating it is in flight.
+    notifier.commit(snapshot.copyWith(tasks: [task.copyWith(steps: const [])]));
+    final versionAfterDelete = container.read(todoProvider).mutationVersion;
+    expect(repo.loadPendingDeletedSteps(), isEmpty);
+
+    await notifier.applySyncResult(
+      lists: snapshot.lists,
+      tasks: [
+        task.copyWith(steps: [step.copyWith(remoteId: 'rs_1')]),
+      ],
+      snapshotLists: snapshot.lists,
+      snapshotTasks: snapshot.tasks,
+      snapshotState: snapshot,
+      syncedTaskIds: const {'t1'},
+    );
+
+    final finalState = container.read(todoProvider);
+    expect(finalState.tasks.single.steps, isEmpty);
+    expect(repo.loadPendingDeletedSteps(), const [
+      PendingStepDeletion(taskRemoteId: 'rt1', stepRemoteId: 'rs_1'),
+    ]);
+    expect(finalState.mutationVersion, versionAfterDelete + 1);
+  });
 }

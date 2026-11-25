@@ -431,6 +431,84 @@ collectPendingStepDeletions({
   return (deletedSteps: deletedSteps.toList(), changed: changed);
 }
 
+/// Collects remote IDs assigned during an in-flight sync (via create or
+/// 404-recreate) to items that were deleted locally before [applySyncResult].
+({List<String> deletedRemoteIds, bool added}) collectMidSyncRemoteDeletions<T>({
+  required List<T>? snapshotItems,
+  required List<T> currentItems,
+  required List<T> outcomeItems,
+  required String Function(T item) idOf,
+  required String? Function(T item) remoteIdOf,
+  required Iterable<String> existingDeletedRemoteIds,
+  bool Function(T item)? canDeleteRemotely,
+}) {
+  if (snapshotItems == null) {
+    return (deletedRemoteIds: existingDeletedRemoteIds.toList(), added: false);
+  }
+  final snapshotById = {for (final item in snapshotItems) idOf(item): item};
+  final currentIds = {for (final item in currentItems) idOf(item)};
+  final deleted = LinkedHashSet<String>.of(existingDeletedRemoteIds);
+  var added = false;
+  for (final outcome in outcomeItems) {
+    if (canDeleteRemotely != null && !canDeleteRemotely(outcome)) continue;
+    final outcomeRemoteId = remoteIdOf(outcome);
+    if (outcomeRemoteId == null) continue;
+    final id = idOf(outcome);
+    if (currentIds.contains(id)) continue;
+    final snap = snapshotById[id];
+    if (snap == null) continue;
+    if (remoteIdOf(snap) != outcomeRemoteId && deleted.add(outcomeRemoteId)) {
+      added = true;
+    }
+  }
+  return (deletedRemoteIds: deleted.toList(), added: added);
+}
+
+/// Collects remote step deletions for steps created on the server during an
+/// in-flight sync whose parent task still exists locally without that step.
+({List<PendingStepDeletion> deletedSteps, bool added})
+collectMidSyncStepDeletions({
+  required List<TaskItem>? snapshotTasks,
+  required List<TaskItem> currentTasks,
+  required List<TaskItem> outcomeTasks,
+  required Iterable<PendingStepDeletion> existingDeletedSteps,
+}) {
+  if (snapshotTasks == null) {
+    return (deletedSteps: existingDeletedSteps.toList(), added: false);
+  }
+  final snapshotById = {for (final t in snapshotTasks) t.id: t};
+  final currentById = {for (final t in currentTasks) t.id: t};
+  final deleted = LinkedHashSet<PendingStepDeletion>.of(existingDeletedSteps);
+  var added = false;
+  for (final outcomeTask in outcomeTasks) {
+    final taskRemoteId = outcomeTask.remoteId;
+    if (taskRemoteId == null) continue;
+    final currentTask = currentById[outcomeTask.id];
+    final snapTask = snapshotById[outcomeTask.id];
+    if (currentTask == null || snapTask == null) continue;
+    final currentStepIds = {for (final s in currentTask.steps) s.id};
+    final snapStepById = {for (final s in snapTask.steps) s.id: s};
+    for (final outcomeStep in outcomeTask.steps) {
+      final stepRemoteId = outcomeStep.remoteId;
+      if (stepRemoteId == null || currentStepIds.contains(outcomeStep.id)) {
+        continue;
+      }
+      final snapStep = snapStepById[outcomeStep.id];
+      if (snapStep == null) continue;
+      if (snapStep.remoteId != stepRemoteId) {
+        final candidate = PendingStepDeletion(
+          taskRemoteId: taskRemoteId,
+          stepRemoteId: stepRemoteId,
+        );
+        if (deleted.add(candidate)) {
+          added = true;
+        }
+      }
+    }
+  }
+  return (deletedSteps: deleted.toList(), added: added);
+}
+
 List<ListGroup> reconcileSyncedGroups({
   required List<ListGroup> currentGroups,
   required List<ListGroup> outcomeGroups,

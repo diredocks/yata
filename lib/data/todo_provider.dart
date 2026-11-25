@@ -410,22 +410,62 @@ class TodoNotifier extends Notifier<TodoState> {
       showDueTodayInMyDay: nextState.showDueTodayInMyDay,
     ).tasks;
 
-    final remainingDeletedGroups = filterProcessed(
-      repository.loadPendingDeletedGroupRemoteIds(),
-      processedDeletedGroupRemoteIds,
+    final midSyncDeletedGroups = collectMidSyncRemoteDeletions<ListGroup>(
+      snapshotItems: snapshotGroups,
+      currentItems: state.groups,
+      outcomeItems: groups ?? const <ListGroup>[],
+      idOf: (g) => g.id,
+      remoteIdOf: (g) => g.remoteId,
+      existingDeletedRemoteIds: filterProcessed(
+        repository.loadPendingDeletedGroupRemoteIds(),
+        processedDeletedGroupRemoteIds,
+      ),
     );
-    final remainingDeletedLists = filterProcessed(
-      repository.loadPendingDeletedListRemoteIds(),
-      processedDeletedListRemoteIds,
+    final remainingDeletedGroups = midSyncDeletedGroups.deletedRemoteIds;
+
+    final midSyncDeletedLists = collectMidSyncRemoteDeletions<TodoList>(
+      snapshotItems: snapshotLists,
+      currentItems: state.lists,
+      outcomeItems: lists,
+      idOf: (l) => l.id,
+      remoteIdOf: (l) => l.remoteId,
+      existingDeletedRemoteIds: filterProcessed(
+        repository.loadPendingDeletedListRemoteIds(),
+        processedDeletedListRemoteIds,
+      ),
+      canDeleteRemotely: (l) => !l.isSmartList,
     );
-    final remainingDeletedTasks = filterProcessed(
-      repository.loadPendingDeletedTaskRemoteIds(),
-      processedDeletedTaskRemoteIds,
+    final remainingDeletedLists = midSyncDeletedLists.deletedRemoteIds;
+
+    final midSyncDeletedTasks = collectMidSyncRemoteDeletions<TaskItem>(
+      snapshotItems: snapshotTasks,
+      currentItems: state.tasks,
+      outcomeItems: tasks,
+      idOf: (t) => t.id,
+      remoteIdOf: (t) => t.remoteId,
+      existingDeletedRemoteIds: filterProcessed(
+        repository.loadPendingDeletedTaskRemoteIds(),
+        processedDeletedTaskRemoteIds,
+      ),
     );
-    final remainingDeletedSteps = filterProcessed(
-      repository.loadPendingDeletedSteps(),
-      processedDeletedSteps,
+    final remainingDeletedTasks = midSyncDeletedTasks.deletedRemoteIds;
+
+    final midSyncDeletedSteps = collectMidSyncStepDeletions(
+      snapshotTasks: snapshotTasks,
+      currentTasks: state.tasks,
+      outcomeTasks: tasks,
+      existingDeletedSteps: filterProcessed(
+        repository.loadPendingDeletedSteps(),
+        processedDeletedSteps,
+      ),
     );
+    final remainingDeletedSteps = midSyncDeletedSteps.deletedSteps;
+
+    final queuedMidSyncDeletions =
+        midSyncDeletedGroups.added ||
+        midSyncDeletedLists.added ||
+        midSyncDeletedTasks.added ||
+        midSyncDeletedSteps.added;
 
     final validGroupIdsPost = {for (final g in sortedGroups) g.id};
     final validListIdsPost = {for (final l in sortedLists) l.id};
@@ -478,6 +518,9 @@ class TodoNotifier extends Notifier<TodoState> {
       tasks: syncedTasks,
       selectedListId: validSelectedListId,
       completedExpandedByList: expandedOutcome.expanded,
+      mutationVersion: queuedMidSyncDeletions
+          ? nextState.mutationVersion + 1
+          : nextState.mutationVersion,
     );
 
     await Future.wait(persistFutures);
