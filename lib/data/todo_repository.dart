@@ -4,10 +4,9 @@ import 'package:result_dart/result_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/result/app_result.dart';
-import '../models/pending_step_deletion.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
-import 'sync_dirty_fields.dart';
+import 'sync_outbox.dart';
 import 'todo_database.dart';
 import 'todo_settings_store.dart';
 
@@ -18,9 +17,7 @@ class _AccountCache {
   List<TodoList>? lists;
   List<ListGroup> groups = const [];
   List<TaskItem> tasks = const [];
-  final Map<String, List<String>> mutationKeys = {};
-  List<PendingStepDeletion> pendingDeletedSteps = const [];
-  Map<String, String> taskBaseNotes = const {};
+  SyncOutboxQueue outbox = SyncOutboxQueue();
   Future<void> writeQueue = Future<void>.value();
 }
 
@@ -53,8 +50,8 @@ class TodoRepository {
     TodoSettingsStore(prefs, accountId: accountId),
   );
 
-  static const _deletedStepKind = 'deleted_step';
-  static const _taskBaseNoteKind = 'task_base_note';
+  static const _outboxKind = 'outbox';
+  static const _remoteIdMapKind = 'remote_id_map';
 
   /// Cache buckets are shared by every repository over the same database, so a
   /// second instance for the same session sees the same data.
@@ -77,8 +74,7 @@ class TodoRepository {
 
   List<TaskItem> readCachedTasks() => _cache.tasks;
 
-  List<PendingStepDeletion> readCachedPendingDeletedSteps() =>
-      _cache.pendingDeletedSteps;
+  SyncOutboxQueue get outbox => _cache.outbox;
 
   /// Waits for all previously enqueued SQLite writes for this account to finish.
   Future<void> flushPendingWrites() => _cache.writeQueue;
@@ -108,22 +104,17 @@ class TodoRepository {
         for (final row in taskRows)
           TaskItem.fromJson(_decodePayload(row.payloadJson)),
       ];
-      final mutationRows = <String, List<String>>{};
-      final steps = <PendingStepDeletion>[];
-      final baseNotes = <String, String>{};
+      final outboxOps = <SyncOutboxOp>[];
+      final remoteIdMap = <String, String>{};
       for (final row in allMutations) {
-        if (row.kind == _deletedStepKind) {
-          steps.add(
-            PendingStepDeletion.fromJson(_decodePayload(row.payloadJson)),
-          );
-        } else if (row.kind == _taskBaseNoteKind) {
+        if (row.kind == _outboxKind) {
+          outboxOps.add(SyncOutboxOp.fromJson(_decodePayload(row.payloadJson)));
+        } else if (row.kind == _remoteIdMapKind) {
           final map = _decodePayload(row.payloadJson);
-          final note = map['note'] as String?;
-          if (note != null) {
-            baseNotes[row.itemKey] = note;
+          final remoteId = map['remoteId'] as String?;
+          if (remoteId != null) {
+            remoteIdMap[row.itemKey] = remoteId;
           }
-        } else {
-          (mutationRows[row.kind] ??= <String>[]).add(row.itemKey);
         }
       }
 
@@ -131,14 +122,7 @@ class TodoRepository {
       cache.lists = lists.isEmpty ? null : List<TodoList>.unmodifiable(lists);
       cache.groups = List<ListGroup>.unmodifiable(groups);
       cache.tasks = List<TaskItem>.unmodifiable(tasks);
-      cache.mutationKeys
-        ..clear()
-        ..addAll({
-          for (final entry in mutationRows.entries)
-            entry.key: List<String>.unmodifiable(entry.value),
-        });
-      cache.pendingDeletedSteps = List<PendingStepDeletion>.unmodifiable(steps);
-      cache.taskBaseNotes = Map<String, String>.unmodifiable(baseNotes);
+      cache.outbox = SyncOutboxQueue(outboxOps, remoteIdMap);
       return unit;
     }, operation: 'preloadAccount');
   }
@@ -218,50 +202,41 @@ class TodoRepository {
     );
   }
 
-  AsyncAppResult<Unit> saveMutationKeys(String kind, Iterable<String> keys) {
-    final list = List<String>.unmodifiable(keys);
-    _cache.mutationKeys[kind] = list;
-    return _persistWrite(
-      'saveMutationKeys($kind)',
-      () => _db.replaceSyncMutationRecords(
+  AsyncAppResult<Unit> saveOutbox() {
+    final opsSnapshot = _cache.outbox.ops;
+    final remoteMapEntries = _cache.outbox.remoteIdMap.entries.toList(
+      growable: false,
+    );
+    return _persistWrite('saveOutbox', () async {
+      await _db.replaceSyncMutationRecords(
         accountKey,
-        kind: kind,
+        kind: _outboxKind,
         rows: [
-          for (var i = 0; i < list.length; i++)
+          for (var i = 0; i < opsSnapshot.length; i++)
             SyncMutationRecordsCompanion.insert(
               accountKey: accountKey,
-              kind: kind,
-              itemKey: list[i],
+              kind: _outboxKind,
+              itemKey: opsSnapshot[i].seq.toString(),
               position: i,
-              payloadJson: list[i],
+              payloadJson: jsonEncode(opsSnapshot[i].toJson()),
             ),
         ],
-      ),
-    );
-  }
-
-  AsyncAppResult<Unit> savePendingDeletedSteps(
-    List<PendingStepDeletion> items,
-  ) {
-    final list = List<PendingStepDeletion>.unmodifiable(items);
-    _cache.pendingDeletedSteps = list;
-    return _persistWrite(
-      'savePendingDeletedSteps',
-      () => _db.replaceSyncMutationRecords(
+      );
+      await _db.replaceSyncMutationRecords(
         accountKey,
-        kind: _deletedStepKind,
+        kind: _remoteIdMapKind,
         rows: [
-          for (var i = 0; i < list.length; i++)
+          for (var i = 0; i < remoteMapEntries.length; i++)
             SyncMutationRecordsCompanion.insert(
               accountKey: accountKey,
-              kind: _deletedStepKind,
-              itemKey: '${list[i].taskRemoteId}::${list[i].stepRemoteId}',
+              kind: _remoteIdMapKind,
+              itemKey: remoteMapEntries[i].key,
               position: i,
-              payloadJson: jsonEncode(list[i].toJson()),
+              payloadJson: jsonEncode({'remoteId': remoteMapEntries[i].value}),
             ),
         ],
-      ),
-    );
+      );
+    });
   }
 
   AsyncAppResult<Unit> deleteAccountRecords() {
@@ -277,107 +252,6 @@ class TodoRepository {
       );
       return unit;
     }, operation: 'deleteAccountRecords');
-  }
-
-  List<String> _readMutationKeys(String kind) =>
-      _cache.mutationKeys[kind] ?? const [];
-
-  List<String> loadPendingDeletedListRemoteIds() =>
-      _readMutationKeys('deleted_list');
-
-  AsyncAppResult<Unit> savePendingDeletedListRemoteIds(List<String> ids) =>
-      saveMutationKeys('deleted_list', ids);
-
-  List<String> loadPendingDeletedTaskRemoteIds() =>
-      _readMutationKeys('deleted_task');
-
-  AsyncAppResult<Unit> savePendingDeletedTaskRemoteIds(List<String> ids) =>
-      saveMutationKeys('deleted_task', ids);
-
-  List<String> loadPendingDeletedGroupRemoteIds() =>
-      _readMutationKeys('deleted_group');
-
-  AsyncAppResult<Unit> savePendingDeletedGroupRemoteIds(List<String> ids) =>
-      saveMutationKeys('deleted_group', ids);
-
-  List<PendingStepDeletion> loadPendingDeletedSteps() =>
-      readCachedPendingDeletedSteps();
-
-  Set<String> loadDirtyListIds() => _readMutationKeys('dirty_list').toSet();
-
-  AsyncAppResult<Unit> saveDirtyListIds(Set<String> ids) =>
-      saveMutationKeys('dirty_list', ids);
-
-  Set<String> loadDirtyGroupIds() => _readMutationKeys('dirty_group').toSet();
-
-  AsyncAppResult<Unit> saveDirtyGroupIds(Set<String> ids) =>
-      saveMutationKeys('dirty_group', ids);
-
-  Set<String> loadDirtyTaskIds() => _readMutationKeys('dirty_task').toSet();
-
-  AsyncAppResult<Unit> saveDirtyTaskIds(Set<String> ids) =>
-      saveMutationKeys('dirty_task', ids);
-
-  Map<String, Set<GroupDirtyField>> loadDirtyGroupFields() =>
-      decodeEntityFieldMap(
-        _readMutationKeys('dirty_group_fields'),
-        GroupDirtyField.values,
-      );
-
-  AsyncAppResult<Unit> saveDirtyGroupFields(
-    Map<String, Set<GroupDirtyField>> fields,
-  ) => saveMutationKeys('dirty_group_fields', encodeEntityFieldMap(fields));
-
-  Map<String, Set<ListDirtyField>> loadDirtyListFields() =>
-      decodeEntityFieldMap(
-        _readMutationKeys('dirty_list_fields'),
-        ListDirtyField.values,
-      );
-
-  AsyncAppResult<Unit> saveDirtyListFields(
-    Map<String, Set<ListDirtyField>> fields,
-  ) => saveMutationKeys('dirty_list_fields', encodeEntityFieldMap(fields));
-
-  Map<String, Set<TaskDirtyField>> loadDirtyTaskFields() =>
-      decodeEntityFieldMap(
-        _readMutationKeys('dirty_task_fields'),
-        TaskDirtyField.values,
-      );
-
-  AsyncAppResult<Unit> saveDirtyTaskFields(
-    Map<String, Set<TaskDirtyField>> fields,
-  ) => saveMutationKeys('dirty_task_fields', encodeEntityFieldMap(fields));
-
-  Map<String, Set<String>> loadDirtyStepIds() =>
-      decodeEntityStringSetMap(_readMutationKeys('dirty_step_ids'));
-
-  AsyncAppResult<Unit> saveDirtyStepIds(Map<String, Set<String>> stepIds) =>
-      saveMutationKeys('dirty_step_ids', encodeEntityStringSetMap(stepIds));
-
-  Map<String, String> loadTaskBaseNotes() =>
-      Map<String, String>.from(_cache.taskBaseNotes);
-
-  AsyncAppResult<Unit> saveTaskBaseNotes(Map<String, String> notes) {
-    final snapshot = Map<String, String>.unmodifiable(notes);
-    _cache.taskBaseNotes = snapshot;
-    final entries = snapshot.entries.toList(growable: false);
-    return _persistWrite(
-      'saveTaskBaseNotes',
-      () => _db.replaceSyncMutationRecords(
-        accountKey,
-        kind: _taskBaseNoteKind,
-        rows: [
-          for (var i = 0; i < entries.length; i++)
-            SyncMutationRecordsCompanion.insert(
-              accountKey: accountKey,
-              kind: _taskBaseNoteKind,
-              itemKey: entries[i].key,
-              position: i,
-              payloadJson: jsonEncode({'note': entries[i].value}),
-            ),
-        ],
-      ),
-    );
   }
 
   Map<String, dynamic> _decodePayload(String payloadJson) {

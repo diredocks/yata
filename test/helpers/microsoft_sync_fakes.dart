@@ -12,6 +12,7 @@ import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/auth/msa_webview_launcher.dart';
 import 'package:yata/core/error/app_error.dart';
 import 'package:yata/core/result/app_result.dart';
+import 'package:yata/data/sync_outbox.dart';
 import 'package:yata/data/todo_repository.dart';
 import 'package:yata/data/todo_settings_store.dart';
 import 'package:yata/models/account.dart';
@@ -687,16 +688,31 @@ Future<SeededSyncSession> seedMicrosoftSyncSession({
     await settings.saveTaskDeltaLinks(taskDeltaLinks);
   }
   if (dirtyListIds != null) {
-    await repository.saveDirtyListIds(dirtyListIds);
+    for (final id in dirtyListIds) {
+      repository.outbox.enqueueUpsert(
+        entityType: SyncEntityType.list,
+        localId: id,
+      );
+    }
   }
   if (dirtyTaskIds != null) {
-    await repository.saveDirtyTaskIds(dirtyTaskIds);
+    for (final id in dirtyTaskIds) {
+      repository.outbox.enqueueUpsert(
+        entityType: SyncEntityType.task,
+        localId: id,
+      );
+    }
   }
   if (pendingDeletedTaskRemoteIds != null) {
-    await repository.savePendingDeletedTaskRemoteIds(
-      pendingDeletedTaskRemoteIds,
-    );
+    for (final remoteId in pendingDeletedTaskRemoteIds) {
+      repository.outbox.enqueueDelete(
+        entityType: SyncEntityType.task,
+        localId: 'deleted_$remoteId',
+        remoteId: remoteId,
+      );
+    }
   }
+  await repository.saveOutbox();
 
   return SeededSyncSession(
     prefs: resolvedPrefs,
