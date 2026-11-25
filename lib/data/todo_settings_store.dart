@@ -148,6 +148,7 @@ class TodoSettingsStore {
   String get _groupsDeltaLinkKey => _k('groups_delta_link');
   String get _foldersDeltaLinkKey => _k('folders_delta_link');
   String get _taskDeltaLinksKey => _k('task_delta_links');
+  String get _pendingTaskFolderPullsKey => _k('pending_task_folder_pulls');
   String get _cachedEndpointUrlKey => _k('cached_endpoint_url');
   String get _cachedEndpointFetchedAtKey => _k('cached_endpoint_fetched_at');
 
@@ -400,6 +401,21 @@ class TodoSettingsStore {
         _taskDeltaLinksKey,
         links.isEmpty ? null : jsonEncode(links),
       );
+
+  /// Folders awaiting one targeted task pull (Substrate's `sync_update_required`).
+  Set<String> loadPendingTaskFolderPulls() =>
+      (_prefs.getStringList(_pendingTaskFolderPullsKey) ?? const []).toSet();
+
+  Future<void> savePendingTaskFolderPulls(Set<String> folderRemoteIds) async {
+    if (folderRemoteIds.isEmpty) {
+      await _prefs.remove(_pendingTaskFolderPullsKey);
+    } else {
+      await _prefs.setStringList(
+        _pendingTaskFolderPullsKey,
+        folderRemoteIds.toList(),
+      );
+    }
+  }
 
   String? loadCachedEndpointUrl({Duration maxAge = const Duration(hours: 12)}) {
     final url = _prefs.getString(_cachedEndpointUrlKey);

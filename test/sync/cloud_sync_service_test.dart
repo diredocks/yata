@@ -749,5 +749,125 @@ void main() {
       ).single;
       expect(afterPhoto.themePhoto, ListThemePhoto.beach);
     });
+
+    test(
+      'pushOnly pass pushes the edit and pulls only the edited folder',
+      () async {
+        final h = await createSyncTestHarness(
+          accountId: 'acct_push_only',
+          defaultTasksFolderRemoteId: 'rf-default',
+          tasks: [
+            TaskItem(
+              id: 't_1',
+              listId: 'tasks',
+              title: 'One',
+              createdAt: DateTime.utc(2026, 11, 22, 8),
+              remoteId: 'rt-1',
+              remoteParentFolderId: 'rf-default',
+              changeKey: 'ck-1',
+            ),
+            TaskItem(
+              id: 't_2',
+              listId: 'tasks',
+              title: 'Two',
+              createdAt: DateTime.utc(2026, 11, 22, 7),
+              remoteId: 'rt-2',
+              remoteParentFolderId: 'rf-default',
+              changeKey: 'ck-2',
+            ),
+          ],
+          foldersDeltaLink: 'dl-folders-1',
+          taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
+        );
+
+        h.container
+            .read(tasksViewPresenterProvider)
+            .setTaskCompleted('t_1', completed: true);
+
+        final service = CloudSyncService(
+          authClient: h.authClient,
+          todoApi: h.api,
+          tokenStorage: AuthTokenStorage(h.prefs),
+        );
+        h.api.callLog.clear();
+
+        final outcome = await service
+            .syncAccount(
+              account: h.account,
+              currentState: h.container.read(todoProvider),
+              repository: h.repository,
+              settings: h.settings,
+              idGenerator: h.container.read(todoProvider.notifier).nextId,
+              pushOnly: true,
+            )
+            .fold(
+              (outcome) => outcome,
+              (error) => fail('unexpected sync failure: ${error.describe()}'),
+            );
+
+        expect(h.api.callLog, [
+          'PATCH tasks/rt-1(ifMatch=ck-1)',
+          'GET tasks(rf-default,dl-tasks-1)',
+        ]);
+        expect(outcome.settingsPatch, isNull);
+        expect(h.settings.loadPendingTaskFolderPulls(), isEmpty);
+        expect(
+          outcome.tasks.firstWhere((t) => t.id == 't_1').isCompleted,
+          isTrue,
+        );
+      },
+    );
+
+    test('pushOnly pass tolerates a folder that disappeared remotely', () async {
+      final h = await createSyncTestHarness(
+        accountId: 'acct_push_only_missing_folder',
+        defaultTasksFolderRemoteId: 'rf-default',
+        tasks: [
+          TaskItem(
+            id: 't_1',
+            listId: 'tasks',
+            title: 'One',
+            createdAt: DateTime.utc(2026, 11, 22, 8),
+            remoteId: 'rt-1',
+            remoteParentFolderId: 'rf-default',
+            changeKey: 'ck-1',
+          ),
+        ],
+        foldersDeltaLink: 'dl-folders-1',
+        taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
+      );
+      h.api.onFetchTasksDelta = (folderRemoteId, deltaLink) =>
+          throw const AppError.notFound(
+            message: 'Folder is gone',
+            id: 'folder_gone',
+          );
+
+      h.container
+          .read(tasksViewPresenterProvider)
+          .setTaskCompleted('t_1', completed: true);
+
+      final service = CloudSyncService(
+        authClient: h.authClient,
+        todoApi: h.api,
+        tokenStorage: AuthTokenStorage(h.prefs),
+      );
+
+      await service
+          .syncAccount(
+            account: h.account,
+            currentState: h.container.read(todoProvider),
+            repository: h.repository,
+            settings: h.settings,
+            idGenerator: h.container.read(todoProvider.notifier).nextId,
+            pushOnly: true,
+          )
+          .fold(
+            (outcome) => outcome,
+            (error) => fail('unexpected sync failure: ${error.describe()}'),
+          );
+
+      // The stale follow-up entry is dropped instead of failing the whole pass.
+      expect(h.settings.loadPendingTaskFolderPulls(), isEmpty);
+    });
   });
 }

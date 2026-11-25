@@ -52,12 +52,31 @@ class TaskPushResult {
     required this.syncedTaskIds,
     required this.syncedTaskFields,
     required this.syncedStepIds,
+    this.followUpPullFolderRemoteIds = const {},
   });
 
   final List<TaskItem> tasks;
   final Set<String> syncedTaskIds;
   final Map<String, Set<TaskDirtyField>> syncedTaskFields;
   final Map<String, Set<String>> syncedStepIds;
+
+  /// Folders needing one targeted task pull: the server may have changed more
+  /// than the push response tells us (recurring spawn, move, conflict merge).
+  final Set<String> followUpPullFolderRemoteIds;
+}
+
+/// Whether [dirtyFields] describes nothing but an intra-list position change.
+bool isReorderOnlyTaskPatch(
+  Set<TaskDirtyField>? dirtyFields, {
+  required bool isCompleted,
+}) {
+  if (dirtyFields == null || dirtyFields.isEmpty) return false;
+  final hasOrderChange =
+      dirtyFields.contains(TaskDirtyField.orderDateTime) ||
+      dirtyFields.contains(TaskDirtyField.committedOrder);
+  if (!hasOrderChange) return false;
+  if (dirtyFields.contains(TaskDirtyField.body)) return false;
+  return !(dirtyFields.contains(TaskDirtyField.status) && isCompleted);
 }
 
 /// Pushes local deletions, settings, folder groups, folders, tasks, and steps
@@ -301,6 +320,7 @@ class SubstratePushEngine {
     final syncedTaskIds = <String>{};
     final syncedTaskFields = <String, Set<TaskDirtyField>>{};
     final syncedStepIds = <String, Set<String>>{};
+    final followUpPullFolderRemoteIds = <String>{};
     final deletedTaskRemoteIds = processedDeletedTaskRemoteIds.toSet();
 
     final folderRemoteByLocalId = {
@@ -427,6 +447,13 @@ class SubstratePushEngine {
       if (stepOutcome.syncedIds.isNotEmpty) {
         syncedStepIds[task.id] = stepOutcome.syncedIds;
       }
+      if (isCreate ||
+          !isReorderOnlyTaskPatch(
+            effectiveDirtyFields,
+            isCompleted: task.isCompleted,
+          )) {
+        followUpPullFolderRemoteIds.add(folderRemoteId);
+      }
       _log.fine(
         'Phase 10a ${isCreate ? "CREATE" : "PATCH"} local=${task.id} '
         'remote=${shortSyncId(remoteTask.id)} title="${task.title}" '
@@ -452,6 +479,7 @@ class SubstratePushEngine {
       syncedTaskIds: syncedTaskIds,
       syncedTaskFields: syncedTaskFields,
       syncedStepIds: syncedStepIds,
+      followUpPullFolderRemoteIds: followUpPullFolderRemoteIds,
     );
   }
 
@@ -495,13 +523,10 @@ class SubstratePushEngine {
   }) async {
     String? mergedNote;
     var preservedRemoteStatus = false;
-    final isReorderOnlyPatch =
-        dirtyFields != null &&
-        dirtyFields.isNotEmpty &&
-        (dirtyFields.contains(TaskDirtyField.orderDateTime) ||
-            dirtyFields.contains(TaskDirtyField.committedOrder)) &&
-        !dirtyFields.contains(TaskDirtyField.body) &&
-        !(dirtyFields.contains(TaskDirtyField.status) && task.isCompleted);
+    final isReorderOnlyPatch = isReorderOnlyTaskPatch(
+      dirtyFields,
+      isCompleted: task.isCompleted,
+    );
     final effectiveChangeKey = isReorderOnlyPatch ? null : task.changeKey;
 
     final result = await todoApi

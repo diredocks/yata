@@ -30,6 +30,8 @@ class MetadataPullResult {
 class SubstratePullEngine {
   const SubstratePullEngine(this.todoApi);
 
+  static const int _maxConcurrentFolderFetches = 4;
+
   final MicrosoftTodoApi todoApi;
 
   /// Executes Phases 7–9: settings, folder groups delta, and folders delta.
@@ -152,6 +154,8 @@ class SubstratePullEngine {
   }
 
   /// Executes Phase 10b: pull per-folder tasks delta with 410 & move safety.
+  ///
+  /// [onlyFolderRemoteIds] pulls just the flagged folders; null pulls them all.
   Future<List<TaskItem>> pullAndMergeTasksDelta({
     required SubstrateRequestContext ctx,
     required TodoSettingsStore settings,
@@ -161,6 +165,7 @@ class SubstratePullEngine {
     required Set<String> syncedTaskIds,
     required bool forceFullSync,
     required String Function(String prefix) idGenerator,
+    Set<String>? onlyFolderRemoteIds,
   }) async {
     final taskDeltaLinks = Map<String, String>.from(
       settings.loadTaskDeltaLinks(),
@@ -173,7 +178,25 @@ class SubstratePullEngine {
       (folderRemoteId, _) =>
           !localListIdByFolderRemoteId.containsKey(folderRemoteId),
     );
+    final pendingFolderPulls = settings.loadPendingTaskFolderPulls();
+    final livePendingFolderPulls = pendingFolderPulls
+        .where(localListIdByFolderRemoteId.containsKey)
+        .toSet();
     final listTitleByLocalId = {for (final l in workingLists) l.id: l.title};
+
+    final pullFolderRemoteIds = onlyFolderRemoteIds == null
+        ? localListIdByFolderRemoteId.keys.toList()
+        : [
+            for (final folderRemoteId in localListIdByFolderRemoteId.keys)
+              if (onlyFolderRemoteIds.contains(folderRemoteId)) folderRemoteId,
+          ];
+    if (onlyFolderRemoteIds != null) {
+      _log.info(
+        'Phase 10b selective pull folders=${pullFolderRemoteIds.length} '
+        'of=${localListIdByFolderRemoteId.length} '
+        'pending=${livePendingFolderPulls.length}',
+      );
+    }
 
     final seenActiveRemoteTaskIds = <String>{};
     final fullSyncedListIds = <String>{};
@@ -185,22 +208,46 @@ class SubstratePullEngine {
         if (t.remoteId != null) t.remoteId!: t.id,
     };
 
-    for (final entry in localListIdByFolderRemoteId.entries) {
-      final folderRemoteId = entry.key;
-      final localListId = entry.value;
-      final taskFetch = await _fetchDeltaWithMode(
-        savedDeltaLink: taskDeltaLinks[folderRemoteId],
-        forceFullSync: forceFullSync,
-        clearDeltaLink: () async {
-          taskDeltaLinks.remove(folderRemoteId);
-          await settings.saveTaskDeltaLinks(taskDeltaLinks);
-        },
-        fetch: (dl) => todoApi.fetchTasksDelta(
-          ctx,
-          folderRemoteId: folderRemoteId,
-          deltaLink: dl,
-        ),
-      );
+    // Fetch concurrently, then apply in input order.
+    final fetches = await _mapWithConcurrency(
+      pullFolderRemoteIds,
+      _maxConcurrentFolderFetches,
+      (folderRemoteId) async {
+        try {
+          return await _fetchDeltaWithMode(
+            savedDeltaLink: taskDeltaLinks[folderRemoteId],
+            forceFullSync: forceFullSync,
+            clearDeltaLink: () async {
+              taskDeltaLinks.remove(folderRemoteId);
+              await settings.saveTaskDeltaLinks(taskDeltaLinks);
+            },
+            fetch: (dl) => todoApi.fetchTasksDelta(
+              ctx,
+              folderRemoteId: folderRemoteId,
+              deltaLink: dl,
+            ),
+          );
+        } on AppError catch (error) {
+          // A selective pull can race a remote folder deletion; a full pass
+          // must still surface the error.
+          if (onlyFolderRemoteIds == null || !error.isNotFound) rethrow;
+          _log.info(
+            'Phase 10b selective pull skipped missing folder '
+            'remote=${shortSyncId(folderRemoteId)} error=${error.describe()}',
+          );
+          return (
+            page: const DeltaPageResult<RemoteTodoTask>(items: []),
+            mode: 'missing',
+            didFullFetch: false,
+          );
+        }
+      },
+    );
+
+    for (var index = 0; index < pullFolderRemoteIds.length; index++) {
+      final folderRemoteId = pullFolderRemoteIds[index];
+      final localListId = localListIdByFolderRemoteId[folderRemoteId]!;
+      final taskFetch = fetches[index];
       final taskDeltaResult = taskFetch.page;
       final mode = taskFetch.mode;
       final didFullFetch = taskFetch.didFullFetch;
@@ -360,6 +407,14 @@ class SubstratePullEngine {
       }
     }
 
+    final pulledFolderRemoteIds = pullFolderRemoteIds.toSet();
+    final remainingPendingPulls = onlyFolderRemoteIds == null
+        ? <String>{}
+        : livePendingFolderPulls.difference(pulledFolderRemoteIds);
+    if (remainingPendingPulls.length != pendingFolderPulls.length ||
+        !pendingFolderPulls.containsAll(remainingPendingPulls)) {
+      await settings.savePendingTaskFolderPulls(remainingPendingPulls);
+    }
     await settings.saveTaskDeltaLinks(taskDeltaLinks);
     return tasksById.values.toList();
   }
@@ -408,5 +463,29 @@ class SubstratePullEngine {
       }
     }
     return kept;
+  }
+
+  /// Maps [items] with at most [maxConcurrent] in flight, preserving order.
+  Future<List<R>> _mapWithConcurrency<T, R>(
+    List<T> items,
+    int maxConcurrent,
+    Future<R> Function(T item) action,
+  ) async {
+    if (items.isEmpty) return const [];
+    final results = List<R?>.filled(items.length, null);
+    var nextIndex = 0;
+    Future<void> worker() async {
+      while (nextIndex < items.length) {
+        final index = nextIndex;
+        nextIndex += 1;
+        results[index] = await action(items[index]);
+      }
+    }
+
+    final workerCount = maxConcurrent < items.length
+        ? maxConcurrent
+        : items.length;
+    await Future.wait([for (var i = 0; i < workerCount; i++) worker()]);
+    return [for (final result in results) result as R];
   }
 }

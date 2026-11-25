@@ -26,7 +26,6 @@ class SyncOutcome {
     required this.groups,
     required this.lists,
     required this.tasks,
-    required this.settingsPatch,
     required this.processedDeletedGroupRemoteIds,
     required this.processedDeletedListRemoteIds,
     required this.processedDeletedTaskRemoteIds,
@@ -36,6 +35,7 @@ class SyncOutcome {
     required this.syncedTaskIds,
     required this.syncedSettingKeys,
     required this.syncedAt,
+    this.settingsPatch,
     this.syncedDirtyFields = const SyncedDirtyFields(),
     this.snapshotState,
   });
@@ -43,7 +43,9 @@ class SyncOutcome {
   final List<ListGroup> groups;
   final List<TodoList> lists;
   final List<TaskItem> tasks;
-  final SyncedSettingsPatch settingsPatch;
+
+  /// Null when the pass did not fetch remote settings (push-only syncs).
+  final SyncedSettingsPatch? settingsPatch;
   final List<String> processedDeletedGroupRemoteIds;
   final List<String> processedDeletedListRemoteIds;
   final List<String> processedDeletedTaskRemoteIds;
@@ -127,7 +129,10 @@ class CloudSyncService {
     );
   }
 
-  /// Runs all 10 Substrate v1 sync phases for [account] and [currentState].
+  /// Runs the Substrate v1 sync phases for [account] and [currentState].
+  ///
+  /// [pushOnly] skips the global settings/group/folder pulls and pulls only the
+  /// folders the push flagged, so one local edit costs one PATCH.
   AsyncAppResult<SyncOutcome> syncAccount({
     required MicrosoftAccount account,
     required TodoState currentState,
@@ -136,6 +141,7 @@ class CloudSyncService {
     required String Function(String prefix) idGenerator,
     TodoState Function()? readLatestState,
     bool forceFullSync = false,
+    bool pushOnly = false,
     String reason = 'sync',
   }) async {
     Future<AppResult<SyncOutcome>> runAttempt({
@@ -154,6 +160,7 @@ class CloudSyncService {
               settings: settings,
               idGenerator: idGenerator,
               forceFullSync: forceFullSync,
+              pushOnly: pushOnly,
               reason: reason,
             ),
             operation: 'syncPhases',
@@ -185,6 +192,7 @@ class CloudSyncService {
     required TodoSettingsStore settings,
     required String Function(String prefix) idGenerator,
     bool forceFullSync = false,
+    bool pushOnly = false,
     String reason = 'sync',
   }) async {
     final nowUtc = DateTime.now().toUtc();
@@ -199,7 +207,7 @@ class CloudSyncService {
     final taskBaseNotes = repository.loadTaskBaseNotes();
 
     _log.info(
-      'start reason=$reason forceFullSync=$forceFullSync '
+      'start reason=$reason forceFullSync=$forceFullSync pushOnly=$pushOnly '
       'localLists=${currentState.lists.length} localTasks=${currentState.tasks.length} '
       'dirtyTasks=${dirtyTaskIds.length}',
     );
@@ -216,31 +224,41 @@ class CloudSyncService {
       nowUtc: nowUtc,
     );
 
-    final metaPull = await _pullEngine.pullSettingsGroupsAndFolders(
-      ctx: ctx,
-      settings: settings,
-      workingGroups: metaPush.groups,
-      workingLists: metaPush.lists,
-      remainingDirtySettings: dirtySettingKeys.difference(
-        metaPush.syncedSettingKeys,
-      ),
-      remainingDirtyGroups: dirtyGroupIds.difference(metaPush.syncedGroupIds),
-      remainingDirtyLists: dirtyListIds.difference(metaPush.syncedListIds),
-      syncedGroupIds: metaPush.syncedGroupIds,
-      syncedListIds: metaPush.syncedListIds,
-      forceFullSync: forceFullSync,
-      idGenerator: idGenerator,
-    );
+    // Realtime, the periodic delta sync, and manual refresh cover these pulls.
+    final MetadataPullResult? metaPull = pushOnly
+        ? null
+        : await _pullEngine.pullSettingsGroupsAndFolders(
+            ctx: ctx,
+            settings: settings,
+            workingGroups: metaPush.groups,
+            workingLists: metaPush.lists,
+            remainingDirtySettings: dirtySettingKeys.difference(
+              metaPush.syncedSettingKeys,
+            ),
+            remainingDirtyGroups: dirtyGroupIds.difference(
+              metaPush.syncedGroupIds,
+            ),
+            remainingDirtyLists: dirtyListIds.difference(
+              metaPush.syncedListIds,
+            ),
+            syncedGroupIds: metaPush.syncedGroupIds,
+            syncedListIds: metaPush.syncedListIds,
+            forceFullSync: forceFullSync,
+            idGenerator: idGenerator,
+          );
+
+    final workingGroups = metaPull?.groups ?? metaPush.groups;
+    final workingLists = metaPull?.lists ?? metaPush.lists;
 
     // Remove tasks orphaned by a deleted remote folder.
-    final validListIds = {for (final l in metaPull.lists) l.id};
+    final validListIds = {for (final l in workingLists) l.id};
     final liveTasks = currentState.tasks
         .where((t) => validListIds.contains(t.listId))
         .toList();
 
     final taskPush = await _pushEngine.pushTasksAndSteps(
       ctx: ctx,
-      workingLists: metaPull.lists,
+      workingLists: workingLists,
       workingTasks: liveTasks,
       processedDeletedTaskRemoteIds: metaPush.processedDeletedTaskRemoteIds,
       dirtyTaskIds: dirtyTaskIds,
@@ -251,22 +269,32 @@ class CloudSyncService {
       nowUtc: nowUtc,
     );
 
+    if (taskPush.followUpPullFolderRemoteIds.isNotEmpty) {
+      await settings.savePendingTaskFolderPulls({
+        ...settings.loadPendingTaskFolderPulls(),
+        ...taskPush.followUpPullFolderRemoteIds,
+      });
+    }
+
     final mergedTasks = await _pullEngine.pullAndMergeTasksDelta(
       ctx: ctx,
       settings: settings,
-      workingLists: metaPull.lists,
+      workingLists: workingLists,
       workingTasks: taskPush.tasks,
       remainingDirtyTasks: dirtyTaskIds.difference(taskPush.syncedTaskIds),
       syncedTaskIds: taskPush.syncedTaskIds,
       forceFullSync: forceFullSync,
       idGenerator: idGenerator,
+      onlyFolderRemoteIds: pushOnly
+          ? settings.loadPendingTaskFolderPulls()
+          : null,
     );
 
     return SyncOutcome(
-      groups: metaPull.groups,
-      lists: metaPull.lists,
+      groups: workingGroups,
+      lists: workingLists,
       tasks: mergedTasks,
-      settingsPatch: metaPull.settingsPatch,
+      settingsPatch: metaPull?.settingsPatch,
       processedDeletedGroupRemoteIds: metaPush.processedDeletedGroupRemoteIds,
       processedDeletedListRemoteIds: metaPush.processedDeletedListRemoteIds,
       processedDeletedTaskRemoteIds: metaPush.processedDeletedTaskRemoteIds,

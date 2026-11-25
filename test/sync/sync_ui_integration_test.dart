@@ -125,16 +125,18 @@ void main() {
         await tester.tap(find.text('Completed'));
         await tester.pumpAndSettle();
         expect(find.text('Done default task'), findsOneWidget);
+
+        // The debounced push-only pass sends the edit; no manual refresh.
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+        expect(patchedDefaultFolder?['ShowCompletedTasks'], isTrue);
         expect(
           TodoRepository.forAccount(
             session.prefs,
             accountId: 'acct_tasks_done',
           ).loadDirtyListIds(),
-          contains('tasks'),
+          isNot(contains('tasks')),
         );
-
-        await container.read(syncProvider.notifier).syncNow();
-        expect(patchedDefaultFolder?['ShowCompletedTasks'], isTrue);
       },
     );
 

@@ -241,5 +241,148 @@ void main() {
         );
       },
     );
+
+    test(
+      'a local edit during an in-flight sync queues a push-only pass',
+      () async {
+        final started = Completer<void>();
+        final release = Completer<void>();
+        final fakeApi = BlockingFoldersApi(started, release)
+          ..onPatchTask = (taskRemoteId, patch, changeKey) async =>
+              RemoteTodoTask(
+                id: taskRemoteId,
+                subject: patch['Subject'] as String? ?? 'Task',
+                parentFolderId: 'rf-default',
+                changeKey: 'ck-after',
+              );
+
+        final h = await createSyncTestHarness(
+          accountId: 'acct_queued_push_only',
+          api: fakeApi,
+          defaultTasksFolderRemoteId: 'rf-default',
+          tasks: [
+            TaskItem(
+              id: 't_1',
+              listId: 'tasks',
+              title: 'Before',
+              createdAt: DateTime.utc(2026, 11, 22, 8),
+              remoteId: 'rt-1',
+              remoteParentFolderId: 'rf-default',
+              changeKey: 'ck-1',
+            ),
+          ],
+          foldersDeltaLink: 'dl-folders-1',
+          taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
+        );
+
+        final notifier = h.container.read(syncProvider.notifier);
+        final inFlight = notifier.syncNow(reason: 'manual');
+        await started.future;
+
+        // Edit while the delta sync is blocked on its folder pull.
+        h.container
+            .read(todoProvider.notifier)
+            .commit(
+              h.container
+                  .read(todoProvider)
+                  .copyWith(
+                    tasks: [
+                      h.container
+                          .read(todoProvider)
+                          .tasks
+                          .single
+                          .copyWith(title: 'Edited During Sync'),
+                    ],
+                  ),
+            );
+        // Let the coalescing window elapse so the edit is queued.
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+
+        release.complete();
+        await inFlight;
+        await pumpEventQueue();
+
+        // The queued pass only pushed; it did not repeat the global pulls.
+        expect(
+          fakeApi.callLog.where((c) => c == 'GET settings').length,
+          1,
+          reason: fakeApi.callLog.join(', '),
+        );
+        expect(
+          fakeApi.callLog
+              .where((c) => c.startsWith('GET foldergroups('))
+              .length,
+          1,
+          reason: fakeApi.callLog.join(', '),
+        );
+        expect(
+          fakeApi.callLog.where((c) => c.startsWith('PATCH tasks/rt-1')).length,
+          1,
+          reason: fakeApi.callLog.join(', '),
+        );
+      },
+    );
+
+    test(
+      'continuous local edits still flush within the coalescing cap',
+      () async {
+        final fakeApi = FakeSubstrateApi()
+          ..onPatchTask = (taskRemoteId, patch, changeKey) async =>
+              RemoteTodoTask(
+                id: taskRemoteId,
+                subject: patch['Subject'] as String? ?? 'Task',
+                parentFolderId: 'rf-default',
+                changeKey: 'ck-after',
+              );
+
+        final h = await createSyncTestHarness(
+          accountId: 'acct_coalesce_cap',
+          api: fakeApi,
+          defaultTasksFolderRemoteId: 'rf-default',
+          tasks: [
+            TaskItem(
+              id: 't_1',
+              listId: 'tasks',
+              title: 'Before',
+              createdAt: DateTime.utc(2026, 11, 22, 8),
+              remoteId: 'rt-1',
+              remoteParentFolderId: 'rf-default',
+              changeKey: 'ck-1',
+            ),
+          ],
+          foldersDeltaLink: 'dl-folders-1',
+          taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
+        );
+
+        h.container.read(syncProvider.notifier);
+        fakeApi.callLog.clear();
+
+        final stopwatch = Stopwatch()..start();
+        Duration? firstPushAt;
+        while (stopwatch.elapsed < const Duration(milliseconds: 1600)) {
+          final state = h.container.read(todoProvider);
+          h.container
+              .read(todoProvider.notifier)
+              .commit(
+                state.copyWith(
+                  tasks: [
+                    state.tasks.single.copyWith(
+                      title: 'Edit ${stopwatch.elapsedMilliseconds}',
+                    ),
+                  ],
+                ),
+              );
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+          firstPushAt ??=
+              fakeApi.callLog.any((c) => c.startsWith('PATCH tasks/rt-1'))
+              ? stopwatch.elapsed
+              : null;
+        }
+
+        // Only the 1 s coalescing cap can flush this, not the 300 ms window.
+        expect(firstPushAt, isNotNull);
+        expect(firstPushAt!.inMilliseconds, lessThan(1300));
+      },
+    );
   });
 }
