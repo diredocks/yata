@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:yata/data/sync_outbox.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
@@ -225,7 +226,7 @@ void main() {
 
       expect(taskFetches, 0);
       expect(todoState.mutationVersion, initialMutationVersion);
-      expect(h.repository.loadDirtyTaskIds(), ['t_3']);
+      expect(h.repository.outbox.pendingLocalIds(SyncEntityType.task), {'t_3'});
     });
 
     test('Task/Deleted removes non-dirty task and mid-sync Task/Updated is deferred without marking dirty', () async {
@@ -327,7 +328,7 @@ void main() {
         't_1',
       ]);
       expect(state.tasks.firstWhere((t) => t.id == 't_2').orderDateTime, tNew);
-      expect(h.repository.loadDirtyTaskIds(), isEmpty);
+      expect(h.repository.outbox.pendingLocalIds(SyncEntityType.task), isEmpty);
     });
 
     test('FolderGroup, TaskFolder, and Setting events apply directly and forceFullSync refreshes groups and folders', () async {
@@ -551,6 +552,75 @@ void main() {
 
       expect(fakeApi.callLog, contains('GET taskfolders(dl-folders-saved)'));
       expect(fakeApi.callLog, contains('GET tasks(rf-default,dl-tasks-saved)'));
+      expect(fakeApi.callLog, isNot(contains('GET taskfolders(null)')));
+      expect(fakeApi.callLog, isNot(contains('GET tasks(rf-default,null)')));
+    });
+
+    test('mid-sync SyncRealtime fallback events coalesce and trigger an immediate incremental catch-up sync after current cycle', () async {
+      final taskFetchStarted = Completer<void>();
+      final allowTaskFetchFinish = Completer<void>();
+      final fakeApi =
+          BlockingTasksDeltaApi(taskFetchStarted, allowTaskFetchFinish)
+            ..onFetchGroupsDelta = ((dl) =>
+                DeltaPageResult(items: const [], deltaLink: dl ?? 'dl-g-new'))
+            ..onFetchFoldersDelta = ((dl) =>
+                DeltaPageResult(items: const [], deltaLink: dl ?? 'dl-f-new'))
+            ..onFetchTasksDelta = ((folderId, dl) =>
+                DeltaPageResult(items: const [], deltaLink: dl ?? 'dl-t-new'));
+
+      final h = await createSyncTestHarness(
+        accountId: 'acct_rt_mid_sync_catchup',
+        api: fakeApi,
+        realtimeSyncEnabled: true,
+        defaultTasksFolderRemoteId: 'rf-default',
+        groupsDeltaLink: 'dl-groups-saved',
+        foldersDeltaLink: 'dl-folders-saved',
+        taskDeltaLinks: const {'rf-default': 'dl-tasks-saved'},
+      );
+
+      h.container.read(syncProvider);
+      await pumpEventQueue();
+
+      final syncFuture = h.container.read(syncProvider.notifier).syncNow();
+      await taskFetchStarted.future;
+
+      // Two missing-payload events arrive while sync is in flight; they must
+      // not block the stream or be dropped, and must coalesce into one
+      // incremental delta catch-up pass after the in-flight cycle finishes.
+      h.api.realtimeController.add(
+        const RealtimeEvent(
+          id: 'rt-1',
+          type: 'Task',
+          operation: 'Created',
+          requestId: 'other-device-req-1',
+        ),
+      );
+      h.api.realtimeController.add(
+        const RealtimeEvent(
+          id: 'rt-2',
+          type: 'Task',
+          operation: 'Updated',
+          requestId: 'other-device-req-2',
+        ),
+      );
+      await pumpEventQueue();
+      expect(h.container.read(syncProvider).isSyncing, isTrue);
+
+      allowTaskFetchFinish.complete();
+      await syncFuture;
+      await pumpEventQueue();
+
+      expect(
+        fakeApi.callLog.where((c) => c.startsWith('GET tasks(')).length,
+        2,
+      );
+      expect(
+        fakeApi.callLog
+            .where((c) => c == 'GET tasks(rf-default,dl-tasks-saved)')
+            .length,
+        2,
+      );
+      expect(fakeApi.callLog, isNot(contains('GET foldergroups(null)')));
       expect(fakeApi.callLog, isNot(contains('GET taskfolders(null)')));
       expect(fakeApi.callLog, isNot(contains('GET tasks(rf-default,null)')));
     });

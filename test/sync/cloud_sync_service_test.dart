@@ -8,6 +8,7 @@ import 'package:yata/account/account_provider.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/core/error/app_error.dart';
 import 'package:yata/data/sync_dirty_fields.dart';
+import 'package:yata/data/sync_outbox.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/homeview/home_view_presenter.dart';
 import 'package:yata/models/account.dart';
@@ -455,7 +456,10 @@ void main() {
           .firstWhere((t) => t.id == 't_1');
       expect(updatedT1.title, 'Edited Mid-Sync');
       expect(updatedT1.changeKey, 'ck-patched');
-      expect(h.repository.loadDirtyTaskIds(), contains('t_1'));
+      expect(
+        h.repository.outbox.pendingLocalIds(SyncEntityType.task),
+        contains('t_1'),
+      );
     });
 
     test(
@@ -663,8 +667,11 @@ void main() {
       await h.container.read(syncProvider.notifier).syncNow();
 
       expect(h.container.read(syncProvider).status, SyncStatus.success);
-      expect(h.repository.loadPendingDeletedTaskRemoteIds(), isEmpty);
-      expect(h.repository.loadDirtyTaskIds(), isEmpty);
+      expect(
+        h.repository.outbox.pendingDeletedRemoteIds(SyncEntityType.task),
+        isEmpty,
+      );
+      expect(h.repository.outbox.pendingLocalIds(SyncEntityType.task), isEmpty);
 
       expect(
         h.api.callLog.any((c) => c.contains('PATCH tasks/rt-ghost')),
@@ -798,7 +805,7 @@ void main() {
               repository: h.repository,
               settings: h.settings,
               idGenerator: h.container.read(todoProvider.notifier).nextId,
-              pushOnly: true,
+              kind: SyncKind.pushOnly,
             )
             .fold(
               (outcome) => outcome,
@@ -859,7 +866,7 @@ void main() {
             repository: h.repository,
             settings: h.settings,
             idGenerator: h.container.read(todoProvider.notifier).nextId,
-            pushOnly: true,
+            kind: SyncKind.pushOnly,
           )
           .fold(
             (outcome) => outcome,
