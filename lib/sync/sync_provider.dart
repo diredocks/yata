@@ -71,13 +71,14 @@ class SyncNotifier extends Notifier<SyncState> {
     return _realtimeController ??= RealtimeSyncController(
       ref: ref,
       isSyncInFlight: () => _activeSync != null,
-      onScheduleFallbackSync: ({required delay, required forceFullSync, required reason}) {
-        scheduleDebouncedSync(
-          delay: delay,
-          forceFullSync: forceFullSync,
-          reason: reason,
-        );
-      },
+      onScheduleFallbackSync:
+          ({required delay, required forceFullSync, required reason}) {
+            scheduleDebouncedSync(
+              delay: delay,
+              forceFullSync: forceFullSync,
+              reason: reason,
+            );
+          },
       onOverflowResync: (reason) {
         _syncQueued = true;
         _queuedForceFullSync = true;
@@ -255,10 +256,7 @@ class SyncNotifier extends Notifier<SyncState> {
     });
   }
 
-  Future<void> syncNow({
-    bool forceFullSync = false,
-    String reason = 'manual',
-  }) {
+  Future<void> syncNow({bool forceFullSync = false, String reason = 'manual'}) {
     if (_disposed) return Future<void>.value();
     final active = ref.read(accountProvider).activeAccount;
     if (active is! MicrosoftAccount) return Future<void>.value();

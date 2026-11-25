@@ -665,7 +665,8 @@ Future<SeededSyncSession> seedMicrosoftSyncSession({
   } else if (defaultTasksFolderRemoteId != null || extraLists.isNotEmpty) {
     await repository.saveLists([
       ...defaultSmartLists().map(
-        (l) => defaultTasksFolderRemoteId != null &&
+        (l) =>
+            defaultTasksFolderRemoteId != null &&
                 l.smartType == SmartListType.tasks
             ? l.copyWith(remoteId: defaultTasksFolderRemoteId)
             : l,

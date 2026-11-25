@@ -347,10 +347,7 @@ class RealtimeSyncController {
     }
   }
 
-  void _scheduleReconnect(
-    MicrosoftAccount account, {
-    required String reason,
-  }) {
+  void _scheduleReconnect(MicrosoftAccount account, {required String reason}) {
     if (_disposed || _accountId != account.id) return;
     if (!ref.read(realtimeSyncEnabledProvider)) return;
     _sub = null;

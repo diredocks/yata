@@ -337,7 +337,9 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
         ref.read(todoProvider.notifier).setLastEnteredListId(null);
       }
       if (previous != next) {
-        ref.read(syncProvider.notifier).syncOnSessionStart(accountChanged: true);
+        ref
+            .read(syncProvider.notifier)
+            .syncOnSessionStart(accountChanged: true);
       }
     });
     ref.listen<TodoState>(todoProvider, (_, next) {

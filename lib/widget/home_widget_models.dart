@@ -299,10 +299,7 @@ class HomeWidgetSnapshotSerializer {
       ...canonicalPayload,
       'generatedAtMs': (now ?? DateTime.now()).millisecondsSinceEpoch,
     };
-    return (
-      canonicalJson: canonicalJson,
-      wireJson: jsonEncode(wirePayload),
-    );
+    return (canonicalJson: canonicalJson, wireJson: jsonEncode(wirePayload));
   }
 
   static Map<String, dynamic> _serializeTask(

@@ -4,8 +4,10 @@ import 'package:flutter/widgets.dart';
 
 import '../models/task_item.dart';
 
-typedef TaskCompletionCommit =
-    void Function(String taskId, {required bool completed});
+typedef TaskCompletionCommit = void Function(
+  String taskId, {
+  required bool completed,
+});
 
 /// Coordinates delayed task completion in list views, matching
 /// `CompleteTaskDelayedUseCase.kt` (`b.a.MEDIUM = 300ms` when completing a task,

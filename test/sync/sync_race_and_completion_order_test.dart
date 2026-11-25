@@ -218,28 +218,31 @@ void main() {
     expect(split.completed.map((t) => t.id), ['t3', 't2', 't1']);
   });
 
-  test('TodoRepository.flushPendingWrites waits for queued SQLite writes', () async {
-    SharedPreferences.setMockInitialValues({});
-    final prefs = await SharedPreferences.getInstance();
-    final db = TodoDatabase(NativeDatabase.memory());
-    addTearDown(db.close);
-    final repo = TodoRepository.forAccount(
-      prefs,
-      accountId: 'acct_flush',
-      database: db,
-    );
-    final task = TaskItem(
-      id: 't_flush',
-      listId: 'tasks',
-      title: 'Persist me',
-      createdAt: DateTime.utc(2026, 11, 24),
-    );
+  test(
+    'TodoRepository.flushPendingWrites waits for queued SQLite writes',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final db = TodoDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final repo = TodoRepository.forAccount(
+        prefs,
+        accountId: 'acct_flush',
+        database: db,
+      );
+      final task = TaskItem(
+        id: 't_flush',
+        listId: 'tasks',
+        title: 'Persist me',
+        createdAt: DateTime.utc(2026, 11, 24),
+      );
 
-    unawaited(repo.saveTasks([task]));
-    await repo.flushPendingWrites();
+      unawaited(repo.saveTasks([task]));
+      await repo.flushPendingWrites();
 
-    final rows = await db.selectTaskItemRecords('acct_flush');
-    expect(rows, hasLength(1));
-    expect(rows.single.id, 't_flush');
-  });
+      final rows = await db.selectTaskItemRecords('acct_flush');
+      expect(rows, hasLength(1));
+      expect(rows.single.id, 't_flush');
+    },
+  );
 }

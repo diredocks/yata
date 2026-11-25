@@ -702,8 +702,9 @@ void main() {
         accountId: 'acct_1',
         accountName: 'Test',
       );
-      final snapshot = jsonDecode(transport.saved[kWidgetSnapshotKey]! as String)
-          as Map<String, dynamic>;
+      final snapshot = jsonDecode(
+        transport.saved[kWidgetSnapshotKey]! as String,
+      ) as Map<String, dynamic>;
       final tasksJson = snapshot['tasks'] as List<dynamic>;
       final entry = tasksJson.single as Map<String, dynamic>;
       expect(entry['reminderLabel'], DateFormat.Hm().format(todayNoonLocal));

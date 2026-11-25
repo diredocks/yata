@@ -49,140 +49,134 @@ void main() {
       expect(fakeApi.folderFetchCount, greaterThanOrEqualTo(2));
     });
 
-    test(
-      'onAppResumed forces full task sync bypassing saved taskDeltaLinks even when coalesced with normal debounced sync',
-      () async {
-        final tOld = DateTime.utc(2026, 11, 22, 8);
-        final tMid = DateTime.utc(2026, 11, 22, 10);
-        final tNew = DateTime.utc(2026, 11, 22, 14);
+    test('onAppResumed forces full task sync bypassing saved taskDeltaLinks even when coalesced with normal debounced sync', () async {
+      final tOld = DateTime.utc(2026, 11, 22, 8);
+      final tMid = DateTime.utc(2026, 11, 22, 10);
+      final tNew = DateTime.utc(2026, 11, 22, 14);
 
-        final fakeApi = FakeSubstrateApi();
-        fakeApi.onFetchFoldersDelta = (dl) => dl != null
-            ? const DeltaPageResult(items: [], deltaLink: 'dl-folders-2')
-            : const DeltaPageResult(
-                items: [
-                  RemoteTodoFolder(
-                    id: 'rf-default',
-                    name: 'Tasks',
-                    isDefaultFolder: true,
-                  ),
-                ],
-                deltaLink: 'dl-folders-2',
-              );
-        fakeApi.onFetchTasksDelta = (folderId, dl) {
-          if (dl != null) {
-            return DeltaPageResult(items: const [], deltaLink: dl);
-          }
-          return DeltaPageResult(
-            items: [
-              RemoteTodoTask(
-                id: 'rt-1',
-                changeKey: 'ck-1-new',
-                parentFolderId: 'rf-default',
-                subject: 'Task One',
-                orderDateTime: tOld,
-              ),
-              RemoteTodoTask(
-                id: 'rt-2',
-                changeKey: 'ck-2-new',
-                parentFolderId: 'rf-default',
-                subject: 'Task Two',
-                orderDateTime: tNew,
-              ),
-            ],
-            deltaLink: 'dl-tasks-2',
-          );
-        };
-
-        final h = await createSyncTestHarness(
-          accountId: 'acct_resume_full',
-          lastSyncedAt: DateTime(2026, 11, 22, 12, 0),
-          api: fakeApi,
-          defaultTasksFolderRemoteId: 'rf-default',
-          tasks: [
-            TaskItem(
-              id: 't_1',
-              listId: 'tasks',
-              title: 'Task One',
-              createdAt: tOld,
-              orderDateTime: tMid,
-              remoteId: 'rt-1',
-              remoteParentFolderId: 'rf-default',
-              changeKey: 'ck-1',
-            ),
-            TaskItem(
-              id: 't_2',
-              listId: 'tasks',
-              title: 'Task Two',
-              createdAt: tOld,
+      final fakeApi = FakeSubstrateApi();
+      fakeApi.onFetchFoldersDelta = (dl) => dl != null
+          ? const DeltaPageResult(items: [], deltaLink: 'dl-folders-2')
+          : const DeltaPageResult(
+              items: [
+                RemoteTodoFolder(
+                  id: 'rf-default',
+                  name: 'Tasks',
+                  isDefaultFolder: true,
+                ),
+              ],
+              deltaLink: 'dl-folders-2',
+            );
+      fakeApi.onFetchTasksDelta = (folderId, dl) {
+        if (dl != null) {
+          return DeltaPageResult(items: const [], deltaLink: dl);
+        }
+        return DeltaPageResult(
+          items: [
+            RemoteTodoTask(
+              id: 'rt-1',
+              changeKey: 'ck-1-new',
+              parentFolderId: 'rf-default',
+              subject: 'Task One',
               orderDateTime: tOld,
-              remoteId: 'rt-2',
-              remoteParentFolderId: 'rf-default',
-              changeKey: 'ck-2',
+            ),
+            RemoteTodoTask(
+              id: 'rt-2',
+              changeKey: 'ck-2-new',
+              parentFolderId: 'rf-default',
+              subject: 'Task Two',
+              orderDateTime: tNew,
             ),
           ],
-          foldersDeltaLink: 'dl-folders-1',
-          taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
+          deltaLink: 'dl-tasks-2',
         );
+      };
 
-        h.container.read(syncProvider);
+      final h = await createSyncTestHarness(
+        accountId: 'acct_resume_full',
+        lastSyncedAt: DateTime(2026, 11, 22, 12, 0),
+        api: fakeApi,
+        defaultTasksFolderRemoteId: 'rf-default',
+        tasks: [
+          TaskItem(
+            id: 't_1',
+            listId: 'tasks',
+            title: 'Task One',
+            createdAt: tOld,
+            orderDateTime: tMid,
+            remoteId: 'rt-1',
+            remoteParentFolderId: 'rf-default',
+            changeKey: 'ck-1',
+          ),
+          TaskItem(
+            id: 't_2',
+            listId: 'tasks',
+            title: 'Task Two',
+            createdAt: tOld,
+            orderDateTime: tOld,
+            remoteId: 'rt-2',
+            remoteParentFolderId: 'rf-default',
+            changeKey: 'ck-2',
+          ),
+        ],
+        foldersDeltaLink: 'dl-folders-1',
+        taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
+      );
 
-        h.container.read(syncProvider.notifier).onAppPaused();
-        h.container.read(syncProvider.notifier).onAppResumed();
-        // Sticky coalescing: a shorter normal debounced sync must keep forceFullSync=true.
-        h.container
-            .read(syncProvider.notifier)
-            .scheduleDebouncedSync(
-              delay: const Duration(milliseconds: 50),
-              forceFullSync: false,
-              reason: 'local_mutation',
-            );
+      h.container.read(syncProvider);
 
-        await Future<void>.delayed(const Duration(milliseconds: 150));
+      h.container.read(syncProvider.notifier).onAppPaused();
+      h.container.read(syncProvider.notifier).onAppResumed();
+      // Sticky coalescing: a shorter normal debounced sync must keep forceFullSync=true.
+      h.container
+          .read(syncProvider.notifier)
+          .scheduleDebouncedSync(
+            delay: const Duration(milliseconds: 50),
+            forceFullSync: false,
+            reason: 'local_mutation',
+          );
 
-        expect(h.api.callLog, contains('GET tasks(rf-default,null)'));
-        final todoState = h.container.read(todoProvider);
-        final tasksList = todoState.lists.firstWhere((l) => l.id == 'tasks');
-        expect(
-          todoState.tasksForList(tasksList).map((t) => t.id).toList(),
-          ['t_2', 't_1'],
-        );
-      },
-    );
+      await Future<void>.delayed(const Duration(milliseconds: 150));
 
-    test(
-      'refresh() forces full sync and syncOnSessionStart() respects startupSyncEnabledProvider',
-      () async {
-        final h = await createSyncTestHarness(
-          accountId: 'acct_refresh_api',
-          defaultTasksFolderRemoteId: 'rf-default',
-          foldersDeltaLink: 'dl-folders-saved',
-          taskDeltaLinks: const {'rf-default': 'dl-tasks-saved'},
-          startupSyncEnabled: false,
-        );
+      expect(h.api.callLog, contains('GET tasks(rf-default,null)'));
+      final todoState = h.container.read(todoProvider);
+      final tasksList = todoState.lists.firstWhere((l) => l.id == 'tasks');
+      expect(todoState.tasksForList(tasksList).map((t) => t.id).toList(), [
+        't_2',
+        't_1',
+      ]);
+    });
 
-        final notifier = h.container.read(syncProvider.notifier);
+    test('refresh() forces full sync and syncOnSessionStart() respects startupSyncEnabledProvider', () async {
+      final h = await createSyncTestHarness(
+        accountId: 'acct_refresh_api',
+        defaultTasksFolderRemoteId: 'rf-default',
+        foldersDeltaLink: 'dl-folders-saved',
+        taskDeltaLinks: const {'rf-default': 'dl-tasks-saved'},
+        startupSyncEnabled: false,
+      );
 
-        // With startupSyncEnabled=false, non-accountChanged start is a no-op.
-        notifier.syncOnSessionStart();
-        await pumpEventQueue();
-        expect(h.api.callLog, isEmpty);
+      final notifier = h.container.read(syncProvider.notifier);
 
-        // accountChanged=true bypasses startupSyncEnabledProvider and runs full sync.
-        notifier.syncOnSessionStart(accountChanged: true);
-        await pumpEventQueue();
-        expect(h.api.callLog, contains('GET taskfolders(null)'));
-        expect(h.api.callLog, contains('GET tasks(rf-default,null)'));
+      // With startupSyncEnabled=false, non-accountChanged start is a no-op.
+      notifier.syncOnSessionStart();
+      await pumpEventQueue();
+      expect(h.api.callLog, isEmpty);
 
-        h.api.callLog.clear();
-        await h.settings.saveTaskDeltaLinks({'rf-default': 'dl-tasks-2'});
+      // accountChanged=true bypasses startupSyncEnabledProvider and runs full sync.
+      notifier.syncOnSessionStart(accountChanged: true);
+      await pumpEventQueue();
+      expect(h.api.callLog, contains('GET taskfolders(null)'));
+      expect(h.api.callLog, contains('GET tasks(rf-default,null)'));
 
-        // Manual refresh() bypasses saved deltaLinks.
-        await notifier.refresh();
-        expect(h.api.callLog, contains('GET taskfolders(null)'));
-        expect(h.api.callLog, contains('GET tasks(rf-default,null)'));
-      },
-    );
+      h.api.callLog.clear();
+      await h.settings.saveTaskDeltaLinks({'rf-default': 'dl-tasks-2'});
+
+      // Manual refresh() bypasses saved deltaLinks.
+      await notifier.refresh();
+      expect(h.api.callLog, contains('GET taskfolders(null)'));
+      expect(h.api.callLog, contains('GET tasks(rf-default,null)'));
+    });
 
     test(
       'onAppPaused immediately flushes an active debounced local_mutation sync',

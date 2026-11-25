@@ -41,7 +41,9 @@ final homeWidgetAutoSyncProvider = Provider<void>((ref) {
 class HomeWidgetSyncController with WidgetsBindingObserver {
   HomeWidgetSyncController(this._ref, this._service)
     : _lastKnownMutationMs =
-          _ref.read(sharedPreferencesProvider).getInt(kWidgetLastMutationMsKey) ??
+          _ref
+              .read(sharedPreferencesProvider)
+              .getInt(kWidgetLastMutationMsKey) ??
           0,
       _isAppForeground =
           WidgetsBinding.instance.lifecycleState != AppLifecycleState.paused,

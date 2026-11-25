@@ -362,21 +362,18 @@ class TodoNotifier extends Notifier<TodoState> {
       currentTasks: state.tasks,
     );
 
-    final remainingDirtyGroups =
-        (repository.loadDirtyGroupIds().toSet()
-          ..removeAll(syncedGroupIds ?? const {})
-          ..addAll(nextGroupFields.keys)
-          ..addAll(preserveDirtyGroups));
-    final remainingDirtyLists =
-        (repository.loadDirtyListIds().toSet()
-          ..removeAll(syncedListIds ?? const {})
-          ..addAll(nextListFields.keys)
-          ..addAll(preserveDirtyLists));
-    final remainingDirtyTasks =
-        (repository.loadDirtyTaskIds().toSet()
-          ..removeAll(syncedTaskIds ?? const {})
-          ..addAll(nextTaskFields.keys)
-          ..addAll(preserveDirtyTasks));
+    final remainingDirtyGroups = (repository.loadDirtyGroupIds().toSet()
+      ..removeAll(syncedGroupIds ?? const {})
+      ..addAll(nextGroupFields.keys)
+      ..addAll(preserveDirtyGroups));
+    final remainingDirtyLists = (repository.loadDirtyListIds().toSet()
+      ..removeAll(syncedListIds ?? const {})
+      ..addAll(nextListFields.keys)
+      ..addAll(preserveDirtyLists));
+    final remainingDirtyTasks = (repository.loadDirtyTaskIds().toSet()
+      ..removeAll(syncedTaskIds ?? const {})
+      ..addAll(nextTaskFields.keys)
+      ..addAll(preserveDirtyTasks));
     final remainingDirtySettings = settings.loadDirtySettingKeys().toSet()
       ..removeAll(syncedSettingKeys ?? const {});
 

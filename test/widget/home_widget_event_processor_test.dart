@@ -136,30 +136,33 @@ void main() {
       expect(h.transport.commits, isEmpty);
     });
 
-    test('refreshRequested always clears refreshing even if cloud sync throws', () async {
-      final h = await createWidgetTestHarness(
-        accounts: [localAccount],
-        activeAccountId: 'acct_a',
-      );
-      h.transport.storage[kWidgetRefreshRequestedKey] = true;
-      h.transport.storage[kWidgetIsRefreshingKey] = true;
+    test(
+      'refreshRequested always clears refreshing even if cloud sync throws',
+      () async {
+        final h = await createWidgetTestHarness(
+          accounts: [localAccount],
+          activeAccountId: 'acct_a',
+        );
+        h.transport.storage[kWidgetRefreshRequestedKey] = true;
+        h.transport.storage[kWidgetIsRefreshingKey] = true;
 
-      final result = await WidgetEventProcessor(
-        widgetService: h.container.read(homeWidgetServiceProvider),
-        read: h.container.read,
-        strings: const HomeWidgetStrings(),
-        isBackground: true,
-        runCloudSync: () async {
-          throw StateError('network down');
-        },
-        scheduleBackgroundedAppCloudSync: () {},
-      ).process();
+        final result = await WidgetEventProcessor(
+          widgetService: h.container.read(homeWidgetServiceProvider),
+          read: h.container.read,
+          strings: const HomeWidgetStrings(),
+          isBackground: true,
+          runCloudSync: () async {
+            throw StateError('network down');
+          },
+          scheduleBackgroundedAppCloudSync: () {},
+        ).process();
 
-      expect(result.didSync, isFalse);
-      expect(h.transport.storage[kWidgetRefreshRequestedKey], isFalse);
-      expect(h.transport.storage[kWidgetIsRefreshingKey], isFalse);
-      expect(h.transport.commits.last.isRefreshing, isFalse);
-    });
+        expect(result.didSync, isFalse);
+        expect(h.transport.storage[kWidgetRefreshRequestedKey], isFalse);
+        expect(h.transport.storage[kWidgetIsRefreshingKey], isFalse);
+        expect(h.transport.commits.last.isRefreshing, isFalse);
+      },
+    );
 
     test('background mutation runs cloud sync while backgrounded foreground app schedules debounced sync', () async {
       final task = TaskItem(

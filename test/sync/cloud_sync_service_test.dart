@@ -232,7 +232,9 @@ void main() {
 
         final h = await createSyncTestHarness(
           api: fakeApi,
-          groups: const [ListGroup(id: 'grp_1', title: 'Work', remoteId: 'rg-1')],
+          groups: const [
+            ListGroup(id: 'grp_1', title: 'Work', remoteId: 'rg-1'),
+          ],
           defaultTasksFolderRemoteId: 'rf-default',
           extraLists: const [
             TodoList(
@@ -257,217 +259,213 @@ void main() {
       },
     );
 
-    test(
-      'handles 409 If-Match conflict retry, 410 delta reset, and cross-folder move safety',
-      () async {
-        var patchAttempts = 0;
-        final fakeApi = FakeSubstrateApi();
-        fakeApi.onFetchFoldersDelta = (dl) => const DeltaPageResult(
-          items: [
-            RemoteTodoFolder(id: 'rf-a', name: 'Tasks', isDefaultFolder: true),
-            RemoteTodoFolder(id: 'rf-b', name: 'List B'),
-          ],
-          deltaLink: 'dl-folders-ab',
+    test('handles 409 If-Match conflict retry, 410 delta reset, and cross-folder move safety', () async {
+      var patchAttempts = 0;
+      final fakeApi = FakeSubstrateApi();
+      fakeApi.onFetchFoldersDelta = (dl) => const DeltaPageResult(
+        items: [
+          RemoteTodoFolder(id: 'rf-a', name: 'Tasks', isDefaultFolder: true),
+          RemoteTodoFolder(id: 'rf-b', name: 'List B'),
+        ],
+        deltaLink: 'dl-folders-ab',
+      );
+      fakeApi.onPatchTask = (id, patch, ck) async {
+        patchAttempts += 1;
+        if (ck == 'ck-stale') {
+          throw const AppError.network(
+            statusCode: 409,
+            code: 'ErrorIrresolvableConflict',
+            message: 'stale',
+          );
+        }
+        expect(ck, 'ck-fresh');
+        return RemoteTodoTask(
+          id: id,
+          changeKey: 'ck-v3',
+          parentFolderId: 'rf-a',
+          subject: patch['Subject'] as String? ?? 'Updated',
         );
-        fakeApi.onPatchTask = (id, patch, ck) async {
-          patchAttempts += 1;
-          if (ck == 'ck-stale') {
-            throw const AppError.network(
-              statusCode: 409,
-              code: 'ErrorIrresolvableConflict',
-              message: 'stale',
-            );
-          }
-          expect(ck, 'ck-fresh');
+      };
+      fakeApi.onGetTask = (id) async => RemoteTodoTask(
+        id: id,
+        changeKey: 'ck-fresh',
+        parentFolderId: 'rf-a',
+        subject: 'Remote',
+      );
+      fakeApi.onFetchTasksDelta = (folderId, dl) {
+        if (folderId == 'rf-a' && dl == 'dl-expired') {
+          throw const AppError.network(
+            statusCode: 410,
+            code: 'SyncStateInvalid',
+            message: 'expired',
+          );
+        }
+        if (folderId == 'rf-a') {
+          return const DeltaPageResult(
+            items: [RemoteTodoTask(id: 'rt-1', subject: '', isDeleted: true)],
+            deltaLink: 'dl-a-fresh',
+          );
+        }
+        if (folderId == 'rf-b') {
+          return const DeltaPageResult(
+            items: [
+              RemoteTodoTask(
+                id: 'rt-1',
+                changeKey: 'ck-v4',
+                parentFolderId: 'rf-b',
+                subject: 'Moved Cleanly',
+              ),
+            ],
+            deltaLink: 'dl-b-fresh',
+          );
+        }
+        return const DeltaPageResult(items: []);
+      };
+
+      final h = await createSyncTestHarness(
+        api: fakeApi,
+        defaultTasksFolderRemoteId: 'rf-a',
+        extraLists: const [
+          TodoList(id: 'list_b', title: 'List B', remoteId: 'rf-b'),
+        ],
+        tasks: [
+          TaskItem(
+            id: 't_1',
+            listId: 'tasks',
+            title: 'Initial',
+            createdAt: DateTime(2026, 11, 22),
+            remoteId: 'rt-1',
+            changeKey: 'ck-stale',
+          ),
+        ],
+        taskDeltaLinks: const {'rf-a': 'dl-expired'},
+      );
+
+      h.container
+          .read(todoProvider.notifier)
+          .commit(
+            h.container
+                .read(todoProvider)
+                .copyWith(
+                  tasks: [
+                    h.container
+                        .read(todoProvider)
+                        .tasks
+                        .first
+                        .copyWith(title: 'Local Edit'),
+                  ],
+                ),
+          );
+
+      await h.container.read(syncProvider.notifier).syncNow();
+      expect(patchAttempts, 2);
+      expect(h.api.callLog, contains('GET tasks/rt-1'));
+      expect(h.api.callLog, contains('GET tasks(rf-a,null)'));
+      expect(h.settings.loadTaskDeltaLinks()['rf-a'], 'dl-a-fresh');
+
+      final tasks = h.container.read(todoProvider).tasks;
+      expect(tasks.length, 1);
+      expect(tasks.first.listId, 'list_b');
+      expect(tasks.first.title, 'Moved Cleanly');
+    });
+
+    test('preserves concurrent local edits made during in-flight sync and syncs reorder OrderDateTime', () async {
+      final tOld = DateTime.utc(2026, 11, 22, 10);
+      final tNew = DateTime.utc(2026, 11, 22, 12);
+      final patchStarted = Completer<void>();
+      final allowPatchFinish = Completer<void>();
+      Map<String, dynamic>? capturedOrderPatch;
+
+      final fakeApi = FakeSubstrateApi()
+        ..onPatchTask = (id, patch, ck) async {
+          capturedOrderPatch = Map<String, dynamic>.from(patch);
+          if (!patchStarted.isCompleted) patchStarted.complete();
+          await allowPatchFinish.future;
           return RemoteTodoTask(
             id: id,
-            changeKey: 'ck-v3',
-            parentFolderId: 'rf-a',
-            subject: patch['Subject'] as String? ?? 'Updated',
+            changeKey: 'ck-patched',
+            parentFolderId: 'rf-default',
+            subject: patch['Subject'] as String? ?? 'Task 1',
+            orderDateTime: patch['OrderDateTime'] != null
+                ? parseSubstrateTimestamp(patch['OrderDateTime'] as String)
+                : tOld,
           );
         };
-        fakeApi.onGetTask = (id) async => RemoteTodoTask(
-          id: id,
-          changeKey: 'ck-fresh',
-          parentFolderId: 'rf-a',
-          subject: 'Remote',
-        );
-        fakeApi.onFetchTasksDelta = (folderId, dl) {
-          if (folderId == 'rf-a' && dl == 'dl-expired') {
-            throw const AppError.network(
-              statusCode: 410,
-              code: 'SyncStateInvalid',
-              message: 'expired',
-            );
-          }
-          if (folderId == 'rf-a') {
-            return const DeltaPageResult(
-              items: [RemoteTodoTask(id: 'rt-1', subject: '', isDeleted: true)],
-              deltaLink: 'dl-a-fresh',
-            );
-          }
-          if (folderId == 'rf-b') {
-            return const DeltaPageResult(
-              items: [
-                RemoteTodoTask(
-                  id: 'rt-1',
-                  changeKey: 'ck-v4',
-                  parentFolderId: 'rf-b',
-                  subject: 'Moved Cleanly',
+
+      final h = await createSyncTestHarness(
+        api: fakeApi,
+        defaultTasksFolderRemoteId: 'rf-default',
+        tasks: [
+          TaskItem(
+            id: 't_1',
+            listId: 'tasks',
+            title: 'Task 1',
+            createdAt: tOld,
+            orderDateTime: tNew,
+            remoteId: 'rt-1',
+            changeKey: 'ck-1',
+          ),
+          TaskItem(
+            id: 't_2',
+            listId: 'tasks',
+            title: 'Task 2',
+            createdAt: tOld,
+            orderDateTime: tOld,
+            remoteId: 'rt-2',
+            changeKey: 'ck-2',
+          ),
+        ],
+      );
+
+      h.container.read(todoProvider.notifier).selectList('tasks');
+      final initialOrdered = h.container
+          .read(todoProvider)
+          .tasksForList(h.container.read(todoProvider).selectedList);
+      expect(initialOrdered.first.id, 't_1');
+      h.container
+          .read(tasksViewPresenterProvider)
+          .reorderActiveTasks(initialOrdered, 0, 1);
+
+      final syncFuture = h.container.read(syncProvider.notifier).syncNow();
+      await patchStarted.future;
+
+      h.container
+          .read(todoProvider.notifier)
+          .commit(
+            h.container
+                .read(todoProvider)
+                .copyWith(
+                  tasks: [
+                    for (final t in h.container.read(todoProvider).tasks)
+                      if (t.id == 't_1')
+                        t.copyWith(title: 'Edited Mid-Sync')
+                      else
+                        t,
+                  ],
                 ),
-              ],
-              deltaLink: 'dl-b-fresh',
-            );
-          }
-          return const DeltaPageResult(items: []);
-        };
+          );
 
-        final h = await createSyncTestHarness(
-          api: fakeApi,
-          defaultTasksFolderRemoteId: 'rf-a',
-          extraLists: const [
-            TodoList(id: 'list_b', title: 'List B', remoteId: 'rf-b'),
-          ],
-          tasks: [
-            TaskItem(
-              id: 't_1',
-              listId: 'tasks',
-              title: 'Initial',
-              createdAt: DateTime(2026, 11, 22),
-              remoteId: 'rt-1',
-              changeKey: 'ck-stale',
-            ),
-          ],
-          taskDeltaLinks: const {'rf-a': 'dl-expired'},
-        );
+      allowPatchFinish.complete();
+      await syncFuture;
 
-        h.container
-            .read(todoProvider.notifier)
-            .commit(
-              h.container
-                  .read(todoProvider)
-                  .copyWith(
-                    tasks: [
-                      h.container
-                          .read(todoProvider)
-                          .tasks
-                          .first
-                          .copyWith(title: 'Local Edit'),
-                    ],
-                  ),
-            );
-
-        await h.container.read(syncProvider.notifier).syncNow();
-        expect(patchAttempts, 2);
-        expect(h.api.callLog, contains('GET tasks/rt-1'));
-        expect(h.api.callLog, contains('GET tasks(rf-a,null)'));
-        expect(h.settings.loadTaskDeltaLinks()['rf-a'], 'dl-a-fresh');
-
-        final tasks = h.container.read(todoProvider).tasks;
-        expect(tasks.length, 1);
-        expect(tasks.first.listId, 'list_b');
-        expect(tasks.first.title, 'Moved Cleanly');
-      },
-    );
-
-    test(
-      'preserves concurrent local edits made during in-flight sync and syncs reorder OrderDateTime',
-      () async {
-        final tOld = DateTime.utc(2026, 11, 22, 10);
-        final tNew = DateTime.utc(2026, 11, 22, 12);
-        final patchStarted = Completer<void>();
-        final allowPatchFinish = Completer<void>();
-        Map<String, dynamic>? capturedOrderPatch;
-
-        final fakeApi = FakeSubstrateApi()
-          ..onPatchTask = (id, patch, ck) async {
-            capturedOrderPatch = Map<String, dynamic>.from(patch);
-            if (!patchStarted.isCompleted) patchStarted.complete();
-            await allowPatchFinish.future;
-            return RemoteTodoTask(
-              id: id,
-              changeKey: 'ck-patched',
-              parentFolderId: 'rf-default',
-              subject: patch['Subject'] as String? ?? 'Task 1',
-              orderDateTime: patch['OrderDateTime'] != null
-                  ? parseSubstrateTimestamp(patch['OrderDateTime'] as String)
-                  : tOld,
-            );
-          };
-
-        final h = await createSyncTestHarness(
-          api: fakeApi,
-          defaultTasksFolderRemoteId: 'rf-default',
-          tasks: [
-            TaskItem(
-              id: 't_1',
-              listId: 'tasks',
-              title: 'Task 1',
-              createdAt: tOld,
-              orderDateTime: tNew,
-              remoteId: 'rt-1',
-              changeKey: 'ck-1',
-            ),
-            TaskItem(
-              id: 't_2',
-              listId: 'tasks',
-              title: 'Task 2',
-              createdAt: tOld,
-              orderDateTime: tOld,
-              remoteId: 'rt-2',
-              changeKey: 'ck-2',
-            ),
-          ],
-        );
-
-        h.container.read(todoProvider.notifier).selectList('tasks');
-        final initialOrdered = h.container
-            .read(todoProvider)
-            .tasksForList(h.container.read(todoProvider).selectedList);
-        expect(initialOrdered.first.id, 't_1');
-        h.container
-            .read(tasksViewPresenterProvider)
-            .reorderActiveTasks(initialOrdered, 0, 1);
-
-        final syncFuture = h.container.read(syncProvider.notifier).syncNow();
-        await patchStarted.future;
-
-        h.container
-            .read(todoProvider.notifier)
-            .commit(
-              h.container
-                  .read(todoProvider)
-                  .copyWith(
-                    tasks: [
-                      for (final t in h.container.read(todoProvider).tasks)
-                        if (t.id == 't_1')
-                          t.copyWith(title: 'Edited Mid-Sync')
-                        else
-                          t,
-                    ],
-                  ),
-            );
-
-        allowPatchFinish.complete();
-        await syncFuture;
-
-        expect(capturedOrderPatch?['OrderDateTime'], isNotNull);
-        final updatedT1 = h.container
-            .read(todoProvider)
-            .tasks
-            .firstWhere((t) => t.id == 't_1');
-        expect(updatedT1.title, 'Edited Mid-Sync');
-        expect(updatedT1.changeKey, 'ck-patched');
-        expect(h.repository.loadDirtyTaskIds(), contains('t_1'));
-      },
-    );
+      expect(capturedOrderPatch?['OrderDateTime'], isNotNull);
+      final updatedT1 = h.container
+          .read(todoProvider)
+          .tasks
+          .firstWhere((t) => t.id == 't_1');
+      expect(updatedT1.title, 'Edited Mid-Sync');
+      expect(updatedT1.changeKey, 'ck-patched');
+      expect(h.repository.loadDirtyTaskIds(), contains('t_1'));
+    });
 
     test(
       'pushes dirty settings and clears remoteId/changeKey when copying tasks',
       () async {
         final h = await createSyncTestHarness();
 
-        h.container.read(settingsPresenterProvider).setConfirmBeforeDeleting(false);
+        h.container
+            .read(settingsPresenterProvider)
+            .setConfirmBeforeDeleting(false);
         h.container
             .read(tasksViewPresenterProvider)
             .setPlannedDueDateFilter(PlannedDueDateFilter.thisWeek);
@@ -482,11 +480,15 @@ void main() {
           createdAt: DateTime(2026, 11, 22),
           remoteId: 'rt-src',
           changeKey: 'ck-src',
-          steps: const [TaskStep(id: 's_1', title: 'Step 1', remoteId: 'rs-src')],
+          steps: const [
+            TaskStep(id: 's_1', title: 'Step 1', remoteId: 'rs-src'),
+          ],
         );
         h.container
             .read(todoProvider.notifier)
-            .commit(h.container.read(todoProvider).copyWith(tasks: [originalTask]));
+            .commit(
+              h.container.read(todoProvider).copyWith(tasks: [originalTask]),
+            );
         h.container.read(tasksActionPresenterProvider).batchCopyToList({
           't_src',
         }, 'tasks');
@@ -511,67 +513,67 @@ void main() {
       },
     );
 
-    test(
-      'retries 401 with refreshed token and reports requiresRelogin when refresh fails',
-      () async {
-        var attempts = 0;
-        final fakeApi = FakeSubstrateApi()
-          ..onFetchFoldersDelta = (dl) {
-            attempts += 1;
-            if (attempts == 1) {
-              throw const AppError.auth(
-                message: 'Unauthorized',
-                requiresReauth: true,
-              );
-            }
-            return const DeltaPageResult(items: []);
-          };
-
-        final h1 = await createSyncTestHarness(api: fakeApi);
-        final service = CloudSyncService(
-          authClient: h1.authClient,
-          todoApi: fakeApi,
-          tokenStorage: AuthTokenStorage(h1.prefs),
-        );
-
-        final outcome = await service
-            .syncAccount(
-              account: h1.account,
-              currentState: h1.container.read(todoProvider),
-              repository: h1.repository,
-              settings: h1.settings,
-              idGenerator: h1.container.read(todoProvider.notifier).nextId,
-            )
-            .fold(
-              (outcome) => outcome,
-              (error) => fail('unexpected sync failure: ${error.describe()}'),
+    test('retries 401 with refreshed token and reports requiresRelogin when refresh fails', () async {
+      var attempts = 0;
+      final fakeApi = FakeSubstrateApi()
+        ..onFetchFoldersDelta = (dl) {
+          attempts += 1;
+          if (attempts == 1) {
+            throw const AppError.auth(
+              message: 'Unauthorized',
+              requiresReauth: true,
             );
-        expect(attempts, 2);
-        expect(outcome.syncedAt, isNotNull);
+          }
+          return const DeltaPageResult(items: []);
+        };
 
-        final failingAuth = FakeAuthClient(
-          onRefreshTokens: (_) async => throw const AppError.auth(
-            message: 'Token revoked',
-            code: 'invalid_grant',
-            requiresReauth: true,
-          ),
-        );
-        final h2 = await createSyncTestHarness(
-          authClient: failingAuth,
-          api: fakeApi,
-          tokens: MicrosoftAuthTokens(
-            accessToken: 'old',
-            refreshToken: 'bad-rt',
-            expiresAt: DateTime.now().toUtc().subtract(const Duration(hours: 1)),
-            userId: 'cid1',
-          ),
-        );
+      final h1 = await createSyncTestHarness(api: fakeApi);
+      final service = CloudSyncService(
+        authClient: h1.authClient,
+        todoApi: fakeApi,
+        tokenStorage: AuthTokenStorage(h1.prefs),
+      );
 
-        await h2.container.read(syncProvider.notifier).syncNow();
-        expect(h2.container.read(syncProvider).status, SyncStatus.requiresRelogin);
-        expect(h2.container.read(syncProvider).requiresRelogin, isTrue);
-      },
-    );
+      final outcome = await service
+          .syncAccount(
+            account: h1.account,
+            currentState: h1.container.read(todoProvider),
+            repository: h1.repository,
+            settings: h1.settings,
+            idGenerator: h1.container.read(todoProvider.notifier).nextId,
+          )
+          .fold(
+            (outcome) => outcome,
+            (error) => fail('unexpected sync failure: ${error.describe()}'),
+          );
+      expect(attempts, 2);
+      expect(outcome.syncedAt, isNotNull);
+
+      final failingAuth = FakeAuthClient(
+        onRefreshTokens: (_) async => throw const AppError.auth(
+          message: 'Token revoked',
+          code: 'invalid_grant',
+          requiresReauth: true,
+        ),
+      );
+      final h2 = await createSyncTestHarness(
+        authClient: failingAuth,
+        api: fakeApi,
+        tokens: MicrosoftAuthTokens(
+          accessToken: 'old',
+          refreshToken: 'bad-rt',
+          expiresAt: DateTime.now().toUtc().subtract(const Duration(hours: 1)),
+          userId: 'cid1',
+        ),
+      );
+
+      await h2.container.read(syncProvider.notifier).syncNow();
+      expect(
+        h2.container.read(syncProvider).status,
+        SyncStatus.requiresRelogin,
+      );
+      expect(h2.container.read(syncProvider).requiresRelogin, isTrue);
+    });
 
     test(
       'backfills missing Microsoft displayName and avatar during syncNow',
@@ -605,153 +607,147 @@ void main() {
       },
     );
 
-    test(
-      'recovers from ErrorItemNotFound (404) on deleted/missing task PATCH and clears pending deletes',
-      () async {
-        final now = DateTime.utc(2026, 4, 15, 10, 0);
-        final fakeApi = FakeSubstrateApi()
-          ..onDeleteTask = (taskRemoteId) async {
-            if (taskRemoteId == 'rt-ghost') {
-              throw const AppError.notFound(
-                message: 'Item not found',
-                id: 'ErrorItemNotFound',
-              );
-            }
+    test('recovers from ErrorItemNotFound (404) on deleted/missing task PATCH and clears pending deletes', () async {
+      final now = DateTime.utc(2026, 4, 15, 10, 0);
+      final fakeApi = FakeSubstrateApi()
+        ..onDeleteTask = (taskRemoteId) async {
+          if (taskRemoteId == 'rt-ghost') {
+            throw const AppError.notFound(
+              message: 'Item not found',
+              id: 'ErrorItemNotFound',
+            );
           }
-          ..onPatchTask = (taskRemoteId, patch, changeKey) async {
-            if (taskRemoteId == 'rt-missing') {
-              throw const AppError.notFound(
-                message: 'Item not found',
-                id: 'ErrorItemNotFound',
-              );
-            }
-            throw StateError('Unexpected PATCH for $taskRemoteId');
-          };
+        }
+        ..onPatchTask = (taskRemoteId, patch, changeKey) async {
+          if (taskRemoteId == 'rt-missing') {
+            throw const AppError.notFound(
+              message: 'Item not found',
+              id: 'ErrorItemNotFound',
+            );
+          }
+          throw StateError('Unexpected PATCH for $taskRemoteId');
+        };
 
-        final h = await createSyncTestHarness(
-          accountId: 'acct_404',
-          microsoftUserId: 'cid404',
-          api: fakeApi,
-          defaultTasksFolderRemoteId: 'rf-default',
-          tasks: [
-            TaskItem(
-              id: 't-ghost',
-              listId: 'tasks',
-              title: 'Ghost deleted task',
-              remoteId: 'rt-ghost',
-              changeKey: 'ck-ghost',
-              createdAt: now,
-              updatedAt: now,
-            ),
-            TaskItem(
-              id: 't-recreate',
-              listId: 'tasks',
-              title: 'Edited after remote delete',
-              remoteId: 'rt-missing',
-              changeKey: 'ck-missing',
-              steps: const [
-                TaskStep(id: 's1', title: 'Step 1', remoteId: 'rs-old'),
-              ],
-              createdAt: now,
-              updatedAt: now,
-            ),
-          ],
-          pendingDeletedTaskRemoteIds: const ['rt-ghost'],
-          dirtyTaskIds: const {'t-ghost', 't-recreate'},
-        );
-
-        await h.container.read(syncProvider.notifier).syncNow();
-
-        expect(h.container.read(syncProvider).status, SyncStatus.success);
-        expect(h.repository.loadPendingDeletedTaskRemoteIds(), isEmpty);
-        expect(h.repository.loadDirtyTaskIds(), isEmpty);
-
-        expect(
-          h.api.callLog.any((c) => c.contains('PATCH tasks/rt-ghost')),
-          isFalse,
-        );
-        expect(
-          h.api.callLog.any((c) => c.contains('Ghost deleted task')),
-          isFalse,
-        );
-        expect(
-          h.api.callLog,
-          contains(
-            'POST taskfolders/rf-default/tasks Edited after remote delete',
+      final h = await createSyncTestHarness(
+        accountId: 'acct_404',
+        microsoftUserId: 'cid404',
+        api: fakeApi,
+        defaultTasksFolderRemoteId: 'rf-default',
+        tasks: [
+          TaskItem(
+            id: 't-ghost',
+            listId: 'tasks',
+            title: 'Ghost deleted task',
+            remoteId: 'rt-ghost',
+            changeKey: 'ck-ghost',
+            createdAt: now,
+            updatedAt: now,
           ),
-        );
-        final recreated = h.container
-            .read(todoProvider)
-            .tasks
-            .firstWhere((t) => t.id == 't-recreate');
-        expect(recreated.remoteId, isNot('rt-missing'));
-        expect(recreated.steps.single.remoteId, isNot('rs-old'));
-      },
-    );
+          TaskItem(
+            id: 't-recreate',
+            listId: 'tasks',
+            title: 'Edited after remote delete',
+            remoteId: 'rt-missing',
+            changeKey: 'ck-missing',
+            steps: const [
+              TaskStep(id: 's1', title: 'Step 1', remoteId: 'rs-old'),
+            ],
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ],
+        pendingDeletedTaskRemoteIds: const ['rt-ghost'],
+        dirtyTaskIds: const {'t-ghost', 't-recreate'},
+      );
 
-    test(
-      'folder theme PATCH and delta merge round-trip solid <-> photo backgrounds',
-      () {
-        const solidList = TodoList(
-          id: 'list_shop',
-          title: 'Shopping',
-          remoteId: 'rf-shop',
-          themeColor: ListThemeColor.rose,
-          themePhoto: null,
-        );
-        final clearPatch = buildFolderPatchPayload(
-          solidList,
-          parentGroupRemoteId: null,
-          dirtyFields: {ListDirtyField.theme},
-        );
-        expect(clearPatch['ThemeColor'], 'dark_rose');
-        expect(clearPatch['ThemeBackground'], 'mountain');
+      await h.container.read(syncProvider.notifier).syncNow();
 
-        final afterClear = mergeFoldersDelta(
-          localLists: [solidList],
-          remoteDelta: [
-            RemoteTodoFolder(
-              id: 'rf-shop',
-              name: 'Shopping',
-              themeColor: clearPatch['ThemeColor'] as String,
-              themeBackground: clearPatch['ThemeBackground'] as String,
-            ),
-          ],
-          dirtyListIds: const {},
-          groupLocalIdByRemoteId: const {},
-          idGenerator: (p) => '${p}_gen',
-        ).single;
-        expect(afterClear.themeColor, ListThemeColor.rose);
-        expect(afterClear.themePhoto, isNull);
+      expect(h.container.read(syncProvider).status, SyncStatus.success);
+      expect(h.repository.loadPendingDeletedTaskRemoteIds(), isEmpty);
+      expect(h.repository.loadDirtyTaskIds(), isEmpty);
 
-        final photoList = afterClear.copyWith(
-          themeColor: ListThemeColor.blue,
-          themePhoto: ListThemePhoto.beach,
-        );
-        final photoPatch = buildFolderPatchPayload(
-          photoList,
-          parentGroupRemoteId: null,
-          dirtyFields: {ListDirtyField.theme},
-        );
-        expect(photoPatch['ThemeColor'], 'photo_beach');
-        expect(photoPatch['ThemeBackground'], 'mountain');
+      expect(
+        h.api.callLog.any((c) => c.contains('PATCH tasks/rt-ghost')),
+        isFalse,
+      );
+      expect(
+        h.api.callLog.any((c) => c.contains('Ghost deleted task')),
+        isFalse,
+      );
+      expect(
+        h.api.callLog,
+        contains(
+          'POST taskfolders/rf-default/tasks Edited after remote delete',
+        ),
+      );
+      final recreated = h.container
+          .read(todoProvider)
+          .tasks
+          .firstWhere((t) => t.id == 't-recreate');
+      expect(recreated.remoteId, isNot('rt-missing'));
+      expect(recreated.steps.single.remoteId, isNot('rs-old'));
+    });
 
-        final afterPhoto = mergeFoldersDelta(
-          localLists: [photoList],
-          remoteDelta: [
-            RemoteTodoFolder(
-              id: 'rf-shop',
-              name: 'Shopping',
-              themeColor: photoPatch['ThemeColor'] as String,
-              themeBackground: photoPatch['ThemeBackground'] as String,
-            ),
-          ],
-          dirtyListIds: const {},
-          groupLocalIdByRemoteId: const {},
-          idGenerator: (p) => '${p}_gen',
-        ).single;
-        expect(afterPhoto.themePhoto, ListThemePhoto.beach);
-      },
-    );
+    test('folder theme PATCH and delta merge round-trip solid <-> photo backgrounds', () {
+      const solidList = TodoList(
+        id: 'list_shop',
+        title: 'Shopping',
+        remoteId: 'rf-shop',
+        themeColor: ListThemeColor.rose,
+        themePhoto: null,
+      );
+      final clearPatch = buildFolderPatchPayload(
+        solidList,
+        parentGroupRemoteId: null,
+        dirtyFields: {ListDirtyField.theme},
+      );
+      expect(clearPatch['ThemeColor'], 'dark_rose');
+      expect(clearPatch['ThemeBackground'], 'mountain');
+
+      final afterClear = mergeFoldersDelta(
+        localLists: [solidList],
+        remoteDelta: [
+          RemoteTodoFolder(
+            id: 'rf-shop',
+            name: 'Shopping',
+            themeColor: clearPatch['ThemeColor'] as String,
+            themeBackground: clearPatch['ThemeBackground'] as String,
+          ),
+        ],
+        dirtyListIds: const {},
+        groupLocalIdByRemoteId: const {},
+        idGenerator: (p) => '${p}_gen',
+      ).single;
+      expect(afterClear.themeColor, ListThemeColor.rose);
+      expect(afterClear.themePhoto, isNull);
+
+      final photoList = afterClear.copyWith(
+        themeColor: ListThemeColor.blue,
+        themePhoto: ListThemePhoto.beach,
+      );
+      final photoPatch = buildFolderPatchPayload(
+        photoList,
+        parentGroupRemoteId: null,
+        dirtyFields: {ListDirtyField.theme},
+      );
+      expect(photoPatch['ThemeColor'], 'photo_beach');
+      expect(photoPatch['ThemeBackground'], 'mountain');
+
+      final afterPhoto = mergeFoldersDelta(
+        localLists: [photoList],
+        remoteDelta: [
+          RemoteTodoFolder(
+            id: 'rf-shop',
+            name: 'Shopping',
+            themeColor: photoPatch['ThemeColor'] as String,
+            themeBackground: photoPatch['ThemeBackground'] as String,
+          ),
+        ],
+        dirtyListIds: const {},
+        groupLocalIdByRemoteId: const {},
+        idGenerator: (p) => '${p}_gen',
+      ).single;
+      expect(afterPhoto.themePhoto, ListThemePhoto.beach);
+    });
   });
 }

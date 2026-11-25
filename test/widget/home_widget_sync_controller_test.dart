@@ -15,67 +15,62 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('HomeWidgetSyncController & homeWidgetAutoSyncProvider', () {
-    test(
-      'autoSync clears when signed out without loading tasks, syncs on task mutation and account switch, and clears on sign-out',
-      () async {
-        final h = await createWidgetTestHarness();
-        h.container.listen<void>(homeWidgetAutoSyncProvider, (_, _) {});
-        await pumpEventQueue();
+    test('autoSync clears when signed out without loading tasks, syncs on task mutation and account switch, and clears on sign-out', () async {
+      final h = await createWidgetTestHarness();
+      h.container.listen<void>(homeWidgetAutoSyncProvider, (_, _) {});
+      await pumpEventQueue();
 
-        expect(h.container.read(todoProvider.exists), isFalse);
-        expect(h.transport.updateCalls, 1);
-        expect(h.transport.storage[kWidgetSnapshotKey], isNull);
+      expect(h.container.read(todoProvider.exists), isFalse);
+      expect(h.transport.updateCalls, 1);
+      expect(h.transport.storage[kWidgetSnapshotKey], isNull);
 
-        final accounts = h.container.read(accountProvider.notifier);
-        final alice = await accounts.signInLocal(
-          'Alice',
-          fallbackName: 'Alice',
-          fallbackEmail: 'alice@example.com',
-        );
-        await pumpEventQueue();
-        h.container.read(tasksViewPresenterProvider).addTask(title: 'Alice task');
-        await pumpEventQueue();
+      final accounts = h.container.read(accountProvider.notifier);
+      final alice = await accounts.signInLocal(
+        'Alice',
+        fallbackName: 'Alice',
+        fallbackEmail: 'alice@example.com',
+      );
+      await pumpEventQueue();
+      h.container.read(tasksViewPresenterProvider).addTask(title: 'Alice task');
+      await pumpEventQueue();
 
-        final aliceSnapshot =
-            jsonDecode(h.transport.storage[kWidgetSnapshotKey]! as String)
-                as Map<String, dynamic>;
-        expect(aliceSnapshot['accountName'], 'Alice');
-        expect(
-          (aliceSnapshot['tasks'] as List).map((t) => t['title']),
-          ['Alice task'],
-        );
+      final aliceSnapshot = jsonDecode(
+        h.transport.storage[kWidgetSnapshotKey]! as String,
+      ) as Map<String, dynamic>;
+      expect(aliceSnapshot['accountName'], 'Alice');
+      expect((aliceSnapshot['tasks'] as List).map((t) => t['title']), [
+        'Alice task',
+      ]);
 
-        final bob = await accounts.signInLocal(
-          'Bob',
-          fallbackName: 'Bob',
-          fallbackEmail: 'bob@example.com',
-        );
-        await pumpEventQueue();
+      final bob = await accounts.signInLocal(
+        'Bob',
+        fallbackName: 'Bob',
+        fallbackEmail: 'bob@example.com',
+      );
+      await pumpEventQueue();
 
-        final bobSnapshot =
-            jsonDecode(h.transport.storage[kWidgetSnapshotKey]! as String)
-                as Map<String, dynamic>;
-        expect(bobSnapshot['accountName'], 'Bob');
-        expect(bobSnapshot['tasks'], isEmpty);
+      final bobSnapshot = jsonDecode(
+        h.transport.storage[kWidgetSnapshotKey]! as String,
+      ) as Map<String, dynamic>;
+      expect(bobSnapshot['accountName'], 'Bob');
+      expect(bobSnapshot['tasks'], isEmpty);
 
-        await accounts.switchAccount(alice.id);
-        await pumpEventQueue();
-        final backToAliceSnapshot =
-            jsonDecode(h.transport.storage[kWidgetSnapshotKey]! as String)
-                as Map<String, dynamic>;
-        expect(backToAliceSnapshot['accountName'], 'Alice');
-        expect(
-          (backToAliceSnapshot['tasks'] as List).map((t) => t['title']),
-          ['Alice task'],
-        );
+      await accounts.switchAccount(alice.id);
+      await pumpEventQueue();
+      final backToAliceSnapshot = jsonDecode(
+        h.transport.storage[kWidgetSnapshotKey]! as String,
+      ) as Map<String, dynamic>;
+      expect(backToAliceSnapshot['accountName'], 'Alice');
+      expect((backToAliceSnapshot['tasks'] as List).map((t) => t['title']), [
+        'Alice task',
+      ]);
 
-        await accounts.signOut(alice.id);
-        await accounts.signOut(bob.id);
-        await pumpEventQueue();
+      await accounts.signOut(alice.id);
+      await accounts.signOut(bob.id);
+      await pumpEventQueue();
 
-        expect(h.transport.storage[kWidgetSnapshotKey], isNull);
-      },
-    );
+      expect(h.transport.storage[kWidgetSnapshotKey], isNull);
+    });
 
     test('bootstrap drains pending ops, pushes snapshot, and consumes initial URI once', () async {
       final account = LocalAccount(
@@ -112,10 +107,7 @@ void main() {
 
       expect(action?.type, HomeWidgetActionType.openList);
       expect(action?.listId, 'tasks');
-      expect(
-        h.container.read(todoProvider).tasks.single.isCompleted,
-        isTrue,
-      );
+      expect(h.container.read(todoProvider).tasks.single.isCompleted, isTrue);
       expect(h.transport.storage[kWidgetAckedOpIdKey], 3);
       expect(h.transport.commits, isNotEmpty);
 
@@ -199,7 +191,10 @@ void main() {
         extraPrefs: {kWidgetLastMutationMsKey: 100},
       );
       final controller = h.container.read(homeWidgetSyncProvider);
-      expect(h.container.read(todoProvider).tasks.single.title, 'Before bg update');
+      expect(
+        h.container.read(todoProvider).tasks.single.title,
+        'Before bg update',
+      );
 
       // Simulate another isolate persisting a modified task row and bumping timestamp.
       final bgRepo = TodoRepository.forAccount(
@@ -219,9 +214,9 @@ void main() {
         h.container.read(todoProvider).tasks.single.title,
         'Updated in background',
       );
-      final snapshot =
-          jsonDecode(h.transport.storage[kWidgetSnapshotKey]! as String)
-              as Map<String, dynamic>;
+      final snapshot = jsonDecode(
+        h.transport.storage[kWidgetSnapshotKey]! as String,
+      ) as Map<String, dynamic>;
       expect(
         (snapshot['tasks'] as List).single['title'],
         'Updated in background',

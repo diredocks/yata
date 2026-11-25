@@ -94,7 +94,9 @@ RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
     if (remoteId.isEmpty) {
       return RealtimeMergeResult.unhandled('$eventLabel missing Id');
     }
-    final existingIndex = currentTasks.indexWhere((t) => t.remoteId == remoteId);
+    final existingIndex = currentTasks.indexWhere(
+      (t) => t.remoteId == remoteId,
+    );
     if (existingIndex < 0) {
       return RealtimeMergeResult.noOp(
         '$eventLabel id=${shortSyncId(remoteId)} already absent',
@@ -482,10 +484,9 @@ RealtimeMergeResult<SyncedSettingsPatch> mergeRealtimeSettingEvent({
     return RealtimeMergeResult.noOp('Setting/$key skipped (local dirty)');
   }
   final value = rawVal.toString();
-  final patch = buildSyncedSettingsPatchFromWire(
-    {key: value},
-    skipKeys: dirtySettingKeys,
-  );
+  final patch = buildSyncedSettingsPatchFromWire({
+    key: value,
+  }, skipKeys: dirtySettingKeys);
   return RealtimeMergeResult.updated(
     patch,
     'Setting/${event.operation} key=$key value=$value',
