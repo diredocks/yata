@@ -230,5 +230,8 @@
   "repeatMonthsUnit": "个月",
   "repeatYearsUnit": "年",
   "repeatEveryInterval": "每 {interval} {unit}",
-  "repeatEveryIntervalOnDays": "每 {interval} {unit}的 {days}"
+  "repeatEveryIntervalOnDays": "每 {interval} {unit}的 {days}",
+  "labelWithHint": "{label} ({hint})",
+  "dateRangeShort": "{startDay} - {endDay} {month}",
+  "weekdayTimeHint": "{weekday} {time}"
 }

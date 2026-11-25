@@ -53,16 +53,24 @@ String plannedFilterMenuLabel(
       ? null
       : (DateFormat.localeExists(l10n.localeName) ? l10n.localeName : null);
   return switch (filter) {
-    PlannedDueDateFilter.today =>
-      '${l10n.filterToday} (${DateFormat.E(locale).format(today)})',
-    PlannedDueDateFilter.tomorrow => () {
-      final tomorrow = today.add(const Duration(days: 1));
-      return '${l10n.filterTomorrow} (${DateFormat.E(locale).format(tomorrow)})';
-    }(),
+    PlannedDueDateFilter.today => l10n.labelWithHint(
+      l10n.filterToday,
+      DateFormat.E(locale).format(today),
+    ),
+    PlannedDueDateFilter.tomorrow => l10n.labelWithHint(
+      l10n.filterTomorrow,
+      DateFormat.E(locale).format(today.add(const Duration(days: 1))),
+    ),
     PlannedDueDateFilter.thisWeek => () {
       final weekEnd = today.add(const Duration(days: 6));
-      final month = DateFormat.MMM(locale).format(weekEnd);
-      return '${l10n.filterThisWeek} (${today.day} - ${weekEnd.day} $month)';
+      return l10n.labelWithHint(
+        l10n.filterThisWeek,
+        l10n.dateRangeShort(
+          today.day,
+          weekEnd.day,
+          DateFormat.MMM(locale).format(weekEnd),
+        ),
+      );
     }(),
     _ => plannedFilterLabel(l10n, filter),
   };

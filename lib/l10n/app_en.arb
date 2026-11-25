@@ -372,5 +372,41 @@
         "type": "String"
       }
     }
+  },
+  "labelWithHint": "{label} ({hint})",
+  "@labelWithHint": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "hint": {
+        "type": "String"
+      }
+    }
+  },
+  "dateRangeShort": "{startDay} - {endDay} {month}",
+  "@dateRangeShort": {
+    "placeholders": {
+      "startDay": {
+        "type": "int"
+      },
+      "endDay": {
+        "type": "int"
+      },
+      "month": {
+        "type": "String"
+      }
+    }
+  },
+  "weekdayTimeHint": "{weekday} {time}",
+  "@weekdayTimeHint": {
+    "placeholders": {
+      "weekday": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
   }
 }

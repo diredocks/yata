@@ -172,7 +172,7 @@ Future<DueDatePickResult?> showDueDatePickerSheet(
       ? l10n.localeName
       : null;
   String withWeekday(String label, DateTime date) =>
-      '$label (${DateFormat.EEEE(locale).format(date)})';
+      l10n.labelWithHint(label, DateFormat.EEEE(locale).format(date));
 
   final choice = await showModalBottomSheet<String>(
     context: context,
@@ -264,7 +264,7 @@ Future<DateTime?> showReminderPickerSheet(
   String formatHint(DateTime dt, {required bool includeWeekday}) {
     final timeStr = DateFormat.jm(locale).format(dt);
     if (!includeWeekday) return timeStr;
-    return '${DateFormat.E(locale).format(dt)} $timeStr';
+    return l10n.weekdayTimeHint(DateFormat.E(locale).format(dt), timeStr);
   }
 
   final choice = await showModalBottomSheet<String>(
@@ -277,14 +277,20 @@ Future<DateTime?> showReminderPickerSheet(
             ListTile(
               leading: const Icon(Icons.access_time),
               title: Text(
-                '${l10n.laterToday} (${formatHint(laterTodayLocal, includeWeekday: false)})',
+                l10n.labelWithHint(
+                  l10n.laterToday,
+                  formatHint(laterTodayLocal, includeWeekday: false),
+                ),
               ),
               onTap: () => Navigator.pop(ctx, 'later'),
             ),
           ListTile(
             leading: const Icon(Icons.wb_twilight),
             title: Text(
-              '${l10n.tomorrow} (${formatHint(tomorrowLocal, includeWeekday: true)})',
+              l10n.labelWithHint(
+                l10n.tomorrow,
+                formatHint(tomorrowLocal, includeWeekday: true),
+              ),
             ),
             onTap: () => Navigator.pop(ctx, 'tomorrow'),
           ),
@@ -292,7 +298,10 @@ Future<DateTime?> showReminderPickerSheet(
             ListTile(
               leading: const Icon(Icons.next_week),
               title: Text(
-                '${l10n.nextWeek} (${formatHint(nextWeekLocal, includeWeekday: true)})',
+                l10n.labelWithHint(
+                  l10n.nextWeek,
+                  formatHint(nextWeekLocal, includeWeekday: true),
+                ),
               ),
               onTap: () => Navigator.pop(ctx, 'next_week'),
             ),
