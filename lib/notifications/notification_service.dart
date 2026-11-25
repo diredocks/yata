@@ -9,11 +9,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../core/logging/app_logger.dart';
 import '../data/todo_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../theme/todo_theme.dart';
+
+final _log = appLogFor('NotificationTransport');
 
 /// Action triggered when the user interacts with a notification or its buttons.
 enum NotificationActionType {
@@ -182,7 +185,7 @@ class FlutterLocalNotificationTransport implements NotificationTransport {
       // FlutterLocalNotificationsPlatform.instance is uninitialized.
       return null;
     } catch (e, st) {
-      debugPrint('[NotificationTransport] error: $e\n$st');
+      _log.warning('error', e, st);
       return null;
     }
   }

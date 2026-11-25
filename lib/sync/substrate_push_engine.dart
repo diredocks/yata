@@ -16,6 +16,8 @@ import 'sync_log_format.dart';
 import 'text_merge.dart';
 import 'todo_wire_codecs.dart';
 
+final _log = appLogFor('SyncEngine');
+
 class MetadataPushResult {
   const MetadataPushResult({
     required this.groups,
@@ -146,10 +148,9 @@ class SubstratePushEngine {
           }
           continue;
         }
-        appLog(
+        _log.fine(
           'Phase 4 PATCH group=${group.id} remote=${shortSyncId(group.remoteId)} '
           'keys=${patchPayload.keys.toList()}',
-          label: 'SyncEngine',
         );
         final patchResult = await todoApi
             .patchFolderGroup(ctx, group.remoteId!, patchPayload)
@@ -229,10 +230,9 @@ class SubstratePushEngine {
           }
           continue;
         }
-        appLog(
+        _log.fine(
           'Phase 5 PATCH list=${list.id} remote=${shortSyncId(list.remoteId)} '
           'keys=${patchPayload.keys.toList()}',
-          label: 'SyncEngine',
         );
         final patchResult = await todoApi
             .patchFolder(ctx, list.remoteId!, patchPayload)
@@ -334,10 +334,9 @@ class SubstratePushEngine {
       );
 
       if (!isCreate && payload.isEmpty) {
-        appLog(
+        _log.fine(
           'Phase 10a SKIP task PATCH (steps-only) local=${task.id} '
           'remote=${shortSyncId(task.remoteId)}',
-          label: 'SyncEngine',
         );
         final stepOutcome = await _syncStepsForTask(
           ctx: ctx,
@@ -427,7 +426,7 @@ class SubstratePushEngine {
       if (stepOutcome.syncedIds.isNotEmpty) {
         syncedStepIds[task.id] = stepOutcome.syncedIds;
       }
-      appLog(
+      _log.fine(
         'Phase 10a ${isCreate ? "CREATE" : "PATCH"} local=${task.id} '
         'remote=${shortSyncId(remoteTask.id)} title="${task.title}" '
         'keys=${payload.keys.toList()} '
@@ -435,16 +434,14 @@ class SubstratePushEngine {
         'committedOrder=${formatSyncTimestamp(task.committedOrder)} '
         'remoteOrder=${formatSyncTimestamp(remoteTask.orderDateTime)} '
         'remoteCommittedOrder=${formatSyncTimestamp(remoteTask.committedOrder)}',
-        label: 'SyncEngine',
       );
       if (!isCreate &&
           task.hasRecurrence &&
           payload['Status'] == 'Completed' &&
           !patchOutcome.preservedRemoteStatus) {
-        appLog(
+        _log.fine(
           'Phase 10a recurring task completed local=${task.id} '
           'remote=${shortSyncId(remoteTask.id)}; server will spawn next occurrence',
-          label: 'SyncEngine',
         );
       }
     }
@@ -527,12 +524,11 @@ class SubstratePushEngine {
                 'Content': resolvedNote,
                 'ContentType': 'Text',
               };
-              appLog(
+              _log.info(
                 'Phase 10a conflict 3-way note merge local=${task.id} '
                 'baseLen=${baseNote?.length} localLen=${task.note.length} '
                 'remoteLen=${latest.plainTextNote.length} '
                 'mergedLen=${resolvedNote.length}',
-                label: 'SyncEngine',
               );
             }
 
@@ -554,10 +550,9 @@ class SubstratePushEngine {
                   latest.completedDateTime != null
                   ? formatDateTimeTimeZoneUtc(latest.completedDateTime!)
                   : null;
-              appLog(
+              _log.info(
                 'Phase 10a conflict recurring task already advanced remotely; '
                 'preserving remote status/dueDate local=${task.id}',
-                label: 'SyncEngine',
               );
             }
 
@@ -683,10 +678,9 @@ class SubstratePushEngine {
     }
 
     if (localSteps.isNotEmpty) {
-      appLog(
+      _log.fine(
         'Phase 10a steps remoteTask=${shortSyncId(taskRemoteId)} '
         'created=$createdCount patched=$patchedCount skipped=$skippedCount',
-        label: 'SyncEngine',
       );
     }
     return (steps: syncedSteps, syncedIds: syncedStepIds);

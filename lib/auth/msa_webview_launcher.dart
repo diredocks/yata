@@ -5,6 +5,10 @@ import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:webview_all/webview_all.dart';
 
+import '../core/logging/app_logger.dart';
+
+final _log = appLogFor('MsaWebView');
+
 /// Result returned from an in-app interactive MSA OAuth sign-in flow.
 class MsaInteractiveSignInResult {
   const MsaInteractiveSignInResult({
@@ -182,8 +186,8 @@ class _MsaWebViewSignInScreenState extends State<MsaWebViewSignInScreen> {
             }
           },
           onWebResourceError: (error) {
-            debugPrint(
-              '[MsaWebView] WebResourceError (${error.errorCode}): '
+            _log.fine(
+              'WebResourceError (${error.errorCode}): '
               '${error.description} (url=${error.url}, isMainFrame=${error.isForMainFrame})',
             );
           },

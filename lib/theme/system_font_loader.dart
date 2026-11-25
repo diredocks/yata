@@ -2,6 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../core/logging/app_logger.dart';
+
+final _log = appLogFor('SystemFontLoader');
+
 typedef SystemFontRegistrar = Future<void> Function(
   String family,
   List<Uint8List> fonts,
@@ -71,12 +75,10 @@ class SystemFontLoader {
     } on MissingPluginException {
       return false;
     } on PlatformException catch (error, stack) {
-      debugPrint('[SystemFontLoader] ${error.code}: ${error.message}\n$stack');
+      _log.warning('platform error', error, stack);
       return false;
     } catch (error, stack) {
-      debugPrint(
-        '[SystemFontLoader] unable to load system font: $error\n$stack',
-      );
+      _log.warning('unable to load system font', error, stack);
       return false;
     }
   }

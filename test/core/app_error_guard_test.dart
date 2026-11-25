@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:result_dart/result_dart.dart';
 import 'package:yata/core/error/app_error.dart';
+import 'package:yata/core/logging/app_logger.dart';
 import 'package:yata/core/result/app_result.dart';
 import 'package:yata/data/todo_database.dart';
 import 'package:yata/data/todo_repository.dart';
@@ -93,7 +94,7 @@ void main() {
         operation: 'selectTask',
       );
       expect(messages, hasLength(1));
-      expect(messages.single, contains('[selectTask]'));
+      expect(messages.single, contains('[SEVERE] selectTask'));
       expect(messages.single, contains('NotFoundError'));
     });
   });
@@ -164,6 +165,7 @@ void main() {
 
 List<String> _captureLogs() {
   final messages = <String>[];
+  resetAppLogCollapse();
   final original = debugPrint;
   debugPrint = (String? message, {int? wrapWidth}) {
     messages.add(message ?? '');

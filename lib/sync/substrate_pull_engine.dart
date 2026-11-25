@@ -11,6 +11,8 @@ import 'microsoft_todo_api.dart';
 import 'substrate_sync_mappers.dart';
 import 'sync_log_format.dart';
 
+final _log = appLogFor('SyncEngine');
+
 class MetadataPullResult {
   const MetadataPullResult({
     required this.groups,
@@ -80,18 +82,16 @@ class SubstratePullEngine {
             seenGroupRemoteIds.contains(g.remoteId) ||
             remainingDirtyGroups.contains(g.id) ||
             syncedGroupIds.contains(g.id),
-        onPruned: (g) => appLog(
+        onPruned: (g) => _log.fine(
           'Phase 8 full-sync prune stale group=${g.id} '
           'remote=${shortSyncId(g.remoteId)} title="${g.title}"',
-          label: 'SyncEngine',
         ),
       );
     }
-    appLog(
+    _log.info(
       'Phase 8 groups mode=${groupsFetch.mode} '
       'items=${groupsDelta.items.length} '
       'hasDeltaLink=${groupsDelta.deltaLink != null}',
-      label: 'SyncEngine',
     );
 
     // Phase 9: Pull folders delta (with 410 & forceFullSync recovery).
@@ -131,19 +131,17 @@ class SubstratePullEngine {
               seenFolderRemoteIds.contains(l.remoteId) ||
               remainingDirtyLists.contains(l.id) ||
               syncedListIds.contains(l.id),
-          onPruned: (l) => appLog(
+          onPruned: (l) => _log.fine(
             'Phase 9 full-sync prune stale list=${l.id} '
             'remote=${shortSyncId(l.remoteId)} title="${l.title}"',
-            label: 'SyncEngine',
           ),
         );
       }
     }
-    appLog(
+    _log.info(
       'Phase 9 folders mode=${foldersFetch.mode} '
       'items=${foldersDelta.items.length} '
       'hasDeltaLink=${foldersDelta.deltaLink != null}',
-      label: 'SyncEngine',
     );
 
     return MetadataPullResult(
@@ -228,18 +226,16 @@ class SubstratePullEngine {
         if (remote.isIgnored) {
           ignoredCount += 1;
           ignoredRemoteIds.add(remote.id);
-          appLog(
+          _log.fine(
             'Phase 10b task[$mode] IGNORED remote=${shortSyncId(remote.id)}',
-            label: 'SyncEngine',
           );
           continue;
         }
         if (remote.isDeleted) {
           deletedCount += 1;
           (deferredDeletesByFolder[remote.id] ??= <String>{}).add(localListId);
-          appLog(
+          _log.fine(
             'Phase 10b task[$mode] DELETED remote=${shortSyncId(remote.id)} folder=$localListId',
-            label: 'SyncEngine',
           );
           continue;
         }
@@ -265,13 +261,12 @@ class SubstratePullEngine {
             orderChangedCount += 1;
           }
           if (!didFullFetch || orderChanged) {
-            appLog(
+            _log.fine(
               'Phase 10b task[$mode] remote=${shortSyncId(remote.id)} '
               'local=${existing.id} dirty=$isDirty title="${remote.subject}" '
               'list=${existing.listId}->$resolvedListId '
               'order=${formatSyncTimestamp(existing.orderDateTime)}->${formatSyncTimestamp(remote.orderDateTime)} '
               'committedOrder=${formatSyncTimestamp(existing.committedOrder)}->${formatSyncTimestamp(remote.committedOrder)}',
-              label: 'SyncEngine',
             );
           }
           tasksById[existing.id] = isDirty
@@ -299,25 +294,23 @@ class SubstratePullEngine {
           tasksById[newLocalId] = created;
           taskIdByRemoteId[remote.id] = newLocalId;
           if (!didFullFetch) {
-            appLog(
+            _log.fine(
               'Phase 10b task[$mode] ADD remote=${shortSyncId(remote.id)} '
               'local=$newLocalId title="${created.title}" list=$resolvedListId '
               'order=${formatSyncTimestamp(created.orderDateTime)} '
               'committedOrder=${formatSyncTimestamp(created.committedOrder)}',
-              label: 'SyncEngine',
             );
           }
         }
       }
 
-      appLog(
+      _log.info(
         'Phase 10b folder="${listTitleByLocalId[localListId] ?? localListId}" '
         'remote=${shortSyncId(folderRemoteId)} mode=$mode '
         'items=${taskDeltaResult.items.length} added=$addedCount '
         'updated=$updatedCount orderChanged=$orderChangedCount '
         'deleted=$deletedCount ignored=$ignoredCount '
         'hasDeltaLink=${taskDeltaResult.deltaLink != null}',
-        label: 'SyncEngine',
       );
     }
 
@@ -358,11 +351,10 @@ class SubstratePullEngine {
       for (final localId in staleLocalIds) {
         final removed = tasksById.remove(localId);
         if (removed != null) {
-          appLog(
+          _log.fine(
             'Phase 10b full-sync prune stale local=${removed.id} '
             'remote=${shortSyncId(removed.remoteId)} '
             'title="${removed.title}" list=${removed.listId}',
-            label: 'SyncEngine',
           );
         }
       }

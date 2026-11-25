@@ -14,6 +14,8 @@ import 'sync_guard.dart';
 
 part 'sync_provider.freezed.dart';
 
+final _log = appLogFor('Sync');
+
 /// Allows tests to disable background realtime long-polling streams.
 final realtimeSyncEnabledProvider = Provider<bool>((ref) => true);
 
@@ -167,7 +169,7 @@ class SyncNotifier extends Notifier<SyncState> {
   void onAppPaused() {
     if (_disposed || !_isForeground) return;
     _isForeground = false;
-    appLog('onAppPaused: stopping realtime & periodic sync', label: 'Sync');
+    _log.info('onAppPaused: stopping realtime & periodic sync');
     _stopPeriodicSync();
     _realtimeController?.onAppPaused();
     if (_debounceTimer != null && _debounceTimer!.isActive) {
@@ -177,9 +179,8 @@ class SyncNotifier extends Notifier<SyncState> {
       final r = _pendingDebouncedReason;
       _pendingDebouncedForceFullSync = false;
       _pendingDebouncedReason = 'debounced';
-      appLog(
+      _log.info(
         'onAppPaused: flushing pending debounced sync reason=$r forceFullSync=$full',
-        label: 'Sync',
       );
       unawaited(syncNow(forceFullSync: full, reason: r));
     }
@@ -193,10 +194,7 @@ class SyncNotifier extends Notifier<SyncState> {
     final active = ref.read(accountProvider).activeAccount;
     if (active is! MicrosoftAccount) return;
 
-    appLog(
-      'onAppResumed: restarting realtime & scheduling full sync',
-      label: 'Sync',
-    );
+    _log.info('onAppResumed: restarting realtime & scheduling full sync');
     if (ref.read(realtimeSyncEnabledProvider)) {
       _ensureRealtimeController().ensureStartedFor(active);
     }
@@ -240,11 +238,10 @@ class SyncNotifier extends Notifier<SyncState> {
     }
     _pendingDebouncedForceFullSync =
         _pendingDebouncedForceFullSync || forceFullSync;
-    appLog(
+    _log.info(
       'scheduleDebouncedSync reason=$_pendingDebouncedReason '
       'delay=${delay.inMilliseconds}ms '
       'forceFullSync=$_pendingDebouncedForceFullSync',
-      label: 'Sync',
     );
 
     _debounceTimer?.cancel();
@@ -273,11 +270,10 @@ class SyncNotifier extends Notifier<SyncState> {
         _queuedForceFullSync = true;
         _queuedReason = reason;
       }
-      appLog(
+      _log.info(
         'syncNow coalesced into in-flight sync: reason=$reason '
         'forceFullSync=$forceFullSync '
         '(queuedFull=$_queuedForceFullSync)',
-        label: 'Sync',
       );
       return inFlight;
     }
@@ -338,10 +334,9 @@ class SyncNotifier extends Notifier<SyncState> {
     final active = ref.read(accountProvider).activeAccount;
     if (_disposed || active is! MicrosoftAccount) return;
 
-    appLog(
+    _log.info(
       'sync start account=${active.id} reason=$reason '
       'forceFullSync=$forceFullSync',
-      label: 'Sync',
     );
 
     final service = ref.read(cloudSyncServiceProvider);
@@ -363,11 +358,10 @@ class SyncNotifier extends Notifier<SyncState> {
 
     await result.fold(
       (outcome) async {
-        appLog(
+        _log.info(
           'sync success reason=$reason forceFullSync=$forceFullSync '
           'lists=${outcome.lists.length} tasks=${outcome.tasks.length} '
           'pushedTasks=${outcome.syncedTaskIds.length}',
-          label: 'Sync',
         );
         if (ref.read(accountProvider).activeAccount?.id == active.id) {
           final effectiveSnapshot = outcome.snapshotState ?? snapshotState;
@@ -416,9 +410,8 @@ class SyncNotifier extends Notifier<SyncState> {
             SyncStatus.requiresRelogin,
           _ => SyncStatus.error,
         };
-        appLog(
+        _log.info(
           'sync error reason=$reason status=$status error=${error.describe()}',
-          label: 'Sync',
         );
         final message = error.userMessage;
         await ref

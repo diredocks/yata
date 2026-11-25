@@ -18,6 +18,8 @@ import 'home_widget_models.dart';
 export 'home_widget_event_processor.dart';
 export 'home_widget_models.dart';
 
+final _log = appLogFor('HomeWidgetTransport');
+
 const String kWidgetLastMutationMsKey = 'yata.widget_last_mutation_ms';
 const String kAndroidWidgetProviderName =
     'top.clickfling.yata.widget.TodoWidgetProvider';
@@ -72,10 +74,10 @@ class FlutterHomeWidgetTransport implements HomeWidgetTransport {
     try {
       return await action();
     } on MissingPluginException catch (e) {
-      appLog('$operation plugin unavailable: $e', label: 'HomeWidgetTransport');
+      _log.warning('$operation plugin unavailable: $e');
       return null;
     } on PlatformException catch (e) {
-      appLog('$operation platform error: $e', label: 'HomeWidgetTransport');
+      _log.warning('$operation platform error: $e');
       return null;
     }
   }

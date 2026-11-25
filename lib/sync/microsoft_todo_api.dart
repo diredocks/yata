@@ -15,6 +15,9 @@ import 'todo_wire_codecs.dart';
 
 export 'microsoft_todo_models.dart';
 
+final _log = appLogFor('SyncApi');
+final _realtimeLog = appLogFor('SyncRealtime');
+
 /// Abstract Substrate To Do v1 API client returning [AsyncAppResult].
 abstract class MicrosoftTodoApi {
   AsyncAppResult<Map<String, String>> getSettings(SubstrateRequestContext ctx);
@@ -442,10 +445,9 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
     final folderHint = folderParam != null
         ? ' folder=${shortSyncId(folderParam)}'
         : '';
-    appLog(
+    _log.fine(
       'fetchDelta ${initialUri.path}$folderHint mode=${usedDelta ? "delta" : "full"} '
       'pages=$pages items=${items.length} hasDeltaLink=${resolvedDeltaLink != null}',
-      label: 'SyncApi',
     );
 
     return Success(
@@ -682,12 +684,12 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
 
   @override
   Stream<RealtimeEvent> connectRealtime(SubstrateRequestContext ctx) async* {
-    appLog('connecting GET realtime', label: 'SyncRealtime');
+    _realtimeLog.info('connecting GET realtime');
     final request = http.Request('GET', ctx.endpointUri('realtime'));
     request.headers.addAll(_buildHeaders(ctx, longPolling: true));
 
     final streamed = await _http.send(request).timeout(_requestTimeout);
-    appLog('connected status=${streamed.statusCode}', label: 'SyncRealtime');
+    _realtimeLog.info('connected status=${streamed.statusCode}');
     if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
       throw appErrorFromHttpStatus(
         statusCode: streamed.statusCode,
@@ -708,12 +710,11 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
             Map<String, dynamic>.from(decoded),
           );
           if (!event.isKeepAlive) {
-            appLog(
+            _realtimeLog.fine(
               'recv type=${event.type} op=${event.operation} '
               'id=${shortSyncId(event.id)} req=${event.requestId} '
               'hasPayload=${event.payload != null} '
               'keys=${event.payload?.keys.toList()}',
-              label: 'SyncRealtime',
             );
           }
           yield event;
@@ -722,6 +723,6 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
         // Ignore non-JSON keepalive / delimiter lines.
       }
     }
-    appLog('stream closed', label: 'SyncRealtime');
+    _realtimeLog.info('stream closed');
   }
 }

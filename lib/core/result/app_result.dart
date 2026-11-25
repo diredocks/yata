@@ -97,7 +97,7 @@ Future<AppResult<Unit>> guardDbUnit(
 
 /// Single logging point for every guard.
 AppResult<T> _report<T extends Object>(AppError error, String? operation) {
-  appLog(error.describe(), label: operation ?? 'app');
+  appLogFor(operation ?? 'app').severe(error.describe());
   return Failure<T, AppError>(error);
 }
 

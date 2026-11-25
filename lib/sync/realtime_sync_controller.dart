@@ -11,6 +11,8 @@ import 'realtime_event_merger.dart';
 import 'sync_log_format.dart';
 import 'sync_provider.dart';
 
+final _log = appLogFor('SyncRealtime');
+
 /// Manages the foreground Substrate `/realtime` long-polling connection,
 /// reconnect backoff, mid-sync event buffering, and direct state merging.
 class RealtimeSyncController {
@@ -115,7 +117,7 @@ class RealtimeSyncController {
         _backoff = _initialBackoff;
         if (_needsSyncOnConnect) {
           _needsSyncOnConnect = false;
-          appLog('reconnected; scheduling delta sync', label: 'SyncRealtime');
+          _log.info('reconnected; scheduling delta sync');
           onScheduleFallbackSync(
             delay: _reconnectDebounceDuration,
             forceFullSync: false,
@@ -124,22 +126,21 @@ class RealtimeSyncController {
         }
         if (event.isKeepAlive) return;
         if (service.todoApi.isOwnRequestId(event.requestId)) {
-          appLog(
+          _log.fine(
             'ignore own event type=${event.type} op=${event.operation} '
             'id=${shortSyncId(event.id)} req=${event.requestId}',
-            label: 'SyncRealtime',
           );
           return;
         }
         unawaited(_handleRemoteEvent(account, event));
       },
       onError: (Object error) {
-        appLog('stream error=$error', label: 'SyncRealtime');
+        _log.info('stream error=$error');
         _needsSyncOnConnect = true;
         _scheduleReconnect(account, reason: 'error');
       },
       onDone: () {
-        appLog('stream done', label: 'SyncRealtime');
+        _log.info('stream done');
         _needsSyncOnConnect = true;
         _scheduleReconnect(account, reason: 'done');
       },
@@ -161,19 +162,17 @@ class RealtimeSyncController {
       if (_pendingEvents.length >= _maxPendingEvents) {
         _pendingEvents.clear();
         onOverflowResync('realtime_overflow');
-        appLog(
+        _log.info(
           'deferred queue overflow ($_maxPendingEvents); '
           'scheduling full resync',
-          label: 'SyncRealtime',
         );
         return;
       }
       _pendingEvents.add(event);
-      appLog(
+      _log.fine(
         'deferred event while syncing: type=${event.type} '
         'op=${event.operation} id=${shortSyncId(event.id)} '
         'queued=${_pendingEvents.length}',
-        label: 'SyncRealtime',
       );
       return;
     }
@@ -196,10 +195,7 @@ class RealtimeSyncController {
       return;
     }
 
-    appLog(
-      'draining ${_pendingEvents.length} deferred realtime event(s)',
-      label: 'SyncRealtime',
-    );
+    _log.info('draining ${_pendingEvents.length} deferred realtime event(s)');
 
     var needsFallbackSync = false;
     var fallbackForceFullSync = false;
@@ -244,16 +240,15 @@ class RealtimeSyncController {
     required Future<void> Function(T value) apply,
   }) async {
     if (result.handled) {
-      appLog('$prefix${result.summary}', label: 'SyncRealtime');
+      _log.info('$prefix${result.summary}');
       final value = result.value;
       if (result.changed && value != null) {
         await apply(value);
       }
       return true;
     }
-    appLog(
+    _log.info(
       '$prefix${result.summary}; fallback to sync (forceFullSync=$fallbackForceFull)',
-      label: 'SyncRealtime',
     );
     return false;
   }
@@ -343,10 +338,9 @@ class RealtimeSyncController {
         );
 
       default:
-        appLog(
+        _log.info(
           '${prefix}non-direct event type=${event.type} op=${event.operation}; '
           'fallback to sync (forceFullSync=false)',
-          label: 'SyncRealtime',
         );
         return false;
     }
@@ -366,10 +360,7 @@ class RealtimeSyncController {
       _maxBackoff.inSeconds,
     );
     _backoff = Duration(seconds: nextSecs);
-    appLog(
-      'scheduling reconnect reason=$reason wait=${wait.inSeconds}s',
-      label: 'SyncRealtime',
-    );
+    _log.info('scheduling reconnect reason=$reason wait=${wait.inSeconds}s');
     _reconnectTimer = Timer(wait, () {
       if (!_disposed && _accountId == account.id) {
         unawaited(_connect(account));

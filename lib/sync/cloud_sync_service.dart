@@ -18,6 +18,8 @@ import 'substrate_pull_engine.dart';
 import 'substrate_push_engine.dart';
 import 'sync_guard.dart';
 
+final _log = appLogFor('SyncEngine');
+
 /// Result returned by a full 10-phase Substrate sync pass.
 class SyncOutcome {
   const SyncOutcome({
@@ -196,11 +198,10 @@ class CloudSyncService {
     final dirtyStepIdsByTask = repository.loadDirtyStepIds();
     final taskBaseNotes = repository.loadTaskBaseNotes();
 
-    appLog(
+    _log.info(
       'start reason=$reason forceFullSync=$forceFullSync '
       'localLists=${currentState.lists.length} localTasks=${currentState.tasks.length} '
       'dirtyTasks=${dirtyTaskIds.length}',
-      label: 'SyncEngine',
     );
 
     final metaPush = await _pushEngine.pushMetadataAndDeletions(
