@@ -25,6 +25,31 @@ class MetadataPullResult {
   final SyncedSettingsPatch settingsPatch;
 }
 
+enum DeltaFetchMode {
+  forcedFull('full(forced)', isFullFetch: true),
+  recovered410('full(410)', isFullFetch: true),
+  initialFull('full(initial)', isFullFetch: true),
+  delta('delta', isFullFetch: false),
+  missing('missing', isFullFetch: false);
+
+  const DeltaFetchMode(this.label, {required this.isFullFetch});
+
+  final String label;
+  final bool isFullFetch;
+}
+
+class _DeltaFetchResult<T> {
+  const _DeltaFetchResult({
+    required this.page,
+    required this.mode,
+  });
+
+  final DeltaPageResult<T> page;
+  final DeltaFetchMode mode;
+
+  bool get didFullFetch => mode.isFullFetch;
+}
+
 /// Pulls settings, folder groups, folders, and tasks via Substrate v1 delta
 /// endpoints with 410 recovery and `forceFullSync` pruning (Phases 7–9 and 10b).
 class SubstratePullEngine {
@@ -56,12 +81,12 @@ class SubstratePullEngine {
     );
 
     // Phase 8: Pull folder groups delta (with 410 & forceFullSync recovery).
-    final groupsFetch = await _fetchDeltaWithMode(
+    final groupsFetch = (await _fetchDeltaWithMode(
       savedDeltaLink: settings.loadGroupsDeltaLink(),
       forceFullSync: forceFullSync,
       clearDeltaLink: () => settings.saveGroupsDeltaLink(null),
       fetch: (dl) => todoApi.fetchFolderGroupsDelta(ctx, deltaLink: dl),
-    );
+    )).getOrThrow();
     final groupsDelta = groupsFetch.page;
     if (groupsDelta.deltaLink != null) {
       await settings.saveGroupsDeltaLink(groupsDelta.deltaLink);
@@ -91,18 +116,18 @@ class SubstratePullEngine {
       );
     }
     _log.info(
-      'Phase 8 groups mode=${groupsFetch.mode} '
+      'Phase 8 groups mode=${groupsFetch.mode.label} '
       'items=${groupsDelta.items.length} '
       'hasDeltaLink=${groupsDelta.deltaLink != null}',
     );
 
     // Phase 9: Pull folders delta (with 410 & forceFullSync recovery).
-    final foldersFetch = await _fetchDeltaWithMode(
+    final foldersFetch = (await _fetchDeltaWithMode(
       savedDeltaLink: settings.loadFoldersDeltaLink(),
       forceFullSync: forceFullSync,
       clearDeltaLink: () => settings.saveFoldersDeltaLink(null),
       fetch: (dl) => todoApi.fetchFoldersDelta(ctx, deltaLink: dl),
-    );
+    )).getOrThrow();
     final foldersDelta = foldersFetch.page;
     if (foldersDelta.deltaLink != null) {
       await settings.saveFoldersDeltaLink(foldersDelta.deltaLink);
@@ -141,7 +166,7 @@ class SubstratePullEngine {
       }
     }
     _log.info(
-      'Phase 9 folders mode=${foldersFetch.mode} '
+      'Phase 9 folders mode=${foldersFetch.mode.label} '
       'items=${foldersDelta.items.length} '
       'hasDeltaLink=${foldersDelta.deltaLink != null}',
     );
@@ -196,6 +221,12 @@ class SubstratePullEngine {
         'of=${localListIdByFolderRemoteId.length} '
         'pending=${livePendingFolderPulls.length}',
       );
+      if (pullFolderRemoteIds.isEmpty) {
+        if (livePendingFolderPulls.length != pendingFolderPulls.length) {
+          await settings.savePendingTaskFolderPulls(livePendingFolderPulls);
+        }
+        return workingTasks;
+      }
     }
 
     final seenActiveRemoteTaskIds = <String>{};
@@ -213,34 +244,40 @@ class SubstratePullEngine {
       pullFolderRemoteIds,
       _maxConcurrentFolderFetches,
       (folderRemoteId) async {
-        try {
-          return await _fetchDeltaWithMode(
-            savedDeltaLink: taskDeltaLinks[folderRemoteId],
-            forceFullSync: forceFullSync,
-            clearDeltaLink: () async {
-              taskDeltaLinks.remove(folderRemoteId);
-              await settings.saveTaskDeltaLinks(taskDeltaLinks);
-            },
-            fetch: (dl) => todoApi.fetchTasksDelta(
-              ctx,
-              folderRemoteId: folderRemoteId,
-              deltaLink: dl,
-            ),
-          );
-        } on AppError catch (error) {
-          // A selective pull can race a remote folder deletion; a full pass
-          // must still surface the error.
-          if (onlyFolderRemoteIds == null || !error.isNotFound) rethrow;
-          _log.info(
-            'Phase 10b selective pull skipped missing folder '
-            'remote=${shortSyncId(folderRemoteId)} error=${error.describe()}',
-          );
-          return (
-            page: const DeltaPageResult<RemoteTodoTask>(items: []),
-            mode: 'missing',
-            didFullFetch: false,
-          );
-        }
+        final fetchResult = await _fetchDeltaWithMode(
+          savedDeltaLink: taskDeltaLinks[folderRemoteId],
+          forceFullSync: forceFullSync,
+          clearDeltaLink: () async {
+            taskDeltaLinks.remove(folderRemoteId);
+            await settings.saveTaskDeltaLinks(taskDeltaLinks);
+          },
+          fetch: (dl) => todoApi.fetchTasksDelta(
+            ctx,
+            folderRemoteId: folderRemoteId,
+            deltaLink: dl,
+          ),
+        );
+        return fetchResult
+            .recover((error) {
+              // A selective pull can race a remote folder deletion; a full pass
+              // must still surface the error.
+              if (onlyFolderRemoteIds == null || !error.isNotFound) {
+                return Failure<_DeltaFetchResult<RemoteTodoTask>, AppError>(
+                  error,
+                );
+              }
+              _log.info(
+                'Phase 10b selective pull skipped missing folder '
+                'remote=${shortSyncId(folderRemoteId)} error=${error.describe()}',
+              );
+              return const Success<_DeltaFetchResult<RemoteTodoTask>, AppError>(
+                _DeltaFetchResult<RemoteTodoTask>(
+                  page: DeltaPageResult<RemoteTodoTask>(items: []),
+                  mode: DeltaFetchMode.missing,
+                ),
+              );
+            })
+            .getOrThrow();
       },
     );
 
@@ -274,7 +311,7 @@ class SubstratePullEngine {
           ignoredCount += 1;
           ignoredRemoteIds.add(remote.id);
           _log.fine(
-            'Phase 10b task[$mode] IGNORED remote=${shortSyncId(remote.id)}',
+            'Phase 10b task[${mode.label}] IGNORED remote=${shortSyncId(remote.id)}',
           );
           continue;
         }
@@ -282,7 +319,7 @@ class SubstratePullEngine {
           deletedCount += 1;
           (deferredDeletesByFolder[remote.id] ??= <String>{}).add(localListId);
           _log.fine(
-            'Phase 10b task[$mode] DELETED remote=${shortSyncId(remote.id)} folder=$localListId',
+            'Phase 10b task[${mode.label}] DELETED remote=${shortSyncId(remote.id)} folder=$localListId',
           );
           continue;
         }
@@ -309,7 +346,7 @@ class SubstratePullEngine {
           }
           if (!didFullFetch || orderChanged) {
             _log.fine(
-              'Phase 10b task[$mode] remote=${shortSyncId(remote.id)} '
+              'Phase 10b task[${mode.label}] remote=${shortSyncId(remote.id)} '
               'local=${existing.id} dirty=$isDirty title="${remote.subject}" '
               'list=${existing.listId}->$resolvedListId '
               'order=${formatSyncTimestamp(existing.orderDateTime)}->${formatSyncTimestamp(remote.orderDateTime)} '
@@ -342,7 +379,7 @@ class SubstratePullEngine {
           taskIdByRemoteId[remote.id] = newLocalId;
           if (!didFullFetch) {
             _log.fine(
-              'Phase 10b task[$mode] ADD remote=${shortSyncId(remote.id)} '
+              'Phase 10b task[${mode.label}] ADD remote=${shortSyncId(remote.id)} '
               'local=$newLocalId title="${created.title}" list=$resolvedListId '
               'order=${formatSyncTimestamp(created.orderDateTime)} '
               'committedOrder=${formatSyncTimestamp(created.committedOrder)}',
@@ -353,7 +390,7 @@ class SubstratePullEngine {
 
       _log.info(
         'Phase 10b folder="${listTitleByLocalId[localListId] ?? localListId}" '
-        'remote=${shortSyncId(folderRemoteId)} mode=$mode '
+        'remote=${shortSyncId(folderRemoteId)} mode=${mode.label} '
         'items=${taskDeltaResult.items.length} added=$addedCount '
         'updated=$updatedCount orderChanged=$orderChangedCount '
         'deleted=$deletedCount ignored=$ignoredCount '
@@ -419,8 +456,7 @@ class SubstratePullEngine {
     return tasksById.values.toList();
   }
 
-  Future<({DeltaPageResult<T> page, String mode, bool didFullFetch})>
-  _fetchDeltaWithMode<T>({
+  AsyncAppResult<_DeltaFetchResult<T>> _fetchDeltaWithMode<T>({
     required String? savedDeltaLink,
     required bool forceFullSync,
     required Future<void> Function() clearDeltaLink,
@@ -438,15 +474,13 @@ class SubstratePullEngine {
       return fetch(null);
     });
     final mode = forceFullSync
-        ? 'full(forced)'
+        ? DeltaFetchMode.forcedFull
         : (recovered410
-              ? 'full(410)'
-              : (effectiveDelta == null ? 'full(initial)' : 'delta'));
-    return (
-      page: result.getOrThrow(),
-      mode: mode,
-      didFullFetch: effectiveDelta == null || recovered410,
-    );
+              ? DeltaFetchMode.recovered410
+              : (effectiveDelta == null
+                    ? DeltaFetchMode.initialFull
+                    : DeltaFetchMode.delta));
+    return result.map((page) => _DeltaFetchResult(page: page, mode: mode));
   }
 
   List<T> _pruneStale<T>({
@@ -474,11 +508,17 @@ class SubstratePullEngine {
     if (items.isEmpty) return const [];
     final results = List<R?>.filled(items.length, null);
     var nextIndex = 0;
+    var aborted = false;
     Future<void> worker() async {
-      while (nextIndex < items.length) {
+      while (!aborted && nextIndex < items.length) {
         final index = nextIndex;
         nextIndex += 1;
-        results[index] = await action(items[index]);
+        try {
+          results[index] = await action(items[index]);
+        } catch (_) {
+          aborted = true;
+          rethrow;
+        }
       }
     }
 
