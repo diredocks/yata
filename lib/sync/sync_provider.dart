@@ -35,9 +35,7 @@ final cloudSyncServiceProvider = Provider<CloudSyncService>((ref) {
 
 enum SyncStatus { idle, syncing, success, error, requiresRelogin }
 
-enum _SyncKind { pushOnly, delta, full }
-
-_SyncKind _mergeSyncKind(_SyncKind? current, _SyncKind next) =>
+SyncKind _mergeSyncKind(SyncKind? current, SyncKind next) =>
     current == null || next.index > current.index ? next : current;
 
 @freezed
@@ -67,7 +65,7 @@ class SyncNotifier extends Notifier<SyncState> {
   Timer? _debounceTimer;
   DateTime? _debounceStartedAt;
   DateTime? _debounceDeadline;
-  _SyncKind? _pendingKind;
+  SyncKind? _pendingKind;
   String _pendingReason = 'debounced';
   Timer? _periodicTimer;
   RealtimeSyncController? _realtimeController;
@@ -76,7 +74,7 @@ class SyncNotifier extends Notifier<SyncState> {
   bool _isForeground = true;
   Future<void>? _activeSync;
   bool _syncQueued = false;
-  _SyncKind? _queuedKind;
+  SyncKind? _queuedKind;
   String _queuedReason = 'queued';
 
   RealtimeSyncController _ensureRealtimeController() {
@@ -93,9 +91,11 @@ class SyncNotifier extends Notifier<SyncState> {
           },
       onOverflowResync: (reason) {
         _syncQueued = true;
-        _queuedKind = _mergeSyncKind(_queuedKind, _SyncKind.full);
+        _queuedKind = _mergeSyncKind(_queuedKind, SyncKind.full);
         _queuedReason = reason;
       },
+      onCatchupDeltaSync: (reason) =>
+          syncNow(forceFullSync: false, reason: reason),
     );
   }
 
@@ -226,14 +226,14 @@ class SyncNotifier extends Notifier<SyncState> {
   Future<void> refresh({String reason = 'manual'}) =>
       syncNow(forceFullSync: true, reason: reason);
 
-  /// Starts an initial full sync on cold start (when enabled) or account switch.
+  /// Starts an incremental sync on cold start (when enabled) or full sync on account switch.
   void syncOnSessionStart({bool accountChanged = false}) {
     if (!accountChanged && !ref.read(startupSyncEnabledProvider)) return;
     final account = ref.read(accountProvider).activeAccount;
     if (account is! MicrosoftAccount) return;
     unawaited(
       syncNow(
-        forceFullSync: true,
+        forceFullSync: accountChanged,
         reason: accountChanged ? 'account_changed' : 'startup',
       ),
     );
@@ -246,7 +246,7 @@ class SyncNotifier extends Notifier<SyncState> {
     String reason = 'debounced',
   }) {
     _scheduleSync(
-      kind: forceFullSync ? _SyncKind.full : _SyncKind.delta,
+      kind: forceFullSync ? SyncKind.full : SyncKind.delta,
       delay: delay,
       reason: reason,
     );
@@ -256,11 +256,11 @@ class SyncNotifier extends Notifier<SyncState> {
     Duration delay = _mutationDebounceDuration,
     String reason = 'local_mutation',
   }) {
-    _scheduleSync(kind: _SyncKind.pushOnly, delay: delay, reason: reason);
+    _scheduleSync(kind: SyncKind.pushOnly, delay: delay, reason: reason);
   }
 
   void _scheduleSync({
-    required _SyncKind kind,
+    required SyncKind kind,
     required Duration delay,
     required String reason,
   }) {
@@ -299,7 +299,7 @@ class SyncNotifier extends Notifier<SyncState> {
     _debounceDeadline = fireAt;
     _debounceTimer = Timer(fireAt.difference(now), () {
       if (_disposed) return;
-      final pendingKind = _pendingKind ?? _SyncKind.delta;
+      final pendingKind = _pendingKind ?? SyncKind.delta;
       final pendingReason = _pendingReason;
       _cancelDebounce();
       unawaited(_syncNowForKind(pendingKind, reason: pendingReason));
@@ -310,12 +310,12 @@ class SyncNotifier extends Notifier<SyncState> {
     bool forceFullSync = false,
     String reason = 'manual',
   }) => _syncNowForKind(
-    forceFullSync ? _SyncKind.full : _SyncKind.delta,
+    forceFullSync ? SyncKind.full : SyncKind.delta,
     reason: reason,
   );
 
   /// Runs [kind] now, or queues it behind the in-flight pass.
-  Future<void> _syncNowForKind(_SyncKind kind, {String reason = 'manual'}) {
+  Future<void> _syncNowForKind(SyncKind kind, {String reason = 'manual'}) {
     if (_disposed) return Future<void>.value();
     final active = ref.read(accountProvider).activeAccount;
     if (active is! MicrosoftAccount) return Future<void>.value();
@@ -348,7 +348,7 @@ class SyncNotifier extends Notifier<SyncState> {
   }
 
   Future<void> _runSyncLoop({
-    required _SyncKind initialKind,
+    required SyncKind initialKind,
     required String initialReason,
   }) async {
     state = state.copyWith(status: SyncStatus.syncing, error: null);
@@ -362,7 +362,7 @@ class SyncNotifier extends Notifier<SyncState> {
         nextReason = 'queued';
         await _syncOnce(kind: runKind, reason: runReason);
         if (_syncQueued && !_disposed) {
-          nextKind = _queuedKind ?? _SyncKind.delta;
+          nextKind = _queuedKind ?? SyncKind.delta;
           nextReason = _queuedReason;
           _queuedKind = null;
           _queuedReason = 'queued';
@@ -381,14 +381,13 @@ class SyncNotifier extends Notifier<SyncState> {
   }
 
   Future<void> _syncOnce({
-    required _SyncKind kind,
+    required SyncKind kind,
     required String reason,
   }) async {
     final active = ref.read(accountProvider).activeAccount;
     if (_disposed || active is! MicrosoftAccount) return;
 
-    final forceFullSync = kind == _SyncKind.full;
-    final pushOnly = kind == _SyncKind.pushOnly;
+    final forceFullSync = kind == SyncKind.full;
 
     _log.info(
       'sync start account=${active.id} reason=$reason '
@@ -406,8 +405,7 @@ class SyncNotifier extends Notifier<SyncState> {
       settings: todoNotifier.settings,
       idGenerator: todoNotifier.nextId,
       readLatestState: () => ref.read(todoProvider),
-      forceFullSync: forceFullSync,
-      pushOnly: pushOnly,
+      kind: kind,
       reason: reason,
     );
 
