@@ -1,13 +1,26 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
+import 'package:flutter_test/flutter_test.dart';
 import 'package:result_dart/result_dart.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:yata/account/account_local_storage.dart';
+import 'package:yata/account/account_provider.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/auth/msa_webview_launcher.dart';
 import 'package:yata/core/error/app_error.dart';
 import 'package:yata/core/result/app_result.dart';
+import 'package:yata/data/todo_repository.dart';
+import 'package:yata/data/todo_settings_store.dart';
+import 'package:yata/models/account.dart';
+import 'package:yata/models/default_lists.dart';
+import 'package:yata/models/task_item.dart';
+import 'package:yata/models/todo_list.dart';
 import 'package:yata/sync/microsoft_todo_api.dart';
 import 'package:yata/sync/sync_guard.dart';
+import 'package:yata/sync/sync_provider.dart';
 
 class FakeInteractiveMsaClient implements MsaInteractiveSignInClient {
   FakeInteractiveMsaClient(this.result);
@@ -525,4 +538,247 @@ class BlockingFoldersApi extends FakeSubstrateApi {
     }
     return super.fetchFoldersDelta(ctx, deltaLink: deltaLink);
   }
+}
+
+class BlockingTasksDeltaApi extends FakeSubstrateApi {
+  BlockingTasksDeltaApi(this.started, this.release);
+
+  final Completer<void> started;
+  final Completer<void> release;
+
+  @override
+  AsyncAppResult<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta(
+    SubstrateRequestContext ctx, {
+    required String folderRemoteId,
+    String? deltaLink,
+  }) async {
+    if (!started.isCompleted) {
+      started.complete();
+      await release.future;
+    }
+    return super.fetchTasksDelta(
+      ctx,
+      folderRemoteId: folderRemoteId,
+      deltaLink: deltaLink,
+    );
+  }
+}
+
+class SeededSyncSession {
+  const SeededSyncSession({
+    required this.prefs,
+    required this.account,
+    required this.repository,
+    required this.settings,
+  });
+
+  final SharedPreferences prefs;
+  final MicrosoftAccount account;
+  final TodoRepository repository;
+  final TodoSettingsStore settings;
+}
+
+class SyncTestHarness {
+  const SyncTestHarness({
+    required this.prefs,
+    required this.account,
+    required this.repository,
+    required this.settings,
+    required this.api,
+    required this.authClient,
+    required this.container,
+  });
+
+  final SharedPreferences prefs;
+  final MicrosoftAccount account;
+  final TodoRepository repository;
+  final TodoSettingsStore settings;
+  final FakeSubstrateApi api;
+  final FakeAuthClient authClient;
+  final ProviderContainer container;
+}
+
+Future<SeededSyncSession> seedMicrosoftSyncSession({
+  SharedPreferences? prefs,
+  String accountId = 'acct_1',
+  String displayName = 'Alice',
+  String email = 'alice@outlook.com',
+  String microsoftUserId = 'cid1',
+  DateTime? lastSyncedAt,
+  bool saveTokens = true,
+  MicrosoftAuthTokens? tokens,
+  String? defaultTasksFolderRemoteId,
+  List<TodoList>? lists,
+  List<TodoList> extraLists = const [],
+  List<ListGroup> groups = const [],
+  List<TaskItem> tasks = const [],
+  String? groupsDeltaLink,
+  String? foldersDeltaLink,
+  Map<String, String>? taskDeltaLinks,
+  Set<String>? dirtyListIds,
+  Set<String>? dirtyTaskIds,
+  List<String>? pendingDeletedTaskRemoteIds,
+}) async {
+  late final SharedPreferences resolvedPrefs;
+  if (prefs != null) {
+    resolvedPrefs = prefs;
+  } else {
+    SharedPreferences.setMockInitialValues({});
+    resolvedPrefs = await SharedPreferences.getInstance();
+  }
+
+  final account = MicrosoftAccount(
+    id: accountId,
+    displayName: displayName,
+    email: email,
+    createdAt: DateTime(2026, 11, 22),
+    lastSyncedAt: lastSyncedAt,
+    microsoftUserId: microsoftUserId,
+  );
+  await AccountLocalStorage(resolvedPrefs).saveAccounts([account]);
+  await AccountLocalStorage(resolvedPrefs).saveActiveAccountId(accountId);
+
+  if (saveTokens) {
+    await AuthTokenStorage(resolvedPrefs).saveTokens(
+      accountId,
+      tokens ??
+          MicrosoftAuthTokens(
+            accessToken: 'tok-1',
+            refreshToken: 'rt-1',
+            expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+            userId: microsoftUserId,
+          ),
+    );
+  }
+
+  final settings = TodoSettingsStore(resolvedPrefs, accountId: accountId);
+  final repository = TodoRepository.forSession(
+    sharedFallbackTodoDatabase,
+    settings,
+  );
+
+  if (groups.isNotEmpty) {
+    await repository.saveGroups(groups);
+  }
+  if (lists != null) {
+    await repository.saveLists(lists);
+  } else if (defaultTasksFolderRemoteId != null || extraLists.isNotEmpty) {
+    await repository.saveLists([
+      ...defaultSmartLists().map(
+        (l) => defaultTasksFolderRemoteId != null &&
+                l.smartType == SmartListType.tasks
+            ? l.copyWith(remoteId: defaultTasksFolderRemoteId)
+            : l,
+      ),
+      ...extraLists,
+    ]);
+  }
+  if (tasks.isNotEmpty) {
+    await repository.saveTasks(tasks);
+  }
+  if (groupsDeltaLink != null) {
+    await settings.saveGroupsDeltaLink(groupsDeltaLink);
+  }
+  if (foldersDeltaLink != null) {
+    await settings.saveFoldersDeltaLink(foldersDeltaLink);
+  }
+  if (taskDeltaLinks != null) {
+    await settings.saveTaskDeltaLinks(taskDeltaLinks);
+  }
+  if (dirtyListIds != null) {
+    await repository.saveDirtyListIds(dirtyListIds);
+  }
+  if (dirtyTaskIds != null) {
+    await repository.saveDirtyTaskIds(dirtyTaskIds);
+  }
+  if (pendingDeletedTaskRemoteIds != null) {
+    await repository.savePendingDeletedTaskRemoteIds(
+      pendingDeletedTaskRemoteIds,
+    );
+  }
+
+  return SeededSyncSession(
+    prefs: resolvedPrefs,
+    account: account,
+    repository: repository,
+    settings: settings,
+  );
+}
+
+Future<SyncTestHarness> createSyncTestHarness({
+  SharedPreferences? prefs,
+  String accountId = 'acct_1',
+  String displayName = 'Alice',
+  String email = 'alice@outlook.com',
+  String microsoftUserId = 'cid1',
+  DateTime? lastSyncedAt,
+  bool saveTokens = true,
+  MicrosoftAuthTokens? tokens,
+  String? defaultTasksFolderRemoteId,
+  List<TodoList>? lists,
+  List<TodoList> extraLists = const [],
+  List<ListGroup> groups = const [],
+  List<TaskItem> tasks = const [],
+  String? groupsDeltaLink,
+  String? foldersDeltaLink,
+  Map<String, String>? taskDeltaLinks,
+  Set<String>? dirtyListIds,
+  Set<String>? dirtyTaskIds,
+  List<String>? pendingDeletedTaskRemoteIds,
+  FakeSubstrateApi? api,
+  FakeAuthClient? authClient,
+  bool realtimeSyncEnabled = false,
+  bool periodicSyncEnabled = false,
+  bool startupSyncEnabled = false,
+  List<Override> extraOverrides = const [],
+}) async {
+  final session = await seedMicrosoftSyncSession(
+    prefs: prefs,
+    accountId: accountId,
+    displayName: displayName,
+    email: email,
+    microsoftUserId: microsoftUserId,
+    lastSyncedAt: lastSyncedAt,
+    saveTokens: saveTokens,
+    tokens: tokens,
+    defaultTasksFolderRemoteId: defaultTasksFolderRemoteId,
+    lists: lists,
+    extraLists: extraLists,
+    groups: groups,
+    tasks: tasks,
+    groupsDeltaLink: groupsDeltaLink,
+    foldersDeltaLink: foldersDeltaLink,
+    taskDeltaLinks: taskDeltaLinks,
+    dirtyListIds: dirtyListIds,
+    dirtyTaskIds: dirtyTaskIds,
+    pendingDeletedTaskRemoteIds: pendingDeletedTaskRemoteIds,
+  );
+  final effectiveApi = api ?? FakeSubstrateApi();
+  final effectiveAuth = authClient ?? FakeAuthClient();
+
+  final container = ProviderContainer(
+    overrides: [
+      sharedPreferencesProvider.overrideWithValue(session.prefs),
+      microsoftAuthClientProvider.overrideWithValue(effectiveAuth),
+      microsoftTodoApiProvider.overrideWithValue(effectiveApi),
+      realtimeSyncEnabledProvider.overrideWithValue(realtimeSyncEnabled),
+      periodicSyncEnabledProvider.overrideWithValue(periodicSyncEnabled),
+      startupSyncEnabledProvider.overrideWithValue(startupSyncEnabled),
+      ...extraOverrides,
+    ],
+  );
+  addTearDown(() async {
+    container.dispose();
+    await effectiveApi.realtimeController.close();
+  });
+
+  return SyncTestHarness(
+    prefs: session.prefs,
+    account: session.account,
+    repository: session.repository,
+    settings: session.settings,
+    api: effectiveApi,
+    authClient: effectiveAuth,
+    container: container,
+  );
 }

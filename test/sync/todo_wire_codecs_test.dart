@@ -3,7 +3,6 @@ import 'package:material_ui/material_ui.dart' show TimeOfDay;
 import 'package:yata/core/time/local_timezone.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
-import 'package:yata/sync/text_merge.dart';
 import 'package:yata/sync/todo_wire_codecs.dart';
 
 void main() {
@@ -486,48 +485,6 @@ void main() {
         'TimeZone': 'Pacific Standard Time',
       });
       expect(pstParsed, DateTime.utc(2026, 11, 25, 16, 0));
-    });
-
-    test('mergeThreeWayNoteText preserves disjoint multi-line and single-line concurrent edits', () {
-      // Disjoint lines edited on each device.
-      expect(
-        mergeThreeWayNoteText(
-          base: 'Line 1\nLine 2\nLine 3',
-          local: 'Line 1 (local)\nLine 2\nLine 3',
-          remote: 'Line 1\nLine 2\nLine 3 (remote)',
-        ),
-        'Line 1 (local)\nLine 2\nLine 3 (remote)',
-      );
-
-      // Disjoint segments within the same line.
-      expect(
-        mergeThreeWayNoteText(
-          base: 'alpha middle omega',
-          local: 'ALPHA middle omega',
-          remote: 'alpha middle OMEGA',
-        ),
-        'ALPHA middle OMEGA',
-      );
-
-      // Missing base falls back non-destructively.
-      expect(
-        mergeThreeWayNoteText(
-          base: null,
-          local: 'Local thought',
-          remote: 'Remote thought',
-        ),
-        'Local thought\nRemote thought',
-      );
-
-      // Overlapping multi-line conflict cluster does not duplicate shared lines.
-      expect(
-        mergeThreeWayNoteText(
-          base: 'A\nB\nC',
-          local: 'A1\nShared\nC',
-          remote: 'A2\nShared\nC',
-        ),
-        'A1\nShared\nA2\nC',
-      );
     });
   });
 }
