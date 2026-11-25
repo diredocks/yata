@@ -114,6 +114,20 @@ void main() {
     final allSplit = splitTasksForDisplay([older, active, newer], allList);
     expect(allSplit.active.map((t) => t.id), ['t3']);
     expect(allSplit.completed, isEmpty);
+
+    // Planned smart list excludes completed tasks completely
+    const plannedList = TodoList(
+      id: 'planned',
+      title: 'Planned',
+      smartType: SmartListType.planned,
+    );
+    final plannedSplit = splitTasksForDisplay([
+      older,
+      active,
+      newer,
+    ], plannedList);
+    expect(plannedSplit.active.map((t) => t.id), ['t3']);
+    expect(plannedSplit.completed, isEmpty);
   });
 
   test('groupPlannedTasks classifies tasks into chronological buckets', () {

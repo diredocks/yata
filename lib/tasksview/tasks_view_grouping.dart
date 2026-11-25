@@ -50,7 +50,7 @@ String? resolveOriginListName(
   }
 
   final active = allTasks.where((t) => !t.isCompleted).toList();
-  if (smartType == SmartListType.all) {
+  if (smartType == SmartListType.all || smartType == SmartListType.planned) {
     return (active: active, completed: const <TaskItem>[]);
   }
 

@@ -74,6 +74,7 @@ abstract class TodoState with _$TodoState {
       SmartListType.important => tasks.where((t) => t.isImportant),
       SmartListType.planned => tasks.where(
         (t) =>
+            !t.isCompleted &&
             (t.dueDate != null || t.reminderAt != null) &&
             _matchesPlannedFilter(t),
       ),

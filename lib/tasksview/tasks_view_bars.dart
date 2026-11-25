@@ -518,40 +518,43 @@ class TasksPlannedFilterBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
         child: Align(
           alignment: Alignment.centerLeft,
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(4),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: currentList.themePhoto != null
-                    ? Colors.black.withValues(alpha: 0.35)
-                    : (Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white.withValues(alpha: 0.10)
-                          : (TodoColors.isLightTheme(currentList.themeColor)
-                                ? Colors.white.withValues(alpha: 0.72)
-                                : Colors.black.withValues(alpha: 0.25))),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.filter_list, size: 16, color: headerFg),
-                  const SizedBox(width: 6),
-                  Text(
-                    plannedFilterLabel(l10n, currentFilter),
-                    style: TextStyle(
-                      color: headerFg,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 32),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                  color: currentList.themePhoto != null
+                      ? Colors.black.withValues(alpha: 0.35)
+                      : (Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white.withValues(alpha: 0.10)
+                            : (TodoColors.isLightTheme(currentList.themeColor)
+                                  ? Colors.white.withValues(alpha: 0.72)
+                                  : Colors.black.withValues(alpha: 0.25))),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.filter_list, size: 18, color: headerFg),
+                    const SizedBox(width: 6),
+                    Text(
+                      plannedFilterLabel(l10n, currentFilter),
+                      style: TextStyle(
+                        color: headerFg,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w400,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 2),
-                  Icon(Icons.keyboard_arrow_down, size: 16, color: headerFg),
-                ],
+                    const SizedBox(width: 2),
+                    Icon(Icons.keyboard_arrow_down, size: 18, color: headerFg),
+                  ],
+                ),
               ),
             ),
           ),
