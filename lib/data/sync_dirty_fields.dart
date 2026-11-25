@@ -1,3 +1,5 @@
+import 'package:collection/collection.dart';
+
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 
@@ -24,25 +26,10 @@ enum TaskDirtyField {
   steps,
 }
 
-bool _deepJsonEquals(dynamic a, dynamic b) {
-  if (identical(a, b)) return true;
-  if (a is Map && b is Map) {
-    if (a.length != b.length) return false;
-    for (final entry in a.entries) {
-      if (!b.containsKey(entry.key)) return false;
-      if (!_deepJsonEquals(entry.value, b[entry.key])) return false;
-    }
-    return true;
-  }
-  if (a is List && b is List) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (!_deepJsonEquals(a[i], b[i])) return false;
-    }
-    return true;
-  }
-  return a == b;
-}
+/// Recursively compares JSON-like maps, lists, and scalar values.
+bool deepJsonEquals(dynamic a, dynamic b) => _deepJsonEquality.equals(a, b);
+
+const _deepJsonEquality = DeepCollectionEquality();
 
 /// Computes changed fields between [prev] and [next] [ListGroup].
 Set<GroupDirtyField> diffGroupDirtyFields(ListGroup? prev, ListGroup next) {
@@ -74,20 +61,19 @@ Set<ListDirtyField> diffListDirtyFields(TodoList? prev, TodoList next) {
 /// Returns the local IDs of [TaskStep] items in [next] that were added or
 /// modified relative to [prev].
 Set<String> diffDirtyStepIds(TaskItem? prev, TaskItem next) {
-  final prevById = {
-    for (final s in prev?.steps ?? const <TaskStep>[]) s.id: s,
-  };
-  final dirty = <String>{};
-  for (final step in next.steps) {
+  final prevById = {for (final s in prev?.steps ?? const <TaskStep>[]) s.id: s};
+  bool isDirty(TaskStep step) {
     final prevStep = prevById[step.id];
-    if (prevStep == null ||
+    return prevStep == null ||
         prevStep.title != step.title ||
         prevStep.isCompleted != step.isCompleted ||
-        prevStep.orderDateTime != step.orderDateTime) {
-      dirty.add(step.id);
-    }
+        prevStep.orderDateTime != step.orderDateTime;
   }
-  return dirty;
+
+  return {
+    for (final step in next.steps)
+      if (isDirty(step)) step.id,
+  };
 }
 
 /// Computes changed fields between [prev] and [next] [TaskItem].
@@ -100,11 +86,13 @@ Set<TaskDirtyField> diffTaskDirtyFields(TaskItem? prev, TaskItem next) {
       prev.completedAt != next.completedAt) {
     fields.add(TaskDirtyField.status);
   }
-  if (prev.isImportant != next.isImportant) fields.add(TaskDirtyField.importance);
+  if (prev.isImportant != next.isImportant) {
+    fields.add(TaskDirtyField.importance);
+  }
   if (prev.dueDate != next.dueDate) fields.add(TaskDirtyField.dueDate);
   if (prev.reminderAt != next.reminderAt) fields.add(TaskDirtyField.reminder);
   if (prev.recurrence != next.recurrence ||
-      !_deepJsonEquals(prev.rawRecurrence, next.rawRecurrence)) {
+      !deepJsonEquals(prev.rawRecurrence, next.rawRecurrence)) {
     fields.add(TaskDirtyField.recurrence);
   }
   if (prev.orderDateTime != next.orderDateTime) {
@@ -122,9 +110,8 @@ Set<TaskDirtyField> diffTaskDirtyFields(TaskItem? prev, TaskItem next) {
   if (prev.listId != next.listId) fields.add(TaskDirtyField.parentFolder);
 
   final dirtySteps = diffDirtyStepIds(prev, next);
-  final stepRemoved = prev.steps.any(
-    (ps) => !next.steps.any((ns) => ns.id == ps.id),
-  );
+  final nextStepIds = {for (final s in next.steps) s.id};
+  final stepRemoved = prev.steps.any((s) => !nextStepIds.contains(s.id));
   if (dirtySteps.isNotEmpty || stepRemoved) {
     fields.add(TaskDirtyField.steps);
   }

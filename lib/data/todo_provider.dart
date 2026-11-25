@@ -262,10 +262,11 @@ class TodoNotifier extends Notifier<TodoState> {
     Set<String>? syncedSettingKeys,
     SyncedDirtyFields syncedDirtyFields = const SyncedDirtyFields(),
   }) async {
-    List<T> filterProcessed<T>(List<T> pending, List<T>? processed) =>
-        processed == null
-        ? pending
-        : pending.where((item) => !processed.contains(item)).toList();
+    List<T> filterProcessed<T>(List<T> pending, List<T>? processed) {
+      if (processed == null) return pending;
+      final processedSet = processed.toSet();
+      return pending.where((item) => !processedSet.contains(item)).toList();
+    }
 
     final preserveDirtyGroups = <String>{};
     final preserveDirtyLists = <String>{};

@@ -1,3 +1,5 @@
+import 'package:collection/collection.dart';
+
 /// Line-level 3-way merge for plain-text task notes, aligning with MS To Do's
 /// `lh.m.a` non-destructive conflict merge on 409/412 `Body` collisions.
 String mergeThreeWayNoteText({
@@ -87,7 +89,7 @@ String mergeThreeWayNoteText({
         clusterEnd,
       );
 
-      if (_listEquals(localRep, remoteRep)) {
+      if (const ListEquality<String>().equals(localRep, remoteRep)) {
         mergedLines.addAll(localRep);
       } else if (clusterEnd - basePos == 1 &&
           localRep.length == 1 &&
@@ -105,8 +107,9 @@ String mergeThreeWayNoteText({
         }
       } else {
         mergedLines.addAll(localRep);
+        final localRepLines = localRep.toSet();
         for (final line in remoteRep) {
-          if (!localRep.contains(line)) {
+          if (!localRepLines.contains(line)) {
             mergedLines.add(line);
           }
         }
@@ -225,14 +228,6 @@ List<String> _materializeCluster(
     out.addAll(baseLines.sublist(pos, end));
   }
   return out;
-}
-
-bool _listEquals(List<String> a, List<String> b) {
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i++) {
-    if (a[i] != b[i]) return false;
-  }
-  return true;
 }
 
 String? _tryInlineMergeLine(String base, String local, String remote) {

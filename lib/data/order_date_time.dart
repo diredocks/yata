@@ -103,10 +103,7 @@ Map<int, DateTime> computeReorderedOrderDateTimes(
       .toList();
   DateTime anchor;
   if (nonNull.isNotEmpty) {
-    anchor = nonNull.first;
-    for (final dt in nonNull.skip(1)) {
-      if (dt.isAfter(anchor)) anchor = dt;
-    }
+    anchor = nonNull.reduce((a, b) => b.isAfter(a) ? b : a);
   } else {
     anchor = (fallbackNow ?? DateTime.now()).toUtc();
   }
@@ -158,17 +155,11 @@ DateTime computeNewOrderDateTime({
     return (fallbackNow ?? DateTime.now()).toUtc();
   }
   if (addToTop) {
-    var maxDt = nonNull.first;
-    for (final dt in nonNull.skip(1)) {
-      if (dt.isAfter(maxDt)) maxDt = dt;
-    }
+    final maxDt = nonNull.reduce((a, b) => b.isAfter(a) ? b : a);
     final now = (fallbackNow ?? DateTime.now()).toUtc();
     final minNext = maxDt.add(kOrderDateTimeStep);
     return now.isAfter(minNext) ? now : minNext;
   }
-  var minDt = nonNull.first;
-  for (final dt in nonNull.skip(1)) {
-    if (dt.isBefore(minDt)) minDt = dt;
-  }
+  final minDt = nonNull.reduce((a, b) => b.isBefore(a) ? b : a);
   return minDt.subtract(kOrderDateTimeStep);
 }

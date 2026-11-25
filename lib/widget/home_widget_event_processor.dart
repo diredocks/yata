@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show ProviderListenable;
@@ -105,8 +106,7 @@ class WidgetEventProcessor {
           .map(WidgetPendingOp.fromMap)
           .nonNulls
           .where((op) => op.opId > ackedOpId)
-          .toList()
-        ..sort((a, b) => a.opId.compareTo(b.opId));
+          .sortedBy((op) => op.opId);
     }, operation: 'decodeWidgetPendingOps');
     return decoded.getOrElse((_) => const []);
   }

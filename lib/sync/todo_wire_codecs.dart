@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:characters/characters.dart';
 import 'package:material_ui/material_ui.dart' show TimeOfDay;
 import 'package:uuid/uuid.dart';
@@ -440,12 +442,9 @@ String encodeRoutineConfig(
   TimeOfDay time, {
   List<int> days = const [1, 2, 3, 4, 5, 6, 7],
 }) {
-  final dayNames =
-      days
-          .where((d) => d >= DateTime.monday && d <= DateTime.sunday)
-          .toSet()
-          .toList()
-        ..sort();
+  final dayNames = SplayTreeSet<int>.of(
+    days.where((d) => d >= DateTime.monday && d <= DateTime.sunday),
+  );
   final encodedDays = dayNames.isEmpty
       ? kIsoWeekdayNames
       : [for (final d in dayNames) kIsoWeekdayNames[d - 1]];
@@ -467,7 +466,7 @@ List<int>? decodeRoutineConfigDays(dynamic raw) {
   if (parts.length < 2) return null;
   final daysPart = parts[1].trim();
   if (daysPart.isEmpty) return const <int>[];
-  final result = <int>{};
+  final result = SplayTreeSet<int>();
   for (final token in daysPart.split(',')) {
     final normalized = token.trim().toLowerCase();
     final idx = kIsoWeekdayNames.indexWhere(
@@ -478,5 +477,5 @@ List<int>? decodeRoutineConfigDays(dynamic raw) {
     }
   }
   if (result.isEmpty) return null;
-  return result.toList()..sort();
+  return result.toList();
 }

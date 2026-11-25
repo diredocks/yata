@@ -1,3 +1,6 @@
+import 'package:collection/collection.dart';
+
+import '../data/todo_sorting.dart';
 import '../detailview/recurrence/task_pickers.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
@@ -25,7 +28,7 @@ String? resolveOriginListName(
   List<TodoList> lists,
   String listId,
 ) {
-  final list = lists.where((l) => l.id == listId).firstOrNull;
+  final list = lists.firstWhereOrNull((l) => l.id == listId);
   if (list == null) return null;
   return list.smartType == SmartListType.tasks ? l10n.tasks : list.title;
 }
@@ -53,15 +56,7 @@ String? resolveOriginListName(
 
   final completed = allTasks.where((t) => t.isCompleted).toList();
   if (currentList.sortOption == TaskSortOption.defaultOrder) {
-    completed.sort((a, b) {
-      final aTime = a.completedAt ?? a.createdAt;
-      final bTime = b.completedAt ?? b.createdAt;
-      final cmp = bTime.compareTo(aTime);
-      if (cmp != 0) return cmp;
-      final createdCmp = b.createdAt.compareTo(a.createdAt);
-      if (createdCmp != 0) return createdCmp;
-      return a.id.compareTo(b.id);
-    });
+    completed.sort(compareCompletedTasksDesc);
   }
   return (active: active, completed: completed);
 }

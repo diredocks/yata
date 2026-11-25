@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:material_ui/material_ui.dart';
@@ -220,14 +221,12 @@ class TodoSettingsStore {
     if (raw == null || raw.isEmpty) {
       return const <int>[1, 2, 3, 4, 5, 6, 7];
     }
-    final parsed =
-        raw
-            .map(int.tryParse)
-            .whereType<int>()
-            .where((d) => d >= DateTime.monday && d <= DateTime.sunday)
-            .toSet()
-            .toList()
-          ..sort();
+    final parsed = SplayTreeSet<int>.of(
+      raw
+          .map(int.tryParse)
+          .whereType<int>()
+          .where((d) => d >= DateTime.monday && d <= DateTime.sunday),
+    ).toList();
     return parsed.isEmpty ? const <int>[1, 2, 3, 4, 5, 6, 7] : parsed;
   }
 
@@ -324,7 +323,7 @@ class TodoSettingsStore {
   }
 
   Future<void> saveRoutineNotificationDays(List<int> days) async {
-    final sorted = days.toSet().toList()..sort();
+    final sorted = SplayTreeSet<int>.of(days).toList();
     await _prefs.setStringList(
       _routineNotificationDaysKey,
       sorted.map((d) => d.toString()).toList(),

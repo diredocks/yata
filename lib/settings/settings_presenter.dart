@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -148,7 +150,7 @@ class SettingsPresenter {
   }
 
   void setRoutineNotificationDays(List<int> days) {
-    final sorted = days.toSet().toList()..sort();
+    final sorted = SplayTreeSet<int>.of(days).toList();
     _store.commit(_state.copyWith(routineNotificationDays: sorted));
     _store.settings.saveRoutineNotificationDays(sorted);
   }

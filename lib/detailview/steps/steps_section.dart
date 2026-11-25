@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../l10n/app_localizations.dart';
@@ -84,13 +85,11 @@ class _StepsSectionState extends State<StepsSection> {
     super.dispose();
   }
 
-  bool _haveSameIdsInOrder(List<TaskStep> a, List<TaskStep> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i].id != b[i].id) return false;
-    }
-    return true;
-  }
+  bool _haveSameIdsInOrder(List<TaskStep> a, List<TaskStep> b) =>
+      const IterableEquality<String>().equals(
+        a.map((step) => step.id),
+        b.map((step) => step.id),
+      );
 
   void _syncDiff(List<TaskStep> nextSteps) {
     final listState = _listKey.currentState;

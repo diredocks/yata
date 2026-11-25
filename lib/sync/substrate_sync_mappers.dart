@@ -407,17 +407,15 @@ TaskItem taskFromRemote(
       if (s.remoteId != null) s.remoteId!: s.id,
   };
   final indexedSteps = [
-    for (var i = 0; i < remote.subtasks.length; i++)
+    for (final (index, subtask) in remote.subtasks.indexed)
       (
-        index: i,
+        index: index,
         step: TaskStep(
-          id:
-              existingStepIdByRemoteId[remote.subtasks[i].id] ??
-              idGenerator('step'),
-          title: remote.subtasks[i].subject,
-          isCompleted: remote.subtasks[i].isCompleted,
-          remoteId: remote.subtasks[i].id,
-          orderDateTime: remote.subtasks[i].orderDateTime,
+          id: existingStepIdByRemoteId[subtask.id] ?? idGenerator('step'),
+          title: subtask.subject,
+          isCompleted: subtask.isCompleted,
+          remoteId: subtask.id,
+          orderDateTime: subtask.orderDateTime,
         ),
       ),
   ];

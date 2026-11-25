@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
+import 'todo_sorting.dart';
 
 part 'todo_state.freezed.dart';
 
@@ -64,10 +65,7 @@ abstract class TodoState with _$TodoState {
 
   TaskItem? get selectedTask {
     if (selectedTaskId == null) return null;
-    for (final task in tasks) {
-      if (task.id == selectedTaskId) return task;
-    }
-    return null;
+    return tasks.where((task) => task.id == selectedTaskId).firstOrNull;
   }
 
   List<TaskItem> tasksForList(TodoList list) {
@@ -131,15 +129,7 @@ abstract class TodoState with _$TodoState {
     switch (list.sortOption) {
       case TaskSortOption.defaultOrder:
         if (list.smartType == SmartListType.completed) {
-          result.sort((a, b) {
-            final aTime = a.completedAt ?? a.createdAt;
-            final bTime = b.completedAt ?? b.createdAt;
-            final cmp = bTime.compareTo(aTime);
-            if (cmp != 0) return cmp;
-            final createdCmp = b.createdAt.compareTo(a.createdAt);
-            if (createdCmp != 0) return createdCmp;
-            return a.id.compareTo(b.id);
-          });
+          result.sort(compareCompletedTasksDesc);
           return;
         }
         final isMyDay = list.smartType == SmartListType.myDay;

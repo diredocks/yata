@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../models/todo_list.dart';
@@ -97,18 +98,14 @@ class RoutineNotificationConfig {
   final List<int> days;
 
   @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    if (other is! RoutineNotificationConfig) return false;
-    if (time != other.time || days.length != other.days.length) return false;
-    for (var i = 0; i < days.length; i++) {
-      if (days[i] != other.days[i]) return false;
-    }
-    return true;
-  }
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RoutineNotificationConfig &&
+          time == other.time &&
+          const ListEquality<int>().equals(days, other.days));
 
   @override
-  int get hashCode => Object.hash(time, Object.hashAll(days));
+  int get hashCode => Object.hash(time, const ListEquality<int>().hash(days));
 }
 
 class SyncedSettingsPatch {

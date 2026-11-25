@@ -301,6 +301,7 @@ class SubstratePushEngine {
     final syncedTaskIds = <String>{};
     final syncedTaskFields = <String, Set<TaskDirtyField>>{};
     final syncedStepIds = <String, Set<String>>{};
+    final deletedTaskRemoteIds = processedDeletedTaskRemoteIds.toSet();
 
     final folderRemoteByLocalId = {
       for (final l in workingLists)
@@ -312,7 +313,7 @@ class SubstratePushEngine {
       if (folderRemoteId == null) continue;
 
       if (task.remoteId != null &&
-          processedDeletedTaskRemoteIds.contains(task.remoteId)) {
+          deletedTaskRemoteIds.contains(task.remoteId)) {
         syncedTaskIds.add(task.id);
         continue;
       }

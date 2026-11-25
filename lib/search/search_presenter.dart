@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/task_item.dart';
@@ -36,8 +37,10 @@ class SearchPresenter {
         matched.add((task, sortTime));
       }
     }
-    matched.sort((a, b) => b.$2.compareTo(a.$2));
-    return [for (final item in matched) item.$1];
+    return matched
+        .sortedByCompare((item) => item.$2, (a, b) => b.compareTo(a))
+        .map((item) => item.$1)
+        .toList();
   }
 
   void toggleTaskCompleted(String taskId) {

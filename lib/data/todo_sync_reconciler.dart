@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import '../models/pending_step_deletion.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
@@ -44,18 +46,16 @@ TaskItem computeTaskMyDayFlag(
   required bool showDueTodayInMyDay,
 }) {
   var changed = false;
-  final synced = <TaskItem>[
-    for (final task in tasks)
-      () {
-        final next = computeTaskMyDayFlag(
-          task,
-          now: now,
-          showDueTodayInMyDay: showDueTodayInMyDay,
-        );
-        if (!identical(next, task)) changed = true;
-        return next;
-      }(),
-  ];
+  final synced = <TaskItem>[];
+  for (final task in tasks) {
+    final next = computeTaskMyDayFlag(
+      task,
+      now: now,
+      showDueTodayInMyDay: showDueTodayInMyDay,
+    );
+    if (!identical(next, task)) changed = true;
+    synced.add(next);
+  }
   return (tasks: changed ? synced : tasks, changed: changed);
 }
 
@@ -183,24 +183,21 @@ LocalCommitTrackResult trackLocalCommit({
     groupSyncNeeded = groupDeletions.changed;
     nextDeletedGroups = groupDeletions.deletedRemoteIds;
 
-    stampedGroups = [
-      for (final group in nextState.groups)
-        () {
-          final prev = prevGroupById[group.id];
-          if (prev == null || isGroupSyncDirty(prev, group)) {
-            groupSyncNeeded = true;
-            dirtyGroupIds.add(group.id);
-            final changed = diffGroupDirtyFields(prev, group);
-            if (changed.isNotEmpty) {
-              (dirtyGroupFields[group.id] ??= <GroupDirtyField>{}).addAll(
-                changed,
-              );
-            }
-            return group.copyWith(updatedAt: nowUtc);
-          }
-          return group;
-        }(),
-    ];
+    stampedGroups = <ListGroup>[];
+    for (final group in nextState.groups) {
+      final prev = prevGroupById[group.id];
+      if (prev == null || isGroupSyncDirty(prev, group)) {
+        groupSyncNeeded = true;
+        dirtyGroupIds.add(group.id);
+        final changed = diffGroupDirtyFields(prev, group);
+        if (changed.isNotEmpty) {
+          (dirtyGroupFields[group.id] ??= <GroupDirtyField>{}).addAll(changed);
+        }
+        stampedGroups.add(group.copyWith(updatedAt: nowUtc));
+      } else {
+        stampedGroups.add(group);
+      }
+    }
   }
 
   var stampedLists = nextState.lists;
@@ -223,34 +220,32 @@ LocalCommitTrackResult trackLocalCommit({
     listSyncNeeded = listDeletions.changed;
     nextDeletedLists = listDeletions.deletedRemoteIds;
 
-    stampedLists = [
-      for (final list in nextState.lists)
-        () {
-          final prev = prevListById[list.id];
-          if (isSyncableFolderList(list)) {
-            if (prev == null || isListSyncDirty(prev, list)) {
-              listSyncNeeded = true;
-              dirtyListIds.add(list.id);
-              final changed = diffListDirtyFields(prev, list);
-              if (changed.isNotEmpty) {
-                (dirtyListFields[list.id] ??= <ListDirtyField>{}).addAll(
-                  changed,
-                );
-              }
-              return list.copyWith(updatedAt: nowUtc);
-            }
-            return list;
+    stampedLists = <TodoList>[];
+    for (final list in nextState.lists) {
+      final prev = prevListById[list.id];
+      if (isSyncableFolderList(list)) {
+        if (prev == null || isListSyncDirty(prev, list)) {
+          listSyncNeeded = true;
+          dirtyListIds.add(list.id);
+          final changed = diffListDirtyFields(prev, list);
+          if (changed.isNotEmpty) {
+            (dirtyListFields[list.id] ??= <ListDirtyField>{}).addAll(changed);
           }
-          if (prev != null) {
-            final changedSmartKeys = smartListChangedSettingKeys(prev, list);
-            if (changedSmartKeys.isNotEmpty) {
-              listSyncNeeded = true;
-              dirtySettingKeys.addAll(changedSmartKeys);
-            }
-          }
-          return list;
-        }(),
-    ];
+          stampedLists.add(list.copyWith(updatedAt: nowUtc));
+        } else {
+          stampedLists.add(list);
+        }
+        continue;
+      }
+      if (prev != null) {
+        final changedSmartKeys = smartListChangedSettingKeys(prev, list);
+        if (changedSmartKeys.isNotEmpty) {
+          listSyncNeeded = true;
+          dirtySettingKeys.addAll(changedSmartKeys);
+        }
+      }
+      stampedLists.add(list);
+    }
   }
 
   var stampedTasks = nextState.tasks;
@@ -287,41 +282,42 @@ LocalCommitTrackResult trackLocalCommit({
       for (final l in prevLists)
         if (l.remoteId != null) l.id: l.remoteId!,
     };
-    stampedTasks = [
-      for (final task in nextState.tasks)
-        () {
-          final prev = prevTaskById[task.id];
-          if (!doesTaskNeedSyncStamp(prev, task)) return task;
-          taskSyncNeeded = true;
-          dirtyTaskIds.add(task.id);
-          final changedFields = diffTaskDirtyFields(prev, task);
-          if (changedFields.isNotEmpty) {
-            (dirtyTaskFields[task.id] ??= <TaskDirtyField>{}).addAll(
-              changedFields,
-            );
-          }
-          final changedSteps = diffDirtyStepIds(prev, task);
-          if (changedSteps.isNotEmpty) {
-            (dirtyStepIds[task.id] ??= <String>{}).addAll(changedSteps);
-          }
-          if (changedFields.contains(TaskDirtyField.body) &&
-              prev != null &&
-              !taskBaseNotes.containsKey(task.id)) {
-            taskBaseNotes[task.id] = prev.note;
-          }
-          final resolvedRemoteParent =
-              (prev != null &&
-                  prev.listId != task.listId &&
-                  task.remoteId != null &&
-                  task.remoteParentFolderId == null)
-              ? prevListRemoteById[prev.listId]
-              : task.remoteParentFolderId;
-          return task.copyWith(
-            remoteParentFolderId: resolvedRemoteParent,
-            updatedAt: nowUtc,
-          );
-        }(),
-    ];
+    stampedTasks = <TaskItem>[];
+    for (final task in nextState.tasks) {
+      final prev = prevTaskById[task.id];
+      if (!doesTaskNeedSyncStamp(prev, task)) {
+        stampedTasks.add(task);
+        continue;
+      }
+      taskSyncNeeded = true;
+      dirtyTaskIds.add(task.id);
+      final changedFields = diffTaskDirtyFields(prev, task);
+      if (changedFields.isNotEmpty) {
+        (dirtyTaskFields[task.id] ??= <TaskDirtyField>{}).addAll(changedFields);
+      }
+      final changedSteps = diffDirtyStepIds(prev, task);
+      if (changedSteps.isNotEmpty) {
+        (dirtyStepIds[task.id] ??= <String>{}).addAll(changedSteps);
+      }
+      if (changedFields.contains(TaskDirtyField.body) &&
+          prev != null &&
+          !taskBaseNotes.containsKey(task.id)) {
+        taskBaseNotes[task.id] = prev.note;
+      }
+      final resolvedRemoteParent =
+          (prev != null &&
+              prev.listId != task.listId &&
+              task.remoteId != null &&
+              task.remoteParentFolderId == null)
+          ? prevListRemoteById[prev.listId]
+          : task.remoteParentFolderId;
+      stampedTasks.add(
+        task.copyWith(
+          remoteParentFolderId: resolvedRemoteParent,
+          updatedAt: nowUtc,
+        ),
+      );
+    }
   }
 
   final changedGlobalSettingKeys = detectGlobalSettingChanges(
@@ -369,10 +365,10 @@ bool doesTaskNeedSyncStamp(TaskItem? prev, TaskItem next) {
     updatedAt: next.updatedAt,
     noteUpdatedAt: next.noteUpdatedAt,
     steps: [
-      for (var i = 0; i < prev.steps.length; i++)
-        prev.steps[i].copyWith(
-          id: next.steps[i].id,
-          remoteId: next.steps[i].remoteId,
+      for (final (index, step) in prev.steps.indexed)
+        step.copyWith(
+          id: next.steps[index].id,
+          remoteId: next.steps[index].remoteId,
         ),
     ],
   );
@@ -391,23 +387,19 @@ collectPendingRemoteDeletions<T>({
   required Iterable<String> existingDeletedRemoteIds,
   bool Function(T item)? canDeleteRemotely,
 }) {
-  final deleted = [...existingDeletedRemoteIds];
+  final deleted = LinkedHashSet<String>.of(existingDeletedRemoteIds);
   var changed = false;
   for (final prev in prevItems) {
     final id = idOf(prev);
-    if (!nextIds.contains(id)) {
-      dirtyIds.remove(id);
-      if (canDeleteRemotely != null && !canDeleteRemotely(prev)) continue;
-      final remoteId = remoteIdOf(prev);
-      if (remoteId != null) {
-        changed = true;
-        if (!deleted.contains(remoteId)) {
-          deleted.add(remoteId);
-        }
-      }
-    }
+    if (nextIds.contains(id)) continue;
+    dirtyIds.remove(id);
+    if (canDeleteRemotely != null && !canDeleteRemotely(prev)) continue;
+    final remoteId = remoteIdOf(prev);
+    if (remoteId == null) continue;
+    changed = true;
+    deleted.add(remoteId);
   }
-  return (deletedRemoteIds: deleted, changed: changed);
+  return (deletedRemoteIds: deleted.toList(), changed: changed);
 }
 
 /// Collects remote step deletions for tasks whose subtasks were removed locally.
@@ -417,7 +409,9 @@ collectPendingStepDeletions({
   required List<TaskItem> nextTasks,
   required Iterable<PendingStepDeletion> existingDeletedSteps,
 }) {
-  final deletedSteps = [...existingDeletedSteps];
+  final deletedSteps = LinkedHashSet<PendingStepDeletion>.of(
+    existingDeletedSteps,
+  );
   var changed = false;
   for (final task in nextTasks) {
     final prev = prevTaskById[task.id];
@@ -426,19 +420,15 @@ collectPendingStepDeletions({
     final nextStepIds = {for (final s in task.steps) s.id};
     for (final prevStep in prev.steps) {
       final stepRemoteId = prevStep.remoteId;
-      if (!nextStepIds.contains(prevStep.id) && stepRemoteId != null) {
-        final candidate = PendingStepDeletion(
-          taskRemoteId: taskRemoteId,
-          stepRemoteId: stepRemoteId,
-        );
-        if (!deletedSteps.contains(candidate)) {
-          changed = true;
-          deletedSteps.add(candidate);
-        }
-      }
+      if (nextStepIds.contains(prevStep.id) || stepRemoteId == null) continue;
+      final candidate = PendingStepDeletion(
+        taskRemoteId: taskRemoteId,
+        stepRemoteId: stepRemoteId,
+      );
+      if (deletedSteps.add(candidate)) changed = true;
     }
   }
-  return (deletedSteps: deletedSteps, changed: changed);
+  return (deletedSteps: deletedSteps.toList(), changed: changed);
 }
 
 List<ListGroup> reconcileSyncedGroups({

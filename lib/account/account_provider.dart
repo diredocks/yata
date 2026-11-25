@@ -123,10 +123,7 @@ class AccountNotifier extends Notifier<AccountState> {
         avatarBase64: result.profile.avatarBase64 ?? existing.avatarBase64,
         syncError: null,
       );
-      nextAccounts = [
-        for (var i = 0; i < state.accounts.length; i++)
-          if (i == existingIndex) account else state.accounts[i],
-      ];
+      nextAccounts = [...state.accounts]..[existingIndex] = account;
     } else {
       account = MicrosoftAccount(
         id: _nextAccountId(),
@@ -161,10 +158,7 @@ class AccountNotifier extends Notifier<AccountState> {
       lastSyncedAt: (lastSyncedAt ?? target.lastSyncedAt)?.toUtc(),
       syncError: clearSyncError ? null : (syncError ?? target.syncError),
     );
-    final nextAccounts = [
-      for (var i = 0; i < state.accounts.length; i++)
-        if (i == idx) updated else state.accounts[i],
-    ];
+    final nextAccounts = [...state.accounts]..[idx] = updated;
     state = state.copyWith(accounts: nextAccounts);
     await _storage.saveAccounts(nextAccounts);
   }
@@ -185,10 +179,7 @@ class AccountNotifier extends Notifier<AccountState> {
       email: email ?? target.email,
       avatarBase64: avatarBase64 ?? target.avatarBase64,
     );
-    final nextAccounts = [
-      for (var i = 0; i < state.accounts.length; i++)
-        if (i == idx) updated else state.accounts[i],
-    ];
+    final nextAccounts = [...state.accounts]..[idx] = updated;
     state = state.copyWith(accounts: nextAccounts);
     await _storage.saveAccounts(nextAccounts);
   }

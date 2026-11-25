@@ -1,3 +1,5 @@
+import 'package:collection/collection.dart';
+
 import '../data/todo_settings_sync.dart';
 import '../homeview/home_view_ordering.dart';
 import '../models/task_item.dart';
@@ -300,9 +302,9 @@ RealtimeMergeResult<List<ListGroup>> mergeRealtimeFolderGroupEvent({
     );
   }
 
-  final existing = currentGroups
-      .where((g) => g.remoteId == remote.id)
-      .firstOrNull;
+  final existing = currentGroups.firstWhereOrNull(
+    (g) => g.remoteId == remote.id,
+  );
   if (existing != null && dirtyGroupIds.contains(existing.id)) {
     return RealtimeMergeResult.noOp(
       'FolderGroup/${event.operation} id=${shortSyncId(remote.id)} local=${existing.id} skipped (local dirty)',
@@ -422,13 +424,11 @@ RealtimeMergeResult<RealtimeFolderUpdate> mergeRealtimeFolderEvent({
     );
   }
 
-  final existing = currentLists
-      .where(
-        (l) =>
-            (remote.isDefaultFolder && l.smartType == SmartListType.tasks) ||
-            (!l.isSmartList && l.remoteId == remote.id),
-      )
-      .firstOrNull;
+  final existing = currentLists.firstWhereOrNull(
+    (l) =>
+        (remote.isDefaultFolder && l.smartType == SmartListType.tasks) ||
+        (!l.isSmartList && l.remoteId == remote.id),
+  );
   if (existing != null && dirtyListIds.contains(existing.id)) {
     return RealtimeMergeResult.noOp(
       'TaskFolder/${event.operation} id=${shortSyncId(remote.id)} local=${existing.id} skipped (local dirty)',

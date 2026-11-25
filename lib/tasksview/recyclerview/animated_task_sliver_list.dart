@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/rendering.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -356,14 +357,12 @@ class _AnimatedReorderableTaskSliverState
   }
 }
 
-bool _haveSameIdsInOrder(List<TaskItem> a, List<TaskItem> b) {
-  if (identical(a, b)) return true;
-  if (a.length != b.length) return false;
-  for (var i = 0; i < a.length; i++) {
-    if (a[i].id != b[i].id) return false;
-  }
-  return true;
-}
+bool _haveSameIdsInOrder(List<TaskItem> a, List<TaskItem> b) =>
+    identical(a, b) ||
+    const IterableEquality<String>().equals(
+      a.map((task) => task.id),
+      b.map((task) => task.id),
+    );
 
 class _CapturedPosition {
   const _CapturedPosition({required this.laidOutY, required this.visualY});

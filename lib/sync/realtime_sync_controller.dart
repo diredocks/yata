@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -40,7 +41,7 @@ class RealtimeSyncController {
 
   Timer? _reconnectTimer;
   StreamSubscription<RealtimeEvent>? _sub;
-  final List<RealtimeEvent> _pendingEvents = [];
+  final Queue<RealtimeEvent> _pendingEvents = Queue<RealtimeEvent>();
   bool _needsSyncOnConnect = false;
   Duration _backoff = _initialBackoff;
   String? _accountId;
@@ -208,7 +209,7 @@ class RealtimeSyncController {
         _pendingEvents.clear();
         return;
       }
-      final event = _pendingEvents.removeAt(0);
+      final event = _pendingEvents.removeFirst();
       final handled = await _applyRealtimeEventNow(
         currentActive,
         event,
