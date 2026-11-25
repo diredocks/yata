@@ -6,6 +6,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import '../account/account_provider.dart';
 import '../core/error/app_error.dart';
 import '../core/logging/app_logger.dart';
+import '../data/sync_outbox.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
 import 'cloud_sync_service.dart';
@@ -360,7 +361,20 @@ class SyncNotifier extends Notifier<SyncState> {
         final runKind = nextKind;
         final runReason = nextReason;
         nextReason = 'queued';
-        await _syncOnce(kind: runKind, reason: runReason);
+        final succeeded = await _syncOnce(kind: runKind, reason: runReason);
+        if (succeeded &&
+            !_disposed &&
+            !_syncQueued &&
+            ref
+                .read(todoProvider.notifier)
+                .repository
+                .outbox
+                .ops
+                .any((op) => op.kind == SyncOpKind.delete)) {
+          _syncQueued = true;
+          _queuedKind = _mergeSyncKind(_queuedKind, SyncKind.pushOnly);
+          _queuedReason = 'outbox_pending';
+        }
         if (_syncQueued && !_disposed) {
           nextKind = _queuedKind ?? SyncKind.delta;
           nextReason = _queuedReason;
@@ -380,12 +394,12 @@ class SyncNotifier extends Notifier<SyncState> {
     }
   }
 
-  Future<void> _syncOnce({
+  Future<bool> _syncOnce({
     required SyncKind kind,
     required String reason,
   }) async {
     final active = ref.read(accountProvider).activeAccount;
-    if (_disposed || active is! MicrosoftAccount) return;
+    if (_disposed || active is! MicrosoftAccount) return false;
 
     final forceFullSync = kind == SyncKind.full;
 
@@ -405,42 +419,38 @@ class SyncNotifier extends Notifier<SyncState> {
       settings: todoNotifier.settings,
       idGenerator: todoNotifier.nextId,
       readLatestState: () => ref.read(todoProvider),
+      onPushCommitted: (pushOutcome) async {
+        if (_disposed ||
+            ref.read(accountProvider).activeAccount?.id != active.id) {
+          return;
+        }
+        await todoNotifier.commitPushBatch(
+          ackedSeqs: pushOutcome.ackedSeqs,
+          pushedGroups: pushOutcome.pushedGroups,
+          pushedLists: pushOutcome.pushedLists,
+          pushedTasks: pushOutcome.pushedTasks,
+          clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
+        );
+      },
       kind: kind,
       reason: reason,
     );
 
-    if (_disposed) return;
+    if (_disposed) return false;
 
-    await result.fold(
+    return result.fold(
       (outcome) async {
         _log.info(
           'sync success reason=$reason forceFullSync=$forceFullSync '
           'lists=${outcome.lists.length} tasks=${outcome.tasks.length} '
-          'pushedTasks=${outcome.syncedTaskIds.length}',
+          'pushedTasks=${outcome.pushedTasksCount}',
         );
         if (ref.read(accountProvider).activeAccount?.id == active.id) {
-          final effectiveSnapshot = outcome.snapshotState ?? snapshotState;
-          await todoNotifier.applySyncResult(
+          await todoNotifier.applyPulledState(
             groups: outcome.groups,
             lists: outcome.lists,
             tasks: outcome.tasks,
             settingsPatch: outcome.settingsPatch,
-            snapshotGroups: effectiveSnapshot.groups,
-            snapshotLists: effectiveSnapshot.lists,
-            snapshotTasks: effectiveSnapshot.tasks,
-            snapshotState: effectiveSnapshot,
-            processedDeletedGroupRemoteIds:
-                outcome.processedDeletedGroupRemoteIds,
-            processedDeletedListRemoteIds:
-                outcome.processedDeletedListRemoteIds,
-            processedDeletedTaskRemoteIds:
-                outcome.processedDeletedTaskRemoteIds,
-            processedDeletedSteps: outcome.processedDeletedSteps,
-            syncedGroupIds: outcome.syncedGroupIds,
-            syncedListIds: outcome.syncedListIds,
-            syncedTaskIds: outcome.syncedTaskIds,
-            syncedSettingKeys: outcome.syncedSettingKeys,
-            syncedDirtyFields: outcome.syncedDirtyFields,
           );
         }
         await ref
@@ -458,6 +468,7 @@ class SyncNotifier extends Notifier<SyncState> {
             error: null,
           );
         }
+        return true;
       },
       (error) async {
         final status = switch (error) {
@@ -475,6 +486,7 @@ class SyncNotifier extends Notifier<SyncState> {
         if (!_disposed) {
           state = state.copyWith(status: status, error: message);
         }
+        return false;
       },
     );
   }
