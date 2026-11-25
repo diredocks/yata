@@ -20,6 +20,18 @@ import 'sync_guard.dart';
 
 final _log = appLogFor('SyncEngine');
 
+/// How much work one sync pass does; ordered from lightest to heaviest.
+enum SyncKind {
+  /// Push local changes, then pull only the folders the push flagged.
+  pushOnly,
+
+  /// Push, then pull everything by delta.
+  delta,
+
+  /// Like [delta], but ignoring saved delta links and pruning stale rows.
+  full,
+}
+
 /// Result returned by a full 10-phase Substrate sync pass.
 class SyncOutcome {
   const SyncOutcome({
@@ -131,8 +143,9 @@ class CloudSyncService {
 
   /// Runs the Substrate v1 sync phases for [account] and [currentState].
   ///
-  /// [pushOnly] skips the global settings/group/folder pulls and pulls only the
-  /// folders the push flagged, so one local edit costs one PATCH.
+  /// [kind] controls whether metadata/folders are pulled ([SyncKind.pushOnly]
+  /// skips them and pulls only folders flagged by the push) and whether delta
+  /// links are bypassed ([SyncKind.full]).
   AsyncAppResult<SyncOutcome> syncAccount({
     required MicrosoftAccount account,
     required TodoState currentState,
@@ -140,8 +153,7 @@ class CloudSyncService {
     required TodoSettingsStore settings,
     required String Function(String prefix) idGenerator,
     TodoState Function()? readLatestState,
-    bool forceFullSync = false,
-    bool pushOnly = false,
+    SyncKind kind = SyncKind.delta,
     String reason = 'sync',
   }) async {
     Future<AppResult<SyncOutcome>> runAttempt({
@@ -159,8 +171,7 @@ class CloudSyncService {
               repository: repository,
               settings: settings,
               idGenerator: idGenerator,
-              forceFullSync: forceFullSync,
-              pushOnly: pushOnly,
+              kind: kind,
               reason: reason,
             ),
             operation: 'syncPhases',
@@ -191,10 +202,11 @@ class CloudSyncService {
     required TodoRepository repository,
     required TodoSettingsStore settings,
     required String Function(String prefix) idGenerator,
-    bool forceFullSync = false,
-    bool pushOnly = false,
+    SyncKind kind = SyncKind.delta,
     String reason = 'sync',
   }) async {
+    final forceFullSync = kind == SyncKind.full;
+    final pushOnly = kind == SyncKind.pushOnly;
     final nowUtc = DateTime.now().toUtc();
     final dirtySettingKeys = settings.loadDirtySettingKeys().toSet();
     final dirtyGroupIds = repository.loadDirtyGroupIds().toSet();
@@ -207,7 +219,7 @@ class CloudSyncService {
     final taskBaseNotes = repository.loadTaskBaseNotes();
 
     _log.info(
-      'start reason=$reason forceFullSync=$forceFullSync pushOnly=$pushOnly '
+      'start reason=$reason kind=${kind.name} '
       'localLists=${currentState.lists.length} localTasks=${currentState.tasks.length} '
       'dirtyTasks=${dirtyTaskIds.length}',
     );
