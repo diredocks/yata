@@ -6,8 +6,11 @@ import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../account/account_local_storage.dart';
+import '../core/logging/app_logger.dart';
 import '../models/todo_list.dart';
 import '../sync/todo_wire_codecs.dart';
+
+final _log = appLogFor('TodoSettingsStore');
 
 /// Per-account settings that live in [SharedPreferences].
 class TodoSettings {
@@ -239,7 +242,8 @@ class TodoSettingsStore {
         for (final entry in decoded.entries)
           if (entry.value is bool) entry.key: entry.value as bool,
       };
-    } catch (_) {
+    } catch (error) {
+      _log.warning('discarding unreadable $_completedExpandedByListKey', error);
       return const {};
     }
   }
@@ -385,7 +389,8 @@ class TodoSettingsStore {
           if (entry.value is String && (entry.value as String).isNotEmpty)
             entry.key: entry.value as String,
       };
-    } catch (_) {
+    } catch (error) {
+      _log.warning('discarding unreadable $_taskDeltaLinksKey', error);
       return const {};
     }
   }

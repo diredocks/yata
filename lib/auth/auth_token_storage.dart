@@ -5,7 +5,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/logging/app_logger.dart';
 import 'microsoft_auth_service.dart';
+
+final _log = appLogFor('AuthTokenStorage');
 
 /// Persists personal MSA OAuth2 tokens in encrypted OS storage via
 /// [FlutterSecureStorage], with fallback in headless test environments.
@@ -49,7 +52,8 @@ class AuthTokenStorage {
     try {
       final map = jsonDecode(raw) as Map<String, dynamic>;
       return MicrosoftAuthTokens.fromJson(map);
-    } catch (_) {
+    } catch (error) {
+      _log.warning('discarding unreadable tokens for $accountId', error);
       return null;
     }
   }
