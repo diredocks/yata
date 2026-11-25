@@ -2,9 +2,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/order_date_time.dart';
 import '../data/todo_provider.dart';
+import '../detailview/recurrence/task_pickers.dart';
 import '../homeview/home_view_ordering.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
+import '../sync/substrate_time_codecs.dart';
 
 /// Presenter for `tasksview/TasksViewFragment`, matching `tasksview/TasksViewPresenter`.
 class TasksViewPresenter {
@@ -237,6 +239,7 @@ class TasksViewPresenter {
     DateTime? dueDate,
     DateTime? reminderAt,
     RecurrenceType recurrence = RecurrenceType.none,
+    Map<String, dynamic>? rawRecurrence,
   }) {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return;
@@ -282,6 +285,7 @@ class TasksViewPresenter {
         dueDate: effectiveDueDate,
         reminderAt: reminderAt?.toUtc(),
         recurrence: recurrence,
+        rawRecurrence: normalizeRawRecurrence(rawRecurrence),
       ),
       now: now,
       showDueTodayInMyDay: _state.showDueTodayInMyDay,
@@ -370,45 +374,13 @@ class TasksViewPresenter {
     _store.repository.saveTasks(_state.tasks);
   }
 
-  DateTime _nextDueDate(DateTime base, RecurrenceType recurrence) {
-    switch (recurrence) {
-      case RecurrenceType.none:
-        return base;
-      case RecurrenceType.daily:
-        return base.add(const Duration(days: 1));
-      case RecurrenceType.weekdays:
-        var next = base.add(const Duration(days: 1));
-        while (next.weekday == DateTime.saturday ||
-            next.weekday == DateTime.sunday) {
-          next = next.add(const Duration(days: 1));
-        }
-        return next;
-      case RecurrenceType.weekly:
-        return base.add(const Duration(days: 7));
-      case RecurrenceType.monthly:
-        final totalMonths = base.year * 12 + (base.month - 1) + 1;
-        final targetYear = totalMonths ~/ 12;
-        final targetMonth = (totalMonths % 12) + 1;
-        final lastDay = DateTime(targetYear, targetMonth + 1, 0).day;
-        return DateTime(
-          targetYear,
-          targetMonth,
-          base.day > lastDay ? lastDay : base.day,
-        );
-      case RecurrenceType.yearly:
-        final targetYear = base.year + 1;
-        final lastDay = DateTime(targetYear, base.month + 1, 0).day;
-        return DateTime(
-          targetYear,
-          base.month,
-          base.day > lastDay ? lastDay : base.day,
-        );
-    }
-  }
-
   TaskItem _buildNextRecurringTask(TaskItem task, DateTime now) {
     final baseDate = task.dueDate ?? DateTime(now.year, now.month, now.day);
-    final nextDue = _nextDueDate(baseDate, task.recurrence);
+    final nextDue = computeNextDueDate(
+      baseDate,
+      task.recurrence,
+      rawRecurrence: task.rawRecurrence,
+    );
     DateTime? nextReminder;
     if (task.reminderAt case final reminderAt?) {
       final localReminder = reminderAt.toLocal();
@@ -437,6 +409,7 @@ class TasksViewPresenter {
         dueDate: nextDue,
         reminderAt: nextReminder,
         recurrence: task.recurrence,
+        rawRecurrence: normalizeRawRecurrence(task.rawRecurrence),
         note: task.note,
         steps: [
           for (final step in task.steps)

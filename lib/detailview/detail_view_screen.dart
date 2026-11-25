@@ -53,17 +53,6 @@ class DetailViewScreen extends ConsumerStatefulWidget {
 }
 
 class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
-  String _recurrenceLabel(AppLocalizations l10n, RecurrenceType type) {
-    return switch (type) {
-      RecurrenceType.none => l10n.repeat,
-      RecurrenceType.daily => l10n.repeatDaily,
-      RecurrenceType.weekdays => l10n.repeatWeekdays,
-      RecurrenceType.weekly => l10n.repeatWeekly,
-      RecurrenceType.monthly => l10n.repeatMonthly,
-      RecurrenceType.yearly => l10n.repeatYearly,
-    };
-  }
-
   Future<void> _pickDueDate(TaskItem task, WeekStart startOfWeek) async {
     final result = await showDueDatePickerSheet(
       context,
@@ -93,35 +82,20 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
   }
 
   Future<void> _pickRecurrence(TaskItem task) async {
-    final l10n = AppLocalizations.of(context);
     final notifier = ref.read(detailViewPresenterProvider);
-    final options = [
-      RecurrenceType.daily,
-      RecurrenceType.weekdays,
-      RecurrenceType.weekly,
-      RecurrenceType.monthly,
-      RecurrenceType.yearly,
-    ];
-
-    final picked = await showModalBottomSheet<RecurrenceType>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final type in options)
-              ListTile(
-                leading: const Icon(Icons.repeat),
-                title: Text(_recurrenceLabel(l10n, type)),
-                onTap: () => Navigator.pop(ctx, type),
-              ),
-          ],
-        ),
-      ),
+    final picked = await showRecurrencePickerSheet(
+      context,
+      initialRecurrence: task.recurrence,
+      initialRawRecurrence: task.rawRecurrence,
+      dueDate: task.dueDate,
     );
 
-    if (picked != null) {
-      notifier.setTaskRecurrence(task.id, picked);
+    if (picked != null && mounted) {
+      notifier.setTaskRecurrence(
+        task.id,
+        picked.recurrence,
+        rawRecurrence: picked.rawRecurrence,
+      );
     }
   }
 
@@ -312,9 +286,10 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                                   task: task,
                                   cardColor: cardBg,
                                   accentColor: listAccent,
-                                  recurrenceLabel: _recurrenceLabel(
+                                  recurrenceLabel: formatRecurrenceLabel(
                                     l10n,
                                     task.recurrence,
+                                    task.rawRecurrence,
                                   ),
                                   onPickReminder: () =>
                                       _pickReminder(task, state.startOfWeek),

@@ -151,6 +151,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
               DateTime? dueDate,
               DateTime? reminderAt,
               RecurrenceType recurrence = RecurrenceType.none,
+              Map<String, dynamic>? rawRecurrence,
             }) {
               ref
                   .read(tasksViewPresenterProvider)
@@ -160,6 +161,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
                     dueDate: dueDate,
                     reminderAt: reminderAt,
                     recurrence: recurrence,
+                    rawRecurrence: rawRecurrence,
                   );
             },
       ),

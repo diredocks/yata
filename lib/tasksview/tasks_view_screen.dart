@@ -240,6 +240,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
               DateTime? dueDate,
               DateTime? reminderAt,
               RecurrenceType recurrence = RecurrenceType.none,
+              Map<String, dynamic>? rawRecurrence,
             }) {
               notifier.addTask(
                 title: title,
@@ -247,6 +248,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 dueDate: dueDate,
                 reminderAt: reminderAt,
                 recurrence: recurrence,
+                rawRecurrence: rawRecurrence,
               );
             },
       ),

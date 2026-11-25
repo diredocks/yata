@@ -313,5 +313,64 @@
   "reminderPermissionDialogMessage": "Yata reminders are turned off or restricted in your Android device settings. To start using reminders, select 'Turn on' to allow alarms & reminders.",
   "turnOnReminder": "Turn on reminder",
   "routineTimeSectionDescription": "What time do you want to be reminded?",
-  "routineDayPickerSectionDescription": "When do you want to be reminded?"
+  "routineDayPickerSectionDescription": "When do you want to be reminded?",
+  "repeatCustom": "Custom",
+  "repeatCustomTitle": "Repeat every...",
+  "repeatDaysUnit": "{count, plural, =1{day} other{days}}",
+  "@repeatDaysUnit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "repeatWeeksUnit": "{count, plural, =1{week} other{weeks}}",
+  "@repeatWeeksUnit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "repeatMonthsUnit": "{count, plural, =1{month} other{months}}",
+  "@repeatMonthsUnit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "repeatYearsUnit": "{count, plural, =1{year} other{years}}",
+  "@repeatYearsUnit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "repeatEveryInterval": "Every {interval} {unit}",
+  "@repeatEveryInterval": {
+    "placeholders": {
+      "interval": {
+        "type": "int"
+      },
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "repeatEveryIntervalOnDays": "Every {interval} {unit} on {days}",
+  "@repeatEveryIntervalOnDays": {
+    "placeholders": {
+      "interval": {
+        "type": "int"
+      },
+      "unit": {
+        "type": "String"
+      },
+      "days": {
+        "type": "String"
+      }
+    }
+  }
 }

@@ -27,6 +27,7 @@ class TaskEntrySheet extends StatefulWidget {
     DateTime? dueDate,
     DateTime? reminderAt,
     RecurrenceType recurrence,
+    Map<String, dynamic>? rawRecurrence,
   })
   onSubmit;
 
@@ -61,6 +62,7 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
   DateTime? _dueDate;
   DateTime? _reminderAt;
   RecurrenceType _recurrence = RecurrenceType.none;
+  Map<String, dynamic>? _rawRecurrence;
 
   bool get _showListPicker =>
       widget.currentList.isSmartList &&
@@ -150,12 +152,14 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
       dueDate: _dueDate,
       reminderAt: _reminderAt,
       recurrence: _recurrence,
+      rawRecurrence: _rawRecurrence,
     );
     _controller.clear();
     setState(() {
       _dueDate = _defaultDueDate();
       _reminderAt = null;
       _recurrence = RecurrenceType.none;
+      _rawRecurrence = null;
     });
     _focusNode.requestFocus();
   }
@@ -182,49 +186,20 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
     }
   }
 
-  String _recurrenceLabel(AppLocalizations l10n, RecurrenceType type) {
-    return switch (type) {
-      RecurrenceType.none => l10n.repeat,
-      RecurrenceType.daily => l10n.repeatDaily,
-      RecurrenceType.weekdays => l10n.repeatWeekdays,
-      RecurrenceType.weekly => l10n.repeatWeekly,
-      RecurrenceType.monthly => l10n.repeatMonthly,
-      RecurrenceType.yearly => l10n.repeatYearly,
-    };
-  }
-
   Future<void> _pickRecurrence() async {
-    final l10n = AppLocalizations.of(context);
-    final options = <(RecurrenceType, String)>[
-      (RecurrenceType.daily, l10n.repeatDaily),
-      (RecurrenceType.weekdays, l10n.repeatWeekdays),
-      (RecurrenceType.weekly, l10n.repeatWeekly),
-      (RecurrenceType.monthly, l10n.repeatMonthly),
-      (RecurrenceType.yearly, l10n.repeatYearly),
-    ];
-
-    final picked = await showModalBottomSheet<RecurrenceType>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final (type, label) in options)
-              ListTile(
-                leading: const Icon(Icons.repeat),
-                title: Text(label),
-                onTap: () => Navigator.pop(ctx, type),
-              ),
-          ],
-        ),
-      ),
+    final picked = await showRecurrencePickerSheet(
+      context,
+      initialRecurrence: _recurrence,
+      initialRawRecurrence: _rawRecurrence,
+      dueDate: _dueDate,
     );
 
     if (picked != null && mounted) {
       setState(() {
-        _recurrence = picked;
+        _recurrence = picked.recurrence;
+        _rawRecurrence = picked.rawRecurrence;
         _dueDate ??= defaultDueDateForRecurrence(
-          picked,
+          picked.recurrence,
           reminderAt: _reminderAt,
         );
       });
@@ -377,6 +352,7 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
                         ? () => setState(() {
                             _dueDate = null;
                             _recurrence = RecurrenceType.none;
+                            _rawRecurrence = null;
                           })
                         : null,
                   ),
@@ -398,13 +374,17 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
                   const SizedBox(width: 8),
                   InputChip(
                     avatar: const Icon(Icons.repeat, size: 16),
-                    label: Text(_recurrenceLabel(l10n, _recurrence)),
+                    label: Text(
+                      formatRecurrenceLabel(l10n, _recurrence, _rawRecurrence),
+                    ),
                     selected: _recurrence != RecurrenceType.none,
                     showCheckmark: false,
                     onSelected: (_) => _pickRecurrence(),
                     onDeleted: _recurrence != RecurrenceType.none
-                        ? () =>
-                              setState(() => _recurrence = RecurrenceType.none)
+                        ? () => setState(() {
+                            _recurrence = RecurrenceType.none;
+                            _rawRecurrence = null;
+                          })
                         : null,
                   ),
                 ],

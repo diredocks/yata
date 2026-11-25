@@ -107,21 +107,25 @@ class TodoNotifier extends Notifier<TodoState> {
     );
   }
 
-  /// Updates [task]'s recurrence preset, clearing any preserved raw custom rule.
+  /// Updates [task]'s recurrence preset or custom rule.
   static TaskItem applyRecurrence(
     TaskItem task,
     RecurrenceType recurrence, {
     required DateTime now,
     required bool showDueTodayInMyDay,
     DateTime? fallbackDueDate,
+    Map<String, dynamic>? rawRecurrence,
   }) {
-    final nextDue = (recurrence != RecurrenceType.none && task.dueDate == null)
+    final hasRecurrence =
+        recurrence != RecurrenceType.none ||
+        (rawRecurrence != null && rawRecurrence.isNotEmpty);
+    final nextDue = (hasRecurrence && task.dueDate == null)
         ? fallbackDueDate
         : task.dueDate;
     return syncMyDayFlag(
       task.copyWith(
         recurrence: recurrence,
-        rawRecurrence: null,
+        rawRecurrence: recurrence == RecurrenceType.none ? null : rawRecurrence,
         dueDate: nextDue,
       ),
       now: now,

@@ -222,5 +222,13 @@
   "reminderPermissionDialogMessage": "已在你的设备设置中禁用或限制 Yata 提醒。要开始使用提醒，请选择\"启用\"，然后允许闹钟和提醒。",
   "turnOnReminder": "打开提醒",
   "routineTimeSectionDescription": "要在何时收到提醒?",
-  "routineDayPickerSectionDescription": "要在哪几天收到提醒?"
+  "routineDayPickerSectionDescription": "要在哪几天收到提醒?",
+  "repeatCustom": "自定义",
+  "repeatCustomTitle": "重复间隔...",
+  "repeatDaysUnit": "天",
+  "repeatWeeksUnit": "周",
+  "repeatMonthsUnit": "个月",
+  "repeatYearsUnit": "年",
+  "repeatEveryInterval": "每 {interval} {unit}",
+  "repeatEveryIntervalOnDays": "每 {interval} {unit}的 {days}"
 }

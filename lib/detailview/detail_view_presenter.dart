@@ -122,7 +122,11 @@ class DetailViewPresenter {
     );
   }
 
-  void setTaskRecurrence(String taskId, RecurrenceType recurrence) {
+  void setTaskRecurrence(
+    String taskId,
+    RecurrenceType recurrence, {
+    Map<String, dynamic>? rawRecurrence,
+  }) {
     final now = DateTime.now();
     _updateTaskById(
       taskId,
@@ -135,6 +139,7 @@ class DetailViewPresenter {
           recurrence,
           reminderAt: task.reminderAt,
         ),
+        rawRecurrence: rawRecurrence,
       ),
     );
   }

@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:yata/data/todo_provider.dart';
 import 'package:yata/l10n/app_localizations_en.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
