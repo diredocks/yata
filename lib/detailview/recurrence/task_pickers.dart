@@ -164,6 +164,13 @@ Future<DueDatePickResult?> showDueDatePickerSheet(
   final l10n = AppLocalizations.of(context);
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
+  final tomorrow = today.add(const Duration(days: 1));
+  final nextWeekDate = computeNextWeekDate(today, startOfWeek);
+  final locale = DateFormat.localeExists(l10n.localeName)
+      ? l10n.localeName
+      : null;
+  String withWeekday(String label, DateTime date) =>
+      '$label (${DateFormat.EEEE(locale).format(date)})';
 
   final choice = await showModalBottomSheet<String>(
     context: context,
@@ -179,17 +186,17 @@ Future<DueDatePickResult?> showDueDatePickerSheet(
             ),
           ListTile(
             leading: const Icon(Icons.today),
-            title: Text(l10n.today),
+            title: Text(withWeekday(l10n.today, today)),
             onTap: () => Navigator.pop(ctx, 'today'),
           ),
           ListTile(
             leading: const Icon(Icons.wb_twilight),
-            title: Text(l10n.tomorrow),
+            title: Text(withWeekday(l10n.tomorrow, tomorrow)),
             onTap: () => Navigator.pop(ctx, 'tomorrow'),
           ),
           ListTile(
             leading: const Icon(Icons.next_week),
-            title: Text(l10n.nextWeek),
+            title: Text(withWeekday(l10n.nextWeek, nextWeekDate)),
             onTap: () => Navigator.pop(ctx, 'next_week'),
           ),
           ListTile(
@@ -210,9 +217,9 @@ Future<DueDatePickResult?> showDueDatePickerSheet(
     case 'today':
       return DueDatePickResult(date: today);
     case 'tomorrow':
-      return DueDatePickResult(date: today.add(const Duration(days: 1)));
+      return DueDatePickResult(date: tomorrow);
     case 'next_week':
-      return DueDatePickResult(date: computeNextWeekDate(today, startOfWeek));
+      return DueDatePickResult(date: nextWeekDate);
     case 'pick':
       final picked = await showDatePicker(
         context: context,
@@ -237,8 +244,26 @@ Future<DateTime?> showReminderPickerSheet(
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
   final showLaterToday = now.hour < 20 || (now.hour == 20 && now.minute <= 29);
+  final baseHour = now.hour + (now.minute >= 29 ? 1 : 0) + 3;
+  final laterTodayLocal = DateTime(today.year, today.month, today.day, baseHour);
+  final tmr = today.add(const Duration(days: 1));
+  final tomorrowLocal = DateTime(tmr.year, tmr.month, tmr.day, 9);
   final nextWeekDate = computeNextWeekDate(today, startOfWeek);
-  final showNextWeek = nextWeekDate != today.add(const Duration(days: 1));
+  final nextWeekLocal = DateTime(
+    nextWeekDate.year,
+    nextWeekDate.month,
+    nextWeekDate.day,
+    9,
+  );
+  final showNextWeek = nextWeekDate != tmr;
+  final locale = DateFormat.localeExists(l10n.localeName)
+      ? l10n.localeName
+      : null;
+  String formatHint(DateTime dt, {required bool includeWeekday}) {
+    final timeStr = DateFormat.jm(locale).format(dt);
+    if (!includeWeekday) return timeStr;
+    return '${DateFormat.E(locale).format(dt)} $timeStr';
+  }
 
   final choice = await showModalBottomSheet<String>(
     context: context,
@@ -249,18 +274,24 @@ Future<DateTime?> showReminderPickerSheet(
           if (showLaterToday)
             ListTile(
               leading: const Icon(Icons.access_time),
-              title: Text(l10n.laterToday),
+              title: Text(
+                '${l10n.laterToday} (${formatHint(laterTodayLocal, includeWeekday: false)})',
+              ),
               onTap: () => Navigator.pop(ctx, 'later'),
             ),
           ListTile(
             leading: const Icon(Icons.wb_twilight),
-            title: Text(l10n.tomorrow),
+            title: Text(
+              '${l10n.tomorrow} (${formatHint(tomorrowLocal, includeWeekday: true)})',
+            ),
             onTap: () => Navigator.pop(ctx, 'tomorrow'),
           ),
           if (showNextWeek)
             ListTile(
               leading: const Icon(Icons.next_week),
-              title: Text(l10n.nextWeek),
+              title: Text(
+                '${l10n.nextWeek} (${formatHint(nextWeekLocal, includeWeekday: true)})',
+              ),
               onTap: () => Navigator.pop(ctx, 'next_week'),
             ),
           ListTile(
@@ -277,19 +308,11 @@ Future<DateTime?> showReminderPickerSheet(
 
   switch (choice) {
     case 'later':
-      final baseHour = now.hour + (now.minute >= 29 ? 1 : 0) + 3;
-      return DateTime(today.year, today.month, today.day, baseHour, 0).toUtc();
+      return laterTodayLocal.toUtc();
     case 'tomorrow':
-      final tmr = today.add(const Duration(days: 1));
-      return DateTime(tmr.year, tmr.month, tmr.day, 9, 0).toUtc();
+      return tomorrowLocal.toUtc();
     case 'next_week':
-      return DateTime(
-        nextWeekDate.year,
-        nextWeekDate.month,
-        nextWeekDate.day,
-        9,
-        0,
-      ).toUtc();
+      return nextWeekLocal.toUtc();
     case 'custom':
       final localInitial = initialReminder?.toLocal();
       final pickedDate = await showDatePicker(

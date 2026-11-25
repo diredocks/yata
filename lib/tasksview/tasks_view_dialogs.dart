@@ -1,3 +1,4 @@
+import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../data/todo_provider.dart';
@@ -35,6 +36,35 @@ String plannedFilterLabel(AppLocalizations l10n, PlannedDueDateFilter filter) {
     PlannedDueDateFilter.tomorrow => l10n.filterTomorrow,
     PlannedDueDateFilter.thisWeek => l10n.filterThisWeek,
     PlannedDueDateFilter.later => l10n.filterLater,
+  };
+}
+
+/// Formats a Planned filter option label for the filter menu, appending
+/// date context in parentheses for Today, Tomorrow, and This week
+/// (matching `PopupMenuUtils.s` in `mstodo.apk`).
+String plannedFilterMenuLabel(
+  AppLocalizations l10n,
+  PlannedDueDateFilter filter, {
+  DateTime? now,
+}) {
+  final current = (now ?? DateTime.now()).toLocal();
+  final today = DateTime(current.year, current.month, current.day);
+  final locale = l10n.localeName == 'en'
+      ? null
+      : (DateFormat.localeExists(l10n.localeName) ? l10n.localeName : null);
+  return switch (filter) {
+    PlannedDueDateFilter.today =>
+      '${l10n.filterToday} (${DateFormat.E(locale).format(today)})',
+    PlannedDueDateFilter.tomorrow => () {
+      final tomorrow = today.add(const Duration(days: 1));
+      return '${l10n.filterTomorrow} (${DateFormat.E(locale).format(tomorrow)})';
+    }(),
+    PlannedDueDateFilter.thisWeek => () {
+      final weekEnd = today.add(const Duration(days: 6));
+      final month = DateFormat.MMM(locale).format(weekEnd);
+      return '${l10n.filterThisWeek} (${today.day} - ${weekEnd.day} $month)';
+    }(),
+    _ => plannedFilterLabel(l10n, filter),
   };
 }
 
@@ -145,24 +175,36 @@ Future<void> showPlannedFilterSheet({
 }) async {
   final l10n = AppLocalizations.of(context);
   final options = <(PlannedDueDateFilter, String, IconData)>[
-    (PlannedDueDateFilter.all, l10n.filterAllPlanned, Icons.all_inclusive),
+    (
+      PlannedDueDateFilter.all,
+      plannedFilterMenuLabel(l10n, PlannedDueDateFilter.all),
+      Icons.all_inclusive,
+    ),
     (
       PlannedDueDateFilter.overdue,
-      l10n.filterOverdue,
+      plannedFilterMenuLabel(l10n, PlannedDueDateFilter.overdue),
       Icons.warning_amber_outlined,
     ),
-    (PlannedDueDateFilter.today, l10n.filterToday, Icons.today_outlined),
+    (
+      PlannedDueDateFilter.today,
+      plannedFilterMenuLabel(l10n, PlannedDueDateFilter.today),
+      Icons.today_outlined,
+    ),
     (
       PlannedDueDateFilter.tomorrow,
-      l10n.filterTomorrow,
+      plannedFilterMenuLabel(l10n, PlannedDueDateFilter.tomorrow),
       Icons.wb_twilight_outlined,
     ),
     (
       PlannedDueDateFilter.thisWeek,
-      l10n.filterThisWeek,
+      plannedFilterMenuLabel(l10n, PlannedDueDateFilter.thisWeek),
       Icons.date_range_outlined,
     ),
-    (PlannedDueDateFilter.later, l10n.filterLater, Icons.event_outlined),
+    (
+      PlannedDueDateFilter.later,
+      plannedFilterMenuLabel(l10n, PlannedDueDateFilter.later),
+      Icons.event_outlined,
+    ),
   ];
 
   await showModalBottomSheet<void>(

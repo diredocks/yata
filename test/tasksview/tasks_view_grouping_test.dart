@@ -1,7 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:yata/data/todo_provider.dart';
 import 'package:yata/l10n/app_localizations_en.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
+import 'package:yata/tasksview/tasks_view_dialogs.dart';
 import 'package:yata/tasksview/tasks_view_grouping.dart';
 
 TaskItem _task({
@@ -181,5 +183,25 @@ void main() {
     expect(grouped[1].title, l10n.tasks);
     expect(grouped[2].listId, 'missing');
     expect(grouped[2].title, l10n.tasks);
+  });
+
+  test('plannedFilterMenuLabel appends parenthetical date info', () {
+    final now = DateTime(2026, 11, 26, 10, 0); // Thursday
+    expect(
+      plannedFilterMenuLabel(l10n, PlannedDueDateFilter.today, now: now),
+      'Today (Thu)',
+    );
+    expect(
+      plannedFilterMenuLabel(l10n, PlannedDueDateFilter.tomorrow, now: now),
+      'Tomorrow (Fri)',
+    );
+    expect(
+      plannedFilterMenuLabel(l10n, PlannedDueDateFilter.thisWeek, now: now),
+      'This week (26 - 2 Dec)',
+    );
+    expect(
+      plannedFilterMenuLabel(l10n, PlannedDueDateFilter.all, now: now),
+      'All planned',
+    );
   });
 }
