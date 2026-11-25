@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:yata/data/sync_outbox.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
@@ -225,7 +226,7 @@ void main() {
 
       expect(taskFetches, 0);
       expect(todoState.mutationVersion, initialMutationVersion);
-      expect(h.repository.loadDirtyTaskIds(), ['t_3']);
+      expect(h.repository.outbox.pendingLocalIds(SyncEntityType.task), {'t_3'});
     });
 
     test('Task/Deleted removes non-dirty task and mid-sync Task/Updated is deferred without marking dirty', () async {
@@ -327,7 +328,7 @@ void main() {
         't_1',
       ]);
       expect(state.tasks.firstWhere((t) => t.id == 't_2').orderDateTime, tNew);
-      expect(h.repository.loadDirtyTaskIds(), isEmpty);
+      expect(h.repository.outbox.pendingLocalIds(SyncEntityType.task), isEmpty);
     });
 
     test('FolderGroup, TaskFolder, and Setting events apply directly and forceFullSync refreshes groups and folders', () async {

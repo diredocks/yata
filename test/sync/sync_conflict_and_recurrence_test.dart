@@ -663,7 +663,7 @@ void main() {
           .tasks
           .firstWhere((t) => t.id == 't_note');
       expect(finalNoteTask.note, 'Line 1 (remote)\nLine 2\nLine 3 (local)');
-      expect(h.repository.loadTaskBaseNotes(), isEmpty);
+      expect(h.repository.outbox.ops, isEmpty);
 
       expect(retriedAdvPatch?['Status'], 'NotStarted');
       final finalAdvTask = h.container
