@@ -35,17 +35,7 @@ final cloudSyncServiceProvider = Provider<CloudSyncService>((ref) {
 
 enum SyncStatus { idle, syncing, success, error, requiresRelogin }
 
-/// How much work one sync pass does; merging two requests keeps the larger one.
-enum _SyncKind {
-  /// Push local changes, then pull only the folders the push flagged.
-  pushOnly,
-
-  /// Push, then pull everything by delta.
-  delta,
-
-  /// Like [delta], but ignoring saved delta links and pruning stale rows.
-  full,
-}
+enum _SyncKind { pushOnly, delta, full }
 
 _SyncKind _mergeSyncKind(_SyncKind? current, _SyncKind next) =>
     current == null || next.index > current.index ? next : current;
