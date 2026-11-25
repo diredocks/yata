@@ -432,7 +432,9 @@ class SubstratePushEngine {
         'remote=${shortSyncId(remoteTask.id)} title="${task.title}" '
         'keys=${payload.keys.toList()} '
         'order=${formatSyncTimestamp(task.orderDateTime)} '
-        'committedOrder=${formatSyncTimestamp(task.committedOrder)}',
+        'committedOrder=${formatSyncTimestamp(task.committedOrder)} '
+        'remoteOrder=${formatSyncTimestamp(remoteTask.orderDateTime)} '
+        'remoteCommittedOrder=${formatSyncTimestamp(remoteTask.committedOrder)}',
         label: 'SyncEngine',
       );
       if (!isCreate &&
@@ -495,9 +497,17 @@ class SubstratePushEngine {
   }) async {
     String? mergedNote;
     var preservedRemoteStatus = false;
+    final isReorderOnlyPatch =
+        dirtyFields != null &&
+        dirtyFields.isNotEmpty &&
+        (dirtyFields.contains(TaskDirtyField.orderDateTime) ||
+            dirtyFields.contains(TaskDirtyField.committedOrder)) &&
+        !dirtyFields.contains(TaskDirtyField.body) &&
+        !(dirtyFields.contains(TaskDirtyField.status) && task.isCompleted);
+    final effectiveChangeKey = isReorderOnlyPatch ? null : task.changeKey;
 
     final result = await todoApi
-        .patchTask(ctx, task.remoteId!, payload, changeKey: task.changeKey)
+        .patchTask(ctx, task.remoteId!, payload, changeKey: effectiveChangeKey)
         .recover((error) async {
           if (!error.isConflict) {
             return Failure<RemoteTodoTask, AppError>(error);

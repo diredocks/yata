@@ -11,9 +11,12 @@ Map<String, dynamic> buildGroupPatchPayload(
 }) {
   bool include(GroupDirtyField f) =>
       dirtyFields == null || dirtyFields.contains(f);
+  final includeOrder = include(GroupDirtyField.orderDateTime);
   return <String, dynamic>{
-    if (include(GroupDirtyField.name)) 'Name': group.title,
-    if (include(GroupDirtyField.orderDateTime) && group.orderDateTime != null)
+    if (include(GroupDirtyField.name) ||
+        (includeOrder && group.orderDateTime != null))
+      'Name': group.title,
+    if (includeOrder && group.orderDateTime != null)
       'OrderDateTime': formatSubstrateUtcTimestamp(group.orderDateTime!),
   };
 }
@@ -42,8 +45,11 @@ Map<String, dynamic> buildFolderPatchPayload(
 }) {
   bool include(ListDirtyField f) =>
       dirtyFields == null || dirtyFields.contains(f);
+  final includeOrder = include(ListDirtyField.orderDateTime);
   return <String, dynamic>{
-    if (!list.isSmartList && include(ListDirtyField.name))
+    if (!list.isSmartList &&
+        (include(ListDirtyField.name) ||
+            (includeOrder && list.orderDateTime != null)))
       'Name': encodeFolderName(list.title, list.emoji),
     if (!list.isSmartList && include(ListDirtyField.group))
       'ParentFolderGroupId': parentGroupRemoteId,
@@ -57,7 +63,7 @@ Map<String, dynamic> buildFolderPatchPayload(
       'SortType': encodeSortType(list.sortOption),
       'SortAscending': list.sortAscending,
     },
-    if (include(ListDirtyField.orderDateTime) && list.orderDateTime != null)
+    if (includeOrder && list.orderDateTime != null)
       'OrderDateTime': formatSubstrateUtcTimestamp(list.orderDateTime!),
   };
 }
@@ -257,6 +263,9 @@ Map<String, dynamic> buildTaskWritePayload(
 
   bool include(TaskDirtyField field) =>
       isCreate || dirtyFields == null || dirtyFields.contains(field);
+  final includePositionWrite =
+      include(TaskDirtyField.orderDateTime) ||
+      (include(TaskDirtyField.committedOrder) && task.committedOrder != null);
 
   final payload = <String, dynamic>{};
 
@@ -268,7 +277,7 @@ Map<String, dynamic> buildTaskWritePayload(
     }
   }
 
-  if (include(TaskDirtyField.subject)) {
+  if (include(TaskDirtyField.subject) || (!isCreate && includePositionWrite)) {
     payload['Subject'] = task.title;
   }
   if (isCreate ||
@@ -322,10 +331,17 @@ Map<String, dynamic> buildTaskWritePayload(
     );
     putNullable('Recurrence', recurrenceMap);
   }
-  if (include(TaskDirtyField.myDay)) {
+  final includeCommittedDay =
+      include(TaskDirtyField.myDay) ||
+      (include(TaskDirtyField.committedOrder) &&
+          task.committedOrder != null &&
+          (task.myDayDate != null || task.isInMyDay));
+  if (includeCommittedDay) {
+    final committedDay =
+        task.myDayDate ?? (task.isInMyDay ? DateTime.now() : null);
     putNullable(
       'CommittedDay',
-      task.myDayDate != null ? formatDayString(task.myDayDate!) : null,
+      committedDay != null ? formatDayString(committedDay) : null,
     );
   }
   if (include(TaskDirtyField.myDay) || include(TaskDirtyField.committedOrder)) {

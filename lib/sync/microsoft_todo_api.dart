@@ -367,15 +367,18 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
   }) async {
     final usedDelta = deltaLink != null && deltaLink.trim().isNotEmpty;
     Uri? nextUri = usedDelta ? Uri.parse(deltaLink.trim()) : initialUri;
+    final visitedUris = <Uri>{};
     final items = <T>[];
     String? resolvedDeltaLink;
     var pages = 0;
 
     while (nextUri != null && pages < _maxDeltaPages) {
       pages += 1;
+      final currentUri = nextUri;
+      visitedUris.add(currentUri);
       final pageResult = await _getJsonObject(
         ctx: ctx,
-        uri: nextUri,
+        uri: currentUri,
         trackChanges: true,
       );
       if (pageResult.isError()) {
@@ -391,14 +394,48 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
           items.add(parser(Map<String, dynamic>.from(raw)));
         }
       }
-      final delta = (page['DeltaLink'] ?? page['@odata.deltaLink']) as String?;
-      if (delta != null && delta.trim().isNotEmpty) {
-        resolvedDeltaLink = delta.trim();
+      final rawDelta =
+          (page['DeltaLink'] ?? page['@odata.deltaLink'] ?? page['deltaLink'])
+              as String?;
+      final trimmedDelta = rawDelta?.trim();
+      final hasDelta = trimmedDelta != null && trimmedDelta.isNotEmpty;
+
+      final rawNext =
+          (page['NextLink'] ?? page['@odata.nextLink'] ?? page['nextLink'])
+              as String?;
+      final trimmedNext = rawNext?.trim();
+      final hasNext = trimmedNext != null && trimmedNext.isNotEmpty;
+
+      if (!usedDelta && pages == 1) {
+        // Mirror MS To Do GswSync.g() -> h(): on an initial/full fetch, page 1
+        // only returns the head page + a checkpoint DeltaLink (or NextLink);
+        // unconditionally chain into f(nextLink ?? deltaLink) to drain all pages.
+        final continuation = hasNext
+            ? trimmedNext
+            : (hasDelta ? trimmedDelta : null);
+        if (continuation != null) {
+          final resolved = currentUri.resolve(continuation);
+          if (visitedUris.contains(resolved)) {
+            if (hasDelta) {
+              resolvedDeltaLink = currentUri.resolve(trimmedDelta).toString();
+            }
+            nextUri = null;
+          } else {
+            nextUri = resolved;
+          }
+        } else {
+          nextUri = null;
+        }
+      } else if (hasDelta) {
+        // Inside GswSync.f(): a DeltaLink terminates pagination.
+        resolvedDeltaLink = currentUri.resolve(trimmedDelta).toString();
+        nextUri = null;
+      } else if (hasNext) {
+        final resolved = currentUri.resolve(trimmedNext);
+        nextUri = visitedUris.contains(resolved) ? null : resolved;
+      } else {
+        nextUri = null;
       }
-      final next = (page['NextLink'] ?? page['@odata.nextLink']) as String?;
-      nextUri = (next != null && next.trim().isNotEmpty)
-          ? Uri.parse(next.trim())
-          : null;
     }
 
     final folderParam = initialUri.queryParameters['parentFolderId'];

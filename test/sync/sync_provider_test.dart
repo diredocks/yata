@@ -183,5 +183,69 @@ void main() {
         expect(h.api.callLog, contains('GET tasks(rf-default,null)'));
       },
     );
+
+    test(
+      'onAppPaused immediately flushes an active debounced local_mutation sync',
+      () async {
+        final patchCompleted = Completer<void>();
+        final fakeApi = FakeSubstrateApi()
+          ..onPatchTask = (taskRemoteId, patch, changeKey) async {
+            if (!patchCompleted.isCompleted) patchCompleted.complete();
+            return RemoteTodoTask(
+              id: taskRemoteId,
+              changeKey: 'ck-after-pause',
+              parentFolderId: 'rf-default',
+              subject: patch['Subject'] as String? ?? 'Task',
+            );
+          };
+
+        final h = await createSyncTestHarness(
+          accountId: 'acct_pause_flush',
+          api: fakeApi,
+          defaultTasksFolderRemoteId: 'rf-default',
+          tasks: [
+            TaskItem(
+              id: 't_1',
+              listId: 'tasks',
+              title: 'Before Pause',
+              createdAt: DateTime.utc(2026, 11, 22, 8),
+              remoteId: 'rt-1',
+              remoteParentFolderId: 'rf-default',
+              changeKey: 'ck-1',
+            ),
+          ],
+          foldersDeltaLink: 'dl-folders-1',
+          taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
+        );
+
+        h.container.read(syncProvider);
+        h.container
+            .read(todoProvider.notifier)
+            .commit(
+              h.container
+                  .read(todoProvider)
+                  .copyWith(
+                    tasks: [
+                      h.container
+                          .read(todoProvider)
+                          .tasks
+                          .single
+                          .copyWith(title: 'Edited Right Before Pause'),
+                    ],
+                  ),
+            );
+        await pumpEventQueue();
+        expect(fakeApi.callLog, isEmpty);
+
+        h.container.read(syncProvider.notifier).onAppPaused();
+        await patchCompleted.future.timeout(const Duration(seconds: 2));
+        await pumpEventQueue();
+
+        expect(
+          fakeApi.callLog.any((c) => c.startsWith('PATCH tasks/rt-1')),
+          isTrue,
+        );
+      },
+    );
   });
 }

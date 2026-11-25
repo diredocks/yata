@@ -170,6 +170,19 @@ class SyncNotifier extends Notifier<SyncState> {
     appLog('onAppPaused: stopping realtime & periodic sync', label: 'Sync');
     _stopPeriodicSync();
     _realtimeController?.onAppPaused();
+    if (_debounceTimer != null && _debounceTimer!.isActive) {
+      _debounceTimer!.cancel();
+      _debounceTimer = null;
+      final full = _pendingDebouncedForceFullSync;
+      final r = _pendingDebouncedReason;
+      _pendingDebouncedForceFullSync = false;
+      _pendingDebouncedReason = 'debounced';
+      appLog(
+        'onAppPaused: flushing pending debounced sync reason=$r forceFullSync=$full',
+        label: 'Sync',
+      );
+      unawaited(syncNow(forceFullSync: full, reason: r));
+    }
   }
 
   /// Resumes foreground sync channels and triggers a debounced sync when the

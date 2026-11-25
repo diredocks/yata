@@ -177,5 +177,347 @@ void main() {
       expect(events[2].id, 't2');
       expect(api.isOwnRequestId(events[2].requestId), isTrue);
     });
+
+    test(
+      'resolves relative NextLink, accepts lowercase nextLink/deltaLink, and stops on NextLink self-loop',
+      () async {
+        var pageCall = 0;
+        final mockClient = MockClient((request) async {
+          pageCall += 1;
+          if (pageCall == 1) {
+            return http.Response(
+              jsonEncode({
+                'value': [
+                  {'Id': 'g1', 'Name': 'Group 1'},
+                ],
+                'nextLink': 'foldergroups?page=2',
+              }),
+              200,
+            );
+          }
+          if (pageCall == 2) {
+            expect(
+              request.url.toString(),
+              'https://substrate.office.com/todob2/api/v1/foldergroups?page=2',
+            );
+            return http.Response(
+              jsonEncode({
+                'value': [
+                  {'Id': 'g2', 'Name': 'Group 2'},
+                ],
+                'nextLink': 'foldergroups?page=2',
+                'deltaLink': 'https://substrate.office.com/todob2/api/v1/foldergroups?deltatoken=g-lower',
+              }),
+              200,
+            );
+          }
+          fail('Should not loop on identical NextLink');
+        });
+
+        final api = HttpMicrosoftTodoApi(
+          httpClient: mockClient,
+          delayFn: (_) async {},
+        );
+        final ctx = SubstrateRequestContext(
+          baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
+          accessToken: 'tok',
+          cid: 'cid1',
+        );
+        final groups = (await api.fetchFolderGroupsDelta(ctx)).getOrThrow();
+        expect(pageCall, 2);
+        expect(groups.items.map((g) => g.name).toList(), ['Group 1', 'Group 2']);
+        expect(groups.deltaLink, contains('deltatoken=g-lower'));
+      },
+    );
+
+    test(
+      'two-phase initial/full fetch chains page-1 DeltaLink through NextLink to terminal DeltaLink',
+      () async {
+        final requestedUris = <Uri>[];
+        final mockClient = MockClient((request) async {
+          requestedUris.add(request.url);
+          if (requestedUris.length == 1) {
+            expect(request.url.queryParameters['parentFolderId'], 'f1');
+            expect(request.url.queryParameters['deltatoken'], isNull);
+            return http.Response(
+              jsonEncode({
+                'Value': [
+                  {'Id': 't1', 'Subject': 'Active 1', 'Status': 'NotStarted'},
+                ],
+                'DeltaLink':
+                    'https://substrate.office.com/todob2/api/v1/tasks?parentFolderId=f1&deltatoken=phase1',
+              }),
+              200,
+            );
+          }
+          if (requestedUris.length == 2) {
+            expect(request.url.queryParameters['deltatoken'], 'phase1');
+            return http.Response(
+              jsonEncode({
+                'Value': [
+                  {'Id': 't2', 'Subject': 'Completed 1', 'Status': 'Completed'},
+                ],
+                'NextLink':
+                    'https://substrate.office.com/todob2/api/v1/tasks?parentFolderId=f1&skiptoken=p3',
+              }),
+              200,
+            );
+          }
+          if (requestedUris.length == 3) {
+            expect(request.url.queryParameters['skiptoken'], 'p3');
+            return http.Response(
+              jsonEncode({
+                'Value': [
+                  {'Id': 't3', 'Subject': 'Completed 2', 'Status': 'Completed'},
+                ],
+                'DeltaLink':
+                    'https://substrate.office.com/todob2/api/v1/tasks?parentFolderId=f1&deltatoken=terminal',
+              }),
+              200,
+            );
+          }
+          fail('Unexpected request #${requestedUris.length}: ${request.url}');
+        });
+
+        final api = HttpMicrosoftTodoApi(
+          httpClient: mockClient,
+          delayFn: (_) async {},
+        );
+        final ctx = SubstrateRequestContext(
+          baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
+          accessToken: 'tok',
+          cid: 'cid1',
+        );
+
+        final res = (await api.fetchTasksDelta(
+          ctx,
+          folderRemoteId: 'f1',
+        )).getOrThrow();
+
+        expect(requestedUris.length, 3);
+        expect(res.items.map((t) => t.id).toList(), ['t1', 't2', 't3']);
+        expect(res.items.last.isCompleted, isTrue);
+        expect(
+          res.deltaLink,
+          'https://substrate.office.com/todob2/api/v1/tasks?parentFolderId=f1&deltatoken=terminal',
+        );
+      },
+    );
+
+    test(
+      'two-phase initial/full fetch terminates after empty Phase 2 DeltaLink',
+      () async {
+        final requestedTokens = <String?>[];
+        final mockClient = MockClient((request) async {
+          final dt = request.url.queryParameters['deltatoken'];
+          requestedTokens.add(dt);
+          if (requestedTokens.length == 1) {
+            return http.Response(
+              jsonEncode({
+                'Value': [
+                  {'Id': 't1', 'Subject': 'Only Head Task'},
+                ],
+                'DeltaLink':
+                    'https://substrate.office.com/todob2/api/v1/tasks?parentFolderId=f1&deltatoken=phase1',
+              }),
+              200,
+            );
+          }
+          if (requestedTokens.length == 2) {
+            return http.Response(
+              jsonEncode({
+                'Value': const [],
+                'DeltaLink':
+                    'https://substrate.office.com/todob2/api/v1/tasks?parentFolderId=f1&deltatoken=terminal',
+              }),
+              200,
+            );
+          }
+          fail('Should stop after Phase 2 returns terminal DeltaLink');
+        });
+
+        final api = HttpMicrosoftTodoApi(
+          httpClient: mockClient,
+          delayFn: (_) async {},
+        );
+        final ctx = SubstrateRequestContext(
+          baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
+          accessToken: 'tok',
+          cid: 'cid1',
+        );
+
+        final res = (await api.fetchTasksDelta(
+          ctx,
+          folderRemoteId: 'f1',
+        )).getOrThrow();
+
+        expect(requestedTokens, [null, 'phase1']);
+        expect(res.items.map((t) => t.id).toList(), ['t1']);
+        expect(res.deltaLink, endsWith('deltatoken=terminal'));
+      },
+    );
+
+    test(
+      'incremental delta fetch with non-null deltaLink stops after one request when DeltaLink is returned',
+      () async {
+        var calls = 0;
+        final mockClient = MockClient((request) async {
+          calls += 1;
+          expect(request.url.queryParameters['deltatoken'], 'prev');
+          return http.Response(
+            jsonEncode({
+              'Value': [
+                {'Id': 't1', 'Subject': 'Updated Task'},
+              ],
+              'DeltaLink':
+                  'https://substrate.office.com/todob2/api/v1/tasks?parentFolderId=f1&deltatoken=next',
+            }),
+            200,
+          );
+        });
+
+        final api = HttpMicrosoftTodoApi(
+          httpClient: mockClient,
+          delayFn: (_) async {},
+        );
+        final ctx = SubstrateRequestContext(
+          baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
+          accessToken: 'tok',
+          cid: 'cid1',
+        );
+
+        final res = (await api.fetchTasksDelta(
+          ctx,
+          folderRemoteId: 'f1',
+          deltaLink:
+              'https://substrate.office.com/todob2/api/v1/tasks?parentFolderId=f1&deltatoken=prev',
+        )).getOrThrow();
+
+        expect(calls, 1);
+        expect(res.items.map((t) => t.id).toList(), ['t1']);
+        expect(res.deltaLink, endsWith('deltatoken=next'));
+      },
+    );
+
+    test(
+      'Phase 2 cyclic NextLink without DeltaLink stops without leaking Phase 1 checkpoint DeltaLink',
+      () async {
+        var calls = 0;
+        final mockClient = MockClient((request) async {
+          calls += 1;
+          if (calls == 1) {
+            return http.Response(
+              jsonEncode({
+                'Value': [
+                  {'Id': 't1', 'Subject': 'Task 1'},
+                ],
+                'DeltaLink':
+                    'https://substrate.office.com/todob2/api/v1/tasks?parentFolderId=f1&deltatoken=phase1',
+              }),
+              200,
+            );
+          }
+          if (calls == 2) {
+            return http.Response(
+              jsonEncode({
+                'Value': [
+                  {'Id': 't2', 'Subject': 'Task 2'},
+                ],
+                'NextLink':
+                    'https://substrate.office.com/todob2/api/v1/tasks?parentFolderId=f1&skiptoken=loop',
+              }),
+              200,
+            );
+          }
+          if (calls == 3) {
+            return http.Response(
+              jsonEncode({
+                'Value': [
+                  {'Id': 't3', 'Subject': 'Task 3'},
+                ],
+                'NextLink':
+                    'https://substrate.office.com/todob2/api/v1/tasks?parentFolderId=f1&skiptoken=loop',
+              }),
+              200,
+            );
+          }
+          fail('Should stop on Phase 2 NextLink self-loop');
+        });
+
+        final api = HttpMicrosoftTodoApi(
+          httpClient: mockClient,
+          delayFn: (_) async {},
+        );
+        final ctx = SubstrateRequestContext(
+          baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
+          accessToken: 'tok',
+          cid: 'cid1',
+        );
+
+        final res = (await api.fetchTasksDelta(
+          ctx,
+          folderRemoteId: 'f1',
+        )).getOrThrow();
+
+        expect(calls, 3);
+        expect(res.items.map((t) => t.id).toList(), ['t1', 't2', 't3']);
+        expect(res.deltaLink, isNull);
+      },
+    );
+
+    test(
+      'resolves relative DeltaLink values to full URIs across Phase 1 and Phase 2',
+      () async {
+        final requestedUrls = <String>[];
+        final mockClient = MockClient((request) async {
+          requestedUrls.add(request.url.toString());
+          if (requestedUrls.length == 1) {
+            return http.Response(
+              jsonEncode({
+                'Value': [
+                  {'Id': 't1', 'Subject': 'Task 1'},
+                ],
+                'DeltaLink': 'tasks?parentFolderId=f1&deltatoken=rel-p1',
+              }),
+              200,
+            );
+          }
+          if (requestedUrls.length == 2) {
+            return http.Response(
+              jsonEncode({
+                'Value': const [],
+                'DeltaLink': 'tasks?parentFolderId=f1&deltatoken=rel-final',
+              }),
+              200,
+            );
+          }
+          fail('Unexpected request #${requestedUrls.length}');
+        });
+
+        final api = HttpMicrosoftTodoApi(
+          httpClient: mockClient,
+          delayFn: (_) async {},
+        );
+        final ctx = SubstrateRequestContext(
+          baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
+          accessToken: 'tok',
+          cid: 'cid1',
+        );
+
+        final res = (await api.fetchTasksDelta(
+          ctx,
+          folderRemoteId: 'f1',
+        )).getOrThrow();
+
+        expect(requestedUrls, [
+          'https://substrate.office.com/todob2/api/v1/tasks?\$expand=LinkedEntities&parentFolderId=f1&maxPageSize=50',
+          'https://substrate.office.com/todob2/api/v1/tasks?parentFolderId=f1&deltatoken=rel-p1',
+        ]);
+        expect(
+          res.deltaLink,
+          'https://substrate.office.com/todob2/api/v1/tasks?parentFolderId=f1&deltatoken=rel-final',
+        );
+      },
+    );
   });
 }

@@ -122,20 +122,22 @@ class SubstratePullEngine {
           if (!f.isDeleted && !f.isIgnoredSpecialFolder && f.id.isNotEmpty)
             f.id,
       };
-      nextLists = _pruneStale(
-        items: nextLists,
-        shouldKeep: (l) =>
-            l.isSmartList ||
-            l.remoteId == null ||
-            seenFolderRemoteIds.contains(l.remoteId) ||
-            remainingDirtyLists.contains(l.id) ||
-            syncedListIds.contains(l.id),
-        onPruned: (l) => appLog(
-          'Phase 9 full-sync prune stale list=${l.id} '
-          'remote=${shortSyncId(l.remoteId)} title="${l.title}"',
-          label: 'SyncEngine',
-        ),
-      );
+      if (seenFolderRemoteIds.isNotEmpty) {
+        nextLists = _pruneStale(
+          items: nextLists,
+          shouldKeep: (l) =>
+              l.isSmartList ||
+              l.remoteId == null ||
+              seenFolderRemoteIds.contains(l.remoteId) ||
+              remainingDirtyLists.contains(l.id) ||
+              syncedListIds.contains(l.id),
+          onPruned: (l) => appLog(
+            'Phase 9 full-sync prune stale list=${l.id} '
+            'remote=${shortSyncId(l.remoteId)} title="${l.title}"',
+            label: 'SyncEngine',
+          ),
+        );
+      }
     }
     appLog(
       'Phase 9 folders mode=${foldersFetch.mode} '
@@ -296,13 +298,15 @@ class SubstratePullEngine {
           );
           tasksById[newLocalId] = created;
           taskIdByRemoteId[remote.id] = newLocalId;
-          appLog(
-            'Phase 10b task[$mode] ADD remote=${shortSyncId(remote.id)} '
-            'local=$newLocalId title="${created.title}" list=$resolvedListId '
-            'order=${formatSyncTimestamp(created.orderDateTime)} '
-            'committedOrder=${formatSyncTimestamp(created.committedOrder)}',
-            label: 'SyncEngine',
-          );
+          if (!didFullFetch) {
+            appLog(
+              'Phase 10b task[$mode] ADD remote=${shortSyncId(remote.id)} '
+              'local=$newLocalId title="${created.title}" list=$resolvedListId '
+              'order=${formatSyncTimestamp(created.orderDateTime)} '
+              'committedOrder=${formatSyncTimestamp(created.committedOrder)}',
+              label: 'SyncEngine',
+            );
+          }
         }
       }
 
@@ -339,7 +343,8 @@ class SubstratePullEngine {
       tasksById.remove(localId);
     }
 
-    // Prune stale remotely deleted tasks missed by delta after forced full fetch.
+    // Prune stale remotely deleted tasks missed by delta after a complete forced
+    // full fetch (terminated by a DeltaLink so both Page 1 and Phase 2 completed).
     if (fullSyncedListIds.isNotEmpty) {
       final staleLocalIds = [
         for (final task in tasksById.values)

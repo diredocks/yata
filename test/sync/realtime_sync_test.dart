@@ -11,6 +11,26 @@ import 'package:yata/sync/todo_wire_codecs.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
+class _ReconnectFakeSubstrateApi extends FakeSubstrateApi {
+  final Completer<void> secondConnected = Completer<void>();
+  final StreamController<RealtimeEvent> secondStream =
+      StreamController<RealtimeEvent>.broadcast();
+  int connectCount = 0;
+
+  @override
+  Stream<RealtimeEvent> connectRealtime(SubstrateRequestContext ctx) {
+    callLog.add('GET realtime');
+    connectCount += 1;
+    if (connectCount == 1) {
+      return Stream<RealtimeEvent>.fromIterable(const [
+        RealtimeEvent(type: 'KeepAlive'),
+      ]);
+    }
+    if (!secondConnected.isCompleted) secondConnected.complete();
+    return secondStream.stream;
+  }
+}
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -514,6 +534,53 @@ void main() {
         expect(
           todoState.lists.firstWhere((l) => l.id == 'l_1').title,
           'List 1 Full',
+        );
+      },
+    );
+
+    test(
+      'realtime reconnect triggers incremental delta sync using saved deltaLinks instead of forceFullSync',
+      () async {
+        final fakeApi = _ReconnectFakeSubstrateApi();
+        addTearDown(fakeApi.secondStream.close);
+        final deltaSyncDone = Completer<void>();
+        fakeApi.onFetchFoldersDelta = (dl) =>
+            DeltaPageResult(items: const [], deltaLink: dl ?? 'dl-f-new');
+        fakeApi.onFetchTasksDelta = (folderId, dl) {
+          if (!deltaSyncDone.isCompleted) deltaSyncDone.complete();
+          return DeltaPageResult(items: const [], deltaLink: dl ?? 'dl-t-new');
+        };
+
+        final h = await createSyncTestHarness(
+          accountId: 'acct_rt_reconnect_delta',
+          api: fakeApi,
+          realtimeSyncEnabled: true,
+          defaultTasksFolderRemoteId: 'rf-default',
+          foldersDeltaLink: 'dl-folders-saved',
+          taskDeltaLinks: const {'rf-default': 'dl-tasks-saved'},
+        );
+
+        h.container.read(syncProvider);
+        await fakeApi.secondConnected.future.timeout(
+          const Duration(seconds: 5),
+        );
+        fakeApi.secondStream.add(const RealtimeEvent(type: 'KeepAlive'));
+
+        await deltaSyncDone.future.timeout(const Duration(seconds: 3));
+        await pumpEventQueue();
+
+        expect(
+          fakeApi.callLog,
+          contains('GET taskfolders(dl-folders-saved)'),
+        );
+        expect(
+          fakeApi.callLog,
+          contains('GET tasks(rf-default,dl-tasks-saved)'),
+        );
+        expect(fakeApi.callLog, isNot(contains('GET taskfolders(null)')));
+        expect(
+          fakeApi.callLog,
+          isNot(contains('GET tasks(rf-default,null)')),
         );
       },
     );

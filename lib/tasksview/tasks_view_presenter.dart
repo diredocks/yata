@@ -329,11 +329,23 @@ class TasksViewPresenter {
       currentOrders,
       newIndex,
     );
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     for (final entry in newPositions.entries) {
       final current = reorderedVisible[entry.key];
-      reorderedVisible[entry.key] = isMyDayView
-          ? current.copyWith(committedOrder: entry.value)
-          : current.copyWith(orderDateTime: entry.value);
+      if (isMyDayView) {
+        final needsMyDayDate =
+            current.myDayDate == null ||
+            !TodoNotifier.isSameDay(current.myDayDate!, now);
+        reorderedVisible[entry.key] = current.copyWith(
+          committedOrder: entry.value,
+          myDayDate: needsMyDayDate ? today : current.myDayDate,
+        );
+      } else {
+        reorderedVisible[entry.key] = current.copyWith(
+          orderDateTime: entry.value,
+        );
+      }
     }
 
     final visibleIds = {for (final t in visibleActiveTasks) t.id};

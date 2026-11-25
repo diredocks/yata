@@ -148,9 +148,13 @@ void main() {
         await h.container.read(syncProvider.notifier).syncNow();
 
         expect(patchedGroups['rg-work']?['OrderDateTime'], isNotNull);
+        expect(patchedGroups['rg-work']?['Name'], 'Work Group');
         expect(patchedFolders['rf-alpha']?['OrderDateTime'], isNotNull);
+        expect(patchedFolders['rf-alpha']?['Name'], 'Alpha');
         expect(patchedFolders['rf-beta']?['OrderDateTime'], isNotNull);
+        expect(patchedFolders['rf-beta']?['Name'], 'Beta');
         expect(patchedFolders['rf-m2']?['OrderDateTime'], isNotNull);
+        expect(patchedFolders['rf-m2']?['Name'], 'Member 2');
         expect(patchedFolders['rf-m1']?['OrderDateTime'], isNull);
 
         state = h.container.read(todoProvider);
@@ -165,6 +169,7 @@ void main() {
       () async {
         final today = DateTime.now();
         final patchedPayloads = <String, List<Map<String, dynamic>>>{};
+        final patchedChangeKeys = <String, List<String?>>{};
         var return412Once = true;
 
         final tWide1 = DateTime.utc(2026, 11, 22, 12);
@@ -252,6 +257,7 @@ void main() {
           orderDateTime: tWide1,
         );
         fakeApi.onPatchTask = (taskRemoteId, patch, changeKey) async {
+          (patchedChangeKeys[taskRemoteId] ??= []).add(changeKey);
           if (taskRemoteId == 'rt-w1' && return412Once) {
             return412Once = false;
             throw const AppError.network(
@@ -271,6 +277,7 @@ void main() {
             orderDateTime: parseSubstrateTimestamp(
               patch['OrderDateTime'] as String?,
             ),
+            committedDay: parseSubstrateDay(patch['CommittedDay']),
             committedOrder: parseSubstrateTimestamp(
               patch['CommittedOrder'] as String?,
             ),
@@ -299,9 +306,10 @@ void main() {
 
         expect(patchedPayloads.keys, contains('rt-w1'));
         expect(patchedPayloads.containsKey('rt-w2'), isFalse);
+        expect(patchedChangeKeys['rt-w1'], [null, 'ck-refreshed']);
         final w1Patch = patchedPayloads['rt-w1']!.single;
-        expect(w1Patch.containsKey('Reminder'), isFalse);
-        expect(w1Patch.containsKey('ParentFolderId'), isFalse);
+        expect(w1Patch.keys.toSet(), {'Subject', 'OrderDateTime'});
+        expect(w1Patch['Subject'], 'Wide Top');
         expect(w1Patch['OrderDateTime'], isNotNull);
         final w1Updated = h.container
             .read(todoProvider)
@@ -312,6 +320,7 @@ void main() {
 
         // 2) Tight <= 16s / equal timestamps in Work custom list trigger full re-space
         patchedPayloads.clear();
+        patchedChangeKeys.clear();
         final workList = h.container
             .read(todoProvider)
             .lists
@@ -330,9 +339,10 @@ void main() {
         expect(patchedPayloads.containsKey('rt-tight-1'), isFalse);
         expect(patchedPayloads.containsKey('rt-tight-2'), isTrue);
         expect(patchedPayloads.containsKey('rt-tight-3'), isTrue);
+        expect(patchedChangeKeys['rt-tight-2'], [null]);
+        expect(patchedChangeKeys['rt-tight-3'], [null]);
         for (final pList in patchedPayloads.values) {
-          expect(pList.single.containsKey('Reminder'), isFalse);
-          expect(pList.single.containsKey('ParentFolderId'), isFalse);
+          expect(pList.single.keys.toSet(), {'Subject', 'OrderDateTime'});
         }
         final afterTight = h.container
             .read(todoProvider)
@@ -358,6 +368,7 @@ void main() {
 
         // 3) Reorder due-today uncommitted task above committed task in My Day
         patchedPayloads.clear();
+        patchedChangeKeys.clear();
         h.container.read(todoProvider.notifier).selectList('my_day');
         final myDayVisible = h.container
             .read(todoProvider)
@@ -365,16 +376,51 @@ void main() {
         expect(myDayVisible.map((t) => t.remoteId), ['rt-w1', 'rt-tight-1']);
         presenter.reorderActiveTasks(myDayVisible, 1, 0);
 
+        final tightAfterLocalReorder = h.container
+            .read(todoProvider)
+            .tasks
+            .firstWhere((t) => t.remoteId == 'rt-tight-1');
+        expect(tightAfterLocalReorder.myDayDate, isNotNull);
+        expect(
+          TodoNotifier.isSameDay(tightAfterLocalReorder.myDayDate!, today),
+          isTrue,
+        );
+
         await h.container.read(syncProvider.notifier).syncNow();
 
         expect(patchedPayloads['rt-tight-1'], isNotNull);
+        expect(patchedChangeKeys['rt-tight-1'], [null]);
         final tightMyDayPatch = patchedPayloads['rt-tight-1']!.single;
+        expect(tightMyDayPatch.keys.toSet(), {
+          'Subject',
+          'CommittedDay',
+          'CommittedOrder',
+        });
+        expect(tightMyDayPatch['Subject'], 'Tight First');
+        expect(tightMyDayPatch['CommittedDay'], formatDayString(today));
         expect(tightMyDayPatch['CommittedOrder'], isNotNull);
-        expect(tightMyDayPatch.containsKey('Reminder'), isFalse);
         final syncedMyDay = h.container
             .read(todoProvider)
             .tasksForList(h.container.read(todoProvider).selectedList);
         expect(syncedMyDay.map((t) => t.remoteId), ['rt-tight-1', 'rt-w1']);
+
+        // 3b) Reorder already-committed task back to top in My Day
+        patchedPayloads.clear();
+        patchedChangeKeys.clear();
+        presenter.reorderActiveTasks(syncedMyDay, 1, 0);
+        await h.container.read(syncProvider.notifier).syncNow();
+
+        expect(patchedPayloads['rt-w1'], isNotNull);
+        expect(patchedChangeKeys['rt-w1'], [null]);
+        final w1MyDayPatch = patchedPayloads['rt-w1']!.single;
+        expect(w1MyDayPatch.keys.toSet(), {
+          'Subject',
+          'CommittedDay',
+          'CommittedOrder',
+        });
+        expect(w1MyDayPatch['Subject'], 'Wide Top');
+        expect(w1MyDayPatch['CommittedDay'], formatDayString(today));
+        expect(w1MyDayPatch['CommittedOrder'], isNotNull);
 
         // 4) Cross-list move includes ParentFolderId; subsequent same-folder edit omits it
         patchedPayloads.clear();

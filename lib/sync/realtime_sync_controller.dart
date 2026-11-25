@@ -39,7 +39,7 @@ class RealtimeSyncController {
   Timer? _reconnectTimer;
   StreamSubscription<RealtimeEvent>? _sub;
   final List<RealtimeEvent> _pendingEvents = [];
-  bool _needsFullSyncOnConnect = false;
+  bool _needsSyncOnConnect = false;
   Duration _backoff = _initialBackoff;
   String? _accountId;
   bool _disposed = false;
@@ -71,16 +71,19 @@ class RealtimeSyncController {
     _accountId = null;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
-    unawaited(_sub?.cancel());
+    final sub = _sub;
     _sub = null;
+    if (sub != null) {
+      unawaited(sub.cancel().catchError((_) {}));
+    }
     if (clearPending) {
       _pendingEvents.clear();
-      _needsFullSyncOnConnect = false;
+      _needsSyncOnConnect = false;
     }
   }
 
   void onAppPaused() {
-    _needsFullSyncOnConnect = false;
+    _needsSyncOnConnect = false;
     stop();
   }
 
@@ -110,12 +113,12 @@ class RealtimeSyncController {
       (event) {
         if (_disposed || _accountId != account.id) return;
         _backoff = _initialBackoff;
-        if (_needsFullSyncOnConnect) {
-          _needsFullSyncOnConnect = false;
-          appLog('reconnected; scheduling full sync', label: 'SyncRealtime');
+        if (_needsSyncOnConnect) {
+          _needsSyncOnConnect = false;
+          appLog('reconnected; scheduling delta sync', label: 'SyncRealtime');
           onScheduleFallbackSync(
             delay: _reconnectDebounceDuration,
-            forceFullSync: true,
+            forceFullSync: false,
             reason: 'realtime_reconnected',
           );
         }
@@ -132,12 +135,12 @@ class RealtimeSyncController {
       },
       onError: (Object error) {
         appLog('stream error=$error', label: 'SyncRealtime');
-        _needsFullSyncOnConnect = true;
+        _needsSyncOnConnect = true;
         _scheduleReconnect(account, reason: 'error');
       },
       onDone: () {
         appLog('stream done', label: 'SyncRealtime');
-        _needsFullSyncOnConnect = true;
+        _needsSyncOnConnect = true;
         _scheduleReconnect(account, reason: 'done');
       },
       cancelOnError: true,

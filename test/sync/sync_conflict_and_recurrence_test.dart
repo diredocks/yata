@@ -44,6 +44,18 @@ void main() {
                 deltaLink: 'dl-folders-2',
               );
         fakeApi.onFetchTasksDelta = (folderId, dl) {
+          if (dl == 'dl-def-new') {
+            return const DeltaPageResult(
+              items: [
+                RemoteTodoTask(
+                  id: 'rt-completed-kept',
+                  subject: '',
+                  isDeleted: true,
+                ),
+              ],
+              deltaLink: 'dl-def-after-del',
+            );
+          }
           if (dl != null) {
             return DeltaPageResult(items: const [], deltaLink: dl);
           }
@@ -63,6 +75,15 @@ void main() {
                   parentFolderId: 'rf-default',
                   subject: 'Task 2',
                   orderDateTime: t30,
+                ),
+                RemoteTodoTask(
+                  id: 'rt-completed-kept',
+                  changeKey: 'ck-completed-kept',
+                  parentFolderId: 'rf-default',
+                  subject: 'Completed Task Kept',
+                  status: 'Completed',
+                  completedDateTime: t05,
+                  orderDateTime: t04,
                 ),
               ],
               deltaLink: 'dl-def-new',
@@ -143,6 +164,30 @@ void main() {
               remoteParentFolderId: 'rf-default',
               changeKey: 'ck-dirty',
             ),
+            TaskItem(
+              id: 't_completed_kept',
+              listId: 'tasks',
+              title: 'Completed Task Kept',
+              createdAt: t03.subtract(const Duration(hours: 1)),
+              isCompleted: true,
+              completedAt: t05,
+              orderDateTime: t04,
+              remoteId: 'rt-completed-kept',
+              remoteParentFolderId: 'rf-default',
+              changeKey: 'ck-completed-kept',
+            ),
+            TaskItem(
+              id: 't_completed_old',
+              listId: 'tasks',
+              title: 'Older Deleted Completed Task',
+              createdAt: t03.subtract(const Duration(hours: 2)),
+              isCompleted: true,
+              completedAt: t03,
+              orderDateTime: t03.subtract(const Duration(hours: 2)),
+              remoteId: 'rt-completed-old',
+              remoteParentFolderId: 'rf-default',
+              changeKey: 'ck-completed-old',
+            ),
           ],
           foldersDeltaLink: 'dl-folders-1',
           taskDeltaLinks: const {'rf-default': 'dl-def-1', 'rf-b': 'dl-b-1'},
@@ -180,10 +225,18 @@ void main() {
 
         state = h.container.read(todoProvider);
         expect(
-          state.tasksForList(tasksList).map((t) => t.id).toList(),
+          state.tasksForList(tasksList).where((t) => !t.isCompleted).map((t) => t.id).toList(),
           ['t_2', 't_1', 't_dirty'],
         );
         expect(state.tasks.any((t) => t.id == 't_del'), isFalse);
+        expect(
+          state.tasks.any((t) => t.id == 't_completed_kept'),
+          isTrue,
+        );
+        expect(
+          state.tasks.any((t) => t.id == 't_completed_old'),
+          isFalse,
+        );
 
         final moved = state.tasks.firstWhere((t) => t.id == 't_moved');
         expect(moved.listId, 'list_b');
@@ -193,6 +246,125 @@ void main() {
           'rf-default': 'dl-def-new',
           'rf-b': 'dl-b-new',
         });
+
+        // Explicit delta deletion removes a previously kept completed task.
+        await h.container.read(syncProvider.notifier).syncNow();
+        state = h.container.read(todoProvider);
+        expect(
+          state.tasks.any((t) => t.id == 't_completed_kept'),
+          isFalse,
+        );
+      },
+    );
+
+    test(
+      'forceFullSync does not prune active or completed tasks when full fetch returns null deltaLink',
+      () async {
+        final t05 = DateTime.utc(2026, 11, 22, 5);
+        final t10 = DateTime.utc(2026, 11, 22, 10);
+
+        final fakeApi = FakeSubstrateApi();
+        fakeApi.onFetchFoldersDelta = (dl) => const DeltaPageResult(
+          items: [
+            RemoteTodoFolder(
+              id: 'rf-default',
+              name: 'Tasks',
+              isDefaultFolder: true,
+            ),
+          ],
+          deltaLink: 'dl-folders-1',
+        );
+        fakeApi.onFetchTasksDelta = (folderId, dl) {
+            return DeltaPageResult(
+              items: [
+                RemoteTodoTask(
+                  id: 'rt-1',
+                  changeKey: 'ck-1',
+                  parentFolderId: 'rf-default',
+                  subject: 'Task 1',
+                  orderDateTime: t10,
+                ),
+              ],
+              deltaLink: null,
+            );
+          };
+
+        final h = await createSyncTestHarness(
+          accountId: 'acct_null_dl_no_prune',
+          api: fakeApi,
+          defaultTasksFolderRemoteId: 'rf-default',
+          tasks: [
+            TaskItem(
+              id: 't_1',
+              listId: 'tasks',
+              title: 'Task 1',
+              createdAt: t05,
+              orderDateTime: t10,
+              remoteId: 'rt-1',
+              remoteParentFolderId: 'rf-default',
+              changeKey: 'ck-1',
+            ),
+            TaskItem(
+              id: 't_active_other',
+              listId: 'tasks',
+              title: 'Active Task Omitted From Incomplete Page',
+              createdAt: t05,
+              orderDateTime: t05,
+              remoteId: 'rt-active-other',
+              remoteParentFolderId: 'rf-default',
+              changeKey: 'ck-active-other',
+            ),
+            TaskItem(
+              id: 't_completed_other',
+              listId: 'tasks',
+              title: 'Completed Task Omitted From Incomplete Page',
+              createdAt: t05,
+              isCompleted: true,
+              completedAt: t05,
+              orderDateTime: t05,
+              remoteId: 'rt-completed-other',
+              remoteParentFolderId: 'rf-default',
+              changeKey: 'ck-completed-other',
+            ),
+          ],
+          taskDeltaLinks: const {'rf-default': 'dl-saved'},
+        );
+
+        await h.container
+            .read(syncProvider.notifier)
+            .syncNow(forceFullSync: true, reason: 'test_null_delta_link');
+
+        final state = h.container.read(todoProvider);
+        expect(state.tasks.any((t) => t.id == 't_1'), isTrue);
+        expect(state.tasks.any((t) => t.id == 't_active_other'), isTrue);
+        expect(state.tasks.any((t) => t.id == 't_completed_other'), isTrue);
+      },
+    );
+
+    test(
+      'forceFullSync does not prune custom lists when folders delta returns empty items',
+      () async {
+        final fakeApi = FakeSubstrateApi()
+          ..onFetchFoldersDelta = (dl) => const DeltaPageResult(
+            items: [],
+            deltaLink: 'dl-folders-empty',
+          );
+
+        final h = await createSyncTestHarness(
+          accountId: 'acct_empty_folders',
+          api: fakeApi,
+          defaultTasksFolderRemoteId: 'rf-default',
+          extraLists: const [
+            TodoList(id: 'list_keep', title: 'Keep Me', remoteId: 'rf-keep'),
+          ],
+        );
+
+        await h.container
+            .read(syncProvider.notifier)
+            .syncNow(forceFullSync: true, reason: 'test_empty_folders');
+
+        final lists = h.container.read(todoProvider).lists;
+        expect(lists.any((l) => l.id == 'list_keep'), isTrue);
       },
     );
 
