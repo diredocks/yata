@@ -48,82 +48,84 @@ class _LandingScreenState extends ConsumerState<LandingScreen> {
       uaid: uaid,
     );
 
-    try {
-      String? code;
-      final interactiveResult = await interactiveClient.signIn(
+    final interactiveResult = await interactiveClient.signIn(
+      context: context,
+      authorizeUrl: authorizeUrl,
+      redirectUri: MsaAuthConfig.redirectUri,
+    );
+
+    if (!mounted) return;
+
+    String? code;
+    if (interactiveResult != null) {
+      if (interactiveResult.cancelled) {
+        setState(() => _isSubmitting = false);
+        return;
+      }
+      if (interactiveResult.error != null) {
+        _failSignIn(l10n.signInFailed(interactiveResult.error!));
+        return;
+      }
+      code = interactiveResult.code;
+    } else {
+      // Desktop / non-WebView fallback: launch browser and prompt for redirect URL / code.
+      final openUrl = ref.read(externalUrlLauncherProvider);
+      unawaited(openUrl(authorizeUrl));
+      code = await showDialog<String>(
         context: context,
-        authorizeUrl: authorizeUrl,
-        redirectUri: MsaAuthConfig.redirectUri,
+        barrierDismissible: false,
+        builder: (ctx) => _MsaBrowserCodeDialog(
+          onOpenBrowser: () => openUrl(authorizeUrl),
+          onExtractCode: authClient.extractAuthorizationCode,
+        ),
       );
-
-      if (!mounted) return;
-
-      if (interactiveResult != null) {
-        if (interactiveResult.cancelled) {
-          setState(() => _isSubmitting = false);
-          return;
-        }
-        if (interactiveResult.error != null) {
-          setState(() {
-            _isSubmitting = false;
-            _errorMessage = interactiveResult.error;
-          });
-          return;
-        }
-        code = interactiveResult.code;
-      } else {
-        // Desktop / non-WebView fallback: launch browser and prompt for redirect URL / code.
-        final openUrl = ref.read(externalUrlLauncherProvider);
-        unawaited(openUrl(authorizeUrl));
-        code = await showDialog<String>(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) => _MsaBrowserCodeDialog(
-            onOpenBrowser: () => openUrl(authorizeUrl),
-            onExtractCode: authClient.extractAuthorizationCode,
-          ),
-        );
-      }
-
-      if (!mounted) return;
-      if (code == null || code.isEmpty) {
-        setState(() => _isSubmitting = false);
-        return;
-      }
-
-      final signInOutcome = await authClient.completeSignInWithCode(
-        code: code,
-        loginHint: loginHint.isEmpty ? null : loginHint,
-        uaid: uaid,
-      );
-
-      if (!mounted) return;
-      final error = signInOutcome.exceptionOrNull();
-      if (error != null) {
-        setState(() {
-          _isSubmitting = false;
-          _errorMessage = error.userMessage;
-        });
-        return;
-      }
-
-      await ref
-          .read(accountProvider.notifier)
-          .signInMicrosoft(signInOutcome.getOrThrow());
-
-      if (!mounted) return;
-      if (widget.isAddingAccount) {
-        Navigator.of(context).pop(true);
-      } else {
-        setState(() => _isSubmitting = false);
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _isSubmitting = false;
-        _errorMessage = l10n.signInFailed(e.toString());
-      });
     }
+
+    if (!mounted) return;
+    if (code == null || code.isEmpty) {
+      setState(() => _isSubmitting = false);
+      return;
+    }
+
+    final signInOutcome = await authClient.completeSignInWithCode(
+      code: code,
+      loginHint: loginHint.isEmpty ? null : loginHint,
+      uaid: uaid,
+    );
+
+    if (!mounted) return;
+    final authError = signInOutcome.exceptionOrNull();
+    if (authError != null) {
+      _failSignIn(l10n.signInFailed(authError.userMessage));
+      return;
+    }
+
+    final saved = await guardAsync(
+      () => ref
+          .read(accountProvider.notifier)
+          .signInMicrosoft(signInOutcome.getOrThrow()),
+      operation: 'account.signInMicrosoft',
+    );
+
+    if (!mounted) return;
+    final saveError = saved.exceptionOrNull();
+    if (saveError != null) {
+      _failSignIn(l10n.signInFailed(saveError.userMessage));
+      return;
+    }
+
+    if (widget.isAddingAccount) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() => _isSubmitting = false);
+    }
+  }
+
+  void _failSignIn(String message) {
+    setState(() {
+      _isSubmitting = false;
+      _errorMessage = message;
+    });
   }
 
   Future<void> _handleLocalSignIn() async {
@@ -140,15 +142,24 @@ class _LandingScreenState extends ConsumerState<LandingScreen> {
         ? l10n.userName
         : '${l10n.localAccount} ${existingCount + 1}';
 
-    await ref
-        .read(accountProvider.notifier)
-        .signInLocal(
-          rawInput,
-          fallbackName: fallbackName,
-          fallbackEmail: l10n.localAccount,
-        );
+    final signedIn = await guardAsync(
+      () => ref
+          .read(accountProvider.notifier)
+          .signInLocal(
+            rawInput,
+            fallbackName: fallbackName,
+            fallbackEmail: l10n.localAccount,
+          ),
+      operation: 'account.signInLocal',
+    );
 
     if (!mounted) return;
+    final error = signedIn.exceptionOrNull();
+    if (error != null) {
+      _failSignIn(l10n.signInFailed(error.userMessage));
+      return;
+    }
+
     if (widget.isAddingAccount) {
       Navigator.of(context).pop(true);
     } else {
