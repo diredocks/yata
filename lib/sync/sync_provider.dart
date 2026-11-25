@@ -94,6 +94,8 @@ class SyncNotifier extends Notifier<SyncState> {
         _queuedKind = _mergeSyncKind(_queuedKind, SyncKind.full);
         _queuedReason = reason;
       },
+      onCatchupDeltaSync: (reason) =>
+          syncNow(forceFullSync: false, reason: reason),
     );
   }
 
@@ -224,14 +226,14 @@ class SyncNotifier extends Notifier<SyncState> {
   Future<void> refresh({String reason = 'manual'}) =>
       syncNow(forceFullSync: true, reason: reason);
 
-  /// Starts an initial full sync on cold start (when enabled) or account switch.
+  /// Starts an incremental sync on cold start (when enabled) or full sync on account switch.
   void syncOnSessionStart({bool accountChanged = false}) {
     if (!accountChanged && !ref.read(startupSyncEnabledProvider)) return;
     final account = ref.read(accountProvider).activeAccount;
     if (account is! MicrosoftAccount) return;
     unawaited(
       syncNow(
-        forceFullSync: true,
+        forceFullSync: accountChanged,
         reason: accountChanged ? 'account_changed' : 'startup',
       ),
     );

@@ -22,6 +22,7 @@ class RealtimeSyncController {
     required this.isSyncInFlight,
     required this.onScheduleFallbackSync,
     required this.onOverflowResync,
+    required this.onCatchupDeltaSync,
   });
 
   static const _reconnectDebounceDuration = Duration(milliseconds: 500);
@@ -38,6 +39,7 @@ class RealtimeSyncController {
   })
   onScheduleFallbackSync;
   final void Function(String reason) onOverflowResync;
+  final Future<void> Function(String reason) onCatchupDeltaSync;
 
   Timer? _reconnectTimer;
   StreamSubscription<RealtimeEvent>? _sub;
@@ -199,7 +201,6 @@ class RealtimeSyncController {
     _log.info('draining ${_pendingEvents.length} deferred realtime event(s)');
 
     var needsFallbackSync = false;
-    var fallbackForceFullSync = false;
     var fallbackReason = 'realtime_deferred';
 
     while (!_disposed && !isSyncInFlight() && _pendingEvents.isNotEmpty) {
@@ -217,20 +218,13 @@ class RealtimeSyncController {
       );
       if (!handled) {
         needsFallbackSync = true;
-        if (_shouldForceFullSyncForEvent(event)) {
-          fallbackForceFullSync = true;
-        }
         fallbackReason =
             'realtime_${event.type}_${event.operation ?? 'unknown'}';
       }
     }
 
     if (needsFallbackSync && !_disposed) {
-      onScheduleFallbackSync(
-        delay: const Duration(milliseconds: 200),
-        forceFullSync: fallbackForceFullSync,
-        reason: fallbackReason,
-      );
+      await onCatchupDeltaSync(fallbackReason);
     }
   }
 
@@ -284,7 +278,7 @@ class RealtimeSyncController {
             idGenerator: todoNotifier.nextId,
           ),
           prefix: prefix,
-          fallbackForceFull: true,
+          fallbackForceFull: !fromQueue,
           apply: todoNotifier.applyRemoteTasksSnapshot,
         );
 
@@ -302,7 +296,7 @@ class RealtimeSyncController {
             idGenerator: todoNotifier.nextId,
           ),
           prefix: prefix,
-          fallbackForceFull: true,
+          fallbackForceFull: !fromQueue,
           apply: (update) => todoNotifier.applyRemoteListsSnapshot(
             nextLists: update.lists,
             nextTasks: update.tasks,
@@ -321,7 +315,7 @@ class RealtimeSyncController {
             idGenerator: todoNotifier.nextId,
           ),
           prefix: prefix,
-          fallbackForceFull: true,
+          fallbackForceFull: !fromQueue,
           apply: todoNotifier.applyRemoteGroupsSnapshot,
         );
 
