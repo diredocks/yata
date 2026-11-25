@@ -208,7 +208,7 @@ class SyncNotifier extends Notifier<SyncState> {
     final active = ref.read(accountProvider).activeAccount;
     if (active is! MicrosoftAccount) return;
 
-    _log.info('onAppResumed: restarting realtime & scheduling full sync');
+    _log.info('onAppResumed: restarting realtime & scheduling delta sync');
     if (ref.read(realtimeSyncEnabledProvider)) {
       _ensureRealtimeController().ensureStartedFor(active);
     }
@@ -217,7 +217,7 @@ class SyncNotifier extends Notifier<SyncState> {
     }
     scheduleDebouncedSync(
       delay: _foregroundDebounceDuration,
-      forceFullSync: true,
+      forceFullSync: false,
       reason: 'app_resumed',
     );
   }
