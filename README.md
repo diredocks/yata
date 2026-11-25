@@ -26,14 +26,3 @@ flutter analyze
 flutter test
 dart format lib test
 ```
-
-## Logs
-
-```dart
-final _log = appLogFor('SyncEngine');
-_log.info('Phase 10b items=3');
-_log.fine('Phase 10b task ...');                 // needs Logger.root.level = Level.ALL
-_log.warning('patch failed', error, stackTrace);
-```
-
-Repeated lines print once per 3s and report as `(xN)`.
