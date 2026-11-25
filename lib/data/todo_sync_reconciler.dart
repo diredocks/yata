@@ -1,9 +1,7 @@
-import 'dart:collection';
-
-import '../models/pending_step_deletion.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import 'sync_dirty_fields.dart';
+import 'sync_outbox.dart';
 import 'todo_settings_sync.dart';
 import 'todo_state.dart';
 
@@ -100,99 +98,58 @@ TaskItem computeTaskMyDayFlag(
   return (expanded: nextExpanded, changed: changed);
 }
 
-class LocalCommitTrackResult {
-  const LocalCommitTrackResult({
+class LocalOutboxCommitResult {
+  const LocalOutboxCommitResult({
     required this.groups,
     required this.lists,
     required this.tasks,
-    required this.dirtyGroupIds,
-    required this.dirtyGroupFields,
-    required this.dirtyListIds,
-    required this.dirtyListFields,
-    required this.dirtyTaskIds,
-    required this.dirtyTaskFields,
-    required this.dirtyStepIds,
-    required this.taskBaseNotes,
-    required this.dirtySettingKeys,
     required this.syncNeeded,
-    this.pendingDeletedGroupRemoteIds,
-    this.pendingDeletedListRemoteIds,
-    this.pendingDeletedTaskRemoteIds,
-    this.pendingDeletedSteps,
   });
 
   final List<ListGroup> groups;
   final List<TodoList> lists;
   final List<TaskItem> tasks;
-  final Set<String> dirtyGroupIds;
-  final Map<String, Set<GroupDirtyField>> dirtyGroupFields;
-  final Set<String> dirtyListIds;
-  final Map<String, Set<ListDirtyField>> dirtyListFields;
-  final Set<String> dirtyTaskIds;
-  final Map<String, Set<TaskDirtyField>> dirtyTaskFields;
-  final Map<String, Set<String>> dirtyStepIds;
-  final Map<String, String> taskBaseNotes;
-  final Set<String> dirtySettingKeys;
-  final List<String>? pendingDeletedGroupRemoteIds;
-  final List<String>? pendingDeletedListRemoteIds;
-  final List<String>? pendingDeletedTaskRemoteIds;
-  final List<PendingStepDeletion>? pendingDeletedSteps;
   final bool syncNeeded;
 }
 
-/// Diffs [prevState] against [nextState], stamping `updatedAt` and updating
-/// per-entity/per-field dirty sets and pending remote deletion queues.
-LocalCommitTrackResult trackLocalCommit({
+/// Diffs [prevState] against [nextState], stamps `updatedAt`, and enqueues
+/// ordered operations into [outbox].
+LocalOutboxCommitResult enqueueLocalCommitToOutbox({
   required TodoState prevState,
   required TodoState nextState,
   required DateTime nowUtc,
-  required Set<String> dirtyGroupIds,
-  required Map<String, Set<GroupDirtyField>> dirtyGroupFields,
-  required Set<String> dirtyListIds,
-  required Map<String, Set<ListDirtyField>> dirtyListFields,
-  required Set<String> dirtyTaskIds,
-  required Map<String, Set<TaskDirtyField>> dirtyTaskFields,
-  required Map<String, Set<String>> dirtyStepIds,
-  required Map<String, String> taskBaseNotes,
-  required Set<String> dirtySettingKeys,
-  required List<String> Function() loadDeletedGroupRemoteIds,
-  required List<String> Function() loadDeletedListRemoteIds,
-  required List<String> Function() loadDeletedTaskRemoteIds,
-  required List<PendingStepDeletion> Function() loadDeletedSteps,
+  required SyncOutboxQueue outbox,
 }) {
   final prevGroups = prevState.groups;
   final prevLists = prevState.lists;
   final prevTasks = prevState.tasks;
 
   var stampedGroups = nextState.groups;
-  var groupSyncNeeded = false;
-  List<String>? nextDeletedGroups;
+  var syncNeeded = false;
   if (!identical(prevGroups, nextState.groups)) {
     final nextGroupIds = {for (final g in nextState.groups) g.id};
-    dirtyGroupFields.removeWhere((id, _) => !nextGroupIds.contains(id));
-
     final prevGroupById = {for (final g in prevGroups) g.id: g};
-    final groupDeletions = collectPendingRemoteDeletions<ListGroup>(
-      prevItems: prevGroups,
-      nextIds: nextGroupIds,
-      idOf: (g) => g.id,
-      remoteIdOf: (g) => g.remoteId,
-      dirtyIds: dirtyGroupIds,
-      existingDeletedRemoteIds: loadDeletedGroupRemoteIds(),
-    );
-    groupSyncNeeded = groupDeletions.changed;
-    nextDeletedGroups = groupDeletions.deletedRemoteIds;
-
+    for (final prev in prevGroups) {
+      if (!nextGroupIds.contains(prev.id)) {
+        syncNeeded = true;
+        outbox.enqueueDelete(
+          entityType: SyncEntityType.group,
+          localId: prev.id,
+          remoteId: prev.remoteId,
+        );
+      }
+    }
     stampedGroups = <ListGroup>[];
     for (final group in nextState.groups) {
       final prev = prevGroupById[group.id];
       if (prev == null || isGroupSyncDirty(prev, group)) {
-        groupSyncNeeded = true;
-        dirtyGroupIds.add(group.id);
+        syncNeeded = true;
         final changed = diffGroupDirtyFields(prev, group);
-        if (changed.isNotEmpty) {
-          (dirtyGroupFields[group.id] ??= <GroupDirtyField>{}).addAll(changed);
-        }
+        outbox.enqueueUpsert(
+          entityType: SyncEntityType.group,
+          localId: group.id,
+          fields: {for (final f in changed) f.name},
+        );
         stampedGroups.add(group.copyWith(updatedAt: nowUtc));
       } else {
         stampedGroups.add(group);
@@ -201,36 +158,31 @@ LocalCommitTrackResult trackLocalCommit({
   }
 
   var stampedLists = nextState.lists;
-  var listSyncNeeded = false;
-  List<String>? nextDeletedLists;
   if (!identical(prevLists, nextState.lists)) {
     final nextListIds = {for (final l in nextState.lists) l.id};
-    dirtyListFields.removeWhere((id, _) => !nextListIds.contains(id));
-
     final prevListById = {for (final l in prevLists) l.id: l};
-    final listDeletions = collectPendingRemoteDeletions<TodoList>(
-      prevItems: prevLists,
-      nextIds: nextListIds,
-      idOf: (l) => l.id,
-      remoteIdOf: (l) => l.remoteId,
-      dirtyIds: dirtyListIds,
-      existingDeletedRemoteIds: loadDeletedListRemoteIds(),
-      canDeleteRemotely: (l) => !l.isSmartList,
-    );
-    listSyncNeeded = listDeletions.changed;
-    nextDeletedLists = listDeletions.deletedRemoteIds;
-
+    for (final prev in prevLists) {
+      if (!nextListIds.contains(prev.id) && !prev.isSmartList) {
+        syncNeeded = true;
+        outbox.enqueueDelete(
+          entityType: SyncEntityType.list,
+          localId: prev.id,
+          remoteId: prev.remoteId,
+        );
+      }
+    }
     stampedLists = <TodoList>[];
     for (final list in nextState.lists) {
       final prev = prevListById[list.id];
       if (isSyncableFolderList(list)) {
         if (prev == null || isListSyncDirty(prev, list)) {
-          listSyncNeeded = true;
-          dirtyListIds.add(list.id);
+          syncNeeded = true;
           final changed = diffListDirtyFields(prev, list);
-          if (changed.isNotEmpty) {
-            (dirtyListFields[list.id] ??= <ListDirtyField>{}).addAll(changed);
-          }
+          outbox.enqueueUpsert(
+            entityType: SyncEntityType.list,
+            localId: list.id,
+            fields: {for (final f in changed) f.name},
+          );
           stampedLists.add(list.copyWith(updatedAt: nowUtc));
         } else {
           stampedLists.add(list);
@@ -240,8 +192,10 @@ LocalCommitTrackResult trackLocalCommit({
       if (prev != null) {
         final changedSmartKeys = smartListChangedSettingKeys(prev, list);
         if (changedSmartKeys.isNotEmpty) {
-          listSyncNeeded = true;
-          dirtySettingKeys.addAll(changedSmartKeys);
+          syncNeeded = true;
+          for (final key in changedSmartKeys) {
+            outbox.enqueueSetting(key);
+          }
         }
       }
       stampedLists.add(list);
@@ -249,35 +203,19 @@ LocalCommitTrackResult trackLocalCommit({
   }
 
   var stampedTasks = nextState.tasks;
-  var taskSyncNeeded = false;
-  List<String>? nextDeletedTasks;
-  List<PendingStepDeletion>? nextDeletedSteps;
   if (!identical(prevTasks, nextState.tasks)) {
     final nextTaskIds = {for (final t in nextState.tasks) t.id};
-    dirtyTaskFields.removeWhere((id, _) => !nextTaskIds.contains(id));
-    dirtyStepIds.removeWhere((id, _) => !nextTaskIds.contains(id));
-    taskBaseNotes.removeWhere((id, _) => !nextTaskIds.contains(id));
-
     final prevTaskById = {for (final t in prevTasks) t.id: t};
-    final taskDeletions = collectPendingRemoteDeletions<TaskItem>(
-      prevItems: prevTasks,
-      nextIds: nextTaskIds,
-      idOf: (t) => t.id,
-      remoteIdOf: (t) => t.remoteId,
-      dirtyIds: dirtyTaskIds,
-      existingDeletedRemoteIds: loadDeletedTaskRemoteIds(),
-    );
-    taskSyncNeeded = taskDeletions.changed;
-    nextDeletedTasks = taskDeletions.deletedRemoteIds;
-
-    final stepDeletions = collectPendingStepDeletions(
-      prevTaskById: prevTaskById,
-      nextTasks: nextState.tasks,
-      existingDeletedSteps: loadDeletedSteps(),
-    );
-    if (stepDeletions.changed) taskSyncNeeded = true;
-    nextDeletedSteps = stepDeletions.deletedSteps;
-
+    for (final prev in prevTasks) {
+      if (!nextTaskIds.contains(prev.id)) {
+        syncNeeded = true;
+        outbox.enqueueDelete(
+          entityType: SyncEntityType.task,
+          localId: prev.id,
+          remoteId: prev.remoteId,
+        );
+      }
+    }
     final prevListRemoteById = {
       for (final l in prevLists)
         if (l.remoteId != null) l.id: l.remoteId!,
@@ -285,25 +223,37 @@ LocalCommitTrackResult trackLocalCommit({
     stampedTasks = <TaskItem>[];
     for (final task in nextState.tasks) {
       final prev = prevTaskById[task.id];
+      if (prev != null) {
+        final nextStepIds = {for (final s in task.steps) s.id};
+        for (final prevStep in prev.steps) {
+          if (!nextStepIds.contains(prevStep.id)) {
+            syncNeeded = true;
+            outbox.enqueueDelete(
+              entityType: SyncEntityType.step,
+              localId: prevStep.id,
+              remoteId: prevStep.remoteId,
+              parentLocalId: prev.id,
+              parentRemoteId: prev.remoteId,
+            );
+          }
+        }
+      }
       if (!doesTaskNeedSyncStamp(prev, task)) {
         stampedTasks.add(task);
         continue;
       }
-      taskSyncNeeded = true;
-      dirtyTaskIds.add(task.id);
+      syncNeeded = true;
       final changedFields = diffTaskDirtyFields(prev, task);
-      if (changedFields.isNotEmpty) {
-        (dirtyTaskFields[task.id] ??= <TaskDirtyField>{}).addAll(changedFields);
-      }
       final changedSteps = diffDirtyStepIds(prev, task);
-      if (changedSteps.isNotEmpty) {
-        (dirtyStepIds[task.id] ??= <String>{}).addAll(changedSteps);
-      }
-      if (changedFields.contains(TaskDirtyField.body) &&
-          prev != null &&
-          !taskBaseNotes.containsKey(task.id)) {
-        taskBaseNotes[task.id] = prev.note;
-      }
+      outbox.enqueueUpsert(
+        entityType: SyncEntityType.task,
+        localId: task.id,
+        fields: {for (final f in changedFields) f.name},
+        stepIds: changedSteps,
+        baseNote: (changedFields.contains(TaskDirtyField.body) && prev != null)
+            ? prev.note
+            : null,
+      );
       final resolvedRemoteParent =
           (prev != null &&
               prev.listId != task.listId &&
@@ -324,34 +274,18 @@ LocalCommitTrackResult trackLocalCommit({
     prevState,
     nextState,
   );
-  var settingSyncNeeded = false;
   if (changedGlobalSettingKeys.isNotEmpty) {
-    settingSyncNeeded = true;
-    dirtySettingKeys.addAll(changedGlobalSettingKeys);
+    syncNeeded = true;
+    for (final key in changedGlobalSettingKeys) {
+      outbox.enqueueSetting(key);
+    }
   }
 
-  return LocalCommitTrackResult(
+  return LocalOutboxCommitResult(
     groups: stampedGroups,
     lists: stampedLists,
     tasks: stampedTasks,
-    dirtyGroupIds: dirtyGroupIds,
-    dirtyGroupFields: dirtyGroupFields,
-    dirtyListIds: dirtyListIds,
-    dirtyListFields: dirtyListFields,
-    dirtyTaskIds: dirtyTaskIds,
-    dirtyTaskFields: dirtyTaskFields,
-    dirtyStepIds: dirtyStepIds,
-    taskBaseNotes: taskBaseNotes,
-    dirtySettingKeys: dirtySettingKeys,
-    pendingDeletedGroupRemoteIds: nextDeletedGroups,
-    pendingDeletedListRemoteIds: nextDeletedLists,
-    pendingDeletedTaskRemoteIds: nextDeletedTasks,
-    pendingDeletedSteps: nextDeletedSteps,
-    syncNeeded:
-        groupSyncNeeded ||
-        listSyncNeeded ||
-        taskSyncNeeded ||
-        settingSyncNeeded,
+    syncNeeded: syncNeeded,
   );
 }
 
@@ -373,213 +307,4 @@ bool doesTaskNeedSyncStamp(TaskItem? prev, TaskItem next) {
     ],
   );
   return normalizedPrev != next;
-}
-
-/// Collects remote IDs of items present in [prevItems] that were removed from
-/// [nextIds], clearing their local IDs from [dirtyIds].
-({List<String> deletedRemoteIds, bool changed})
-collectPendingRemoteDeletions<T>({
-  required List<T> prevItems,
-  required Set<String> nextIds,
-  required String Function(T item) idOf,
-  required String? Function(T item) remoteIdOf,
-  required Set<String> dirtyIds,
-  required Iterable<String> existingDeletedRemoteIds,
-  bool Function(T item)? canDeleteRemotely,
-}) {
-  final deleted = LinkedHashSet<String>.of(existingDeletedRemoteIds);
-  var changed = false;
-  for (final prev in prevItems) {
-    final id = idOf(prev);
-    if (nextIds.contains(id)) continue;
-    dirtyIds.remove(id);
-    if (canDeleteRemotely != null && !canDeleteRemotely(prev)) continue;
-    final remoteId = remoteIdOf(prev);
-    if (remoteId == null) continue;
-    changed = true;
-    deleted.add(remoteId);
-  }
-  return (deletedRemoteIds: deleted.toList(), changed: changed);
-}
-
-/// Collects remote step deletions for tasks whose subtasks were removed locally.
-({List<PendingStepDeletion> deletedSteps, bool changed})
-collectPendingStepDeletions({
-  required Map<String, TaskItem> prevTaskById,
-  required List<TaskItem> nextTasks,
-  required Iterable<PendingStepDeletion> existingDeletedSteps,
-}) {
-  final deletedSteps = LinkedHashSet<PendingStepDeletion>.of(
-    existingDeletedSteps,
-  );
-  var changed = false;
-  for (final task in nextTasks) {
-    final prev = prevTaskById[task.id];
-    final taskRemoteId = prev?.remoteId;
-    if (prev == null || taskRemoteId == null) continue;
-    final nextStepIds = {for (final s in task.steps) s.id};
-    for (final prevStep in prev.steps) {
-      final stepRemoteId = prevStep.remoteId;
-      if (nextStepIds.contains(prevStep.id) || stepRemoteId == null) continue;
-      final candidate = PendingStepDeletion(
-        taskRemoteId: taskRemoteId,
-        stepRemoteId: stepRemoteId,
-      );
-      if (deletedSteps.add(candidate)) changed = true;
-    }
-  }
-  return (deletedSteps: deletedSteps.toList(), changed: changed);
-}
-
-List<ListGroup> reconcileSyncedGroups({
-  required List<ListGroup> currentGroups,
-  required List<ListGroup> outcomeGroups,
-  required List<ListGroup> snapshotGroups,
-  required Set<String> preserveDirtyGroupIds,
-}) {
-  return _reconcileEntities<ListGroup>(
-    currentItems: currentGroups,
-    outcomeItems: outcomeGroups,
-    snapshotItems: snapshotGroups,
-    idOf: (g) => g.id,
-    isDirtyBetween: isGroupSyncDirty,
-    mergeEditedWithOutcome: (current, outcome) {
-      preserveDirtyGroupIds.add(current.id);
-      return current.copyWith(remoteId: outcome.remoteId ?? current.remoteId);
-    },
-    mergeOutcomeWithLocalState: (current, outcome) =>
-        outcome.copyWith(isExpanded: current.isExpanded),
-  );
-}
-
-List<TodoList> reconcileSyncedLists({
-  required List<TodoList> currentLists,
-  required List<TodoList> outcomeLists,
-  required List<TodoList> snapshotLists,
-  required Set<String> preserveDirtyListIds,
-}) {
-  return _reconcileEntities<TodoList>(
-    currentItems: currentLists,
-    outcomeItems: outcomeLists,
-    snapshotItems: snapshotLists,
-    idOf: (l) => l.id,
-    isSyncable: isSyncableFolderList,
-    isDirtyBetween: isListSyncDirty,
-    mergeEditedWithOutcome: (current, outcome) {
-      preserveDirtyListIds.add(current.id);
-      return current.copyWith(remoteId: outcome.remoteId ?? current.remoteId);
-    },
-    mergeOutcomeWithLocalState: (current, outcome) =>
-        outcome.copyWith(icon: current.icon),
-  );
-}
-
-List<T> _reconcileEntities<T>({
-  required List<T> currentItems,
-  required List<T> outcomeItems,
-  required List<T> snapshotItems,
-  required String Function(T item) idOf,
-  bool Function(T item)? isSyncable,
-  required bool Function(T snap, T current) isDirtyBetween,
-  required T Function(T current, T outcome) mergeEditedWithOutcome,
-  required T Function(T current, T outcome) mergeOutcomeWithLocalState,
-}) {
-  final snapshotById = {for (final item in snapshotItems) idOf(item): item};
-  final currentById = {for (final item in currentItems) idOf(item): item};
-  final outcomeById = {for (final item in outcomeItems) idOf(item): item};
-
-  final reconciled = <T>[];
-  for (final current in currentItems) {
-    final id = idOf(current);
-    final outcome = outcomeById[id];
-    final snap = snapshotById[id];
-    if (outcome == null) {
-      if (snap == null) {
-        reconciled.add(current);
-      }
-      continue;
-    }
-    if (isSyncable != null && !isSyncable(current)) {
-      reconciled.add(current);
-      continue;
-    }
-    final editedDuringSync = snap != null && isDirtyBetween(snap, current);
-    reconciled.add(
-      editedDuringSync
-          ? mergeEditedWithOutcome(current, outcome)
-          : mergeOutcomeWithLocalState(current, outcome),
-    );
-  }
-
-  for (final outcome in outcomeItems) {
-    final id = idOf(outcome);
-    if (!snapshotById.containsKey(id) && !currentById.containsKey(id)) {
-      reconciled.add(outcome);
-    }
-  }
-  return reconciled;
-}
-
-List<TaskItem> reconcileSyncedTasks({
-  required List<TaskItem> currentTasks,
-  required List<TaskItem> outcomeTasks,
-  required List<TaskItem> snapshotTasks,
-  required Set<String> validListIds,
-  required Set<String> preserveDirtyTaskIds,
-  required bool addNewTasksOnTop,
-}) {
-  final snapshotById = {for (final t in snapshotTasks) t.id: t};
-  final currentById = {for (final t in currentTasks) t.id: t};
-  final outcomeById = {for (final t in outcomeTasks) t.id: t};
-
-  final newRemoteTasks = <TaskItem>[
-    for (final outcome in outcomeTasks)
-      if (!snapshotById.containsKey(outcome.id) &&
-          !currentById.containsKey(outcome.id) &&
-          validListIds.contains(outcome.listId))
-        outcome,
-  ];
-
-  final existingAndLocal = <TaskItem>[];
-  for (final current in currentTasks) {
-    if (!validListIds.contains(current.listId)) continue;
-    final outcome = outcomeById[current.id];
-    final snap = snapshotById[current.id];
-    if (outcome == null) {
-      if (snap == null) {
-        existingAndLocal.add(current);
-      }
-      continue;
-    }
-    final editedDuringSync =
-        snap != null && doesTaskNeedSyncStamp(snap, current);
-    if (!editedDuringSync) {
-      existingAndLocal.add(outcome);
-    } else {
-      preserveDirtyTaskIds.add(current.id);
-      final outcomeStepRemoteById = {
-        for (final s in outcome.steps)
-          if (s.remoteId != null) s.id: s.remoteId!,
-      };
-      final mergedSteps = [
-        for (final step in current.steps)
-          step.copyWith(
-            remoteId: step.remoteId ?? outcomeStepRemoteById[step.id],
-          ),
-      ];
-      existingAndLocal.add(
-        current.copyWith(
-          remoteId: outcome.remoteId ?? current.remoteId,
-          remoteParentFolderId:
-              outcome.remoteParentFolderId ?? current.remoteParentFolderId,
-          changeKey: outcome.changeKey ?? current.changeKey,
-          steps: mergedSteps,
-        ),
-      );
-    }
-  }
-
-  return addNewTasksOnTop
-      ? [...newRemoteTasks, ...existingAndLocal]
-      : [...existingAndLocal, ...newRemoteTasks];
 }

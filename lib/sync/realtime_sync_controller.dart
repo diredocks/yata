@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../account/account_provider.dart';
 import '../core/logging/app_logger.dart';
+import '../data/sync_outbox.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
 import 'microsoft_todo_api.dart';
@@ -22,6 +23,7 @@ class RealtimeSyncController {
     required this.isSyncInFlight,
     required this.onScheduleFallbackSync,
     required this.onOverflowResync,
+    required this.onCatchupDeltaSync,
   });
 
   static const _reconnectDebounceDuration = Duration(milliseconds: 500);
@@ -38,6 +40,7 @@ class RealtimeSyncController {
   })
   onScheduleFallbackSync;
   final void Function(String reason) onOverflowResync;
+  final Future<void> Function(String reason) onCatchupDeltaSync;
 
   Timer? _reconnectTimer;
   StreamSubscription<RealtimeEvent>? _sub;
@@ -199,7 +202,6 @@ class RealtimeSyncController {
     _log.info('draining ${_pendingEvents.length} deferred realtime event(s)');
 
     var needsFallbackSync = false;
-    var fallbackForceFullSync = false;
     var fallbackReason = 'realtime_deferred';
 
     while (!_disposed && !isSyncInFlight() && _pendingEvents.isNotEmpty) {
@@ -217,20 +219,13 @@ class RealtimeSyncController {
       );
       if (!handled) {
         needsFallbackSync = true;
-        if (_shouldForceFullSyncForEvent(event)) {
-          fallbackForceFullSync = true;
-        }
         fallbackReason =
             'realtime_${event.type}_${event.operation ?? 'unknown'}';
       }
     }
 
     if (needsFallbackSync && !_disposed) {
-      onScheduleFallbackSync(
-        delay: const Duration(milliseconds: 200),
-        forceFullSync: fallbackForceFullSync,
-        reason: fallbackReason,
-      );
+      await onCatchupDeltaSync(fallbackReason);
     }
   }
 
@@ -270,6 +265,7 @@ class RealtimeSyncController {
     final typeLower = event.type.trim().toLowerCase();
     final prefix = fromQueue ? '(drained) ' : '';
 
+    final outbox = todoNotifier.repository.outbox;
     switch (typeLower) {
       case 'task':
         return _commitMerge(
@@ -277,14 +273,14 @@ class RealtimeSyncController {
             event: event,
             lists: currentState.lists,
             currentTasks: currentState.tasks,
-            dirtyTaskIds: todoNotifier.repository.loadDirtyTaskIds().toSet(),
-            pendingDeletedTaskRemoteIds: todoNotifier.repository
-                .loadPendingDeletedTaskRemoteIds()
-                .toSet(),
+            dirtyTaskIds: outbox.pendingLocalIds(SyncEntityType.task),
+            pendingDeletedTaskRemoteIds: outbox.pendingDeletedRemoteIds(
+              SyncEntityType.task,
+            ),
             idGenerator: todoNotifier.nextId,
           ),
           prefix: prefix,
-          fallbackForceFull: true,
+          fallbackForceFull: !fromQueue,
           apply: todoNotifier.applyRemoteTasksSnapshot,
         );
 
@@ -295,14 +291,14 @@ class RealtimeSyncController {
             groups: currentState.groups,
             currentLists: currentState.lists,
             currentTasks: currentState.tasks,
-            dirtyListIds: todoNotifier.repository.loadDirtyListIds().toSet(),
-            pendingDeletedListRemoteIds: todoNotifier.repository
-                .loadPendingDeletedListRemoteIds()
-                .toSet(),
+            dirtyListIds: outbox.pendingLocalIds(SyncEntityType.list),
+            pendingDeletedListRemoteIds: outbox.pendingDeletedRemoteIds(
+              SyncEntityType.list,
+            ),
             idGenerator: todoNotifier.nextId,
           ),
           prefix: prefix,
-          fallbackForceFull: true,
+          fallbackForceFull: !fromQueue,
           apply: (update) => todoNotifier.applyRemoteListsSnapshot(
             nextLists: update.lists,
             nextTasks: update.tasks,
@@ -314,14 +310,14 @@ class RealtimeSyncController {
           mergeRealtimeFolderGroupEvent(
             event: event,
             currentGroups: currentState.groups,
-            dirtyGroupIds: todoNotifier.repository.loadDirtyGroupIds().toSet(),
-            pendingDeletedGroupRemoteIds: todoNotifier.repository
-                .loadPendingDeletedGroupRemoteIds()
-                .toSet(),
+            dirtyGroupIds: outbox.pendingLocalIds(SyncEntityType.group),
+            pendingDeletedGroupRemoteIds: outbox.pendingDeletedRemoteIds(
+              SyncEntityType.group,
+            ),
             idGenerator: todoNotifier.nextId,
           ),
           prefix: prefix,
-          fallbackForceFull: true,
+          fallbackForceFull: !fromQueue,
           apply: todoNotifier.applyRemoteGroupsSnapshot,
         );
 
@@ -329,9 +325,7 @@ class RealtimeSyncController {
         return _commitMerge(
           mergeRealtimeSettingEvent(
             event: event,
-            dirtySettingKeys: todoNotifier.settings
-                .loadDirtySettingKeys()
-                .toSet(),
+            dirtySettingKeys: outbox.pendingLocalIds(SyncEntityType.setting),
           ),
           prefix: prefix,
           fallbackForceFull: false,
