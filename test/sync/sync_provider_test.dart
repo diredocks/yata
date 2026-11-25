@@ -384,5 +384,44 @@ void main() {
         expect(firstPushAt!.inMilliseconds, lessThan(1300));
       },
     );
+
+    test(
+      'syncOnSessionStart uses incremental delta sync when deltaLinks exist',
+      () async {
+        final fakeApi = FakeSubstrateApi()
+          ..onFetchGroupsDelta = ((dl) => DeltaPageResult(
+            items: const [],
+            deltaLink: dl ?? 'dl-groups-new',
+          ))
+          ..onFetchFoldersDelta = ((dl) => DeltaPageResult(
+            items: const [],
+            deltaLink: dl ?? 'dl-folders-new',
+          ))
+          ..onFetchTasksDelta = ((folderId, dl) => DeltaPageResult(
+            items: const [],
+            deltaLink: dl ?? 'dl-tasks-new',
+          ));
+
+        final h = await createSyncTestHarness(
+          accountId: 'acct_startup_delta',
+          api: fakeApi,
+          defaultTasksFolderRemoteId: 'rf-default',
+          groupsDeltaLink: 'dl-groups-saved',
+          foldersDeltaLink: 'dl-folders-saved',
+          taskDeltaLinks: const {'rf-default': 'dl-tasks-saved'},
+          startupSyncEnabled: true,
+        );
+
+        h.container.read(syncProvider.notifier).syncOnSessionStart();
+        await pumpEventQueue();
+
+        expect(h.api.callLog, contains('GET foldergroups(dl-groups-saved)'));
+        expect(h.api.callLog, contains('GET taskfolders(dl-folders-saved)'));
+        expect(h.api.callLog, contains('GET tasks(rf-default,dl-tasks-saved)'));
+        expect(h.api.callLog, isNot(contains('GET foldergroups(null)')));
+        expect(h.api.callLog, isNot(contains('GET taskfolders(null)')));
+        expect(h.api.callLog, isNot(contains('GET tasks(rf-default,null)')));
+      },
+    );
   });
 }

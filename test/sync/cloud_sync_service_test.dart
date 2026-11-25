@@ -798,7 +798,7 @@ void main() {
               repository: h.repository,
               settings: h.settings,
               idGenerator: h.container.read(todoProvider.notifier).nextId,
-              pushOnly: true,
+              kind: SyncKind.pushOnly,
             )
             .fold(
               (outcome) => outcome,
@@ -859,7 +859,7 @@ void main() {
             repository: h.repository,
             settings: h.settings,
             idGenerator: h.container.read(todoProvider.notifier).nextId,
-            pushOnly: true,
+            kind: SyncKind.pushOnly,
           )
           .fold(
             (outcome) => outcome,

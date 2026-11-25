@@ -554,5 +554,74 @@ void main() {
       expect(fakeApi.callLog, isNot(contains('GET taskfolders(null)')));
       expect(fakeApi.callLog, isNot(contains('GET tasks(rf-default,null)')));
     });
+
+    test('mid-sync SyncRealtime fallback events coalesce and trigger an immediate incremental catch-up sync after current cycle', () async {
+      final taskFetchStarted = Completer<void>();
+      final allowTaskFetchFinish = Completer<void>();
+      final fakeApi =
+          BlockingTasksDeltaApi(taskFetchStarted, allowTaskFetchFinish)
+            ..onFetchGroupsDelta = ((dl) =>
+                DeltaPageResult(items: const [], deltaLink: dl ?? 'dl-g-new'))
+            ..onFetchFoldersDelta = ((dl) =>
+                DeltaPageResult(items: const [], deltaLink: dl ?? 'dl-f-new'))
+            ..onFetchTasksDelta = ((folderId, dl) =>
+                DeltaPageResult(items: const [], deltaLink: dl ?? 'dl-t-new'));
+
+      final h = await createSyncTestHarness(
+        accountId: 'acct_rt_mid_sync_catchup',
+        api: fakeApi,
+        realtimeSyncEnabled: true,
+        defaultTasksFolderRemoteId: 'rf-default',
+        groupsDeltaLink: 'dl-groups-saved',
+        foldersDeltaLink: 'dl-folders-saved',
+        taskDeltaLinks: const {'rf-default': 'dl-tasks-saved'},
+      );
+
+      h.container.read(syncProvider);
+      await pumpEventQueue();
+
+      final syncFuture = h.container.read(syncProvider.notifier).syncNow();
+      await taskFetchStarted.future;
+
+      // Two missing-payload events arrive while sync is in flight; they must
+      // not block the stream or be dropped, and must coalesce into one
+      // incremental delta catch-up pass after the in-flight cycle finishes.
+      h.api.realtimeController.add(
+        const RealtimeEvent(
+          id: 'rt-1',
+          type: 'Task',
+          operation: 'Created',
+          requestId: 'other-device-req-1',
+        ),
+      );
+      h.api.realtimeController.add(
+        const RealtimeEvent(
+          id: 'rt-2',
+          type: 'Task',
+          operation: 'Updated',
+          requestId: 'other-device-req-2',
+        ),
+      );
+      await pumpEventQueue();
+      expect(h.container.read(syncProvider).isSyncing, isTrue);
+
+      allowTaskFetchFinish.complete();
+      await syncFuture;
+      await pumpEventQueue();
+
+      expect(
+        fakeApi.callLog.where((c) => c.startsWith('GET tasks(')).length,
+        2,
+      );
+      expect(
+        fakeApi.callLog
+            .where((c) => c == 'GET tasks(rf-default,dl-tasks-saved)')
+            .length,
+        2,
+      );
+      expect(fakeApi.callLog, isNot(contains('GET foldergroups(null)')));
+      expect(fakeApi.callLog, isNot(contains('GET taskfolders(null)')));
+      expect(fakeApi.callLog, isNot(contains('GET tasks(rf-default,null)')));
+    });
   });
 }
