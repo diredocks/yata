@@ -5,12 +5,16 @@ import 'package:http/http.dart' as http;
 import 'package:result_dart/result_dart.dart';
 
 import '../core/error/app_error.dart';
+import '../core/logging/app_logger.dart';
 import '../core/result/app_result.dart';
+import '../sync/sync_guard.dart';
 import '../sync/todo_wire_codecs.dart';
 import 'auth_token_storage.dart';
 import 'msa_profile_parser.dart';
 
 export 'auth_token_storage.dart';
+
+final _log = appLogFor('MsaAuth');
 
 /// Fixed personal Microsoft Account (MSA) OAuth2 constants extracted from
 /// Microsoft To Do 2.178 (`MsaSignInActivity` / `UserProfileProvider`).
@@ -556,30 +560,33 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
     required String endpoint,
     required Map<String, String> headers,
   }) async {
-    try {
-      final response = await _http
-          .get(Uri.parse(endpoint), headers: headers)
-          .timeout(const Duration(seconds: 10));
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final map = _decodeJsonMap(response.body);
-        if (map.isNotEmpty) return map;
-      }
-    } catch (_) {}
-    return null;
+    final response = await _probe(
+      endpoint,
+      operation: 'auth.profile',
+      headers: headers,
+    );
+    if (response == null) return null;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      _log.fine('profile probe ${response.statusCode} $endpoint');
+      return null;
+    }
+    final map = _decodeJsonMap(response.body);
+    return map.isEmpty ? null : map;
   }
 
   Future<String?> _tryFetchImageBase64(
     String url, {
     Map<String, String>? headers,
   }) async {
-    try {
-      final resp = await _http
-          .get(Uri.parse(url), headers: headers)
-          .timeout(const Duration(seconds: 6));
-      if (isValidImageResponse(resp)) {
-        return base64Encode(resp.bodyBytes);
-      }
-    } catch (_) {}
+    final resp = await _probe(
+      url,
+      operation: 'auth.avatar',
+      headers: headers,
+      timeout: const Duration(seconds: 6),
+    );
+    if (resp == null) return null;
+    if (isValidImageResponse(resp)) return base64Encode(resp.bodyBytes);
+    _log.fine('avatar probe ${resp.statusCode} $url');
     return null;
   }
 
@@ -589,21 +596,38 @@ class HttpMicrosoftAuthClient implements MicrosoftAuthClient {
     final url =
         '${MsaAuthConfig.autodiscoverEndpoint}/'
         'CID:${Uri.encodeComponent(normalizedCid)}?Protocol=todo';
-    try {
-      final response = await _http
-          .get(Uri.parse(url), headers: const {'Accept': 'application/json'})
-          .timeout(const Duration(seconds: 10));
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final json = _decodeJsonMap(response.body);
-        final rawUrl = (json['Url'] ?? json['url']) as String?;
-        if (rawUrl != null && rawUrl.trim().isNotEmpty) {
-          return normalizeTodoApiBaseUrl(rawUrl);
-        }
+    final response = await _probe(
+      url,
+      operation: 'auth.autodiscover',
+      headers: const {'Accept': 'application/json'},
+    );
+    if (response != null &&
+        response.statusCode >= 200 &&
+        response.statusCode < 300) {
+      final json = _decodeJsonMap(response.body);
+      final rawUrl = (json['Url'] ?? json['url']) as String?;
+      if (rawUrl != null && rawUrl.trim().isNotEmpty) {
+        return normalizeTodoApiBaseUrl(rawUrl);
       }
-    } catch (_) {
-      // Fallback per AutoDiscovery specification.
     }
+    _log.fine('autodiscovery fell back to default: $url');
+    // Fallback per AutoDiscovery specification.
     return MsaAuthConfig.defaultTodoApiBaseUrl;
+  }
+
+  Future<http.Response?> _probe(
+    String url, {
+    required String operation,
+    Map<String, String>? headers,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final result = await guardApiCall(
+      () => _http.get(Uri.parse(url), headers: headers).timeout(timeout),
+      operation: operation,
+    );
+    final error = result.exceptionOrNull();
+    if (error != null) return null;
+    return result.getOrThrow();
   }
 
   static String normalizeTodoApiBaseUrl(String rawUrl) {
