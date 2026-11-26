@@ -243,5 +243,14 @@
   "shortcutUpdated": "主屏幕快捷方式已更新",
   "printedWithApp": "使用 {appName} 打印",
   "printError": "无法打印列表",
-  "shareError": "无法分享列表"
+  "shareError": "无法分享列表",
+  "addFile": "添加文件",
+  "takePhoto": "拍照",
+  "chooseFile": "选择文件",
+  "deleteFileTitle": "删除文件",
+  "deleteFileConfirm": "确定要删除“{name}”吗？",
+  "attachmentTotalTooLarge": "每个任务的附件总大小不能超过 25 MB",
+  "attachmentOpenError": "无法打开文件",
+  "attachmentDownloadError": "无法下载文件",
+  "attachmentUploadError": "无法上传文件"
 }

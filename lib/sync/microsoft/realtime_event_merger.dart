@@ -87,6 +87,7 @@ RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
 
   final RemoteTodoTask remote;
   final bool preserveStepsWhenMissing;
+  final bool preserveAttachmentsWhenMissing;
   if (op == RealtimeEventOperation.deleted) {
     final remoteId = _resolveDeleteRemoteId(event);
     if (remoteId.isEmpty) {
@@ -94,6 +95,7 @@ RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
     }
     remote = RemoteTodoTask(id: remoteId, subject: '', isDeleted: true);
     preserveStepsWhenMissing = false;
+    preserveAttachmentsWhenMissing = false;
   } else {
     if (event.payload == null) {
       return RealtimeMergeResult.unhandled(
@@ -108,6 +110,9 @@ RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
       );
     }
     preserveStepsWhenMissing = !payloadMap.containsKey('Subtasks');
+    preserveAttachmentsWhenMissing = !payloadMap.containsKey(
+      'LinkedEntities',
+    );
   }
 
   if (pendingDeletedTaskRemoteIds.contains(remote.id)) {
@@ -136,6 +141,7 @@ RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
         remote: remote,
         fallbackLocalListId: null,
         preserveStepsWhenMissing: preserveStepsWhenMissing,
+        preserveAttachmentsWhenMissing: preserveAttachmentsWhenMissing,
       ),
     ],
     dirtyTaskIds: dirtyTaskIds,

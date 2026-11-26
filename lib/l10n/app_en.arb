@@ -425,5 +425,21 @@
     }
   },
   "printError": "Unable to print list",
-  "shareError": "Unable to share list"
+  "shareError": "Unable to share list",
+  "addFile": "Add file",
+  "takePhoto": "Take photo",
+  "chooseFile": "Choose file",
+  "deleteFileTitle": "Delete file",
+  "deleteFileConfirm": "Delete \"{name}\"?",
+  "@deleteFileConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "attachmentTotalTooLarge": "Total attachment size per task cannot exceed 25 MB",
+  "attachmentOpenError": "Unable to open file",
+  "attachmentDownloadError": "Unable to download file",
+  "attachmentUploadError": "Unable to upload file"
 }

@@ -424,6 +424,7 @@ class SubstratePullEngine {
           remote: remote,
           fallbackLocalListId: localListId,
           preserveStepsWhenMissing: false,
+          preserveAttachmentsWhenMissing: false,
         ));
       }
 

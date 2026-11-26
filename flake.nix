@@ -24,9 +24,9 @@
       androidSdk =
         (pkgs.androidenv.composeAndroidPackages {
           # Flutter expects compileSdk=36 / build-tools=36.0.0 / ndk=28.2.13676358,
-          # while plugins pin additional SDK levels (jni=35, flutter_local_notifications=37.0).
-          platformVersions = ["35" "36" "37.0"];
-          buildToolsVersions = ["35.0.0" "36.0.0" "37.0.0"];
+          # while plugins pin additional SDK levels (open_file_android=34, jni=35, flutter_local_notifications=37.0).
+          platformVersions = ["34" "35" "36" "37.0"];
+          buildToolsVersions = ["34.0.0" "35.0.0" "36.0.0" "37.0.0"];
           platformToolsVersion = "latest";
           cmdLineToolsVersion = "latest";
           cmakeVersions = ["3.22.1"];

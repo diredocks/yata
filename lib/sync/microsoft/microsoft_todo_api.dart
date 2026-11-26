@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:collection/collection.dart';
 import 'package:http/http.dart' as http;
@@ -119,6 +120,25 @@ abstract class MicrosoftTodoApi {
     SubstrateRequestContext ctx,
     String taskRemoteId,
     String stepRemoteId,
+  );
+
+  AsyncAppResult<RemoteFileUpload> uploadAttachment(
+    SubstrateRequestContext ctx,
+    String taskRemoteId, {
+    required String fileName,
+    required List<int> bytes,
+    String? contentType,
+  });
+
+  AsyncAppResult<Uint8List> downloadAttachment(
+    SubstrateRequestContext ctx,
+    String webLink,
+  );
+
+  AsyncAppResult<Unit> deleteLinkedEntity(
+    SubstrateRequestContext ctx,
+    String taskRemoteId,
+    String entityRemoteId,
   );
 
   Stream<RealtimeEvent> connectRealtime(SubstrateRequestContext ctx);
@@ -752,6 +772,76 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
     ctx: ctx,
     uri: ctx.endpointUri(
       'tasks/${Uri.encodeComponent(taskRemoteId)}/subtasks/${Uri.encodeComponent(stepRemoteId)}',
+    ),
+  );
+
+  @override
+  AsyncAppResult<RemoteFileUpload> uploadAttachment(
+    SubstrateRequestContext ctx,
+    String taskRemoteId, {
+    required String fileName,
+    required List<int> bytes,
+    String? contentType,
+  }) {
+    final uri = ctx.endpointUri(
+      'tasks/${Uri.encodeComponent(taskRemoteId)}/attachments',
+    );
+    return guardApiCall(() async {
+      await _awaitThrottleGate();
+      final request = http.MultipartRequest('POST', uri);
+      final headers = _buildHeaders(ctx)..remove('Content-Type');
+      request.headers.addAll(headers);
+      request.fields['jsonMetadata'] = jsonEncode({'Name': fileName});
+      request.files.add(
+        http.MultipartFile.fromBytes('attachment', bytes, filename: fileName),
+      );
+      final streamed = await _http.send(request).timeout(_requestTimeout);
+      final response = await http.Response.fromStream(streamed);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw _buildApiError(response);
+      }
+      return RemoteFileUpload.fromJson(_decodeJsonMap(response.body));
+    }, operation: 'uploadAttachment');
+  }
+
+  @override
+  AsyncAppResult<Uint8List> downloadAttachment(
+    SubstrateRequestContext ctx,
+    String webLink,
+  ) {
+    final Uri uri;
+    final trimmed = webLink.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      uri = Uri.parse(trimmed);
+    } else {
+      final base = Uri.parse(ctx.baseUrl);
+      final path = trimmed.startsWith('/') ? trimmed : '/$trimmed';
+      uri = Uri.parse('${base.scheme}://${base.authority}$path');
+    }
+    return guardApiCall(() async {
+      await _awaitThrottleGate();
+      final headers = _buildHeaders(ctx)
+        ..remove('Content-Type')
+        ..['Accept'] = '*/*';
+      final response = await _http
+          .get(uri, headers: headers)
+          .timeout(_requestTimeout);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw _buildApiError(response);
+      }
+      return response.bodyBytes;
+    }, operation: 'downloadAttachment');
+  }
+
+  @override
+  AsyncAppResult<Unit> deleteLinkedEntity(
+    SubstrateRequestContext ctx,
+    String taskRemoteId,
+    String entityRemoteId,
+  ) => _deleteResource(
+    ctx: ctx,
+    uri: ctx.endpointUri(
+      'tasks/${Uri.encodeComponent(taskRemoteId)}/linkedentities/${Uri.encodeComponent(entityRemoteId)}',
     ),
   );
 

@@ -22,6 +22,40 @@ Map<String, dynamic> _$TaskStepToJson(_TaskStep instance) => <String, dynamic>{
   'orderDateTime': nullableUtcDateTimeToJson(instance.orderDateTime),
 };
 
+_TaskAttachment _$TaskAttachmentFromJson(Map<String, dynamic> json) =>
+    _TaskAttachment(
+      id: json['id'] as String,
+      displayName: json['displayName'] as String,
+      remoteId: json['remoteId'] as String?,
+      entityType: json['entityType'] as String? ?? 'file',
+      entitySubType: json['entitySubType'] as String?,
+      webLink: json['webLink'] as String?,
+      contentType: json['contentType'] as String?,
+      size: (json['size'] as num?)?.toInt() ?? 0,
+      lastModifiedDateTime: nullableUtcDateTimeFromJson(
+        json['lastModifiedDateTime'] as String?,
+      ),
+      localPath: json['localPath'] as String?,
+      isTransferring: json['isTransferring'] as bool? ?? false,
+    );
+
+Map<String, dynamic> _$TaskAttachmentToJson(_TaskAttachment instance) =>
+    <String, dynamic>{
+      'id': instance.id,
+      'displayName': instance.displayName,
+      'remoteId': instance.remoteId,
+      'entityType': instance.entityType,
+      'entitySubType': instance.entitySubType,
+      'webLink': instance.webLink,
+      'contentType': instance.contentType,
+      'size': instance.size,
+      'lastModifiedDateTime': nullableUtcDateTimeToJson(
+        instance.lastModifiedDateTime,
+      ),
+      'localPath': instance.localPath,
+      'isTransferring': instance.isTransferring,
+    };
+
 _TaskItem _$TaskItemFromJson(Map<String, dynamic> json) => _TaskItem(
   id: json['id'] as String,
   listId: json['listId'] as String,
@@ -56,6 +90,11 @@ _TaskItem _$TaskItemFromJson(Map<String, dynamic> json) => _TaskItem(
           ?.map((e) => TaskStep.fromJson(e as Map<String, dynamic>))
           .toList() ??
       const <TaskStep>[],
+  attachments:
+      (json['attachments'] as List<dynamic>?)
+          ?.map((e) => TaskAttachment.fromJson(e as Map<String, dynamic>))
+          .toList() ??
+      const <TaskAttachment>[],
   remoteId: json['remoteId'] as String?,
   remoteParentFolderId: json['remoteParentFolderId'] as String?,
   orderDateTime: nullableUtcDateTimeFromJson(json['orderDateTime'] as String?),
@@ -84,6 +123,7 @@ Map<String, dynamic> _$TaskItemToJson(_TaskItem instance) => <String, dynamic>{
   'noteUpdatedAt': nullableUtcDateTimeToJson(instance.noteUpdatedAt),
   'completedAt': nullableUtcDateTimeToJson(instance.completedAt),
   'steps': instance.steps.map((e) => e.toJson()).toList(),
+  'attachments': instance.attachments.map((e) => e.toJson()).toList(),
   'remoteId': instance.remoteId,
   'remoteParentFolderId': instance.remoteParentFolderId,
   'orderDateTime': nullableUtcDateTimeToJson(instance.orderDateTime),

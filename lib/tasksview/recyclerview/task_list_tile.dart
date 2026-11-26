@@ -158,6 +158,12 @@ class TaskListTile extends StatelessWidget {
       );
     }
 
+    if (task.attachments.isNotEmpty) {
+      trailingIconItems.add(
+        Icon(Icons.attach_file, size: 13, color: secondaryColor),
+      );
+    }
+
     // Insert TaskMetadataDivider ('•') between text items, and a single
     // lastDivider ('•') before trailing icon-only items matching MetadataContainer.
     final separatedMeta = <Widget>[];

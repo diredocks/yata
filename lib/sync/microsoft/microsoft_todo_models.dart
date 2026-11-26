@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../../auth/microsoft_auth_service.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
@@ -141,6 +143,79 @@ class RemoteTaskStep {
   }
 }
 
+class RemoteLinkedEntity {
+  const RemoteLinkedEntity({
+    required this.id,
+    required this.displayName,
+    this.entityType = 'file',
+    this.entitySubType,
+    this.webLink,
+    this.applicationName,
+    this.size = 0,
+    this.contentType,
+    this.lastModifiedDateTime,
+  });
+
+  final String id;
+  final String displayName;
+  final String entityType;
+  final String? entitySubType;
+  final String? webLink;
+  final String? applicationName;
+  final int size;
+  final String? contentType;
+  final DateTime? lastModifiedDateTime;
+
+  factory RemoteLinkedEntity.fromJson(Map<String, dynamic> json) {
+    final rawPreview = json['Preview'];
+    Map<String, dynamic>? previewMap = asJsonMap(rawPreview);
+    if (previewMap == null && rawPreview is String && rawPreview.isNotEmpty) {
+      try {
+        previewMap = asJsonMap(jsonDecode(rawPreview));
+      } catch (_) {}
+    }
+
+    return RemoteLinkedEntity(
+      id: json['Id'] as String? ?? '',
+      displayName: json['DisplayName'] as String? ?? '',
+      entityType: json['EntityType'] as String? ?? 'file',
+      entitySubType: json['EntitySubType'] as String?,
+      webLink: json['WebLink'] as String?,
+      applicationName: json['ApplicationName'] as String?,
+      size: (previewMap?['Size'] as num?)?.toInt() ?? 0,
+      contentType: previewMap?['ContentType'] as String?,
+      lastModifiedDateTime: parseSubstrateTimestamp(
+        previewMap?['LastModifiedDateTime'] as String?,
+      ),
+    );
+  }
+}
+
+class RemoteFileUpload {
+  const RemoteFileUpload({
+    required this.id,
+    this.size = 0,
+    this.contentType,
+    this.lastModifiedDateTime,
+  });
+
+  final String id;
+  final int size;
+  final String? contentType;
+  final DateTime? lastModifiedDateTime;
+
+  factory RemoteFileUpload.fromJson(Map<String, dynamic> json) {
+    return RemoteFileUpload(
+      id: json['Id'] as String? ?? '',
+      size: (json['Size'] as num?)?.toInt() ?? 0,
+      contentType: json['ContentType'] as String?,
+      lastModifiedDateTime: parseSubstrateTimestamp(
+        json['LastModifiedDateTime'] as String?,
+      ),
+    );
+  }
+}
+
 enum RemoteTaskStatus {
   notStarted,
   inProgress,
@@ -201,6 +276,7 @@ class RemoteTodoTask {
     this.rawRecurrence,
     this.uncommittedDue = false,
     this.subtasks = const [],
+    this.linkedEntities = const [],
     this.isDeleted = false,
   });
 
@@ -228,6 +304,7 @@ class RemoteTodoTask {
   final Map<String, dynamic>? rawRecurrence;
   final bool uncommittedDue;
   final List<RemoteTaskStep> subtasks;
+  final List<RemoteLinkedEntity> linkedEntities;
   final bool isDeleted;
 
   RemoteTaskStatus get parsedStatus => RemoteTaskStatus.parse(status);
@@ -258,6 +335,16 @@ class RemoteTodoTask {
         : subtasksRaw
               .whereType<Map>()
               .map((m) => RemoteTaskStep.fromJson(Map<String, dynamic>.from(m)))
+              .toList();
+    final linkedRaw = json['LinkedEntities'] as List<dynamic>?;
+    final linkedEntities = linkedRaw == null
+        ? const <RemoteLinkedEntity>[]
+        : linkedRaw
+              .whereType<Map>()
+              .map(
+                (m) =>
+                    RemoteLinkedEntity.fromJson(Map<String, dynamic>.from(m)),
+              )
               .toList();
 
     return RemoteTodoTask(
@@ -297,6 +384,7 @@ class RemoteTodoTask {
       rawRecurrence: normalizeRawRecurrence(recurrenceMap),
       uncommittedDue: json['UncommittedDue'] as bool? ?? false,
       subtasks: subtasks,
+      linkedEntities: linkedEntities,
       isDeleted: reason == 'deleted',
     );
   }

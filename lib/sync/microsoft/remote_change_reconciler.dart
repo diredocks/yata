@@ -10,6 +10,7 @@ typedef RemoteTaskChange = ({
   RemoteTodoTask remote,
   String? fallbackLocalListId,
   bool preserveStepsWhenMissing,
+  bool preserveAttachmentsWhenMissing,
 });
 
 class TaskReconcileResult {
@@ -141,11 +142,15 @@ TaskReconcileResult reconcileRemoteTaskChanges({
         localId: existing.id,
         listId: resolvedListId,
         existingSteps: existing.steps,
+        existingAttachments: existing.attachments,
         idGenerator: idGenerator,
         existingCompletedAt: existing.completedAt,
       );
       if (change.preserveStepsWhenMissing) {
         mapped = mapped.copyWith(steps: existing.steps);
+      }
+      if (change.preserveAttachmentsWhenMissing) {
+        mapped = mapped.copyWith(attachments: existing.attachments);
       }
       if (mapped.remoteParentFolderId == null &&
           existing.remoteParentFolderId != null) {

@@ -5,6 +5,7 @@ import '../data/order_date_time.dart';
 import '../data/todo_provider.dart';
 import '../models/task_item.dart';
 import '../tasksview/tasks_view_presenter.dart';
+import 'attachments/attachment_service.dart';
 import 'recurrence/task_pickers.dart';
 
 /// Presenter for `detailview/DetailViewFragment`, matching `detailview/DetailViewPresenter`.
@@ -146,8 +147,54 @@ class DetailViewPresenter {
   }
 
   void deleteTask(String taskId) {
+    final removed = _state.tasks.firstWhereOrNull((t) => t.id == taskId);
+    if (removed != null) {
+      final attachments = _ref.read(attachmentServiceProvider);
+      for (final att in removed.attachments) {
+        attachments.deleteLocalCache(att.localPath);
+      }
+    }
     final updated = _state.tasks.where((t) => t.id != taskId).toList();
     _commitTasks(updated, clearSelectedTaskId: _state.selectedTaskId == taskId);
+  }
+
+  String nextAttachmentId() => _store.nextId('att');
+
+  void addAttachment(String taskId, TaskAttachment attachment) {
+    _updateTaskById(
+      taskId,
+      (task) => task.copyWith(attachments: [...task.attachments, attachment]),
+    );
+  }
+
+  void updateAttachment(String taskId, TaskAttachment attachment) {
+    _updateTaskById(
+      taskId,
+      (task) => task.copyWith(
+        attachments: [
+          for (final item in task.attachments)
+            if (item.id == attachment.id) attachment else item,
+        ],
+      ),
+    );
+  }
+
+  void deleteAttachment(String taskId, String attachmentId) {
+    final task = _state.tasks.firstWhereOrNull((t) => t.id == taskId);
+    final removed = task?.attachments.firstWhereOrNull(
+      (a) => a.id == attachmentId,
+    );
+    if (removed != null) {
+      _ref.read(attachmentServiceProvider).deleteLocalCache(removed.localPath);
+    }
+    _updateTaskById(
+      taskId,
+      (task) => task.copyWith(
+        attachments: task.attachments
+            .where((a) => a.id != attachmentId)
+            .toList(),
+      ),
+    );
   }
 
   void addStep(String taskId, String title) {

@@ -26,6 +26,61 @@ abstract class TaskStep with _$TaskStep {
 }
 
 @freezed
+abstract class TaskAttachment with _$TaskAttachment {
+  const TaskAttachment._();
+
+  const factory TaskAttachment({
+    required String id,
+    required String displayName,
+    String? remoteId,
+    @Default('file') String entityType,
+    String? entitySubType,
+    String? webLink,
+    String? contentType,
+    @Default(0) int size,
+    @JsonKey(
+      fromJson: nullableUtcDateTimeFromJson,
+      toJson: nullableUtcDateTimeToJson,
+    )
+    DateTime? lastModifiedDateTime,
+    String? localPath,
+    @Default(false) bool isTransferring,
+  }) = _TaskAttachment;
+
+  factory TaskAttachment.fromJson(Map<String, dynamic> json) =>
+      _$TaskAttachmentFromJson(json);
+
+  bool get isLinkOnly {
+    final normalizedType = entityType.toLowerCase();
+    if (normalizedType == 'plannertaskweburl') return true;
+    return normalizedType != 'file' &&
+        normalizedType != 'wunderlistfile' &&
+        entitySubType?.toLowerCase() != 'exchange-file-attachment' &&
+        webLink != null &&
+        (webLink!.startsWith('https://') || webLink!.startsWith('http://'));
+  }
+
+  /// Uppercase file badge label (e.g. `PDF`, `JPG`, `DOC`, `LINK`), or null.
+  String? get badgeLabel {
+    if (isLinkOnly) return 'LINK';
+    final dotIdx = displayName.lastIndexOf('.');
+    if (dotIdx >= 0 && dotIdx < displayName.length - 1) {
+      final ext = displayName.substring(dotIdx + 1).toUpperCase();
+      if (ext.length <= 4) {
+        return switch (ext) {
+          'JPEG' => 'JPG',
+          'DOCX' => 'DOC',
+          'XLSX' => 'XLS',
+          'PPTX' => 'PPT',
+          _ => ext,
+        };
+      }
+    }
+    return null;
+  }
+}
+
+@freezed
 abstract class TaskItem with _$TaskItem {
   const TaskItem._();
 
@@ -62,6 +117,7 @@ abstract class TaskItem with _$TaskItem {
     )
     DateTime? completedAt,
     @Default(<TaskStep>[]) List<TaskStep> steps,
+    @Default(<TaskAttachment>[]) List<TaskAttachment> attachments,
     String? remoteId,
     String? remoteParentFolderId,
     @JsonKey(

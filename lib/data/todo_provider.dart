@@ -257,6 +257,9 @@ class TodoNotifier extends Notifier<TodoState> {
                     for (final s in pushed.steps)
                       if (s.remoteId != null) s.id: s.remoteId!,
                   };
+                  final pushedAttById = {
+                    for (final a in pushed.attachments) a.id: a,
+                  };
                   return current.copyWith(
                     remoteId: pushed.remoteId ?? current.remoteId,
                     remoteParentFolderId:
@@ -268,6 +271,23 @@ class TodoNotifier extends Notifier<TodoState> {
                         step.copyWith(
                           remoteId: step.remoteId ?? stepRemoteById[step.id],
                         ),
+                    ],
+                    attachments: [
+                      for (final att in current.attachments)
+                        if (pushedAttById[att.id] case final pAtt?)
+                          att.copyWith(
+                            remoteId: att.remoteId ?? pAtt.remoteId,
+                            size: pAtt.size > 0 ? pAtt.size : att.size,
+                            contentType: pAtt.contentType ?? att.contentType,
+                            lastModifiedDateTime:
+                                pAtt.lastModifiedDateTime ??
+                                att.lastModifiedDateTime,
+                            isTransferring: pAtt.remoteId != null
+                                ? false
+                                : att.isTransferring,
+                          )
+                        else
+                          att,
                     ],
                   );
                 }()

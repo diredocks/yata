@@ -247,6 +247,35 @@ LocalOutboxCommitResult enqueueLocalCommitToOutbox({
             );
           }
         }
+        final nextAttachmentIds = {for (final a in task.attachments) a.id};
+        for (final prevAtt in prev.attachments) {
+          if (!nextAttachmentIds.contains(prevAtt.id)) {
+            syncNeeded = true;
+            outbox.enqueueDelete(
+              entityType: SyncEntityType.attachment,
+              localId: prevAtt.id,
+              remoteId: prevAtt.remoteId,
+              parentLocalId: prev.id,
+              parentRemoteId: prev.remoteId,
+            );
+          }
+        }
+      }
+      final prevAttachmentIds = {
+        for (final a in prev?.attachments ?? const <TaskAttachment>[]) a.id,
+      };
+      for (final att in task.attachments) {
+        if (att.remoteId == null &&
+            att.localPath != null &&
+            !prevAttachmentIds.contains(att.id)) {
+          syncNeeded = true;
+          outbox.enqueueUpsert(
+            entityType: SyncEntityType.attachment,
+            localId: att.id,
+            parentLocalId: task.id,
+            parentRemoteId: task.remoteId,
+          );
+        }
       }
       if (!doesTaskNeedSyncStamp(prev, task)) {
         stampedTasks.add(task);
@@ -308,6 +337,7 @@ bool doesTaskNeedSyncStamp(TaskItem? prev, TaskItem next) {
     changeKey: next.changeKey,
     updatedAt: next.updatedAt,
     noteUpdatedAt: next.noteUpdatedAt,
+    attachments: next.attachments,
     steps: [
       for (final (index, step) in prev.steps.indexed)
         step.copyWith(

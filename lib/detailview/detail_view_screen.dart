@@ -1,7 +1,12 @@
+import 'dart:io';
+
 import 'package:collection/collection.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:path/path.dart' as p;
 
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
@@ -9,6 +14,8 @@ import '../models/todo_list.dart';
 import '../data/todo_provider.dart';
 import '../tasksview/completion_sound_service.dart';
 import '../theme/todo_theme.dart';
+import 'attachments/attachment_service.dart';
+import 'attachments/attachments_card_view.dart';
 import 'detail_view_presenter.dart';
 import 'details/detail_cards.dart';
 import 'header/details_header_view.dart';
@@ -129,6 +136,159 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
     }
 
     notifier.deleteStep(task.id, stepId);
+  }
+
+  Future<void> _addAttachment(TaskItem task) async {
+    final l10n = AppLocalizations.of(context);
+    final choice = await showAttachmentSourceSheet(context);
+    if (choice == null || !mounted) return;
+
+    String? sourcePath;
+    String? fileName;
+
+    if (choice == AttachmentSourceChoice.camera) {
+      final photo = await ImagePicker().pickImage(source: ImageSource.camera);
+      if (photo == null) return;
+      sourcePath = photo.path;
+      fileName = photo.name.isNotEmpty
+          ? photo.name
+          : 'JPG_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    } else {
+      final files = await FilePicker.pickFiles();
+      if (files.isEmpty) return;
+      final picked = files.first;
+      sourcePath = picked.path;
+      fileName = picked.name;
+    }
+
+    if (sourcePath == null || sourcePath.isEmpty || !mounted) return;
+    final resolvedName = AttachmentService.sanitizeFileName(
+      fileName.isNotEmpty ? fileName : p.basename(sourcePath),
+    );
+    final sourceFile = File(sourcePath);
+    if (!await sourceFile.exists() || !mounted) return;
+    final fileSize = await sourceFile.length();
+    if (!mounted) return;
+
+    final service = ref.read(attachmentServiceProvider);
+    if (service.exceedsTaskSizeLimit(task, fileSize)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.attachmentTotalTooLarge)),
+      );
+      return;
+    }
+
+    final notifier = ref.read(detailViewPresenterProvider);
+    final attachmentId = notifier.nextAttachmentId();
+    final staged = await service.stageLocalFile(
+      attachmentId: attachmentId,
+      sourcePath: sourcePath,
+      fileName: resolvedName,
+    );
+    if (!mounted) return;
+
+    notifier.addAttachment(
+      task.id,
+      TaskAttachment(
+        id: attachmentId,
+        displayName: resolvedName,
+        entityType: 'file',
+        contentType: AttachmentService.guessContentType(resolvedName),
+        size: staged.size,
+        lastModifiedDateTime: DateTime.now().toUtc(),
+        localPath: staged.localPath,
+        isTransferring: task.remoteId != null,
+      ),
+    );
+  }
+
+  Future<void> _tapAttachment(TaskItem task, TaskAttachment attachment) async {
+    final l10n = AppLocalizations.of(context);
+    final service = ref.read(attachmentServiceProvider);
+    final notifier = ref.read(detailViewPresenterProvider);
+
+    if (attachment.isLinkOnly) {
+      final res = await service.openAttachment(attachment);
+      if (res.isError() && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.attachmentOpenError)),
+        );
+      }
+      return;
+    }
+
+    final localPath = attachment.localPath;
+    if (localPath != null &&
+        localPath.isNotEmpty &&
+        await File(localPath).exists()) {
+      final res = await service.openAttachment(attachment);
+      if (res.isError() && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.attachmentOpenError)),
+        );
+      }
+      return;
+    }
+
+    notifier.updateAttachment(
+      task.id,
+      attachment.copyWith(isTransferring: true),
+    );
+    final downloadRes = await service.downloadAttachment(attachment);
+    if (!mounted) return;
+
+    if (downloadRes.isError()) {
+      notifier.updateAttachment(
+        task.id,
+        attachment.copyWith(isTransferring: false),
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.attachmentDownloadError)),
+      );
+      return;
+    }
+
+    final downloadedPath = downloadRes.getOrThrow();
+    final updatedAttachment = attachment.copyWith(
+      localPath: downloadedPath,
+      isTransferring: false,
+    );
+    notifier.updateAttachment(task.id, updatedAttachment);
+
+    final openRes = await service.openAttachment(updatedAttachment);
+    if (openRes.isError() && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.attachmentOpenError)),
+      );
+    }
+  }
+
+  Future<void> _confirmDeleteAttachment(
+    TaskItem task,
+    TaskAttachment attachment,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(l10n.deleteFileTitle),
+        content: Text(l10n.deleteFileConfirm(attachment.displayName)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(l10n.delete),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    ref
+        .read(detailViewPresenterProvider)
+        .deleteAttachment(task.id, attachment.id);
   }
 
   Future<void> _confirmDelete(TaskItem task) async {
@@ -300,6 +460,16 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                                         task.id,
                                         RecurrenceType.none,
                                       ),
+                                ),
+                                AttachmentsCardView(
+                                  task: task,
+                                  cardColor: cardBg,
+                                  accentColor: listAccent,
+                                  onAddAttachment: () => _addAttachment(task),
+                                  onTapAttachment: (att) =>
+                                      _tapAttachment(task, att),
+                                  onDeleteAttachment: (att) =>
+                                      _confirmDeleteAttachment(task, att),
                                 ),
                                 NoteCardView(
                                   task: task,

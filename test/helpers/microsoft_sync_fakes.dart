@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -225,6 +226,17 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
   )?
   onPatchStep;
   Future<void> Function(String taskRemoteId, String stepRemoteId)? onDeleteStep;
+
+  Future<RemoteFileUpload> Function(
+    String taskRemoteId,
+    String fileName,
+    List<int> bytes,
+    String? contentType,
+  )?
+  onUploadAttachment;
+  Future<Uint8List> Function(String webLink)? onDownloadAttachment;
+  Future<void> Function(String taskRemoteId, String entityRemoteId)?
+  onDeleteLinkedEntity;
 
   int _idSeq = 0;
 
@@ -509,6 +521,57 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
     return guardApiCall(() async {
       callLog.add('DELETE tasks/$taskRemoteId/subtasks/$stepRemoteId');
       if (onDeleteStep != null) await onDeleteStep!(taskRemoteId, stepRemoteId);
+      return unit;
+    });
+  }
+
+  @override
+  AsyncAppResult<RemoteFileUpload> uploadAttachment(
+    SubstrateRequestContext ctx,
+    String taskRemoteId, {
+    required String fileName,
+    required List<int> bytes,
+    String? contentType,
+  }) {
+    return guardApiCall(() async {
+      callLog.add('POST tasks/$taskRemoteId/attachments ($fileName)');
+      if (onUploadAttachment != null) {
+        return onUploadAttachment!(taskRemoteId, fileName, bytes, contentType);
+      }
+      return RemoteFileUpload(
+        id: 'remote-att-${callLog.length}',
+        size: bytes.length,
+        contentType: contentType ?? 'application/octet-stream',
+        lastModifiedDateTime: DateTime.now().toUtc(),
+      );
+    });
+  }
+
+  @override
+  AsyncAppResult<Uint8List> downloadAttachment(
+    SubstrateRequestContext ctx,
+    String webLink,
+  ) {
+    return guardApiCall(() async {
+      callLog.add('GET $webLink');
+      if (onDownloadAttachment != null) {
+        return onDownloadAttachment!(webLink);
+      }
+      return Uint8List(0);
+    });
+  }
+
+  @override
+  AsyncAppResult<Unit> deleteLinkedEntity(
+    SubstrateRequestContext ctx,
+    String taskRemoteId,
+    String entityRemoteId,
+  ) {
+    return guardApiCall(() async {
+      callLog.add('DELETE tasks/$taskRemoteId/linkedentities/$entityRemoteId');
+      if (onDeleteLinkedEntity != null) {
+        await onDeleteLinkedEntity!(taskRemoteId, entityRemoteId);
+      }
       return unit;
     });
   }

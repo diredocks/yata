@@ -1,6 +1,6 @@
 import 'sync_dirty_fields.dart';
 
-enum SyncEntityType { group, list, task, step, setting }
+enum SyncEntityType { group, list, task, step, attachment, setting }
 
 enum SyncOpKind { upsert, delete }
 
@@ -155,6 +155,8 @@ class SyncOutboxQueue {
   void enqueueUpsert({
     required SyncEntityType entityType,
     required String localId,
+    String? parentLocalId,
+    String? parentRemoteId,
     Set<String> fields = const <String>{},
     Set<String> stepIds = const <String>{},
     String? baseNote,
@@ -169,6 +171,7 @@ class SyncOutboxQueue {
     if (idx >= 0) {
       final existing = _ops[idx];
       _ops[idx] = existing.copyWith(
+        parentRemoteId: parentRemoteId ?? existing.parentRemoteId,
         fields: {...existing.fields, ...fields},
         stepIds: {...existing.stepIds, ...stepIds},
         baseNote: existing.baseNote ?? baseNote,
@@ -181,6 +184,8 @@ class SyncOutboxQueue {
         entityType: entityType,
         kind: SyncOpKind.upsert,
         localId: localId,
+        parentLocalId: parentLocalId,
+        parentRemoteId: parentRemoteId,
         fields: Set<String>.from(fields),
         stepIds: Set<String>.from(stepIds),
         baseNote: baseNote,
@@ -356,6 +361,8 @@ class SyncOutboxQueue {
         SyncEntityType.group => !validGroupIds.contains(op.localId),
         SyncEntityType.list => !validListIds.contains(op.localId),
         SyncEntityType.task => !validTaskIds.contains(op.localId),
+        SyncEntityType.attachment =>
+          op.parentLocalId != null && !validTaskIds.contains(op.parentLocalId!),
         SyncEntityType.step || SyncEntityType.setting => false,
       };
     });

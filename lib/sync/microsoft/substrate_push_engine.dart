@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:collection/collection.dart';
 import 'package:result_dart/result_dart.dart';
 
@@ -214,6 +216,34 @@ class SubstratePushEngine {
               seq: op.seq,
               clearedRemoteIdKey: (
                 type: SyncEntityType.step,
+                localId: op.localId,
+              ),
+            );
+          } else if (op.entityType == SyncEntityType.attachment) {
+            final taskRemoteId =
+                op.parentRemoteId ??
+                (op.parentLocalId != null
+                    ? outbox.resolveRemoteId(
+                        SyncEntityType.task,
+                        op.parentLocalId!,
+                      )
+                    : null);
+            final attRemoteId =
+                op.remoteId ??
+                outbox.resolveRemoteId(SyncEntityType.attachment, op.localId);
+            if (taskRemoteId != null && attRemoteId != null) {
+              await _deleteOne(
+                () => todoApi.deleteLinkedEntity(
+                  ctx,
+                  taskRemoteId,
+                  attRemoteId,
+                ),
+              );
+            }
+            await commitOp(
+              seq: op.seq,
+              clearedRemoteIdKey: (
+                type: SyncEntityType.attachment,
                 localId: op.localId,
               ),
             );
@@ -622,6 +652,88 @@ class SubstratePushEngine {
             }
           },
         );
+
+        // 10b. Attachment uploads
+        for (final op in batch) {
+          if (op.entityType != SyncEntityType.attachment ||
+              op.kind != SyncOpKind.upsert) {
+            continue;
+          }
+          final taskLocalId = op.parentLocalId;
+          final task = taskLocalId != null ? findLiveTask(taskLocalId) : null;
+          if (task == null) {
+            await commitOp(seq: op.seq);
+            continue;
+          }
+          final att = task.attachments.firstWhereOrNull(
+            (a) => a.id == op.localId,
+          );
+          if (att == null || att.remoteId != null) {
+            await commitOp(seq: op.seq);
+            continue;
+          }
+          final taskRemoteId =
+              task.remoteId ??
+              op.parentRemoteId ??
+              outbox.resolveRemoteId(SyncEntityType.task, task.id);
+          if (taskRemoteId == null) {
+            continue;
+          }
+          final localPath = att.localPath;
+          if (localPath == null || localPath.isEmpty) {
+            await commitOp(seq: op.seq);
+            continue;
+          }
+          final file = File(localPath);
+          if (!await file.exists()) {
+            _log.warning(
+              'Attachment file missing on disk for ${att.id}: $localPath',
+            );
+            await commitOp(seq: op.seq);
+            continue;
+          }
+          final bytes = await file.readAsBytes();
+          final uploaded = (await todoApi.uploadAttachment(
+            ctx,
+            taskRemoteId,
+            fileName: att.displayName,
+            bytes: bytes,
+            contentType: att.contentType,
+          )).getOrThrow();
+          outbox.recordRemoteId(
+            SyncEntityType.attachment,
+            att.id,
+            uploaded.id,
+          );
+          final updatedAttachments = [
+            for (final item in task.attachments)
+              if (item.id == att.id)
+                item.copyWith(
+                  remoteId: uploaded.id,
+                  size: uploaded.size > 0 ? uploaded.size : item.size,
+                  contentType: uploaded.contentType ?? item.contentType,
+                  lastModifiedDateTime:
+                      uploaded.lastModifiedDateTime ??
+                      item.lastModifiedDateTime,
+                  isTransferring: false,
+                )
+              else
+                item,
+          ];
+          final folderRemoteId = findLiveList(task.listId)?.remoteId;
+          await commitOp(
+            seq: op.seq,
+            task: task.copyWith(
+              attachments: updatedAttachments,
+              updatedAt: nowUtc,
+            ),
+            followUpFolderRemoteId: folderRemoteId,
+          );
+          _log.fine(
+            'Phase 10b UPLOAD attachment=${att.id} remote=${shortSyncId(uploaded.id)} '
+            'task=${shortSyncId(taskRemoteId)} name="${att.displayName}"',
+          );
+        }
 
         return OutboxPushOutcome(
           ackedSeqs: ackedSeqs,

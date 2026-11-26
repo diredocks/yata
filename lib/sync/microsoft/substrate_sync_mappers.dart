@@ -390,6 +390,7 @@ TaskItem taskFromRemote(
   required String localId,
   required String listId,
   required List<TaskStep> existingSteps,
+  List<TaskAttachment> existingAttachments = const [],
   required String Function(String prefix) idGenerator,
   DateTime? existingCompletedAt,
 }) {
@@ -424,6 +425,37 @@ TaskItem taskFromRemote(
     return a.index.compareTo(b.index);
   });
 
+  final existingAttachmentByRemoteId = {
+    for (final a in existingAttachments)
+      if (a.remoteId != null) a.remoteId!: a,
+  };
+  final mappedAttachments = <TaskAttachment>[
+    for (final entity in remote.linkedEntities)
+      if (entity.id.isNotEmpty)
+        () {
+          final existing = existingAttachmentByRemoteId[entity.id];
+          return TaskAttachment(
+            id: existing?.id ?? idGenerator('att'),
+            displayName: entity.displayName.isNotEmpty
+                ? entity.displayName
+                : (existing?.displayName ?? 'Attachment'),
+            remoteId: entity.id,
+            entityType: entity.entityType,
+            entitySubType: entity.entitySubType,
+            webLink: entity.webLink ?? existing?.webLink,
+            contentType: entity.contentType ?? existing?.contentType,
+            size: entity.size > 0 ? entity.size : (existing?.size ?? 0),
+            lastModifiedDateTime:
+                entity.lastModifiedDateTime ?? existing?.lastModifiedDateTime,
+            localPath: existing?.localPath,
+            isTransferring: existing?.isTransferring ?? false,
+          );
+        }(),
+    // Preserve any local-only pending attachments not yet uploaded.
+    for (final a in existingAttachments)
+      if (a.remoteId == null) a,
+  ];
+
   return TaskItem(
     id: localId,
     listId: listId,
@@ -445,6 +477,7 @@ TaskItem taskFromRemote(
       remote: remote,
     ),
     steps: [for (final item in indexedSteps) item.step],
+    attachments: mappedAttachments,
     remoteId: remote.id,
     remoteParentFolderId: remote.parentFolderId,
     orderDateTime: remote.orderDateTime,
