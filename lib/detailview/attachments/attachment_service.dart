@@ -32,20 +32,15 @@ class AttachmentService {
   AttachmentService(
     this._ref, {
     Future<Directory> Function()? storageRootProvider,
-    String? Function()? accountIdProvider,
     Future<OpenResult> Function(String filePath, {String? type})? openFileFn,
     Future<bool> Function(Uri uri)? launchUrlFn,
   }) : _storageRootProvider =
            storageRootProvider ?? getApplicationSupportDirectory,
-       _accountIdProvider =
-           accountIdProvider ??
-           (() => _ref.read(accountProvider).activeAccountId),
        _openFileFn = openFileFn ?? _defaultOpenFile,
        _launchUrlFn = launchUrlFn ?? _defaultLaunchUrl;
 
   final Ref _ref;
   final Future<Directory> Function() _storageRootProvider;
-  final String? Function() _accountIdProvider;
   final Future<OpenResult> Function(String filePath, {String? type})
   _openFileFn;
   final Future<bool> Function(Uri uri) _launchUrlFn;
@@ -113,33 +108,19 @@ class AttachmentService {
     return existingTotal + newFileBytes > kMaxTaskAttachmentTotalBytes;
   }
 
-  static String _sanitizeSegment(String raw, {String fallback = 'default'}) {
+  static String _sanitizeSegment(String raw, String fallback) {
     final cleaned = raw.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
     return cleaned.isEmpty ? fallback : cleaned;
-  }
-
-  String _resolveAccountId([String? explicitAccountId]) {
-    if (explicitAccountId != null && explicitAccountId.isNotEmpty) {
-      return explicitAccountId;
-    }
-    final provided = _accountIdProvider();
-    if (provided != null && provided.isNotEmpty) {
-      return provided;
-    }
-    return 'default';
   }
 
   Future<String> _resolveTargetPath({
     required String attachmentId,
     required String fileName,
-    String? accountId,
   }) async {
     final root = await _storageRootProvider();
-    final safeAccountId = _sanitizeSegment(
-      _resolveAccountId(accountId),
-      fallback: 'default',
-    );
-    final safeId = _sanitizeSegment(attachmentId, fallback: 'att');
+    final accountId = _ref.read(accountProvider).activeAccountId ?? 'default';
+    final safeAccountId = _sanitizeSegment(accountId, 'default');
+    final safeId = _sanitizeSegment(attachmentId, 'att');
     final safeName = sanitizeFileName(fileName);
     final dir = Directory(
       p.join(root.path, 'attachments', safeAccountId, safeId),
@@ -156,13 +137,11 @@ class AttachmentService {
     required String attachmentId,
     required String sourcePath,
     required String fileName,
-    String? accountId,
   }) async {
     final sourceFile = File(sourcePath);
     final targetPath = await _resolveTargetPath(
       attachmentId: attachmentId,
       fileName: fileName,
-      accountId: accountId,
     );
     await sourceFile.copy(targetPath);
     final size = await File(targetPath).length();
@@ -175,12 +154,10 @@ class AttachmentService {
     required String attachmentId,
     required String fileName,
     required Uint8List bytes,
-    String? accountId,
   }) async {
     final targetPath = await _resolveTargetPath(
       attachmentId: attachmentId,
       fileName: fileName,
-      accountId: accountId,
     );
     await File(targetPath).writeAsBytes(bytes, flush: true);
     return targetPath;
@@ -242,7 +219,7 @@ class AttachmentService {
   Future<void> deleteAccountAttachments(String accountId) async {
     try {
       final root = await _storageRootProvider();
-      final safeAccountId = _sanitizeSegment(accountId, fallback: 'default');
+      final safeAccountId = _sanitizeSegment(accountId, 'default');
       final accountDir = Directory(
         p.join(root.path, 'attachments', safeAccountId),
       );
@@ -293,7 +270,6 @@ class AttachmentService {
       attachmentId: attachment.id,
       fileName: attachment.displayName,
       bytes: bytes,
-      accountId: activeAccount.id,
     );
     return Success(savedPath);
   }

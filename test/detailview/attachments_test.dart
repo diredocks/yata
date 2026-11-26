@@ -90,6 +90,8 @@ void main() {
     test(
       'enforces 25 MB cumulative per-task limit and stages/opens files',
       () async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
         final tempDir = await Directory.systemTemp.createTemp('yata_att_test_');
         addTearDown(() => tempDir.delete(recursive: true));
 
@@ -98,18 +100,16 @@ void main() {
 
         String? openedPath;
         String? openedType;
-        final container = ProviderContainer();
-        addTearDown(container.dispose);
 
         // Build service directly with test overrides.
         late AttachmentService service;
         final overrideContainer = ProviderContainer(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
             attachmentServiceProvider.overrideWith((ref) {
               service = AttachmentService(
                 ref,
                 storageRootProvider: () async => tempDir,
-                accountIdProvider: () => 'local-acct-1',
                 openFileFn: (path, {type}) async {
                   openedPath = path;
                   openedType = type;
@@ -121,6 +121,13 @@ void main() {
           ],
         );
         addTearDown(overrideContainer.dispose);
+        final account = await overrideContainer
+            .read(accountProvider.notifier)
+            .signInLocal(
+              'Local',
+              fallbackName: 'Local',
+              fallbackEmail: 'local@local',
+            );
         service = overrideContainer.read(attachmentServiceProvider);
 
         const existingAtt = TaskAttachment(
@@ -152,13 +159,7 @@ void main() {
         expect(staged.size, 5);
         expect(
           staged.localPath,
-          p.join(
-            tempDir.path,
-            'attachments',
-            'local-acct-1',
-            'att-2',
-            'notes.txt',
-          ),
+          p.join(tempDir.path, 'attachments', account.id, 'att-2', 'notes.txt'),
         );
         expect(await File(staged.localPath).exists(), isTrue);
 
@@ -417,23 +418,26 @@ void main() {
       addTearDown(container.dispose);
 
       final accountNotifier = container.read(accountProvider.notifier);
+      final attService = container.read(attachmentServiceProvider);
+      final srcFile = File(p.join(tempDir.path, 'sample.txt'));
+      await srcFile.writeAsString('payload');
+
       final acctB = await accountNotifier.signInLocal(
         'Account B',
         fallbackName: 'Account B',
         fallbackEmail: 'b@local',
       );
+      final stagedB1 = await attService.stageLocalFile(
+        attachmentId: 'att-b1',
+        sourcePath: srcFile.path,
+        fileName: 'b1.txt',
+      );
+
       final acctA = await accountNotifier.signInLocal(
         'Account A',
         fallbackName: 'Account A',
         fallbackEmail: 'a@local',
       );
-
-      final attService = container.read(attachmentServiceProvider);
-
-      final srcFile = File(p.join(tempDir.path, 'sample.txt'));
-      await srcFile.writeAsString('payload');
-
-      // Active account is acctA; stage 3 attachments for acctA.
       final stagedA1 = await attService.stageLocalFile(
         attachmentId: 'att-a1',
         sourcePath: srcFile.path,
@@ -448,13 +452,6 @@ void main() {
         attachmentId: 'att-a3',
         sourcePath: srcFile.path,
         fileName: 'a3.txt',
-      );
-      // Stage 1 attachment explicitly under acctB.
-      final stagedB1 = await attService.stageLocalFile(
-        attachmentId: 'att-b1',
-        sourcePath: srcFile.path,
-        fileName: 'b1.txt',
-        accountId: acctB.id,
       );
 
       expect(
