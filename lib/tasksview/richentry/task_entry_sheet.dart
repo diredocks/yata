@@ -236,7 +236,10 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
           children: [
             for (final list in smartLists) buildListTile(ctx, list),
             if (smartLists.isNotEmpty && customLists.isNotEmpty)
-              const Divider(height: 1),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Divider(height: 1),
+              ),
             for (final list in customLists) buildListTile(ctx, list),
           ],
         ),
