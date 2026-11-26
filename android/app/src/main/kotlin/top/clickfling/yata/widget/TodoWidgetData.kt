@@ -279,8 +279,12 @@ object TodoWidgetData {
         val effectiveList = snapshot.lists.firstOrNull { it.id == config.listId }
         val isCompletedList =
             effectiveList?.smartType == "completed" || config.listId == "completed"
-        return if (config.showCompleted || isCompletedList) {
+        return if (isCompletedList) {
             orderedTasks
+        } else if (config.showCompleted) {
+            val active = orderedTasks.filter { !it.isCompleted }
+            val completed = orderedTasks.filter { it.isCompleted }
+            active + completed
         } else {
             orderedTasks.filter { !it.isCompleted }
         }

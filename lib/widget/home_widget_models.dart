@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../data/todo_sorting.dart';
 import '../data/todo_state.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
@@ -228,7 +229,18 @@ class HomeWidgetSnapshotSerializer {
 
     for (final list in state.lists) {
       final tasksInList = state.tasksForList(list);
-      listTaskIds[list.id] = [for (final t in tasksInList) t.id];
+      final List<TaskItem> orderedTasks;
+      if (list.smartType == SmartListType.completed) {
+        orderedTasks = tasksInList;
+      } else {
+        final active = tasksInList.where((t) => !t.isCompleted).toList();
+        final completed = tasksInList.where((t) => t.isCompleted).toList();
+        if (list.sortOption == TaskSortOption.defaultOrder) {
+          completed.sort(compareCompletedTasksDesc);
+        }
+        orderedTasks = [...active, ...completed];
+      }
+      listTaskIds[list.id] = [for (final t in orderedTasks) t.id];
       final activeCount = list.smartType == SmartListType.completed
           ? tasksInList.length
           : tasksInList.where((t) => !t.isCompleted).length;

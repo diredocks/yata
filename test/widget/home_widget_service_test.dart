@@ -304,6 +304,54 @@ void main() {
       expect(transport.commits, hasLength(5));
     });
 
+    test('orders active tasks before completed tasks sorted like the app', () {
+      final now = DateTime(2026, 11, 27, 9, 0);
+      final lists = defaultSmartLists();
+      final state = TodoState(
+        lists: lists,
+        groups: const [],
+        tasks: [
+          TaskItem(
+            id: 'c_old',
+            listId: 'tasks',
+            title: 'Completed older',
+            isCompleted: true,
+            isInMyDay: true,
+            completedAt: DateTime(2026, 11, 26, 8, 0),
+            createdAt: now,
+          ),
+          TaskItem(
+            id: 'a_1',
+            listId: 'tasks',
+            title: 'Active 1',
+            isInMyDay: true,
+            createdAt: now,
+          ),
+          TaskItem(
+            id: 'c_new',
+            listId: 'tasks',
+            title: 'Completed newer',
+            isCompleted: true,
+            isInMyDay: true,
+            completedAt: DateTime(2026, 11, 27, 8, 0),
+            createdAt: now,
+          ),
+        ],
+        selectedListId: 'my_day',
+      );
+
+      final payload = HomeWidgetSnapshotSerializer.buildCanonicalPayload(
+        state,
+        accountId: 'a',
+        accountName: 'Test',
+        strings: const HomeWidgetStrings(),
+        now: now,
+      );
+      final listTaskIds = payload['listTaskIds'] as Map<String, dynamic>;
+      expect(listTaskIds['my_day'], ['a_1', 'c_new', 'c_old']);
+      expect(listTaskIds['tasks'], ['a_1', 'c_new', 'c_old']);
+    });
+
     test('consumeInitialLaunchUri returns launch URI once and resolves system strings', () async {
       final transport = FakeHomeWidgetTransport()
         ..initialLaunchUri = Uri.parse('yata://widget/add?listId=tasks');
