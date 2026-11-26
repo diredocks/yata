@@ -37,22 +37,25 @@ class WidgetSyncWorker(
             return Result.success()
         }
 
-        val callbackInfo = FlutterCallbackInformation.lookupCallbackInformation(dispatcherHandle)
-        if (callbackInfo == null) {
-            Log.w(TAG, "Failed to lookup FlutterCallbackInformation for handle=$dispatcherHandle")
-            clearRefreshingIfNeeded()
-            return Result.success()
-        }
-
         val syncCompleted = CompletableDeferred<Unit>()
         var engine: FlutterEngine? = null
 
         return try {
             val uriString = "yata://widget/sync?reason=${android.net.Uri.encode(reason)}"
-            withContext(Dispatchers.Main) {
+            val initialized = withContext(Dispatchers.Main) {
                 val loader = FlutterInjector.instance().flutterLoader()
                 loader.startInitialization(applicationContext)
                 loader.ensureInitializationComplete(applicationContext, null)
+
+                val callbackInfo =
+                    FlutterCallbackInformation.lookupCallbackInformation(dispatcherHandle)
+                if (callbackInfo == null) {
+                    Log.w(
+                        TAG,
+                        "Failed to lookup FlutterCallbackInformation for handle=$dispatcherHandle",
+                    )
+                    return@withContext false
+                }
 
                 val createdEngine = FlutterEngine(applicationContext)
                 engine = createdEngine
@@ -64,7 +67,10 @@ class WidgetSyncWorker(
                 bgChannel.setMethodCallHandler { call, result ->
                     when (call.method) {
                         "HomeWidget.backgroundInitialized" -> {
-                            bgChannel.invokeMethod("", listOf(callbackHandle, uriString, callbackHandle))
+                            bgChannel.invokeMethod(
+                                "",
+                                listOf(callbackHandle, uriString, callbackHandle),
+                            )
                             result.success(null)
                         }
                         else -> result.notImplemented()
@@ -91,6 +97,11 @@ class WidgetSyncWorker(
                     callbackInfo,
                 )
                 createdEngine.dartExecutor.executeDartCallback(callback)
+                true
+            }
+
+            if (!initialized) {
+                return Result.success()
             }
 
             val completed = withTimeoutOrNull(SYNC_TIMEOUT_MS) {
