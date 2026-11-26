@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../theme/todo_theme.dart';
@@ -35,6 +38,9 @@ enum _SwipeAnimPhase { idle, flingRight, flingLeft, snapBack }
 class _SwipeableTaskCardState extends State<SwipeableTaskCard>
     with SingleTickerProviderStateMixin {
   static const double _swipeThreshold = 0.4;
+  static const double _flingVelocityThreshold = 1100.0;
+  static const double _flingMinRatio = 0.25;
+  static const double _minEdgeExclusion = 32.0;
   static const double _circleGrowthFactor = 3.0;
   static const Color _itemSwipedColor = Color(0x29000000);
   static const Duration _flingDuration = Duration(milliseconds: 180);
@@ -101,11 +107,30 @@ class _SwipeableTaskCardState extends State<SwipeableTaskCard>
   }
 
   void _animateBack() {
+    if (_dragOffset == 0.0) {
+      _phase = _SwipeAnimPhase.idle;
+      return;
+    }
     _animateTo(
       0.0,
       phase: _SwipeAnimPhase.snapBack,
       duration: _snapBackDuration,
     );
+  }
+
+  /// Ignore drags starting near the left/right screen edges so mobile
+  /// side-swipe back gestures are never hijacked by task card swiping.
+  bool _shouldAcceptPointer(PointerEvent event) {
+    if (!widget.enabled) return false;
+    final mediaQuery = MediaQuery.maybeOf(context);
+    if (mediaQuery == null) return true;
+    final screenWidth = mediaQuery.size.width;
+    if (screenWidth <= 0) return true;
+    final gestureInsets = mediaQuery.systemGestureInsets;
+    final leftEdge = math.max(_minEdgeExclusion, gestureInsets.left);
+    final rightEdge = math.max(_minEdgeExclusion, gestureInsets.right);
+    final x = event.position.dx;
+    return x > leftEdge && x < screenWidth - rightEdge;
   }
 
   void _handleDragStart(DragStartDetails details) {
@@ -126,8 +151,11 @@ class _SwipeableTaskCardState extends State<SwipeableTaskCard>
     final width = context.size?.width ?? 1.0;
     final ratio = (_dragOffset / width).abs();
     final velocity = details.primaryVelocity ?? 0.0;
-    final triggered =
-        ratio >= _swipeThreshold || (velocity.abs() > 700 && ratio > 0.15);
+    final isSameDirectionFling =
+        velocity * _dragOffset > 0 &&
+        velocity.abs() > _flingVelocityThreshold &&
+        ratio > _flingMinRatio;
+    final triggered = ratio >= _swipeThreshold || isSameDirectionFling;
 
     if (triggered) {
       final isRight = _dragOffset > 0;
@@ -150,12 +178,27 @@ class _SwipeableTaskCardState extends State<SwipeableTaskCard>
     final isSwipingRight = _dragOffset > 0;
     final isSwiping = _dragOffset.abs() > 0.5;
 
-    return GestureDetector(
+    return RawGestureDetector(
       behavior: HitTestBehavior.translucent,
-      onHorizontalDragStart: _handleDragStart,
-      onHorizontalDragUpdate: _handleDragUpdate,
-      onHorizontalDragEnd: _handleDragEnd,
-      onHorizontalDragCancel: _animateBack,
+      gestures: <Type, GestureRecognizerFactory>{
+        _EdgeExcludingHorizontalDragGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<
+              _EdgeExcludingHorizontalDragGestureRecognizer
+            >(
+              () => _EdgeExcludingHorizontalDragGestureRecognizer(
+                debugOwner: this,
+                shouldAcceptPointer: _shouldAcceptPointer,
+              ),
+              (_EdgeExcludingHorizontalDragGestureRecognizer instance) {
+                instance
+                  ..shouldAcceptPointer = _shouldAcceptPointer
+                  ..onStart = _handleDragStart
+                  ..onUpdate = _handleDragUpdate
+                  ..onEnd = _handleDragEnd
+                  ..onCancel = _animateBack;
+              },
+            ),
+      },
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -269,5 +312,23 @@ class _SwipeBackgroundPainter extends CustomPainter {
     return oldDelegate.dragOffset != dragOffset ||
         oldDelegate.revealColor != revealColor ||
         oldDelegate.baseColor != baseColor;
+  }
+}
+
+class _EdgeExcludingHorizontalDragGestureRecognizer
+    extends HorizontalDragGestureRecognizer {
+  _EdgeExcludingHorizontalDragGestureRecognizer({
+    super.debugOwner,
+    required this.shouldAcceptPointer,
+  });
+
+  bool Function(PointerEvent event) shouldAcceptPointer;
+
+  @override
+  bool isPointerAllowed(PointerEvent event) {
+    if (!shouldAcceptPointer(event)) {
+      return false;
+    }
+    return super.isPointerAllowed(event);
   }
 }

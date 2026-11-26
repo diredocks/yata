@@ -127,4 +127,114 @@ void main() {
       expect(find.text('Task deleted'), findsNothing);
     },
   );
+
+  testWidgets(
+    'SwipeableTaskCard ignores drags starting in left/right screen edge zones',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      var rightCount = 0;
+      var leftCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(
+              size: Size(400, 800),
+              systemGestureInsets: EdgeInsets.only(left: 48, right: 20),
+            ),
+            child: Scaffold(
+              body: SizedBox(
+                width: 400,
+                child: SwipeableTaskCard(
+                  enabled: true,
+                  isInMyDay: false,
+                  accentColor: Colors.blue,
+                  onSwipeRight: () => rightCount++,
+                  onSwipeLeft: () => leftCount++,
+                  child: const SizedBox(
+                    height: 56,
+                    width: 400,
+                    child: Text('Edge target'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Left edge (within systemGestureInsets.left = 48) -> ignored
+      await tester.dragFrom(const Offset(40, 28), const Offset(260, 0));
+      await tester.pumpAndSettle();
+      expect(rightCount, 0);
+
+      // Right edge (within minEdgeExclusion = 32, even though inset is 20) -> ignored
+      await tester.dragFrom(const Offset(380, 28), const Offset(-260, 0));
+      await tester.pumpAndSettle();
+      expect(leftCount, 0);
+
+      // Center drag -> works normally
+      await tester.dragFrom(const Offset(200, 28), const Offset(200, 0));
+      await tester.pumpAndSettle();
+      expect(rightCount, 1);
+    },
+  );
+
+  testWidgets(
+    'SwipeableTaskCard requires higher fling velocity/distance and same direction',
+    (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      var rightCount = 0;
+      var leftCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 400,
+              child: SwipeableTaskCard(
+                enabled: true,
+                isInMyDay: false,
+                accentColor: Colors.blue,
+                onSwipeRight: () => rightCount++,
+                onSwipeLeft: () => leftCount++,
+                child: const SizedBox(
+                  height: 56,
+                  width: 400,
+                  child: Text('Fling target'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Moderate-speed short fling (~800 px/s, 80px = 20%) -> should NOT trigger
+      await tester.fling(find.text('Fling target'), const Offset(80, 0), 800);
+      await tester.pumpAndSettle();
+      expect(rightCount, 0);
+
+      // Drag right 120px (30%) then flick back left -> should NOT trigger
+      final gesture = await tester.startGesture(const Offset(200, 28));
+      await gesture.moveBy(const Offset(120, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+      await gesture.moveBy(const Offset(-30, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(rightCount, 0);
+      expect(leftCount, 0);
+
+      // Fast same-direction fling past 25% (120px = 30%, 1400 px/s) -> triggers
+      await tester.fling(find.text('Fling target'), const Offset(120, 0), 1400);
+      await tester.pumpAndSettle();
+      expect(rightCount, 1);
+    },
+  );
 }
