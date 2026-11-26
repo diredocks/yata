@@ -1,20 +1,20 @@
 import 'package:result_dart/result_dart.dart';
 
-import '../auth/microsoft_auth_service.dart';
-import '../core/error/app_error.dart';
-import '../core/logging/app_logger.dart';
-import '../core/result/app_result.dart';
-import '../data/todo_repository.dart';
-import '../data/todo_settings_store.dart';
-import '../data/todo_settings_sync.dart';
-import '../data/todo_state.dart';
-import '../models/account.dart';
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
+import '../../auth/microsoft_auth_service.dart';
+import '../../core/error/app_error.dart';
+import '../../core/logging/app_logger.dart';
+import '../../core/result/app_result.dart';
+import '../../data/todo_repository.dart';
+import '../../data/todo_settings_store.dart';
+import '../../data/todo_settings_sync.dart';
+import '../../data/todo_state.dart';
+import '../../models/account.dart';
+import '../../models/task_item.dart';
+import '../../models/todo_list.dart';
 import 'microsoft_todo_api.dart';
 import 'substrate_pull_engine.dart';
 import 'substrate_push_engine.dart';
-import 'sync_guard.dart';
+import '../sync_guard.dart';
 
 final _log = appLogFor('SyncEngine');
 

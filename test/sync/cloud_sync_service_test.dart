@@ -15,11 +15,11 @@ import 'package:yata/models/account.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/settings/settings_presenter.dart';
-import 'package:yata/sync/cloud_sync_service.dart';
-import 'package:yata/sync/microsoft_todo_api.dart';
-import 'package:yata/sync/substrate_sync_mappers.dart';
+import 'package:yata/sync/microsoft/cloud_sync_service.dart';
+import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
+import 'package:yata/sync/microsoft/substrate_sync_mappers.dart';
 import 'package:yata/sync/sync_provider.dart';
-import 'package:yata/sync/todo_wire_codecs.dart';
+import 'package:yata/sync/microsoft/todo_wire_codecs.dart';
 import 'package:yata/tasksview/tasks_action_presenter.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 

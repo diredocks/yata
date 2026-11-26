@@ -2,7 +2,7 @@ import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../models/todo_list.dart';
-import '../sync/todo_wire_codecs.dart';
+import '../sync/microsoft/todo_wire_codecs.dart';
 import 'todo_settings_store.dart';
 import 'todo_state.dart';
 

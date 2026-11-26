@@ -8,7 +8,7 @@ import '../auth/microsoft_auth_service.dart';
 import '../core/error/app_error.dart';
 import '../core/result/app_result.dart';
 import '../l10n/app_localizations.dart';
-import '../sync/todo_wire_codecs.dart';
+import '../sync/microsoft/todo_wire_codecs.dart';
 import '../theme/todo_theme.dart';
 
 class LandingScreen extends ConsumerStatefulWidget {

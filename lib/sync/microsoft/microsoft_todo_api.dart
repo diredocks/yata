@@ -5,12 +5,12 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:result_dart/result_dart.dart';
 
-import '../core/error/app_error.dart';
-import '../core/logging/app_logger.dart';
-import '../core/result/app_result.dart';
+import '../../core/error/app_error.dart';
+import '../../core/logging/app_logger.dart';
+import '../../core/result/app_result.dart';
 import 'microsoft_todo_models.dart';
-import 'sync_guard.dart';
-import 'sync_log_format.dart';
+import '../sync_guard.dart';
+import '../sync_log_format.dart';
 import 'todo_wire_codecs.dart';
 
 export 'microsoft_todo_models.dart';

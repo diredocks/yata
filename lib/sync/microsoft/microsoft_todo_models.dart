@@ -1,6 +1,6 @@
-import '../auth/microsoft_auth_service.dart';
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
+import '../../auth/microsoft_auth_service.dart';
+import '../../models/task_item.dart';
+import '../../models/todo_list.dart';
 import 'todo_wire_codecs.dart';
 
 /// Per-request routing & auth context for Substrate To Do v1 API calls.

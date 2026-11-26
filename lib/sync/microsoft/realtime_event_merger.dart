@@ -1,13 +1,13 @@
 import 'package:collection/collection.dart';
 
-import '../data/todo_settings_sync.dart';
-import '../homeview/home_view_ordering.dart';
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
+import '../../data/todo_settings_sync.dart';
+import '../../homeview/home_view_ordering.dart';
+import '../../models/task_item.dart';
+import '../../models/todo_list.dart';
 import 'microsoft_todo_models.dart';
 import 'remote_change_reconciler.dart';
 import 'substrate_sync_mappers.dart';
-import 'sync_log_format.dart';
+import '../sync_log_format.dart';
 
 /// Outcome of merging a single [RealtimeEvent] directly into local state.
 class RealtimeMergeResult<T> {

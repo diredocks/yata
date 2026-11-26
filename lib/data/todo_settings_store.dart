@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../account/account_local_storage.dart';
 import '../core/logging/app_logger.dart';
 import '../models/todo_list.dart';
-import '../sync/todo_wire_codecs.dart';
+import '../sync/microsoft/todo_wire_codecs.dart';
 
 final _log = appLogFor('TodoSettingsStore');
 

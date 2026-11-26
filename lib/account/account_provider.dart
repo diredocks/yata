@@ -9,7 +9,7 @@ import '../auth/msa_webview_launcher.dart';
 import '../data/todo_provider.dart';
 import '../data/todo_repository.dart';
 import '../models/account.dart';
-import '../sync/microsoft_todo_api.dart';
+import '../sync/microsoft/microsoft_todo_api.dart';
 
 part 'account_provider.freezed.dart';
 

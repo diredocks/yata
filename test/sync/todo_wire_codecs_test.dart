@@ -3,7 +3,7 @@ import 'package:material_ui/material_ui.dart' show TimeOfDay;
 import 'package:yata/core/time/local_timezone.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
-import 'package:yata/sync/todo_wire_codecs.dart';
+import 'package:yata/sync/microsoft/todo_wire_codecs.dart';
 
 void main() {
   group('ThemeColor & ThemeBackground codecs', () {

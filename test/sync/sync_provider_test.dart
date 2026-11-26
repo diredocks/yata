@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/models/task_item.dart';
-import 'package:yata/sync/microsoft_todo_api.dart';
+import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
 import 'package:yata/sync/sync_provider.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';

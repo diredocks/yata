@@ -5,7 +5,7 @@ import 'package:yata/data/todo_provider.dart';
 import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
-import 'package:yata/sync/microsoft_todo_api.dart';
+import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
 import 'package:yata/sync/sync_provider.dart';
 import 'package:yata/sync/text_merge.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';

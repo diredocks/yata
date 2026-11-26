@@ -6,7 +6,7 @@ import '../detailview/recurrence/task_pickers.dart';
 import '../homeview/home_view_ordering.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
-import '../sync/substrate_time_codecs.dart';
+import '../sync/microsoft/substrate_time_codecs.dart';
 
 /// Presenter for `tasksview/TasksViewFragment`, matching `tasksview/TasksViewPresenter`.
 class TasksViewPresenter {

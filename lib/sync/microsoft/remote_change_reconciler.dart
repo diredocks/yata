@@ -1,5 +1,5 @@
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
+import '../../models/task_item.dart';
+import '../../models/todo_list.dart';
 import 'microsoft_todo_models.dart';
 import 'substrate_sync_mappers.dart';
 

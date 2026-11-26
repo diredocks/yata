@@ -9,7 +9,7 @@ import '../core/logging/app_logger.dart';
 import '../data/sync_outbox.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
-import 'cloud_sync_service.dart';
+import 'microsoft/cloud_sync_service.dart';
 import 'realtime_sync_controller.dart';
 import 'sync_guard.dart';
 

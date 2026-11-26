@@ -1,20 +1,20 @@
 import 'package:result_dart/result_dart.dart';
 
-import '../core/error/app_error.dart';
-import '../core/logging/app_logger.dart';
-import '../core/result/app_result.dart';
-import '../data/sync_dirty_fields.dart';
-import '../data/sync_outbox.dart';
-import '../data/todo_settings_sync.dart';
-import '../data/todo_state.dart';
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
+import '../../core/error/app_error.dart';
+import '../../core/logging/app_logger.dart';
+import '../../core/result/app_result.dart';
+import '../../data/sync_dirty_fields.dart';
+import '../../data/sync_outbox.dart';
+import '../../data/todo_settings_sync.dart';
+import '../../data/todo_state.dart';
+import '../../models/task_item.dart';
+import '../../models/todo_list.dart';
 import 'microsoft_todo_api.dart';
 import 'substrate_sync_mappers.dart';
-import 'sync_concurrency.dart';
-import 'sync_guard.dart';
-import 'sync_log_format.dart';
-import 'text_merge.dart';
+import '../sync_concurrency.dart';
+import '../sync_guard.dart';
+import '../sync_log_format.dart';
+import '../text_merge.dart';
 import 'todo_wire_codecs.dart';
 
 final _log = appLogFor('SyncEngine');

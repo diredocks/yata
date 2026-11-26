@@ -1,9 +1,9 @@
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 
-import '../core/time/local_timezone.dart';
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
+import '../../core/time/local_timezone.dart';
+import '../../models/task_item.dart';
+import '../../models/todo_list.dart';
 
 const List<String> kIsoWeekdayNames = [
   'Monday',

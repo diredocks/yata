@@ -8,8 +8,8 @@ import '../core/logging/app_logger.dart';
 import '../data/sync_outbox.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
-import 'microsoft_todo_api.dart';
-import 'realtime_event_merger.dart';
+import 'microsoft/microsoft_todo_api.dart';
+import 'microsoft/realtime_event_merger.dart';
 import 'sync_log_format.dart';
 import 'sync_provider.dart';
 

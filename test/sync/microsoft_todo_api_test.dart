@@ -6,7 +6,7 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/core/error/app_error.dart';
-import 'package:yata/sync/microsoft_todo_api.dart';
+import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
 
 void main() {
   setUp(() {
