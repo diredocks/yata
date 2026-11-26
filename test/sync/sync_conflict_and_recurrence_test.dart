@@ -727,5 +727,105 @@ void main() {
         'A1\nShared\nA2\nC',
       );
     });
+
+    test('createTask 409 conflict retries without CreatedWithLocalId and patchTask handles consecutive 409s', () async {
+      final createPayloads = <Map<String, dynamic>>[];
+      var getTaskCalls = 0;
+      var patchCalls = 0;
+
+      final fakeApi = FakeSubstrateApi();
+      fakeApi.onFetchFoldersDelta = (dl) =>
+          const DeltaPageResult(items: [], deltaLink: 'dl-f-2');
+      fakeApi.onCreateTask = (folderId, payload) async {
+        createPayloads.add(Map<String, dynamic>.from(payload));
+        if (payload.containsKey('CreatedWithLocalId')) {
+          throw const AppError.network(
+            statusCode: 409,
+            code: 'ErrorIrresolvableConflict',
+            message: 'conflict on create',
+          );
+        }
+        return RemoteTodoTask(
+          id: 'rt-created-no-local-id',
+          changeKey: 'ck-created-1',
+          parentFolderId: folderId,
+          subject: payload['Subject'] as String? ?? '',
+        );
+      };
+      fakeApi.onGetTask = (id) async {
+        getTaskCalls += 1;
+        return RemoteTodoTask(
+          id: id,
+          changeKey: 'ck-remote-$getTaskCalls',
+          parentFolderId: 'rf-default',
+          subject: 'Multi 409 Task',
+          bodyContent: getTaskCalls == 1
+              ? 'Line 1 (remote1)\nLine 2'
+              : 'Line 1 (remote2)\nLine 2',
+          bodyContentType: 'Text',
+        );
+      };
+      fakeApi.onPatchTask = (id, patch, ck) async {
+        patchCalls += 1;
+        if (patchCalls <= 2) {
+          throw const AppError.network(
+            statusCode: 409,
+            code: 'ErrorIrresolvableConflict',
+            message: 'concurrent conflict',
+          );
+        }
+        return RemoteTodoTask(
+          id: id,
+          changeKey: 'ck-final',
+          parentFolderId: 'rf-default',
+          subject: patch['Subject'] as String? ?? 'Multi 409 Task',
+        );
+      };
+
+      final h = await createSyncTestHarness(
+        accountId: 'acct_multi_409',
+        api: fakeApi,
+        defaultTasksFolderRemoteId: 'rf-default',
+        tasks: [
+          TaskItem(
+            id: 't_patch_multi',
+            listId: 'tasks',
+            title: 'Multi 409 Task',
+            createdAt: DateTime.utc(2026, 11, 22),
+            note: 'Line 1\nLine 2',
+            remoteId: 'rt-patch-multi',
+            remoteParentFolderId: 'rf-default',
+            changeKey: 'ck-initial',
+          ),
+        ],
+        foldersDeltaLink: 'dl-f-1',
+        taskDeltaLinks: const {'rf-default': 'dl-t-1'},
+      );
+
+      h.container
+          .read(tasksViewPresenterProvider)
+          .addTask(targetListId: 'tasks', title: 'Created After 409');
+      h.container
+          .read(detailViewPresenterProvider)
+          .updateTaskNote('t_patch_multi', 'Line 1\nLine 2 (local)');
+
+      await h.container.read(syncProvider.notifier).syncNow();
+
+      expect(createPayloads.length, 2);
+      expect(createPayloads[0].containsKey('CreatedWithLocalId'), isTrue);
+      expect(createPayloads[1].containsKey('CreatedWithLocalId'), isFalse);
+
+      expect(getTaskCalls, 2);
+      expect(patchCalls, 3);
+
+      final tasks = h.container.read(todoProvider).tasks;
+      final createdTask = tasks.firstWhere(
+        (t) => t.title == 'Created After 409',
+      );
+      expect(createdTask.remoteId, 'rt-created-no-local-id');
+      final patchedTask = tasks.firstWhere((t) => t.id == 't_patch_multi');
+      expect(patchedTask.changeKey, 'ck-final');
+      expect(patchedTask.note, 'Line 1 (remote2)\nLine 2 (local)');
+    });
   });
 }

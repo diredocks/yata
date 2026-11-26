@@ -494,5 +494,55 @@ void main() {
         'https://substrate.office.com/todob2/api/v1/tasks?parentFolderId=f1&deltatoken=rel-final',
       );
     });
+
+    test('createTask recovers existing task from 409 payload and surfaces 409 error payload', () async {
+      var callCount = 0;
+      final mockClient = MockClient((request) async {
+        callCount += 1;
+        if (callCount == 1) {
+          return http.Response(
+            jsonEncode({
+              'Id': 'rt-existing',
+              'ChangeKey': 'ck-existing',
+              'ParentFolderId': 'f1',
+              'Subject': 'Already created',
+            }),
+            409,
+          );
+        }
+        return http.Response(
+          jsonEncode({
+            'error': {
+              'code': 'ErrorIrresolvableConflict',
+              'message': 'conflict',
+            },
+          }),
+          409,
+        );
+      });
+
+      final api = HttpMicrosoftTodoApi(
+        httpClient: mockClient,
+        delayFn: (_) async {},
+      );
+      final ctx = SubstrateRequestContext(
+        baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
+        accessToken: 'tok',
+        cid: 'cid1',
+      );
+
+      final existing = (await api.createTask(ctx, 'f1', const {
+        'Subject': 'Already created',
+        'CreatedWithLocalId': 'local-1',
+      })).getOrThrow();
+      expect(existing.id, 'rt-existing');
+      expect(existing.changeKey, 'ck-existing');
+
+      final conflict = await api.createTask(ctx, 'f1', const {
+        'Subject': 'Conflict error',
+        'CreatedWithLocalId': 'local-2',
+      });
+      expect(conflict.exceptionOrNull()?.isConflict, isTrue);
+    });
   });
 }

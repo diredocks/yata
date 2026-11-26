@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 
+import 'package:collection/collection.dart';
 import 'package:http/http.dart' as http;
 import 'package:result_dart/result_dart.dart';
 
@@ -217,6 +218,7 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
     bool trackChanges = false,
     String? ifMatch,
     Object? jsonBody,
+    Set<int> acceptedStatusCodes = const {},
   }) {
     return guardApiCall(() async {
       Future<http.Response> executeOnce() {
@@ -257,7 +259,8 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
         response = await executeOnce();
       }
 
-      if (response.statusCode < 200 || response.statusCode >= 300) {
+      if ((response.statusCode < 200 || response.statusCode >= 300) &&
+          !acceptedStatusCodes.contains(response.statusCode)) {
         throw _buildApiError(response);
       }
       return response;
@@ -295,11 +298,9 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
   }
 
   String? _headerCaseInsensitive(Map<String, String> headers, String name) {
-    final target = name.toLowerCase();
-    for (final entry in headers.entries) {
-      if (entry.key.toLowerCase() == target) return entry.value;
-    }
-    return null;
+    return headers.entries
+        .firstWhereOrNull((entry) => equalsIgnoreAsciiCase(entry.key, name))
+        ?.value;
   }
 
   AppError _buildApiError(http.Response response) {
@@ -312,7 +313,15 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
         if (decoded is Map) {
           final errObj = decoded['error'] ?? decoded['Error'];
           if (errObj is Map) {
-            errorCode = (errObj['code'] ?? errObj['Code']) as String?;
+            final innerObj =
+                errObj['innerError'] ??
+                errObj['innererror'] ??
+                errObj['InnerError'];
+            final innerCode = innerObj is Map
+                ? (innerObj['code'] ?? innerObj['Code']) as String?
+                : null;
+            errorCode =
+                innerCode ?? (errObj['code'] ?? errObj['Code']) as String?;
             final msg = (errObj['message'] ?? errObj['Message']) as String?;
             if (msg != null && msg.isNotEmpty) {
               message = msg;
@@ -632,13 +641,56 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
     SubstrateRequestContext ctx,
     String folderRemoteId,
     Map<String, dynamic> payload,
-  ) => _postJsonObject(
-    ctx: ctx,
-    uri: ctx.endpointUri(
-      'taskfolders/${Uri.encodeComponent(folderRemoteId)}/tasks',
-    ),
-    body: payload,
-  ).map(RemoteTodoTask.fromJson);
+  ) =>
+      _sendRequest(
+        ctx: ctx,
+        method: 'POST',
+        uri: ctx.endpointUri(
+          'taskfolders/${Uri.encodeComponent(folderRemoteId)}/tasks',
+        ),
+        jsonBody: payload,
+        acceptedStatusCodes: const {409},
+      ).flatMap((response) async {
+        if (response.statusCode == 409) {
+          final existing = _tryParseCreatedTaskConflict(response.body);
+          if (existing != null) {
+            return Success(existing);
+          }
+          return Failure(_buildApiError(response));
+        }
+        return Success(RemoteTodoTask.fromJson(_decodeJsonMap(response.body)));
+      });
+
+  /// Aligns with MS To Do's `CreatedTaskAlreadyExistsOperator`: when a task
+  /// POST returns HTTP 409 whose body is the existing task (not an error
+  /// payload), treat it as the created task instead of failing.
+  RemoteTodoTask? _tryParseCreatedTaskConflict(String body) {
+    if (body.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is! Map) return null;
+      if (decoded['error'] != null || decoded['Error'] != null) {
+        _log.info(
+          'Error object received in payload along with 409 on task create',
+        );
+        return null;
+      }
+      final task = RemoteTodoTask.fromJson(Map<String, dynamic>.from(decoded));
+      if (task.id.isEmpty) {
+        _log.warning('409 task create payload has empty online Id');
+        return null;
+      }
+      _log.info(
+        'Task received in payload along with 409 on task create '
+        'id=${shortSyncId(task.id)}',
+      );
+      return task;
+    } on FormatException catch (_) {
+      return null;
+    } on TypeError catch (_) {
+      return null;
+    }
+  }
 
   @override
   AsyncAppResult<RemoteTodoTask> patchTask(

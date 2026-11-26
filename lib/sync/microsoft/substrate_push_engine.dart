@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:result_dart/result_dart.dart';
 
 import '../../core/error/app_error.dart';
@@ -146,37 +147,31 @@ class SubstratePushEngine {
       ListGroup? findLiveGroup(String id) {
         final latest = readLatestState?.call();
         if (latest != null) {
-          for (final g in latest.groups) {
-            if (g.id == id) return pushedGroups[id] ?? g;
-          }
-          return null;
+          final match = latest.groups.firstWhereOrNull((g) => g.id == id);
+          return match == null ? null : (pushedGroups[id] ?? match);
         }
         return pushedGroups[id] ??
-            currentState.groups.where((g) => g.id == id).firstOrNull;
+            currentState.groups.firstWhereOrNull((g) => g.id == id);
       }
 
       TodoList? findLiveList(String id) {
         final latest = readLatestState?.call();
         if (latest != null) {
-          for (final l in latest.lists) {
-            if (l.id == id) return pushedLists[id] ?? l;
-          }
-          return null;
+          final match = latest.lists.firstWhereOrNull((l) => l.id == id);
+          return match == null ? null : (pushedLists[id] ?? match);
         }
         return pushedLists[id] ??
-            currentState.lists.where((l) => l.id == id).firstOrNull;
+            currentState.lists.firstWhereOrNull((l) => l.id == id);
       }
 
       TaskItem? findLiveTask(String id) {
         final latest = readLatestState?.call();
         if (latest != null) {
-          for (final t in latest.tasks) {
-            if (t.id == id) return pushedTasks[id] ?? t;
-          }
-          return null;
+          final match = latest.tasks.firstWhereOrNull((t) => t.id == id);
+          return match == null ? null : (pushedTasks[id] ?? match);
         }
         return pushedTasks[id] ??
-            currentState.tasks.where((t) => t.id == id).firstOrNull;
+            currentState.tasks.firstWhereOrNull((t) => t.id == id);
       }
 
       return await guardApiCall(() async {
@@ -477,14 +472,13 @@ class SubstratePushEngine {
               outbox.resolveRemoteId(SyncEntityType.list, listId);
         }
 
-        final taskOpsByLocalId = <String, List<SyncOutboxOp>>{};
-        for (final op in batch) {
-          if (op.entityType != SyncEntityType.task ||
-              op.kind != SyncOpKind.upsert) {
-            continue;
-          }
-          (taskOpsByLocalId[op.localId] ??= <SyncOutboxOp>[]).add(op);
-        }
+        final taskOpsByLocalId = batch
+            .where(
+              (op) =>
+                  op.entityType == SyncEntityType.task &&
+                  op.kind == SyncOpKind.upsert,
+            )
+            .groupListsBy((op) => op.localId);
 
         Future<void> pushSingleTaskOp(SyncOutboxOp op) async {
           final rawTask = findLiveTask(op.localId);
@@ -545,7 +539,7 @@ class SubstratePushEngine {
 
           final patchOutcome = isCreate
               ? (
-                  remoteTask: (await todoApi.createTask(
+                  remoteTask: (await _createTaskWithConflictRetry(
                     ctx,
                     folderRemoteId,
                     payload,
@@ -648,12 +642,8 @@ class SubstratePushEngine {
     List<T> values,
   ) {
     if (rawFields.isEmpty) return null;
-    final byName = {for (final v in values) v.name: v};
-    final result = <T>{};
-    for (final name in rawFields) {
-      final match = byName[name];
-      if (match != null) result.add(match);
-    }
+    final byName = values.asNameMap();
+    final result = rawFields.map((name) => byName[name]).nonNulls.toSet();
     return result.isEmpty ? null : result;
   }
 
@@ -668,6 +658,31 @@ class SubstratePushEngine {
       }
       throw error;
     });
+  }
+
+  /// Aligns with MS To Do's `CreatedTasksPusher`: if `POST` with
+  /// `CreatedWithLocalId` fails with 409 / `ErrorIrresolvableConflict` (and the
+  /// API did not already recover an existing task from the 409 body), retry
+  /// once without `CreatedWithLocalId`.
+  AsyncAppResult<RemoteTodoTask> _createTaskWithConflictRetry(
+    SubstrateRequestContext ctx,
+    String folderRemoteId,
+    Map<String, dynamic> payload,
+  ) async {
+    final first = await todoApi.createTask(ctx, folderRemoteId, payload);
+    final firstErr = first.exceptionOrNull();
+    if (firstErr == null ||
+        !firstErr.isConflict ||
+        !payload.containsKey('CreatedWithLocalId')) {
+      return first;
+    }
+    _log.warning(
+      'Conflict on task create with CreatedWithLocalId; '
+      'retrying without CreatedWithLocalId',
+    );
+    final retryPayload = Map<String, dynamic>.of(payload)
+      ..remove('CreatedWithLocalId');
+    return todoApi.createTask(ctx, folderRemoteId, retryPayload);
   }
 
   Future<
@@ -686,77 +701,89 @@ class SubstratePushEngine {
     required Set<TaskDirtyField>? dirtyFields,
     required String? baseNote,
   }) async {
+    const maxConflictRetries = 3;
     String? mergedNote;
     var preservedRemoteStatus = false;
     final isReorderOnlyPatch = isReorderOnlyTaskPatch(
       dirtyFields,
       isCompleted: task.isCompleted,
     );
-    final effectiveChangeKey = isReorderOnlyPatch ? null : task.changeKey;
+    var currentChangeKey = isReorderOnlyPatch ? null : task.changeKey;
+    var currentPayload = payload;
+    final bodyDirty =
+        dirtyFields == null || dirtyFields.contains(TaskDirtyField.body);
+    final statusDirty =
+        dirtyFields == null || dirtyFields.contains(TaskDirtyField.status);
 
-    final result = await todoApi
-        .patchTask(ctx, task.remoteId!, payload, changeKey: effectiveChangeKey)
-        .recover((error) async {
-          if (!error.isConflict) {
-            return Failure<RemoteTodoTask, AppError>(error);
-          }
-          return todoApi.getTask(ctx, task.remoteId!).flatMap((latest) {
-            final retryPayload = Map<String, dynamic>.from(payload);
+    AppResult<RemoteTodoTask> result = await todoApi.patchTask(
+      ctx,
+      task.remoteId!,
+      currentPayload,
+      changeKey: currentChangeKey,
+    );
 
-            if (dirtyFields == null ||
-                dirtyFields.contains(TaskDirtyField.body)) {
-              final resolvedNote = mergeThreeWayNoteText(
-                base: baseNote,
-                local: task.note,
-                remote: latest.plainTextNote,
-              );
-              mergedNote = resolvedNote;
-              retryPayload['Body'] = {
-                'Content': resolvedNote,
-                'ContentType': 'Text',
-              };
-            }
+    for (var attempt = 0; attempt < maxConflictRetries; attempt++) {
+      final err = result.exceptionOrNull();
+      if (err == null || !err.isConflict) break;
 
-            final statusDirty =
-                dirtyFields == null ||
-                dirtyFields.contains(TaskDirtyField.status);
-            if (statusDirty &&
-                task.isCompleted &&
-                latest.hasRecurrence &&
-                latest.dueDate != null &&
-                task.dueDate != null &&
-                !_sameCalendarDay(latest.dueDate!, task.dueDate!)) {
-              preservedRemoteStatus = true;
-              retryPayload['Status'] = latest.status;
-              retryPayload['DueDateTime'] = formatDueDateTimeZone(
-                latest.dueDate!,
-              );
-              retryPayload['CompletedDateTime'] =
-                  latest.completedDateTime != null
-                  ? formatDateTimeTimeZoneUtc(latest.completedDateTime!)
-                  : null;
-            }
+      final latestResult = await todoApi.getTask(ctx, task.remoteId!);
+      final latestErr = latestResult.exceptionOrNull();
+      if (latestErr != null) {
+        result = Failure<RemoteTodoTask, AppError>(latestErr);
+        break;
+      }
+      final latest = latestResult.getOrThrow();
+      final retryPayload = Map<String, dynamic>.of(payload);
 
-            return todoApi.patchTask(
-              ctx,
-              task.remoteId!,
-              retryPayload,
-              changeKey: latest.changeKey,
-            );
-          });
-        })
-        .recover((error) async {
-          if (!error.isNotFound) {
-            return Failure<RemoteTodoTask, AppError>(error);
-          }
-          final createPayload = buildTaskWritePayload(
-            task,
-            parentFolderRemoteId: folderRemoteId,
-            isCreate: true,
-            firstDayOfWeek: firstDayOfWeek,
-          );
-          return todoApi.createTask(ctx, folderRemoteId, createPayload);
-        });
+      if (bodyDirty) {
+        final resolvedNote = mergeThreeWayNoteText(
+          base: baseNote,
+          local: task.note,
+          remote: latest.plainTextNote,
+        );
+        mergedNote = resolvedNote;
+        retryPayload['Body'] = {'Content': resolvedNote, 'ContentType': 'Text'};
+      }
+
+      if (statusDirty &&
+          task.isCompleted &&
+          latest.hasRecurrence &&
+          latest.dueDate != null &&
+          task.dueDate != null &&
+          !_sameCalendarDay(latest.dueDate!, task.dueDate!)) {
+        preservedRemoteStatus = true;
+        retryPayload['Status'] = latest.status;
+        retryPayload['DueDateTime'] = formatDueDateTimeZone(latest.dueDate!);
+        retryPayload['CompletedDateTime'] = latest.completedDateTime != null
+            ? formatDateTimeTimeZoneUtc(latest.completedDateTime!)
+            : null;
+      }
+
+      currentPayload = retryPayload;
+      currentChangeKey = latest.changeKey;
+      result = await todoApi.patchTask(
+        ctx,
+        task.remoteId!,
+        currentPayload,
+        changeKey: currentChangeKey,
+      );
+    }
+
+    final finalErr = result.exceptionOrNull();
+    if (finalErr != null && finalErr.isNotFound) {
+      final createPayload = buildTaskWritePayload(
+        task,
+        parentFolderRemoteId: folderRemoteId,
+        isCreate: true,
+        firstDayOfWeek: firstDayOfWeek,
+      );
+      result = await _createTaskWithConflictRetry(
+        ctx,
+        folderRemoteId,
+        createPayload,
+      );
+    }
+
     return (
       remoteTask: result.getOrThrow(),
       mergedNote: mergedNote,
