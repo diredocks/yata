@@ -39,6 +39,7 @@ class SyncOutcome {
     required this.pushedTasksCount,
     required this.syncedAt,
     this.settingsPatch,
+    this.cancelled = false,
   });
 
   final List<ListGroup> groups;
@@ -49,6 +50,7 @@ class SyncOutcome {
   final SyncedSettingsPatch? settingsPatch;
   final int pushedTasksCount;
   final DateTime syncedAt;
+  final bool cancelled;
 }
 
 class CloudSyncService {
@@ -120,6 +122,99 @@ class CloudSyncService {
       ),
     );
   }
+
+  Future<AppResult<T>> _runWithAuthRetry<T extends Object>({
+    required MicrosoftAccount account,
+    required TodoSettingsStore settings,
+    required String operation,
+    required Future<T> Function(SubstrateRequestContext ctx) run,
+  }) async {
+    Future<AppResult<T>> runAttempt({required bool forceRefreshToken}) =>
+        resolveContext(
+          account,
+          settings,
+          forceRefreshToken: forceRefreshToken,
+        ).flatMap((ctx) => guardApiCall(() => run(ctx), operation: operation));
+
+    final firstAttempt = await runAttempt(forceRefreshToken: false);
+    if (firstAttempt.exceptionOrNull() is! AuthError) {
+      return firstAttempt;
+    }
+
+    final retried = await runAttempt(forceRefreshToken: true);
+    return retried.mapError(
+      (error) => error is AuthError
+          ? AppError.auth(
+              message: error.message,
+              code: error.code,
+              requiresReauth: true,
+            )
+          : error,
+    );
+  }
+
+  /// Pushes pending Outbox mutations without running a Pull pass.
+  AsyncAppResult<OutboxPushOutcome> pushAccount({
+    required MicrosoftAccount account,
+    required TodoState currentState,
+    required TodoRepository repository,
+    required TodoSettingsStore settings,
+    TodoState Function()? readLatestState,
+    Future<void> Function(OutboxPushOutcome pushOutcome)? onPushCommitted,
+    String reason = 'push',
+  }) => _runWithAuthRetry<OutboxPushOutcome>(
+    account: account,
+    settings: settings,
+    operation: 'pushPhase',
+    run: (ctx) => _executePush(
+      ctx: ctx,
+      currentState: readLatestState?.call() ?? currentState,
+      repository: repository,
+      settings: settings,
+      readLatestState: readLatestState,
+      onPushCommitted: onPushCommitted,
+      reason: reason,
+    ),
+  );
+
+  /// Pulls remote state according to [kind] without running a Push pass.
+  AsyncAppResult<SyncOutcome> pullAccount({
+    required MicrosoftAccount account,
+    required TodoState currentState,
+    required TodoRepository repository,
+    required TodoSettingsStore settings,
+    required String Function(String prefix) idGenerator,
+    TodoState Function()? readLatestState,
+    SyncKind kind = SyncKind.delta,
+    String reason = 'pull',
+    bool Function()? isCancelled,
+    Set<String> Function()? readExtraDeletedGroupRemoteIds,
+    Set<String> Function()? readExtraDeletedListRemoteIds,
+    Set<String> Function()? readExtraDeletedTaskRemoteIds,
+    Set<String> Function()? readJustPushedGroupIds,
+    Set<String> Function()? readJustPushedListIds,
+    Set<String> Function()? readJustPushedTaskIds,
+  }) => _runWithAuthRetry<SyncOutcome>(
+    account: account,
+    settings: settings,
+    operation: 'pullPhase',
+    run: (ctx) => _executePull(
+      ctx: ctx,
+      currentState: readLatestState?.call() ?? currentState,
+      repository: repository,
+      settings: settings,
+      idGenerator: idGenerator,
+      kind: kind,
+      reason: reason,
+      isCancelled: isCancelled,
+      readExtraDeletedGroupRemoteIds: readExtraDeletedGroupRemoteIds,
+      readExtraDeletedListRemoteIds: readExtraDeletedListRemoteIds,
+      readExtraDeletedTaskRemoteIds: readExtraDeletedTaskRemoteIds,
+      readJustPushedGroupIds: readJustPushedGroupIds,
+      readJustPushedListIds: readJustPushedListIds,
+      readJustPushedTaskIds: readJustPushedTaskIds,
+    ),
+  );
 
   /// Runs a sync pass: Push Outbox -> commit pushed IDs -> Pull (selective/delta/full).
   AsyncAppResult<SyncOutcome> syncAccount({
@@ -303,6 +398,157 @@ class CloudSyncService {
           pushedTasksCount: pushOutcome.pushedTasks.length,
           syncedAt: DateTime.now().toUtc(),
         );
+    }
+  }
+
+  Future<OutboxPushOutcome> _executePush({
+    required SubstrateRequestContext ctx,
+    required TodoState currentState,
+    required TodoRepository repository,
+    required TodoSettingsStore settings,
+    TodoState Function()? readLatestState,
+    Future<void> Function(OutboxPushOutcome pushOutcome)? onPushCommitted,
+    required String reason,
+  }) async {
+    final nowUtc = DateTime.now().toUtc();
+    final outbox = repository.outbox;
+
+    _log.info(
+      'push start reason=$reason '
+      'localLists=${currentState.lists.length} localTasks=${currentState.tasks.length} '
+      'outboxOps=${outbox.ops.length}',
+    );
+
+    return (await _pushEngine.pushOutbox(
+      ctx: ctx,
+      currentState: currentState,
+      outbox: outbox,
+      nowUtc: nowUtc,
+      readLatestState: readLatestState,
+      onItemCommitted: (itemOutcome) async {
+        if (itemOutcome.followUpPullFolderRemoteIds.isNotEmpty) {
+          await settings.savePendingTaskFolderPulls({
+            ...settings.loadPendingTaskFolderPulls(),
+            ...itemOutcome.followUpPullFolderRemoteIds,
+          });
+        }
+        if (onPushCommitted != null) {
+          await onPushCommitted(itemOutcome);
+        } else {
+          for (final seq in itemOutcome.ackedSeqs) {
+            outbox.ackOp(seq);
+          }
+          for (final entry in itemOutcome.clearedRemoteIdKeys) {
+            outbox.clearRemoteId(entry.type, entry.localId);
+          }
+          await repository.saveOutbox();
+        }
+      },
+    )).getOrThrow();
+  }
+
+  Future<SyncOutcome> _executePull({
+    required SubstrateRequestContext ctx,
+    required TodoState currentState,
+    required TodoRepository repository,
+    required TodoSettingsStore settings,
+    required String Function(String prefix) idGenerator,
+    required SyncKind kind,
+    required String reason,
+    bool Function()? isCancelled,
+    Set<String> Function()? readExtraDeletedGroupRemoteIds,
+    Set<String> Function()? readExtraDeletedListRemoteIds,
+    Set<String> Function()? readExtraDeletedTaskRemoteIds,
+    Set<String> Function()? readJustPushedGroupIds,
+    Set<String> Function()? readJustPushedListIds,
+    Set<String> Function()? readJustPushedTaskIds,
+  }) async {
+    final outbox = repository.outbox;
+    _log.info(
+      'pull start reason=$reason kind=${kind.name} '
+      'localLists=${currentState.lists.length} localTasks=${currentState.tasks.length}',
+    );
+
+    try {
+      switch (kind) {
+        case SyncKind.pushOnly:
+          final mergedTasks = await _pullEngine.pullSelectiveFolders(
+            ctx: ctx,
+            settings: settings,
+            workingLists: currentState.lists,
+            workingTasks: currentState.tasks,
+            outbox: outbox,
+            idGenerator: idGenerator,
+            isCancelled: isCancelled,
+            readExtraDeletedTaskRemoteIds: readExtraDeletedTaskRemoteIds,
+          );
+          return SyncOutcome(
+            groups: currentState.groups,
+            lists: currentState.lists,
+            tasks: mergedTasks,
+            pushedTasksCount: 0,
+            syncedAt: DateTime.now().toUtc(),
+          );
+
+        case SyncKind.delta:
+          final pulled = await _pullEngine.pullDelta(
+            ctx: ctx,
+            settings: settings,
+            workingGroups: currentState.groups,
+            workingLists: currentState.lists,
+            workingTasks: currentState.tasks,
+            outbox: outbox,
+            idGenerator: idGenerator,
+            isCancelled: isCancelled,
+            readExtraDeletedGroupRemoteIds: readExtraDeletedGroupRemoteIds,
+            readExtraDeletedListRemoteIds: readExtraDeletedListRemoteIds,
+            readExtraDeletedTaskRemoteIds: readExtraDeletedTaskRemoteIds,
+          );
+          return SyncOutcome(
+            groups: pulled.groups,
+            lists: pulled.lists,
+            tasks: pulled.tasks,
+            settingsPatch: pulled.settingsPatch,
+            pushedTasksCount: 0,
+            syncedAt: DateTime.now().toUtc(),
+          );
+
+        case SyncKind.full:
+          final pulled = await _pullEngine.pullFull(
+            ctx: ctx,
+            settings: settings,
+            workingGroups: currentState.groups,
+            workingLists: currentState.lists,
+            workingTasks: currentState.tasks,
+            outbox: outbox,
+            idGenerator: idGenerator,
+            isCancelled: isCancelled,
+            readExtraDeletedGroupRemoteIds: readExtraDeletedGroupRemoteIds,
+            readExtraDeletedListRemoteIds: readExtraDeletedListRemoteIds,
+            readExtraDeletedTaskRemoteIds: readExtraDeletedTaskRemoteIds,
+            readJustPushedGroupIds: readJustPushedGroupIds,
+            readJustPushedListIds: readJustPushedListIds,
+            readJustPushedTaskIds: readJustPushedTaskIds,
+          );
+          return SyncOutcome(
+            groups: pulled.groups,
+            lists: pulled.lists,
+            tasks: pulled.tasks,
+            settingsPatch: pulled.settingsPatch,
+            pushedTasksCount: 0,
+            syncedAt: DateTime.now().toUtc(),
+          );
+      }
+    } on SyncCancelledException {
+      _log.info('pull cancelled reason=$reason kind=${kind.name}');
+      return SyncOutcome(
+        groups: currentState.groups,
+        lists: currentState.lists,
+        tasks: currentState.tasks,
+        pushedTasksCount: 0,
+        syncedAt: DateTime.now().toUtc(),
+        cancelled: true,
+      );
     }
   }
 }

@@ -28,6 +28,10 @@ class MetadataPullResult {
   final SyncedSettingsPatch settingsPatch;
 }
 
+class SyncCancelledException implements Exception {
+  const SyncCancelledException();
+}
+
 class FullPullResult {
   const FullPullResult({
     required this.groups,
@@ -73,6 +77,12 @@ class SubstratePullEngine {
 
   final MicrosoftTodoApi todoApi;
 
+  void _checkCancelled(bool Function()? isCancelled) {
+    if (isCancelled?.call() == true) {
+      throw const SyncCancelledException();
+    }
+  }
+
   /// Runs an incremental delta pull across settings, groups, folders, and tasks.
   Future<FullPullResult> pullDelta({
     required SubstrateRequestContext ctx,
@@ -82,6 +92,10 @@ class SubstratePullEngine {
     required List<TaskItem> workingTasks,
     required SyncOutboxQueue outbox,
     required String Function(String prefix) idGenerator,
+    bool Function()? isCancelled,
+    Set<String> Function()? readExtraDeletedGroupRemoteIds,
+    Set<String> Function()? readExtraDeletedListRemoteIds,
+    Set<String> Function()? readExtraDeletedTaskRemoteIds,
   }) async {
     final meta = await _pullMetadata(
       ctx: ctx,
@@ -91,7 +105,11 @@ class SubstratePullEngine {
       outbox: outbox,
       forceFullSync: false,
       idGenerator: idGenerator,
+      isCancelled: isCancelled,
+      readExtraDeletedGroupRemoteIds: readExtraDeletedGroupRemoteIds,
+      readExtraDeletedListRemoteIds: readExtraDeletedListRemoteIds,
     );
+    _checkCancelled(isCancelled);
     final validListIds = {for (final l in meta.lists) l.id};
     final liveTasks = workingTasks
         .where((t) => validListIds.contains(t.listId))
@@ -104,6 +122,8 @@ class SubstratePullEngine {
       outbox: outbox,
       forceFullSync: false,
       idGenerator: idGenerator,
+      isCancelled: isCancelled,
+      readExtraDeletedTaskRemoteIds: readExtraDeletedTaskRemoteIds,
     );
     return FullPullResult(
       groups: meta.groups,
@@ -126,6 +146,13 @@ class SubstratePullEngine {
     Set<String> justPushedGroupIds = const {},
     Set<String> justPushedListIds = const {},
     Set<String> justPushedTaskIds = const {},
+    bool Function()? isCancelled,
+    Set<String> Function()? readExtraDeletedGroupRemoteIds,
+    Set<String> Function()? readExtraDeletedListRemoteIds,
+    Set<String> Function()? readExtraDeletedTaskRemoteIds,
+    Set<String> Function()? readJustPushedGroupIds,
+    Set<String> Function()? readJustPushedListIds,
+    Set<String> Function()? readJustPushedTaskIds,
   }) async {
     final meta = await _pullMetadata(
       ctx: ctx,
@@ -137,7 +164,13 @@ class SubstratePullEngine {
       idGenerator: idGenerator,
       justPushedGroupIds: justPushedGroupIds,
       justPushedListIds: justPushedListIds,
+      isCancelled: isCancelled,
+      readExtraDeletedGroupRemoteIds: readExtraDeletedGroupRemoteIds,
+      readExtraDeletedListRemoteIds: readExtraDeletedListRemoteIds,
+      readJustPushedGroupIds: readJustPushedGroupIds,
+      readJustPushedListIds: readJustPushedListIds,
     );
+    _checkCancelled(isCancelled);
     final validListIds = {for (final l in meta.lists) l.id};
     final liveTasks = workingTasks
         .where((t) => validListIds.contains(t.listId))
@@ -151,6 +184,9 @@ class SubstratePullEngine {
       forceFullSync: true,
       idGenerator: idGenerator,
       justPushedTaskIds: justPushedTaskIds,
+      isCancelled: isCancelled,
+      readExtraDeletedTaskRemoteIds: readExtraDeletedTaskRemoteIds,
+      readJustPushedTaskIds: readJustPushedTaskIds,
     );
     return FullPullResult(
       groups: meta.groups,
@@ -168,6 +204,8 @@ class SubstratePullEngine {
     required List<TaskItem> workingTasks,
     required SyncOutboxQueue outbox,
     required String Function(String prefix) idGenerator,
+    bool Function()? isCancelled,
+    Set<String> Function()? readExtraDeletedTaskRemoteIds,
   }) {
     return _pullTasks(
       ctx: ctx,
@@ -178,6 +216,8 @@ class SubstratePullEngine {
       forceFullSync: false,
       idGenerator: idGenerator,
       onlyFolderRemoteIds: settings.loadPendingTaskFolderPulls(),
+      isCancelled: isCancelled,
+      readExtraDeletedTaskRemoteIds: readExtraDeletedTaskRemoteIds,
     );
   }
 
@@ -191,6 +231,11 @@ class SubstratePullEngine {
     required String Function(String prefix) idGenerator,
     Set<String> justPushedGroupIds = const {},
     Set<String> justPushedListIds = const {},
+    bool Function()? isCancelled,
+    Set<String> Function()? readExtraDeletedGroupRemoteIds,
+    Set<String> Function()? readExtraDeletedListRemoteIds,
+    Set<String> Function()? readJustPushedGroupIds,
+    Set<String> Function()? readJustPushedListIds,
   }) async {
     final pendingSettings = outbox.pendingLocalIds(SyncEntityType.setting);
     final pendingGroups = outbox.pendingLocalIds(SyncEntityType.group);
@@ -202,6 +247,7 @@ class SubstratePullEngine {
       SyncEntityType.list,
     );
 
+    _checkCancelled(isCancelled);
     // Pull remote settings (skip keys still pending in Outbox).
     final remoteSettings = (await todoApi.getSettings(ctx)).getOrThrow();
     final settingsPatch = buildSyncedSettingsPatchFromWire(
@@ -209,6 +255,7 @@ class SubstratePullEngine {
       skipKeys: pendingSettings,
     );
 
+    _checkCancelled(isCancelled);
     // Pull folder groups delta.
     final groupsFetch = (await _fetchDeltaWithMode(
       savedDeltaLink: settings.loadGroupsDeltaLink(),
@@ -220,8 +267,17 @@ class SubstratePullEngine {
     if (groupsDelta.deltaLink != null) {
       await settings.saveGroupsDeltaLink(groupsDelta.deltaLink);
     }
+    _checkCancelled(isCancelled);
+    final deletedGroupRemotes = {
+      ...pendingDeletedGroupRemotes,
+      ...?readExtraDeletedGroupRemoteIds?.call(),
+    };
+    final effectiveJustPushedGroups = {
+      ...justPushedGroupIds,
+      ...?readJustPushedGroupIds?.call(),
+    };
     final filteredGroupItems = groupsDelta.items
-        .where((g) => !pendingDeletedGroupRemotes.contains(g.id))
+        .where((g) => !deletedGroupRemotes.contains(g.id))
         .toList();
     var nextGroups = mergeFolderGroupsDelta(
       localGroups: workingGroups,
@@ -240,7 +296,7 @@ class SubstratePullEngine {
             g.remoteId == null ||
             seenGroupRemoteIds.contains(g.remoteId) ||
             pendingGroups.contains(g.id) ||
-            justPushedGroupIds.contains(g.id),
+            effectiveJustPushedGroups.contains(g.id),
         onPruned: (g) => _log.fine(
           'Phase 8 full-sync prune stale group=${g.id} '
           'remote=${shortSyncId(g.remoteId)} title="${g.title}"',
@@ -253,6 +309,7 @@ class SubstratePullEngine {
       'hasDeltaLink=${groupsDelta.deltaLink != null}',
     );
 
+    _checkCancelled(isCancelled);
     // Pull folders delta.
     final foldersFetch = (await _fetchDeltaWithMode(
       savedDeltaLink: settings.loadFoldersDeltaLink(),
@@ -264,8 +321,17 @@ class SubstratePullEngine {
     if (foldersDelta.deltaLink != null) {
       await settings.saveFoldersDeltaLink(foldersDelta.deltaLink);
     }
+    _checkCancelled(isCancelled);
+    final deletedListRemotes = {
+      ...pendingDeletedListRemotes,
+      ...?readExtraDeletedListRemoteIds?.call(),
+    };
+    final effectiveJustPushedLists = {
+      ...justPushedListIds,
+      ...?readJustPushedListIds?.call(),
+    };
     final filteredFolderItems = foldersDelta.items
-        .where((f) => !pendingDeletedListRemotes.contains(f.id))
+        .where((f) => !deletedListRemotes.contains(f.id))
         .toList();
     final groupLocalIdByRemoteId = {
       for (final g in nextGroups)
@@ -292,7 +358,7 @@ class SubstratePullEngine {
               l.remoteId == null ||
               seenFolderRemoteIds.contains(l.remoteId) ||
               pendingLists.contains(l.id) ||
-              justPushedListIds.contains(l.id),
+              effectiveJustPushedLists.contains(l.id),
           onPruned: (l) => _log.fine(
             'Phase 9 full-sync prune stale list=${l.id} '
             'remote=${shortSyncId(l.remoteId)} title="${l.title}"',
@@ -323,6 +389,9 @@ class SubstratePullEngine {
     required String Function(String prefix) idGenerator,
     Set<String>? onlyFolderRemoteIds,
     Set<String> justPushedTaskIds = const {},
+    bool Function()? isCancelled,
+    Set<String> Function()? readExtraDeletedTaskRemoteIds,
+    Set<String> Function()? readJustPushedTaskIds,
   }) async {
     final pendingTasks = outbox.pendingLocalIds(SyncEntityType.task);
     final pendingDeletedTaskRemotes = outbox.pendingDeletedRemoteIds(
@@ -372,6 +441,7 @@ class SubstratePullEngine {
       pullFolderRemoteIds,
       _maxConcurrentFolderFetches,
       (folderRemoteId) async {
+        _checkCancelled(isCancelled);
         final fetchResult = await _fetchDeltaWithMode(
           savedDeltaLink: taskDeltaLinks[folderRemoteId],
           forceFullSync: forceFullSync,
@@ -436,12 +506,22 @@ class SubstratePullEngine {
       );
     }
 
+    _checkCancelled(isCancelled);
+    final deletedTaskRemotes = {
+      ...pendingDeletedTaskRemotes,
+      ...?readExtraDeletedTaskRemoteIds?.call(),
+    };
+    final effectiveJustPushedTasks = {
+      ...justPushedTaskIds,
+      ...?readJustPushedTaskIds?.call(),
+    };
+
     final reconciled = reconcileRemoteTaskChanges(
       lists: workingLists,
       currentTasks: workingTasks,
       changes: allChanges,
       dirtyTaskIds: pendingTasks,
-      pendingDeletedTaskRemoteIds: pendingDeletedTaskRemotes,
+      pendingDeletedTaskRemoteIds: deletedTaskRemotes,
       idGenerator: idGenerator,
     );
 
@@ -454,7 +534,7 @@ class SubstratePullEngine {
             !fullSyncedListIds.contains(task.listId) ||
             reconciled.seenActiveRemoteIds.contains(task.remoteId) ||
             pendingTasks.contains(task.id) ||
-            justPushedTaskIds.contains(task.id),
+            effectiveJustPushedTasks.contains(task.id),
         onPruned: (removed) => _log.fine(
           'Phase 10b full-sync prune stale local=${removed.id} '
           'remote=${shortSyncId(removed.remoteId)} '
