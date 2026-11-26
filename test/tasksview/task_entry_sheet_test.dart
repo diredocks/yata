@@ -116,16 +116,17 @@ void main() {
         TaskEntrySheet(
           lists: lists,
           currentList: tasksList,
-          onSubmit: ({
-            required title,
-            targetListId,
-            dueDate,
-            reminderAt,
-            RecurrenceType recurrence = RecurrenceType.none,
-            rawRecurrence,
-          }) {
-            submittedRaw = rawRecurrence;
-          },
+          onSubmit:
+              ({
+                required title,
+                targetListId,
+                dueDate,
+                reminderAt,
+                RecurrenceType recurrence = RecurrenceType.none,
+                rawRecurrence,
+              }) {
+                submittedRaw = rawRecurrence;
+              },
         ),
       ),
     );
@@ -157,6 +158,101 @@ void main() {
     expect(submittedRaw?['IntervalType'], 'Weeks');
     expect(submittedRaw?['Interval'], 2);
   });
+
+  testWidgets(
+    'List picker menu separates smart lists and custom lists with a divider',
+    (WidgetTester tester) async {
+      final plannedList = lists.firstWhere(
+        (l) => l.smartType == SmartListType.planned,
+      );
+      String? submittedTargetListId;
+
+      await tester.pumpWidget(
+        _wrapSheet(
+          TaskEntrySheet(
+            lists: lists,
+            currentList: plannedList,
+            onSubmit:
+                ({
+                  required title,
+                  targetListId,
+                  dueDate,
+                  reminderAt,
+                  RecurrenceType recurrence = RecurrenceType.none,
+                  rawRecurrence,
+                }) {
+                  submittedTargetListId = targetListId;
+                },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(ActionChip));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(Divider), findsOneWidget);
+      final tasksFinder = find.widgetWithText(ListTile, 'Tasks');
+      final dividerFinder = find.byType(Divider);
+      final groceriesFinder = find.widgetWithText(ListTile, 'Groceries');
+      expect(tasksFinder, findsOneWidget);
+      expect(groceriesFinder, findsOneWidget);
+      expect(
+        tester.getCenter(tasksFinder).dy,
+        lessThan(tester.getCenter(dividerFinder).dy),
+      );
+      expect(
+        tester.getCenter(dividerFinder).dy,
+        lessThan(tester.getCenter(groceriesFinder).dy),
+      );
+
+      await tester.tap(groceriesFinder);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Groceries'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'Buy milk');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pumpAndSettle();
+
+      expect(submittedTargetListId, 'custom_1');
+    },
+  );
+
+  testWidgets(
+    'List picker menu omits divider when no custom lists are present',
+    (WidgetTester tester) async {
+      final smartOnly = defaultSmartLists();
+      final plannedList = smartOnly.firstWhere(
+        (l) => l.smartType == SmartListType.planned,
+      );
+
+      await tester.pumpWidget(
+        _wrapSheet(
+          TaskEntrySheet(
+            lists: smartOnly,
+            currentList: plannedList,
+            onSubmit: ({
+              required title,
+              targetListId,
+              dueDate,
+              reminderAt,
+              RecurrenceType recurrence = RecurrenceType.none,
+              rawRecurrence,
+            }) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(ActionChip));
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(ListTile, 'Tasks'), findsOneWidget);
+      expect(find.byType(Divider), findsNothing);
+    },
+  );
 
   test('formatRecurrenceLabel and computeNextDueDate handle custom rules', () {
     final l10n = AppLocalizationsEn();

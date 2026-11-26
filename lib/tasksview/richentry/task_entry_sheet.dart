@@ -210,6 +210,23 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
     final selectableLists = widget.lists
         .where((l) => !l.isSmartList || l.smartType == SmartListType.tasks)
         .toList();
+    final smartLists = selectableLists.where((l) => l.isSmartList).toList();
+    final customLists = selectableLists.where((l) => !l.isSmartList).toList();
+
+    Widget buildListTile(BuildContext ctx, TodoList list) {
+      return ListTile(
+        leading: Icon(
+          list.icon,
+          color: TodoColors.listAccentFor(
+            list,
+            brightness: Theme.of(ctx).brightness,
+          ),
+        ),
+        title: Text(list.title),
+        trailing: list.id == _targetListId ? const Icon(Icons.check) : null,
+        onTap: () => Navigator.pop(ctx, list.id),
+      );
+    }
 
     final picked = await showModalBottomSheet<String>(
       context: context,
@@ -217,21 +234,10 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
         child: ListView(
           shrinkWrap: true,
           children: [
-            for (final list in selectableLists)
-              ListTile(
-                leading: Icon(
-                  list.icon,
-                  color: TodoColors.listAccentFor(
-                    list,
-                    brightness: Theme.of(ctx).brightness,
-                  ),
-                ),
-                title: Text(list.title),
-                trailing: list.id == _targetListId
-                    ? const Icon(Icons.check)
-                    : null,
-                onTap: () => Navigator.pop(ctx, list.id),
-              ),
+            for (final list in smartLists) buildListTile(ctx, list),
+            if (smartLists.isNotEmpty && customLists.isNotEmpty)
+              const Divider(height: 1),
+            for (final list in customLists) buildListTile(ctx, list),
           ],
         ),
       ),
