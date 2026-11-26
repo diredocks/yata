@@ -10,6 +10,7 @@ import '../data/sync_outbox.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
 import 'microsoft/cloud_sync_service.dart';
+import 'microsoft/substrate_push_engine.dart';
 import 'realtime_sync_controller.dart';
 import 'sync_guard.dart';
 
@@ -71,14 +72,77 @@ enum SyncReason {
 }
 
 class _SyncCommand {
-  const _SyncCommand(this.kind, this.reason);
+  const _SyncCommand(this.kind, this.reason, {this.pruneProtectSinceSeq});
 
   final SyncKind kind;
   final String reason;
+  final int? pruneProtectSinceSeq;
 
   _SyncCommand merge(_SyncCommand other) {
-    if (other.kind.index > kind.index) return other;
-    return this;
+    final earliestPruneSeq = switch ((
+      pruneProtectSinceSeq,
+      other.pruneProtectSinceSeq,
+    )) {
+      (final a?, final b?) => a < b ? a : b,
+      (final a?, null) => a,
+      (null, final b?) => b,
+      (null, null) => null,
+    };
+    final winner = other.kind.index > kind.index ? other : this;
+    return _SyncCommand(
+      winner.kind,
+      winner.reason,
+      pruneProtectSinceSeq: earliestPruneSeq,
+    );
+  }
+}
+
+class _CancelFlag {
+  bool cancelled = false;
+  void cancel() => cancelled = true;
+}
+
+/// Coalescing timer with a bounded maximum postponement cap.
+class _CoalescingDebouncer {
+  _CoalescingDebouncer(this.maxCoalesceDelay);
+
+  final Duration maxCoalesceDelay;
+  Timer? _timer;
+  DateTime? _startedAt;
+  DateTime? _deadline;
+
+  bool get isActive => _timer != null && _timer!.isActive;
+
+  Duration schedule(Duration delay, void Function() onFire) {
+    final now = DateTime.now();
+    final isPending = _deadline != null && _deadline!.isAfter(now);
+    final DateTime fireAt;
+    if (isPending && _startedAt != null) {
+      final cap = _startedAt!.add(
+        delay > maxCoalesceDelay ? delay : maxCoalesceDelay,
+      );
+      final extended = now.add(delay);
+      fireAt = extended.isAfter(cap) ? cap : extended;
+    } else {
+      _startedAt = now;
+      fireAt = now.add(delay);
+    }
+
+    _timer?.cancel();
+    _deadline = fireAt;
+    final fireIn = fireAt.difference(now);
+    _timer = Timer(fireIn, () {
+      cancel();
+      onFire();
+    });
+    return fireIn;
+  }
+
+  void cancel() {
+    _timer?.cancel();
+    _timer = null;
+    _startedAt = null;
+    _deadline = null;
   }
 }
 
@@ -92,27 +156,36 @@ class SyncNotifier extends Notifier<SyncState> {
   static const _foregroundDebounceDuration = Duration(milliseconds: 500);
   static const _periodicSyncInterval = Duration(seconds: 120);
 
-  Timer? _debounceTimer;
-  DateTime? _debounceStartedAt;
-  DateTime? _debounceDeadline;
-  SyncKind? _pendingKind;
-  String _pendingReason = SyncReason.debounced.label;
+  final _pushDebouncer = _CoalescingDebouncer(_maxCoalesceDelay);
+  String? _pendingPushReason;
+
+  final _pullDebouncer = _CoalescingDebouncer(_maxCoalesceDelay);
+  SyncKind? _pendingPullKind;
+  String _pendingPullReason = SyncReason.debounced.label;
+
   Timer? _periodicTimer;
   RealtimeSyncController? _realtimeController;
 
   bool _disposed = false;
   bool _isForeground = true;
-  Future<void>? _activeSync;
-  _SyncCommand? _queuedCommand;
 
-  void _enqueueCommand(_SyncCommand command) {
-    _queuedCommand = _queuedCommand?.merge(command) ?? command;
+  Future<void>? _activePush;
+  String? _queuedPushReason;
+
+  Future<void>? _activePull;
+  _SyncCommand? _queuedPullCommand;
+  _CancelFlag? _activePullCancel;
+
+  bool get _hasActiveSync => _activePush != null || _activePull != null;
+
+  void _enqueuePullCommand(_SyncCommand command) {
+    _queuedPullCommand = _queuedPullCommand?.merge(command) ?? command;
   }
 
   RealtimeSyncController _ensureRealtimeController() {
     return _realtimeController ??= RealtimeSyncController(
       ref: ref,
-      isSyncInFlight: () => _activeSync != null,
+      isSyncInFlight: () => _hasActiveSync,
       onScheduleFallbackSync:
           ({required delay, required forceFullSync, required reason}) {
             scheduleDebouncedSync(
@@ -122,7 +195,7 @@ class SyncNotifier extends Notifier<SyncState> {
             );
           },
       onOverflowResync: (reason) {
-        _enqueueCommand(_SyncCommand(SyncKind.full, reason));
+        _enqueuePullCommand(_SyncCommand(SyncKind.full, reason));
       },
       onCatchupDeltaSync: (reason) =>
           syncNow(forceFullSync: false, reason: reason),
@@ -157,8 +230,11 @@ class SyncNotifier extends Notifier<SyncState> {
     if (!accountIdentity.isMicrosoft || activeAccount is! MicrosoftAccount) {
       realtime.stop(clearPending: true);
       _stopPeriodicSync();
-      _cancelDebounce();
-      _queuedCommand = null;
+      _cancelPushDebounce();
+      _cancelPullDebounce();
+      _queuedPushReason = null;
+      _queuedPullCommand = null;
+      _activePullCancel?.cancel();
       return const SyncState();
     }
 
@@ -178,20 +254,25 @@ class SyncNotifier extends Notifier<SyncState> {
 
   void _disposeResources() {
     _disposed = true;
-    _cancelDebounce();
-    _queuedCommand = null;
+    _cancelPushDebounce();
+    _cancelPullDebounce();
+    _queuedPushReason = null;
+    _queuedPullCommand = null;
+    _activePullCancel?.cancel();
     _stopPeriodicSync();
     _realtimeController?.dispose();
     _realtimeController = null;
   }
 
-  void _cancelDebounce() {
-    _debounceTimer?.cancel();
-    _debounceTimer = null;
-    _debounceStartedAt = null;
-    _debounceDeadline = null;
-    _pendingKind = null;
-    _pendingReason = SyncReason.debounced.label;
+  void _cancelPushDebounce() {
+    _pushDebouncer.cancel();
+    _pendingPushReason = null;
+  }
+
+  void _cancelPullDebounce() {
+    _pullDebouncer.cancel();
+    _pendingPullKind = null;
+    _pendingPullReason = SyncReason.debounced.label;
   }
 
   void _startPeriodicSync() {
@@ -208,23 +289,29 @@ class SyncNotifier extends Notifier<SyncState> {
     _periodicTimer = null;
   }
 
-  /// Pauses foreground-only sync channels (realtime long-polling and periodic
-  /// timer) when the app moves to the background.
+  /// Pauses foreground-only sync channels when backgrounded, cancels any
+  /// in-flight pull so bandwidth/time go to pushes, and flushes pending pushes.
   void onAppPaused() {
     if (_disposed || !_isForeground) return;
     _isForeground = false;
     _log.info('onAppPaused: stopping realtime & periodic sync');
     _stopPeriodicSync();
     _realtimeController?.onAppPaused();
-    final pending = _pendingKind;
-    if (pending != null && _debounceTimer != null && _debounceTimer!.isActive) {
-      final reason = _pendingReason;
-      _cancelDebounce();
+
+    if (_activePull != null) {
+      _log.info('onAppPaused: cancelling in-flight pull to prioritize push');
+      _activePullCancel?.cancel();
+      _queuedPullCommand = null;
+    }
+    _cancelPullDebounce();
+
+    final pendingPushReason = _pendingPushReason;
+    if (pendingPushReason != null && _pushDebouncer.isActive) {
+      _cancelPushDebounce();
       _log.info(
-        'onAppPaused: flushing pending debounced sync reason=$reason '
-        'kind=${pending.name}',
+        'onAppPaused: flushing pending push reason=$pendingPushReason',
       );
-      unawaited(_syncNowForKind(pending, reason: reason));
+      unawaited(_pushNow(reason: pendingPushReason));
     }
   }
 
@@ -272,6 +359,7 @@ class SyncNotifier extends Notifier<SyncState> {
     unawaited(() async {
       await syncNow(forceFullSync: false, reason: SyncReason.startup.label);
       if (!_disposed &&
+          _isForeground &&
           needsFollowUpFull &&
           state.status == SyncStatus.success) {
         await syncNow(forceFullSync: true, reason: SyncReason.startup.label);
@@ -279,103 +367,115 @@ class SyncNotifier extends Notifier<SyncState> {
     }());
   }
 
-  /// Schedules a delta/full pass, coalescing pending requests into one.
+  /// Schedules a delta/full pull pass, coalescing pending requests into one.
   void scheduleDebouncedSync({
     Duration delay = _debounceDuration,
     bool forceFullSync = false,
     String reason = 'debounced',
   }) {
-    _scheduleSync(
-      kind: forceFullSync ? SyncKind.full : SyncKind.delta,
-      delay: delay,
-      reason: reason,
+    final active = ref.read(accountProvider).activeAccount;
+    if (_disposed || active is! MicrosoftAccount) return;
+
+    final kind = forceFullSync ? SyncKind.full : SyncKind.delta;
+    final previous = _pendingPullKind;
+    final merged = _mergeSyncKind(previous, kind);
+    _pendingPullKind = merged;
+    if (previous == null || merged != previous) {
+      _pendingPullReason = reason;
+    }
+
+    final fireIn = _pullDebouncer.schedule(delay, () {
+      if (_disposed) return;
+      final pendingKind = _pendingPullKind ?? SyncKind.delta;
+      final pendingReason = _pendingPullReason;
+      _pendingPullKind = null;
+      _pendingPullReason = SyncReason.debounced.label;
+      unawaited(
+        syncNow(
+          forceFullSync: pendingKind == SyncKind.full,
+          reason: pendingReason,
+        ),
+      );
+    });
+    _log.info(
+      'scheduleDebouncedSync reason=$_pendingPullReason kind=${merged.name} '
+      'delay=${delay.inMilliseconds}ms fireIn=${fireIn.inMilliseconds}ms',
     );
   }
 
+  /// Schedules an independent local Outbox push pass (never blocked by pulls).
   void schedulePushOnlySync({
     Duration delay = _mutationDebounceDuration,
     String reason = 'local_mutation',
   }) {
-    _scheduleSync(kind: SyncKind.pushOnly, delay: delay, reason: reason);
-  }
-
-  void _scheduleSync({
-    required SyncKind kind,
-    required Duration delay,
-    required String reason,
-  }) {
     final active = ref.read(accountProvider).activeAccount;
     if (_disposed || active is! MicrosoftAccount) return;
 
-    final previous = _pendingKind;
-    final merged = _mergeSyncKind(previous, kind);
-    _pendingKind = merged;
-    if (previous == null || merged != previous) {
-      _pendingReason = reason;
-    }
-
-    final now = DateTime.now();
-    final startedAt = _debounceStartedAt;
-    final deadline = _debounceDeadline;
-    final isPending = deadline != null && deadline.isAfter(now);
-    final DateTime fireAt;
-    if (isPending && startedAt != null) {
-      final cap = startedAt.add(
-        delay > _maxCoalesceDelay ? delay : _maxCoalesceDelay,
-      );
-      final extended = now.add(delay);
-      fireAt = extended.isAfter(cap) ? cap : extended;
-    } else {
-      _debounceStartedAt = now;
-      fireAt = now.add(delay);
-    }
-    _log.info(
-      'scheduleDebouncedSync reason=$_pendingReason kind=${merged.name} '
-      'delay=${delay.inMilliseconds}ms '
-      'fireIn=${fireAt.difference(now).inMilliseconds}ms',
-    );
-
-    _debounceTimer?.cancel();
-    _debounceDeadline = fireAt;
-    _debounceTimer = Timer(fireAt.difference(now), () {
+    _pendingPushReason ??= reason;
+    final fireIn = _pushDebouncer.schedule(delay, () {
       if (_disposed) return;
-      final pendingKind = _pendingKind ?? SyncKind.delta;
-      final pendingReason = _pendingReason;
-      _cancelDebounce();
-      unawaited(_syncNowForKind(pendingKind, reason: pendingReason));
+      final pendingReason = _pendingPushReason ?? SyncReason.localMutation.label;
+      _pendingPushReason = null;
+      unawaited(_pushNow(reason: pendingReason));
     });
+    _log.info(
+      'scheduleDebouncedSync reason=$reason kind=${SyncKind.pushOnly.name} '
+      'delay=${delay.inMilliseconds}ms fireIn=${fireIn.inMilliseconds}ms',
+    );
   }
 
+  /// Runs a push (if any outbox ops are pending) followed by a pull of [kind],
+  /// or runs push concurrently if a pull is already in flight.
   Future<void> syncNow({
     bool forceFullSync = false,
     String reason = 'manual',
-  }) => _syncNowForKind(
-    forceFullSync ? SyncKind.full : SyncKind.delta,
-    reason: reason,
-  );
+  }) async {
+    if (_disposed) return;
+    final active = ref.read(accountProvider).activeAccount;
+    if (active is! MicrosoftAccount) return;
 
-  /// Runs [kind] now, or queues it behind the in-flight pass.
-  Future<void> _syncNowForKind(SyncKind kind, {String reason = 'manual'}) {
+    final kind = forceFullSync ? SyncKind.full : SyncKind.delta;
+    final outbox = ref.read(todoProvider.notifier).repository.outbox;
+    int? pruneProtectSinceSeq;
+
+    if (outbox.isNotEmpty && _activePull == null) {
+      pruneProtectSinceSeq = outbox.lastSeq;
+      await _pushNow(reason: reason, enqueueFollowUpPull: false);
+      if (_disposed) return;
+    } else if (outbox.isNotEmpty) {
+      unawaited(_pushNow(reason: reason));
+    }
+
+    await _pullNow(
+      kind,
+      reason: reason,
+      pruneProtectSinceSeq: pruneProtectSinceSeq,
+    );
+  }
+
+  Future<void> _pushNow({
+    String reason = 'local_mutation',
+    bool enqueueFollowUpPull = true,
+  }) {
     if (_disposed) return Future<void>.value();
     final active = ref.read(accountProvider).activeAccount;
     if (active is! MicrosoftAccount) return Future<void>.value();
 
-    final command = _SyncCommand(kind, reason);
-    final inFlight = _activeSync;
+    final inFlight = _activePush;
     if (inFlight != null) {
-      _enqueueCommand(command);
-      _log.info(
-        'syncNow coalesced into in-flight sync: reason=$reason '
-        'kind=${kind.name} (queuedKind=${_queuedCommand!.kind.name})',
-      );
+      _queuedPushReason ??= reason;
+      _log.info('push coalesced into in-flight push: reason=$reason');
       return inFlight;
     }
 
     final completer = Completer<void>();
-    _activeSync = completer.future;
+    _activePush = completer.future;
     unawaited(() async {
       try {
-        await _runSyncLoop(command);
+        await _runPushLoop(
+          reason,
+          enqueueFollowUpPull: enqueueFollowUpPull,
+        );
       } finally {
         if (!completer.isCompleted) completer.complete();
       }
@@ -383,69 +483,111 @@ class SyncNotifier extends Notifier<SyncState> {
     return completer.future;
   }
 
-  Future<void> _runSyncLoop(_SyncCommand initialCommand) async {
+  Future<void> _pullNow(
+    SyncKind kind, {
+    String reason = 'manual',
+    int? pruneProtectSinceSeq,
+  }) {
+    if (_disposed) return Future<void>.value();
+    final active = ref.read(accountProvider).activeAccount;
+    if (active is! MicrosoftAccount) return Future<void>.value();
+
+    final command = _SyncCommand(
+      kind,
+      reason,
+      pruneProtectSinceSeq: pruneProtectSinceSeq,
+    );
+    final inFlight = _activePull;
+    if (inFlight != null) {
+      _enqueuePullCommand(command);
+      _log.info(
+        'syncNow coalesced into in-flight sync: reason=$reason '
+        'kind=${kind.name} (queuedKind=${_queuedPullCommand!.kind.name})',
+      );
+      return inFlight;
+    }
+
+    final completer = Completer<void>();
+    _activePull = completer.future;
+    unawaited(() async {
+      try {
+        await _runPullLoop(command);
+      } finally {
+        if (!completer.isCompleted) completer.complete();
+      }
+    }());
+    return completer.future;
+  }
+
+  Future<void> _runPushLoop(
+    String initialReason, {
+    bool enqueueFollowUpPull = true,
+  }) async {
     state = state.copyWith(status: SyncStatus.syncing, error: null);
-    _SyncCommand? nextCommand = initialCommand;
+    String? nextReason = initialReason;
+    final followUpFolders = <String>{};
+    var lastSucceeded = false;
+
     try {
-      while (nextCommand != null && !_disposed) {
-        final current = nextCommand;
-        nextCommand = null;
-        final succeeded = await _syncOnce(
-          kind: current.kind,
-          reason: current.reason,
-        );
-        if (succeeded &&
-            !_disposed &&
-            _queuedCommand == null &&
-            ref
-                .read(todoProvider.notifier)
-                .repository
-                .outbox
-                .ops
-                .any((op) => op.kind == SyncOpKind.delete)) {
-          _enqueueCommand(
-            _SyncCommand(SyncKind.pushOnly, SyncReason.outboxPending.label),
-          );
+      while (nextReason != null && !_disposed) {
+        final currentReason = nextReason;
+        nextReason = null;
+        final outcome = await _pushOnce(reason: currentReason);
+        if (outcome != null) {
+          lastSucceeded = true;
+          followUpFolders.addAll(outcome.followUpPullFolderRemoteIds);
+          if (!_disposed &&
+              _queuedPushReason == null &&
+              ref
+                  .read(todoProvider.notifier)
+                  .repository
+                  .outbox
+                  .ops
+                  .any((op) => op.kind == SyncOpKind.delete)) {
+            _queuedPushReason = SyncReason.outboxPending.label;
+          }
+        } else {
+          lastSucceeded = false;
         }
         if (!_disposed) {
-          nextCommand = _queuedCommand;
-          _queuedCommand = null;
+          nextReason = _queuedPushReason;
+          _queuedPushReason = null;
         }
       }
     } finally {
-      _queuedCommand = null;
-      _activeSync = null;
+      _queuedPushReason = null;
+      _activePush = null;
     }
-    final realtime = _realtimeController;
-    if (!_disposed && realtime != null && realtime.hasPendingEvents) {
-      await realtime.drainPendingIfReady();
+
+    if (!_disposed && lastSucceeded && !_hasActiveSync) {
+      state = state.copyWith(status: SyncStatus.success, error: null);
+    }
+
+    if (!_disposed &&
+        enqueueFollowUpPull &&
+        followUpFolders.isNotEmpty &&
+        _isForeground) {
+      unawaited(_pullNow(SyncKind.pushOnly, reason: initialReason));
+    } else if (!_disposed && !_hasActiveSync) {
+      await _drainRealtimeIfReady();
     }
   }
 
-  Future<bool> _syncOnce({
-    required SyncKind kind,
-    required String reason,
-  }) async {
+  Future<OutboxPushOutcome?> _pushOnce({required String reason}) async {
     final active = ref.read(accountProvider).activeAccount;
-    if (_disposed || active is! MicrosoftAccount) return false;
+    if (_disposed || active is! MicrosoftAccount) return null;
 
-    final forceFullSync = kind == SyncKind.full;
-
-    _log.info(
-      'sync start account=${active.id} reason=$reason '
-      'kind=${kind.name} forceFullSync=$forceFullSync',
-    );
+    _log.info('push start account=${active.id} reason=$reason');
 
     final service = ref.read(cloudSyncServiceProvider);
     final todoNotifier = ref.read(todoProvider.notifier);
     final snapshotState = ref.read(todoProvider);
 
-    final result = await service.syncAccount(
+    final result = await service.pushAccount(
       account: active,
       currentState: snapshotState,
       repository: todoNotifier.repository,
       settings: todoNotifier.settings,
-      idGenerator: todoNotifier.nextId,
       readLatestState: () => ref.read(todoProvider),
       onPushCommitted: (pushOutcome) async {
         if (_disposed ||
@@ -460,18 +602,103 @@ class SyncNotifier extends Notifier<SyncState> {
           clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
         );
       },
+      reason: reason,
+    );
+
+    if (_disposed) return null;
+
+    return result.fold(
+      (outcome) async {
+        _log.info(
+          'push success reason=$reason '
+          'pushedTasks=${outcome.pushedTasks.length}',
+        );
+        return outcome;
+      },
+      (error) async {
+        await _handleSyncError(active, reason, error);
+        return null;
+      },
+    );
+  }
+
+  Future<void> _runPullLoop(_SyncCommand initialCommand) async {
+    state = state.copyWith(status: SyncStatus.syncing, error: null);
+    _SyncCommand? nextCommand = initialCommand;
+    try {
+      while (nextCommand != null && !_disposed) {
+        final current = nextCommand;
+        nextCommand = null;
+        await _pullOnce(
+          kind: current.kind,
+          reason: current.reason,
+          pruneProtectSinceSeq: current.pruneProtectSinceSeq,
+        );
+        if (!_disposed) {
+          nextCommand = _queuedPullCommand;
+          _queuedPullCommand = null;
+        }
+      }
+    } finally {
+      _queuedPullCommand = null;
+      _activePullCancel = null;
+      _activePull = null;
+    }
+    if (!_disposed && !_hasActiveSync) {
+      await _drainRealtimeIfReady();
+    }
+  }
+
+  Future<bool> _pullOnce({
+    required SyncKind kind,
+    required String reason,
+    int? pruneProtectSinceSeq,
+  }) async {
+    final active = ref.read(accountProvider).activeAccount;
+    if (_disposed || active is! MicrosoftAccount) return false;
+
+    final forceFullSync = kind == SyncKind.full;
+    final cancelFlag = _CancelFlag();
+    _activePullCancel = cancelFlag;
+
+    _log.info(
+      'sync start account=${active.id} reason=$reason '
+      'kind=${kind.name} forceFullSync=$forceFullSync',
+    );
+
+    final service = ref.read(cloudSyncServiceProvider);
+    final todoNotifier = ref.read(todoProvider.notifier);
+    final snapshotState = ref.read(todoProvider);
+
+    final result = await service.pullAccount(
+      account: active,
+      currentState: snapshotState,
+      repository: todoNotifier.repository,
+      settings: todoNotifier.settings,
+      idGenerator: todoNotifier.nextId,
+      readLatestState: () => ref.read(todoProvider),
       kind: kind,
       reason: reason,
+      isCancelled: () => _disposed || cancelFlag.cancelled,
+      pruneProtectSinceSeq: pruneProtectSinceSeq,
     );
 
     if (_disposed) return false;
 
     return result.fold(
       (outcome) async {
+        if (outcome.cancelled) {
+          _log.info(
+            'sync cancelled reason=$reason forceFullSync=$forceFullSync',
+          );
+          if (!_disposed && _activePush == null) {
+            state = state.copyWith(status: SyncStatus.idle);
+          }
+          return false;
+        }
         _log.info(
           'sync success reason=$reason forceFullSync=$forceFullSync '
-          'lists=${outcome.lists.length} tasks=${outcome.tasks.length} '
-          'pushedTasks=${outcome.pushedTasksCount}',
+          'lists=${outcome.lists.length} tasks=${outcome.tasks.length}',
         );
         if (ref.read(accountProvider).activeAccount?.id == active.id) {
           await todoNotifier.applyPulledState(
@@ -489,34 +716,51 @@ class SyncNotifier extends Notifier<SyncState> {
               clearSyncError: true,
             );
         await _refreshProfileIfIncomplete(service, active);
-        if (!_disposed) {
+        if (!_disposed && _activePush == null) {
           state = state.copyWith(
             status: SyncStatus.success,
             lastSyncedAt: outcome.syncedAt,
             error: null,
           );
+        } else if (!_disposed) {
+          state = state.copyWith(lastSyncedAt: outcome.syncedAt, error: null);
         }
         return true;
       },
       (error) async {
-        final status = switch (error) {
-          AuthError(:final requiresReauth) when requiresReauth =>
-            SyncStatus.requiresRelogin,
-          _ => SyncStatus.error,
-        };
-        _log.info(
-          'sync error reason=$reason status=$status error=${error.describe()}',
-        );
-        final message = error.userMessage;
-        await ref
-            .read(accountProvider.notifier)
-            .updateSyncStatus(active.id, syncError: message);
-        if (!_disposed) {
-          state = state.copyWith(status: status, error: message);
-        }
+        await _handleSyncError(active, reason, error);
         return false;
       },
     );
+  }
+
+  Future<void> _handleSyncError(
+    MicrosoftAccount active,
+    String reason,
+    AppError error,
+  ) async {
+    final status = switch (error) {
+      AuthError(:final requiresReauth) when requiresReauth =>
+        SyncStatus.requiresRelogin,
+      _ => SyncStatus.error,
+    };
+    _log.info(
+      'sync error reason=$reason status=$status error=${error.describe()}',
+    );
+    final message = error.userMessage;
+    await ref
+        .read(accountProvider.notifier)
+        .updateSyncStatus(active.id, syncError: message);
+    if (!_disposed) {
+      state = state.copyWith(status: status, error: message);
+    }
+  }
+
+  Future<void> _drainRealtimeIfReady() async {
+    final realtime = _realtimeController;
+    if (!_disposed && realtime != null && realtime.hasPendingEvents) {
+      await realtime.drainPendingIfReady();
+    }
   }
 
   Future<void> _refreshProfileIfIncomplete(
