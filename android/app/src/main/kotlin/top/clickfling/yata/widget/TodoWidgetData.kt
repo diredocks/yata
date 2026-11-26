@@ -312,6 +312,13 @@ object TodoWidgetData {
             .commit()
     }
 
+    fun clearRefreshing(context: Context) {
+        prefs(context).edit()
+            .putBoolean(KEY_IS_REFRESHING, false)
+            .remove(KEY_REFRESH_STARTED_MS)
+            .commit()
+    }
+
     fun isDateStale(context: Context): Boolean {
         val base = loadBaseSnapshot(prefs(context))
         return base.dateKey.isNotEmpty() && base.dateKey != currentLocalDateYmd()

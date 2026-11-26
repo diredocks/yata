@@ -55,6 +55,17 @@ class FlutterHomeWidgetTransport implements HomeWidgetTransport {
     return Platform.isAndroid;
   }
 
+  static Future<void> notifyBackgroundSyncCompleted(String reason) async {
+    if (!isSupportedPlatform) return;
+    try {
+      await _channel.invokeMethod<void>('backgroundSyncCompleted', reason);
+    } on MissingPluginException catch (e) {
+      _log.warning('backgroundSyncCompleted plugin unavailable: $e');
+    } on PlatformException catch (e) {
+      _log.warning('backgroundSyncCompleted platform error: $e');
+    }
+  }
+
   static void _ensureSyncHandlerInstalled() {
     if (_handlerInstalled) return;
     _handlerInstalled = true;
