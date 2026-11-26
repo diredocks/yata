@@ -195,12 +195,31 @@ class CloudSyncService {
     );
 
     // 1. Push Outbox
-    final pushOutcome = await _pushEngine.pushOutbox(
+    final pushOutcome = (await _pushEngine.pushOutbox(
       ctx: ctx,
       currentState: currentState,
       outbox: outbox,
       nowUtc: nowUtc,
-    );
+      onPartialCommit: (partial) async {
+        if (partial.followUpPullFolderRemoteIds.isNotEmpty) {
+          await settings.savePendingTaskFolderPulls({
+            ...settings.loadPendingTaskFolderPulls(),
+            ...partial.followUpPullFolderRemoteIds,
+          });
+        }
+        if (onPushCommitted != null) {
+          await onPushCommitted(partial);
+        } else {
+          for (final seq in partial.ackedSeqs) {
+            outbox.ackOp(seq);
+          }
+          for (final entry in partial.clearedRemoteIdKeys) {
+            outbox.clearRemoteId(entry.type, entry.localId);
+          }
+          await repository.saveOutbox();
+        }
+      },
+    )).getOrThrow();
 
     if (pushOutcome.followUpPullFolderRemoteIds.isNotEmpty) {
       await settings.savePendingTaskFolderPulls({

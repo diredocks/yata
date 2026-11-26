@@ -177,6 +177,7 @@ List<TodoList> mergeFoldersDelta({
         (l) =>
             !l.isSmartList &&
             l.remoteId == null &&
+            !dirtyListIds.contains(l.id) &&
             (encodeFolderName(l.title, l.emoji) == remote.name ||
                 l.title == remote.name),
       );

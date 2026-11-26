@@ -11,6 +11,7 @@ import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import 'microsoft_todo_api.dart';
 import 'substrate_sync_mappers.dart';
+import 'sync_guard.dart';
 import 'sync_log_format.dart';
 import 'text_merge.dart';
 import 'todo_wire_codecs.dart';
@@ -62,6 +63,8 @@ bool isReorderOnlyTaskPatch(
 class SubstratePushEngine {
   const SubstratePushEngine(this.todoApi);
 
+  static const int _maxConcurrentTaskPushes = 4;
+
   final MicrosoftTodoApi todoApi;
 
   static bool _sameCalendarDay(DateTime a, DateTime b) =>
@@ -70,22 +73,25 @@ class SubstratePushEngine {
   /// Drains the current Outbox batch in dependency order:
   /// settings -> step/task/folder deletions -> groups -> folders ->
   /// group deletions -> tasks/steps.
-  Future<OutboxPushOutcome> pushOutbox({
+  AsyncAppResult<OutboxPushOutcome> pushOutbox({
     required SubstrateRequestContext ctx,
     required TodoState currentState,
     required SyncOutboxQueue outbox,
     required DateTime nowUtc,
+    Future<void> Function(OutboxPushOutcome partialOutcome)? onPartialCommit,
   }) async {
     final batch = outbox.beginBatch();
     try {
       if (batch.isEmpty) {
-        return const OutboxPushOutcome(
-          ackedSeqs: [],
-          pushedGroups: {},
-          pushedLists: {},
-          pushedTasks: {},
-          clearedRemoteIdKeys: [],
-          followUpPullFolderRemoteIds: {},
+        return const Success(
+          OutboxPushOutcome(
+            ackedSeqs: [],
+            pushedGroups: {},
+            pushedLists: {},
+            pushedTasks: {},
+            clearedRemoteIdKeys: [],
+            followUpPullFolderRemoteIds: {},
+          ),
         );
       }
 
@@ -98,6 +104,8 @@ class SubstratePushEngine {
       final deletedGroupRemoteIds = <String>{};
       final deletedListRemoteIds = <String>{};
       final deletedTaskRemoteIds = <String>{};
+
+      final result = await guardApiCall(() async {
 
       final groupById = {for (final g in currentState.groups) g.id: g};
       final listById = {for (final l in currentState.lists) l.id: l};
@@ -177,7 +185,16 @@ class SubstratePushEngine {
             op.kind != SyncOpKind.upsert) {
           continue;
         }
-        final group = pushedGroups[op.localId] ?? groupById[op.localId];
+        final rawGroup = pushedGroups[op.localId] ?? groupById[op.localId];
+        final resolvedGroupRemoteId =
+            rawGroup?.remoteId ??
+            outbox.resolveRemoteId(SyncEntityType.group, op.localId);
+        final group =
+            rawGroup != null &&
+                rawGroup.remoteId == null &&
+                resolvedGroupRemoteId != null
+            ? rawGroup.copyWith(remoteId: resolvedGroupRemoteId)
+            : rawGroup;
         if (group == null ||
             (group.remoteId != null &&
                 deletedGroupRemoteIds.contains(group.remoteId))) {
@@ -253,7 +270,16 @@ class SubstratePushEngine {
             op.kind != SyncOpKind.upsert) {
           continue;
         }
-        final list = pushedLists[op.localId] ?? listById[op.localId];
+        final rawList = pushedLists[op.localId] ?? listById[op.localId];
+        final resolvedListRemoteId =
+            rawList?.remoteId ??
+            outbox.resolveRemoteId(SyncEntityType.list, op.localId);
+        final list =
+            rawList != null &&
+                rawList.remoteId == null &&
+                resolvedListRemoteId != null
+            ? rawList.copyWith(remoteId: resolvedListRemoteId)
+            : rawList;
         if (list == null ||
             (list.remoteId != null &&
                 deletedListRemoteIds.contains(list.remoteId)) ||
@@ -346,26 +372,40 @@ class SubstratePushEngine {
         ));
       }
 
-      // 6. Task & step upserts
+      // 6. Task & step upserts (bounded concurrency across distinct tasks)
       String? resolveListRemoteId(String listId) =>
           pushedLists[listId]?.remoteId ??
           listById[listId]?.remoteId ??
           outbox.resolveRemoteId(SyncEntityType.list, listId);
 
+      final taskOpsByLocalId = <String, List<SyncOutboxOp>>{};
       for (final op in batch) {
         if (op.entityType != SyncEntityType.task ||
             op.kind != SyncOpKind.upsert) {
           continue;
         }
-        final task = pushedTasks[op.localId] ?? taskById[op.localId];
+        (taskOpsByLocalId[op.localId] ??= <SyncOutboxOp>[]).add(op);
+      }
+
+      Future<void> pushSingleTaskOp(SyncOutboxOp op) async {
+        final rawTask = pushedTasks[op.localId] ?? taskById[op.localId];
+        final resolvedTaskRemoteId =
+            rawTask?.remoteId ??
+            outbox.resolveRemoteId(SyncEntityType.task, op.localId);
+        final task =
+            rawTask != null &&
+                rawTask.remoteId == null &&
+                resolvedTaskRemoteId != null
+            ? rawTask.copyWith(remoteId: resolvedTaskRemoteId)
+            : rawTask;
         if (task == null ||
             (task.remoteId != null &&
                 deletedTaskRemoteIds.contains(task.remoteId))) {
           ackedSeqs.add(op.seq);
-          continue;
+          return;
         }
         final folderRemoteId = resolveListRemoteId(task.listId);
-        if (folderRemoteId == null) continue;
+        if (folderRemoteId == null) return;
 
         final isCreate = task.remoteId == null;
         final dirtyFields = isCreate
@@ -396,7 +436,7 @@ class SubstratePushEngine {
             updatedAt: nowUtc,
           );
           ackedSeqs.add(op.seq);
-          continue;
+          return;
         }
 
         final patchOutcome = isCreate
@@ -473,6 +513,16 @@ class SubstratePushEngine {
         );
       }
 
+      await _runWithConcurrency(
+        taskOpsByLocalId.values.toList(),
+        _maxConcurrentTaskPushes,
+        (opsForTask) async {
+          for (final op in opsForTask) {
+            await pushSingleTaskOp(op);
+          }
+        },
+      );
+
       return OutboxPushOutcome(
         ackedSeqs: ackedSeqs,
         pushedGroups: pushedGroups,
@@ -481,9 +531,57 @@ class SubstratePushEngine {
         clearedRemoteIdKeys: clearedRemoteIdKeys,
         followUpPullFolderRemoteIds: followUpPullFolderRemoteIds,
       );
+      }, operation: 'pushOutbox');
+
+      if (result.isError() &&
+          onPartialCommit != null &&
+          (ackedSeqs.isNotEmpty ||
+              pushedGroups.isNotEmpty ||
+              pushedLists.isNotEmpty ||
+              pushedTasks.isNotEmpty ||
+              clearedRemoteIdKeys.isNotEmpty)) {
+        await onPartialCommit(
+          OutboxPushOutcome(
+            ackedSeqs: ackedSeqs,
+            pushedGroups: pushedGroups,
+            pushedLists: pushedLists,
+            pushedTasks: pushedTasks,
+            clearedRemoteIdKeys: clearedRemoteIdKeys,
+            followUpPullFolderRemoteIds: followUpPullFolderRemoteIds,
+          ),
+        );
+      }
+      return result;
     } finally {
       outbox.endBatch();
     }
+  }
+
+  Future<void> _runWithConcurrency<T>(
+    List<T> items,
+    int maxConcurrent,
+    Future<void> Function(T item) action,
+  ) async {
+    if (items.isEmpty) return;
+    var nextIndex = 0;
+    var aborted = false;
+    Future<void> worker() async {
+      while (!aborted && nextIndex < items.length) {
+        final index = nextIndex;
+        nextIndex += 1;
+        try {
+          await action(items[index]);
+        } catch (_) {
+          aborted = true;
+          rethrow;
+        }
+      }
+    }
+
+    final workerCount = maxConcurrent < items.length
+        ? maxConcurrent
+        : items.length;
+    await Future.wait([for (var i = 0; i < workerCount; i++) worker()]);
   }
 
   Set<T>? _decodeEnumFields<T extends Enum>(
@@ -643,7 +741,14 @@ class SubstratePushEngine {
     final syncedSteps = <TaskStep>[];
 
     for (var i = 0; i < localSteps.length; i++) {
-      final step = localSteps[i];
+      final rawStep = localSteps[i];
+      final resolvedStepRemoteId =
+          rawStep.remoteId ??
+          outbox.resolveRemoteId(SyncEntityType.step, rawStep.id);
+      final step =
+          rawStep.remoteId == null && resolvedStepRemoteId != null
+          ? rawStep.copyWith(remoteId: resolvedStepRemoteId)
+          : rawStep;
       final stepOrder =
           step.orderDateTime ??
           nowUtc.subtract(Duration(seconds: i * kOrderDateTimeStep.inSeconds));

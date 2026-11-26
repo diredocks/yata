@@ -876,5 +876,219 @@ void main() {
       // The stale follow-up entry is dropped instead of failing the whole pass.
       expect(h.settings.loadPendingTaskFolderPulls(), isEmpty);
     });
+
+    test(
+      'mergeFoldersDelta does not hijack dirty unpushed list with same title',
+      () {
+        const dirtyCopy = TodoList(
+          id: 'list_new_copy',
+          title: 'Shopping (1)',
+          remoteId: null,
+        );
+        final merged = mergeFoldersDelta(
+          localLists: const [dirtyCopy],
+          remoteDelta: const [
+            RemoteTodoFolder(id: 'rf-old-copy', name: 'Shopping (1)'),
+          ],
+          dirtyListIds: const {'list_new_copy'},
+          groupLocalIdByRemoteId: const {},
+          idGenerator: (p) => '${p}_gen',
+        );
+
+        final localCopy = merged.firstWhere((l) => l.id == 'list_new_copy');
+        expect(localCopy.remoteId, isNull);
+        expect(
+          merged.any((l) => l.remoteId == 'rf-old-copy' && l.id != 'list_new_copy'),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'deleteList deletes folder without issuing per-task DELETE requests',
+      () async {
+        final h = await createSyncTestHarness(
+          accountId: 'acct_delete_list_batch',
+          defaultTasksFolderRemoteId: 'rf-default',
+          lists: const [
+            TodoList(
+              id: 'list_copy_1',
+              title: 'Work (1)',
+              remoteId: 'rf-copy-1',
+            ),
+          ],
+          tasks: [
+            TaskItem(
+              id: 't_1',
+              listId: 'list_copy_1',
+              title: 'Task 1',
+              createdAt: DateTime.utc(2026, 11, 22, 8),
+              remoteId: 'rt-1',
+              remoteParentFolderId: 'rf-copy-1',
+            ),
+            TaskItem(
+              id: 't_2',
+              listId: 'list_copy_1',
+              title: 'Task 2',
+              createdAt: DateTime.utc(2026, 11, 22, 9),
+              remoteId: 'rt-2',
+              remoteParentFolderId: 'rf-copy-1',
+            ),
+          ],
+        );
+
+        h.container.read(tasksViewPresenterProvider).deleteList('list_copy_1');
+
+        final service = CloudSyncService(
+          authClient: h.authClient,
+          todoApi: h.api,
+          tokenStorage: AuthTokenStorage(h.prefs),
+        );
+        h.api.callLog.clear();
+
+        await service
+            .syncAccount(
+              account: h.account,
+              currentState: h.container.read(todoProvider),
+              repository: h.repository,
+              settings: h.settings,
+              idGenerator: h.container.read(todoProvider.notifier).nextId,
+              kind: SyncKind.pushOnly,
+            )
+            .fold(
+              (outcome) => outcome,
+              (error) => fail('unexpected sync failure: ${error.describe()}'),
+            );
+
+        expect(h.api.callLog, contains('DELETE taskfolders/rf-copy-1'));
+        expect(
+          h.api.callLog.where((c) => c.startsWith('DELETE tasks/')),
+          isEmpty,
+        );
+        expect(h.repository.outbox.ops, isEmpty);
+      },
+    );
+
+    test(
+      'mid-batch push failure commits partial remoteIds and does not duplicate tasks on retry',
+      () async {
+        final h = await createSyncTestHarness(
+          accountId: 'acct_partial_push_retry',
+          defaultTasksFolderRemoteId: 'rf-default',
+          lists: const [
+            TodoList(id: 'list_src', title: 'Source', remoteId: 'rf-src'),
+          ],
+          tasks: [
+            TaskItem(
+              id: 't_src_1',
+              listId: 'list_src',
+              title: 'Alpha',
+              createdAt: DateTime.utc(2026, 11, 22, 8),
+              remoteId: 'rt-src-1',
+              remoteParentFolderId: 'rf-src',
+            ),
+            TaskItem(
+              id: 't_src_2',
+              listId: 'list_src',
+              title: 'Beta',
+              createdAt: DateTime.utc(2026, 11, 22, 9),
+              remoteId: 'rt-src-2',
+              remoteParentFolderId: 'rf-src',
+            ),
+          ],
+        );
+
+        h.container.read(tasksViewPresenterProvider).duplicateList('list_src');
+
+        var createdCount = 0;
+        var failedOnce = false;
+        h.api.onCreateFolder = (payload) async {
+          return RemoteTodoFolder(
+            id: 'rf-dup-1',
+            name: payload['Name'] as String,
+          );
+        };
+        h.api.onCreateTask = (folderRemoteId, payload) async {
+          final subject = payload['Subject'] as String;
+          if (subject == 'Beta' && !failedOnce) {
+            failedOnce = true;
+            throw const AppError.network(message: 'transient error');
+          }
+          createdCount += 1;
+          return RemoteTodoTask(
+            id: 'rt-dup-$createdCount',
+            subject: subject,
+            parentFolderId: folderRemoteId,
+            changeKey: 'ck-$createdCount',
+          );
+        };
+
+        final todoNotifier = h.container.read(todoProvider.notifier);
+        final service = CloudSyncService(
+          authClient: h.authClient,
+          todoApi: h.api,
+          tokenStorage: AuthTokenStorage(h.prefs),
+        );
+
+        final firstResult = await service.syncAccount(
+          account: h.account,
+          currentState: h.container.read(todoProvider),
+          repository: h.repository,
+          settings: h.settings,
+          idGenerator: todoNotifier.nextId,
+          readLatestState: () => h.container.read(todoProvider),
+          onPushCommitted: (pushOutcome) => todoNotifier.commitPushBatch(
+            ackedSeqs: pushOutcome.ackedSeqs,
+            pushedGroups: pushOutcome.pushedGroups,
+            pushedLists: pushOutcome.pushedLists,
+            pushedTasks: pushOutcome.pushedTasks,
+            clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
+          ),
+          kind: SyncKind.pushOnly,
+        );
+        expect(firstResult.isError(), isTrue);
+
+        // Alpha and the duplicated folder should already be committed with remoteIds.
+        final midState = h.container.read(todoProvider);
+        final dupList = midState.lists.firstWhere((l) => l.title == 'Source (1)');
+        expect(dupList.remoteId, 'rf-dup-1');
+        final alpha = midState.tasks.firstWhere(
+          (t) => t.listId == dupList.id && t.title == 'Alpha',
+        );
+        expect(alpha.remoteId, isNotNull);
+
+        h.api.callLog.clear();
+        final secondResult = await service.syncAccount(
+          account: h.account,
+          currentState: h.container.read(todoProvider),
+          repository: h.repository,
+          settings: h.settings,
+          idGenerator: todoNotifier.nextId,
+          readLatestState: () => h.container.read(todoProvider),
+          onPushCommitted: (pushOutcome) => todoNotifier.commitPushBatch(
+            ackedSeqs: pushOutcome.ackedSeqs,
+            pushedGroups: pushOutcome.pushedGroups,
+            pushedLists: pushOutcome.pushedLists,
+            pushedTasks: pushOutcome.pushedTasks,
+            clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
+          ),
+          kind: SyncKind.pushOnly,
+        );
+        expect(secondResult.isSuccess(), isTrue);
+
+        // Retry only created Beta, never duplicated the folder or Alpha.
+        expect(
+          h.api.callLog.where((c) => c == 'POST taskfolders'),
+          isEmpty,
+        );
+        expect(
+          h.api.callLog.where(
+            (c) => c.startsWith('POST taskfolders/rf-dup-1/tasks'),
+          ),
+          hasLength(1),
+        );
+        expect(createdCount, 2);
+      },
+    );
   });
 }

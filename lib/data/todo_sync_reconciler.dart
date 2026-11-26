@@ -157,6 +157,7 @@ LocalOutboxCommitResult enqueueLocalCommitToOutbox({
     }
   }
 
+  final deletedListIds = <String>{};
   var stampedLists = nextState.lists;
   if (!identical(prevLists, nextState.lists)) {
     final nextListIds = {for (final l in nextState.lists) l.id};
@@ -164,6 +165,7 @@ LocalOutboxCommitResult enqueueLocalCommitToOutbox({
     for (final prev in prevLists) {
       if (!nextListIds.contains(prev.id) && !prev.isSmartList) {
         syncNeeded = true;
+        deletedListIds.add(prev.id);
         outbox.enqueueDelete(
           entityType: SyncEntityType.list,
           localId: prev.id,
@@ -208,6 +210,14 @@ LocalOutboxCommitResult enqueueLocalCommitToOutbox({
     final prevTaskById = {for (final t in prevTasks) t.id: t};
     for (final prev in prevTasks) {
       if (!nextTaskIds.contains(prev.id)) {
+        if (deletedListIds.contains(prev.listId)) {
+          // Deleting the parent folder on Substrate deletes all its tasks;
+          // just drop any un-pushed task upserts without N DELETE calls.
+          if (outbox.cancelPendingUpserts(SyncEntityType.task, prev.id)) {
+            syncNeeded = true;
+          }
+          continue;
+        }
         syncNeeded = true;
         outbox.enqueueDelete(
           entityType: SyncEntityType.task,

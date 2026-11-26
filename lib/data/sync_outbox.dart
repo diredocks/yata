@@ -188,6 +188,20 @@ class SyncOutboxQueue {
     );
   }
 
+  /// Cancels any non-in-flight pending upsert ops for [entityType]/[localId].
+  /// Returns true if at least one op was removed.
+  bool cancelPendingUpserts(SyncEntityType entityType, String localId) {
+    final before = _ops.length;
+    _ops.removeWhere(
+      (op) =>
+          op.seq > _inFlightUpToSeq &&
+          op.entityType == entityType &&
+          op.localId == localId &&
+          op.kind == SyncOpKind.upsert,
+    );
+    return _ops.length != before;
+  }
+
   /// Enqueues a deletion. If an un-pushed (non-in-flight) upsert exists for a
   /// never-synced item (`remoteId == null` and no resolved remoteId), both cancel out.
   void enqueueDelete({
