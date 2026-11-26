@@ -277,29 +277,28 @@ class _ThemePickerViewState extends State<ThemePickerView> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
           children: [
             ChoiceChip(
               label: Text(l10n.themeTabColor),
               selected: _activeTab == _ThemeTab.color,
               onSelected: (_) => setState(() => _activeTab = _ThemeTab.color),
             ),
-            const SizedBox(width: 8),
             ChoiceChip(
               label: Text(l10n.themeTabPhoto),
               selected: _activeTab == _ThemeTab.photo,
               onSelected: (_) => setState(() => _activeTab = _ThemeTab.photo),
             ),
             if (widget.onAddCustomBackground != null ||
-                widget.customBackgrounds.isNotEmpty) ...[
-              const SizedBox(width: 8),
+                widget.customBackgrounds.isNotEmpty)
               ChoiceChip(
                 label: Text(l10n.themeTabCustom),
                 selected: _activeTab == _ThemeTab.custom,
                 onSelected: (_) =>
                     setState(() => _activeTab = _ThemeTab.custom),
               ),
-            ],
           ],
         ),
         const SizedBox(height: 10),
