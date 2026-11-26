@@ -169,19 +169,9 @@ List<TodoList> mergeFoldersDelta({
         ? groupLocalIdByRemoteId[remote.parentFolderGroupId!]
         : null;
 
-    var idx = result.indexWhere(
+    final idx = result.indexWhere(
       (l) => !l.isSmartList && l.remoteId == remote.id,
     );
-    if (idx < 0) {
-      idx = result.indexWhere(
-        (l) =>
-            !l.isSmartList &&
-            l.remoteId == null &&
-            !dirtyListIds.contains(l.id) &&
-            (encodeFolderName(l.title, l.emoji) == remote.name ||
-                l.title == remote.name),
-      );
-    }
 
     if (idx >= 0) {
       result[idx] = applyRemoteFolderProps(

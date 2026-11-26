@@ -194,26 +194,27 @@ class CloudSyncService {
       'outboxOps=${outbox.ops.length}',
     );
 
-    // 1. Push Outbox
+    // 1. Push Outbox (checking live state & committing each completed op immediately)
     final pushOutcome = (await _pushEngine.pushOutbox(
       ctx: ctx,
       currentState: currentState,
       outbox: outbox,
       nowUtc: nowUtc,
-      onPartialCommit: (partial) async {
-        if (partial.followUpPullFolderRemoteIds.isNotEmpty) {
+      readLatestState: readLatestState,
+      onItemCommitted: (itemOutcome) async {
+        if (itemOutcome.followUpPullFolderRemoteIds.isNotEmpty) {
           await settings.savePendingTaskFolderPulls({
             ...settings.loadPendingTaskFolderPulls(),
-            ...partial.followUpPullFolderRemoteIds,
+            ...itemOutcome.followUpPullFolderRemoteIds,
           });
         }
         if (onPushCommitted != null) {
-          await onPushCommitted(partial);
+          await onPushCommitted(itemOutcome);
         } else {
-          for (final seq in partial.ackedSeqs) {
+          for (final seq in itemOutcome.ackedSeqs) {
             outbox.ackOp(seq);
           }
-          for (final entry in partial.clearedRemoteIdKeys) {
+          for (final entry in itemOutcome.clearedRemoteIdKeys) {
             outbox.clearRemoteId(entry.type, entry.localId);
           }
           await repository.saveOutbox();
@@ -221,30 +222,16 @@ class CloudSyncService {
       },
     )).getOrThrow();
 
-    if (pushOutcome.followUpPullFolderRemoteIds.isNotEmpty) {
-      await settings.savePendingTaskFolderPulls({
-        ...settings.loadPendingTaskFolderPulls(),
-        ...pushOutcome.followUpPullFolderRemoteIds,
-      });
-    }
-
-    // 2. Commit pushed IDs & ack Outbox immediately before Pull starts.
-    late List<ListGroup> workingGroups;
-    late List<TodoList> workingLists;
-    late List<TaskItem> workingTasks;
+    // 2. Read working snapshot for Pull.
+    final List<ListGroup> workingGroups;
+    final List<TodoList> workingLists;
+    final List<TaskItem> workingTasks;
     if (onPushCommitted != null) {
-      await onPushCommitted(pushOutcome);
       final latest = readLatestState?.call() ?? currentState;
       workingGroups = latest.groups;
       workingLists = latest.lists;
       workingTasks = latest.tasks;
     } else {
-      for (final seq in pushOutcome.ackedSeqs) {
-        outbox.ackOp(seq);
-      }
-      for (final entry in pushOutcome.clearedRemoteIdKeys) {
-        outbox.clearRemoteId(entry.type, entry.localId);
-      }
       workingGroups = [
         for (final g in currentState.groups)
           pushOutcome.pushedGroups[g.id] ?? g,
