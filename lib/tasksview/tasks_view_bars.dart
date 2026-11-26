@@ -403,6 +403,18 @@ class TasksSliverAppBar extends StatelessWidget {
   }
 }
 
+Color tasksBannerBackgroundColor(BuildContext context, TodoList currentList) {
+  if (currentList.themePhoto != null) {
+    return Colors.black.withValues(alpha: 0.35);
+  }
+  if (Theme.of(context).brightness == Brightness.dark) {
+    return Colors.white.withValues(alpha: 0.10);
+  }
+  return TodoColors.isLightTheme(currentList.themeColor)
+      ? Colors.white.withValues(alpha: 0.72)
+      : Colors.black.withValues(alpha: 0.25);
+}
+
 class TasksSortBanner extends StatelessWidget {
   const TasksSortBanner({
     super.key,
@@ -429,9 +441,7 @@ class TasksSortBanner extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: TodoColors.isLightTheme(currentList.themeColor)
-                  ? Colors.white.withValues(alpha: 0.72)
-                  : Colors.black.withValues(alpha: 0.25),
+              color: tasksBannerBackgroundColor(context, currentList),
               borderRadius: BorderRadius.circular(4),
             ),
             child: Row(
@@ -529,13 +539,7 @@ class TasksPlannedFilterBanner extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 decoration: BoxDecoration(
-                  color: currentList.themePhoto != null
-                      ? Colors.black.withValues(alpha: 0.35)
-                      : (Theme.of(context).brightness == Brightness.dark
-                            ? Colors.white.withValues(alpha: 0.10)
-                            : (TodoColors.isLightTheme(currentList.themeColor)
-                                  ? Colors.white.withValues(alpha: 0.72)
-                                  : Colors.black.withValues(alpha: 0.25))),
+                  color: tasksBannerBackgroundColor(context, currentList),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Row(
@@ -596,13 +600,7 @@ class TasksBucketPill extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
-                color: currentList.themePhoto != null
-                    ? Colors.black.withValues(alpha: 0.35)
-                    : (Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white.withValues(alpha: 0.10)
-                          : (TodoColors.isLightTheme(currentList.themeColor)
-                                ? Colors.white.withValues(alpha: 0.72)
-                                : Colors.black.withValues(alpha: 0.25))),
+                color: tasksBannerBackgroundColor(context, currentList),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Row(
