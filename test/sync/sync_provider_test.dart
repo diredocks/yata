@@ -211,10 +211,14 @@ void main() {
       await pumpEventQueue();
       expect(h.api.callLog, isEmpty);
 
-      // accountChanged=true bypasses startupSyncEnabledProvider and runs full sync.
+      // accountChanged=true bypasses startupSyncEnabledProvider and runs a single full sync.
       notifier.syncOnSessionStart(accountChanged: true);
       await pumpEventQueue();
       expect(h.api.callLog, contains('GET taskfolders(null)'));
+      expect(
+        h.api.callLog.where((c) => c.startsWith('GET foldergroups')).length,
+        1,
+      );
       expect(h.api.callLog, contains('GET tasks(rf-default,null)'));
 
       h.api.callLog.clear();
@@ -434,7 +438,7 @@ void main() {
     );
 
     test(
-      'syncOnSessionStart uses incremental delta sync when deltaLinks exist',
+      'syncOnSessionStart runs incremental delta sync first and then full sync when deltaLinks exist',
       () async {
         final fakeApi = FakeSubstrateApi()
           ..onFetchGroupsDelta = ((dl) => DeltaPageResult(
@@ -452,6 +456,7 @@ void main() {
 
         final h = await createSyncTestHarness(
           accountId: 'acct_startup_delta',
+          lastSyncedAt: DateTime(2026, 11, 22, 12, 0),
           api: fakeApi,
           defaultTasksFolderRemoteId: 'rf-default',
           groupsDeltaLink: 'dl-groups-saved',
@@ -463,12 +468,17 @@ void main() {
         h.container.read(syncProvider.notifier).syncOnSessionStart();
         await pumpEventQueue();
 
-        expect(h.api.callLog, contains('GET foldergroups(dl-groups-saved)'));
+        final groupsDeltaIdx = h.api.callLog.indexOf(
+          'GET foldergroups(dl-groups-saved)',
+        );
+        final groupsFullIdx = h.api.callLog.indexOf('GET foldergroups(null)');
+        expect(groupsDeltaIdx, greaterThanOrEqualTo(0));
+        expect(groupsFullIdx, greaterThan(groupsDeltaIdx));
+
         expect(h.api.callLog, contains('GET taskfolders(dl-folders-saved)'));
         expect(h.api.callLog, contains('GET tasks(rf-default,dl-tasks-saved)'));
-        expect(h.api.callLog, isNot(contains('GET foldergroups(null)')));
-        expect(h.api.callLog, isNot(contains('GET taskfolders(null)')));
-        expect(h.api.callLog, isNot(contains('GET tasks(rf-default,null)')));
+        expect(h.api.callLog, contains('GET taskfolders(null)'));
+        expect(h.api.callLog, contains('GET tasks(rf-default,null)'));
       },
     );
   });

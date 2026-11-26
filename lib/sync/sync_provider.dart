@@ -254,19 +254,32 @@ class SyncNotifier extends Notifier<SyncState> {
   Future<void> refresh({String reason = 'manual'}) =>
       syncNow(forceFullSync: true, reason: reason);
 
-  /// Starts an incremental sync on cold start (when enabled) or full sync on account switch.
+  /// Starts an incremental sync followed by a full sync on cold start for
+  /// previously synced accounts, or a single full sync on account switch.
   void syncOnSessionStart({bool accountChanged = false}) {
     if (!accountChanged && !ref.read(startupSyncEnabledProvider)) return;
     final account = ref.read(accountProvider).activeAccount;
     if (account is! MicrosoftAccount) return;
-    unawaited(
-      syncNow(
-        forceFullSync: accountChanged,
-        reason:
-            (accountChanged ? SyncReason.accountChanged : SyncReason.startup)
-                .label,
-      ),
-    );
+
+    if (accountChanged) {
+      unawaited(
+        syncNow(
+          forceFullSync: true,
+          reason: SyncReason.accountChanged.label,
+        ),
+      );
+      return;
+    }
+
+    final needsFollowUpFull = account.lastSyncedAt != null;
+    unawaited(() async {
+      await syncNow(forceFullSync: false, reason: SyncReason.startup.label);
+      if (!_disposed &&
+          needsFollowUpFull &&
+          state.status == SyncStatus.success) {
+        await syncNow(forceFullSync: true, reason: SyncReason.startup.label);
+      }
+    }());
   }
 
   /// Schedules a delta/full pass, coalescing pending requests into one.
