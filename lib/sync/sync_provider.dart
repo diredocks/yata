@@ -53,6 +53,18 @@ abstract class SyncState with _$SyncState {
   bool get requiresRelogin => status == SyncStatus.requiresRelogin;
 }
 
+class _SyncCommand {
+  const _SyncCommand(this.kind, this.reason);
+
+  final SyncKind kind;
+  final String reason;
+
+  _SyncCommand merge(_SyncCommand other) {
+    if (other.kind.index > kind.index) return other;
+    return this;
+  }
+}
+
 class SyncNotifier extends Notifier<SyncState> {
   /// Coalescing window for local edits.
   static const _mutationDebounceDuration = Duration(milliseconds: 300);
@@ -74,9 +86,11 @@ class SyncNotifier extends Notifier<SyncState> {
   bool _disposed = false;
   bool _isForeground = true;
   Future<void>? _activeSync;
-  bool _syncQueued = false;
-  SyncKind? _queuedKind;
-  String _queuedReason = 'queued';
+  _SyncCommand? _queuedCommand;
+
+  void _enqueueCommand(_SyncCommand command) {
+    _queuedCommand = _queuedCommand?.merge(command) ?? command;
+  }
 
   RealtimeSyncController _ensureRealtimeController() {
     return _realtimeController ??= RealtimeSyncController(
@@ -91,9 +105,7 @@ class SyncNotifier extends Notifier<SyncState> {
             );
           },
       onOverflowResync: (reason) {
-        _syncQueued = true;
-        _queuedKind = _mergeSyncKind(_queuedKind, SyncKind.full);
-        _queuedReason = reason;
+        _enqueueCommand(_SyncCommand(SyncKind.full, reason));
       },
       onCatchupDeltaSync: (reason) =>
           syncNow(forceFullSync: false, reason: reason),
@@ -129,8 +141,7 @@ class SyncNotifier extends Notifier<SyncState> {
       realtime.stop(clearPending: true);
       _stopPeriodicSync();
       _cancelDebounce();
-      _queuedKind = null;
-      _queuedReason = 'queued';
+      _queuedCommand = null;
       return const SyncState();
     }
 
@@ -151,8 +162,7 @@ class SyncNotifier extends Notifier<SyncState> {
   void _disposeResources() {
     _disposed = true;
     _cancelDebounce();
-    _queuedKind = null;
-    _queuedReason = 'queued';
+    _queuedCommand = null;
     _stopPeriodicSync();
     _realtimeController?.dispose();
     _realtimeController = null;
@@ -321,17 +331,13 @@ class SyncNotifier extends Notifier<SyncState> {
     final active = ref.read(accountProvider).activeAccount;
     if (active is! MicrosoftAccount) return Future<void>.value();
 
+    final command = _SyncCommand(kind, reason);
     final inFlight = _activeSync;
     if (inFlight != null) {
-      _syncQueued = true;
-      final merged = _mergeSyncKind(_queuedKind, kind);
-      if (merged != _queuedKind) {
-        _queuedReason = reason;
-      }
-      _queuedKind = merged;
+      _enqueueCommand(command);
       _log.info(
         'syncNow coalesced into in-flight sync: reason=$reason '
-        'kind=${kind.name} (queuedKind=${merged.name})',
+        'kind=${kind.name} (queuedKind=${_queuedCommand!.kind.name})',
       );
       return inFlight;
     }
@@ -340,7 +346,7 @@ class SyncNotifier extends Notifier<SyncState> {
     _activeSync = completer.future;
     unawaited(() async {
       try {
-        await _runSyncLoop(initialKind: kind, initialReason: reason);
+        await _runSyncLoop(command);
       } finally {
         if (!completer.isCompleted) completer.complete();
       }
@@ -348,44 +354,35 @@ class SyncNotifier extends Notifier<SyncState> {
     return completer.future;
   }
 
-  Future<void> _runSyncLoop({
-    required SyncKind initialKind,
-    required String initialReason,
-  }) async {
+  Future<void> _runSyncLoop(_SyncCommand initialCommand) async {
     state = state.copyWith(status: SyncStatus.syncing, error: null);
-    var nextKind = initialKind;
-    var nextReason = initialReason;
+    _SyncCommand? nextCommand = initialCommand;
     try {
-      do {
-        _syncQueued = false;
-        final runKind = nextKind;
-        final runReason = nextReason;
-        nextReason = 'queued';
-        final succeeded = await _syncOnce(kind: runKind, reason: runReason);
+      while (nextCommand != null && !_disposed) {
+        final current = nextCommand;
+        nextCommand = null;
+        final succeeded = await _syncOnce(
+          kind: current.kind,
+          reason: current.reason,
+        );
         if (succeeded &&
             !_disposed &&
-            !_syncQueued &&
+            _queuedCommand == null &&
             ref
                 .read(todoProvider.notifier)
                 .repository
                 .outbox
                 .ops
                 .any((op) => op.kind == SyncOpKind.delete)) {
-          _syncQueued = true;
-          _queuedKind = _mergeSyncKind(_queuedKind, SyncKind.pushOnly);
-          _queuedReason = 'outbox_pending';
+          _enqueueCommand(const _SyncCommand(SyncKind.pushOnly, 'outbox_pending'));
         }
-        if (_syncQueued && !_disposed) {
-          nextKind = _queuedKind ?? SyncKind.delta;
-          nextReason = _queuedReason;
-          _queuedKind = null;
-          _queuedReason = 'queued';
+        if (!_disposed) {
+          nextCommand = _queuedCommand;
+          _queuedCommand = null;
         }
-      } while (_syncQueued && !_disposed);
+      }
     } finally {
-      _syncQueued = false;
-      _queuedKind = null;
-      _queuedReason = 'queued';
+      _queuedCommand = null;
       _activeSync = null;
     }
     final realtime = _realtimeController;
@@ -447,8 +444,8 @@ class SyncNotifier extends Notifier<SyncState> {
         );
         if (ref.read(accountProvider).activeAccount?.id == active.id) {
           await todoNotifier.applyPulledState(
-            groups: outcome.groups,
-            lists: outcome.lists,
+            groups: kind == SyncKind.pushOnly ? null : outcome.groups,
+            lists: kind == SyncKind.pushOnly ? null : outcome.lists,
             tasks: outcome.tasks,
             settingsPatch: outcome.settingsPatch,
           );

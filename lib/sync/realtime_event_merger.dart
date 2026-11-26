@@ -5,6 +5,7 @@ import '../homeview/home_view_ordering.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import 'microsoft_todo_models.dart';
+import 'remote_change_reconciler.dart';
 import 'substrate_sync_mappers.dart';
 import 'sync_log_format.dart';
 
@@ -87,150 +88,135 @@ RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
     );
   }
 
-  RealtimeMergeResult<List<TaskItem>> applyDelete(
-    String remoteId,
-    String eventLabel,
-  ) {
-    if (remoteId.isEmpty) {
-      return RealtimeMergeResult.unhandled('$eventLabel missing Id');
-    }
-    final existingIndex = currentTasks.indexWhere(
-      (t) => t.remoteId == remoteId,
-    );
-    if (existingIndex < 0) {
-      return RealtimeMergeResult.noOp(
-        '$eventLabel id=${shortSyncId(remoteId)} already absent',
-      );
-    }
-    final existing = currentTasks[existingIndex];
-    if (dirtyTaskIds.contains(existing.id)) {
-      return RealtimeMergeResult.noOp(
-        '$eventLabel id=${shortSyncId(remoteId)} skipped (local dirty local=${existing.id})',
-      );
-    }
-    final nextTasks = [...currentTasks]..removeAt(existingIndex);
-    return RealtimeMergeResult.updated(
-      nextTasks,
-      '$eventLabel id=${shortSyncId(remoteId)} removed local=${existing.id} title="${existing.title}"',
-    );
-  }
-
   final op = _parseRealtimeOp(event.operation);
-  if (op == _RealtimeOp.deleted) {
-    return applyDelete(_resolveDeleteRemoteId(event), 'Task/Deleted');
-  }
   if (op == _RealtimeOp.unsupported) {
     return RealtimeMergeResult.unhandled(
       'Task/${event.operation} unsupported op',
     );
   }
-  if (event.payload == null) {
-    return RealtimeMergeResult.unhandled(
-      'Task/${event.operation} id=${shortSyncId(event.id)} missing payload',
+
+  final RemoteTodoTask remote;
+  final bool preserveStepsWhenMissing;
+  if (op == _RealtimeOp.deleted) {
+    final remoteId = _resolveDeleteRemoteId(event);
+    if (remoteId.isEmpty) {
+      return RealtimeMergeResult.unhandled('Task/Deleted missing Id');
+    }
+    remote = RemoteTodoTask(
+      id: remoteId,
+      subject: '',
+      isDeleted: true,
     );
+    preserveStepsWhenMissing = false;
+  } else {
+    if (event.payload == null) {
+      return RealtimeMergeResult.unhandled(
+        'Task/${event.operation} id=${shortSyncId(event.id)} missing payload',
+      );
+    }
+    final payloadMap = _normalizeEntityPayload(event);
+    remote = RemoteTodoTask.fromJson(payloadMap);
+    if (remote.id.isEmpty) {
+      return RealtimeMergeResult.unhandled('Task/${event.operation} missing Id');
+    }
+    preserveStepsWhenMissing = !payloadMap.containsKey('Subtasks');
   }
 
-  final payloadMap = _normalizeEntityPayload(event);
-  final remote = RemoteTodoTask.fromJson(payloadMap);
-  if (remote.id.isEmpty) {
-    return RealtimeMergeResult.unhandled('Task/${event.operation} missing Id');
-  }
-  if (remote.isDeleted || remote.isIgnored) {
-    return applyDelete(
-      remote.id,
-      'Task/${event.operation}(${remote.isDeleted ? "deleted" : "ignored"})',
-    );
-  }
   if (pendingDeletedTaskRemoteIds.contains(remote.id)) {
     return RealtimeMergeResult.noOp(
       'Task/${event.operation} id=${shortSyncId(remote.id)} skipped (pending local delete)',
     );
   }
 
-  final existingIndex = currentTasks.indexWhere((t) => t.remoteId == remote.id);
-  final existing = existingIndex >= 0 ? currentTasks[existingIndex] : null;
-  final localListIdByFolderRemoteId = {
-    for (final l in lists)
-      if (l.remoteId != null) l.remoteId!: l.id,
-  };
-
-  final String? resolvedListId;
-  if (remote.parentFolderId != null && remote.parentFolderId!.isNotEmpty) {
-    resolvedListId = localListIdByFolderRemoteId[remote.parentFolderId!];
-    if (resolvedListId == null) {
-      return RealtimeMergeResult.unhandled(
-        'Task/${event.operation} id=${shortSyncId(remote.id)} unknown parentFolder=${shortSyncId(remote.parentFolderId)}',
-      );
-    }
-  } else {
-    resolvedListId = existing?.listId;
-    if (resolvedListId == null) {
-      return RealtimeMergeResult.unhandled(
-        'Task/${event.operation} id=${shortSyncId(remote.id)} missing parentFolderId for new task',
-      );
-    }
-  }
-
-  if (existing != null) {
-    if (dirtyTaskIds.contains(existing.id)) {
-      if (remote.changeKey != null && remote.changeKey != existing.changeKey) {
-        final nextTasks = [...currentTasks];
-        nextTasks[existingIndex] = existing.copyWith(
-          changeKey: remote.changeKey,
-        );
-        return RealtimeMergeResult.updated(
-          nextTasks,
-          'Task/${event.operation} id=${shortSyncId(remote.id)} local=${existing.id} dirty: updated changeKey only',
-        );
-      }
-      return RealtimeMergeResult.noOp(
-        'Task/${event.operation} id=${shortSyncId(remote.id)} local=${existing.id} skipped (local dirty)',
-      );
-    }
-
-    var mapped = taskFromRemote(
-      remote,
-      localId: existing.id,
-      listId: resolvedListId,
-      existingSteps: existing.steps,
-      idGenerator: idGenerator,
-      existingCompletedAt: existing.completedAt,
-    );
-    if (!payloadMap.containsKey('Subtasks')) {
-      mapped = mapped.copyWith(steps: existing.steps);
-    }
-    if (mapped.remoteParentFolderId == null &&
-        existing.remoteParentFolderId != null) {
-      mapped = mapped.copyWith(
-        remoteParentFolderId: existing.remoteParentFolderId,
-      );
-    }
-    final nextTasks = [...currentTasks];
-    nextTasks[existingIndex] = mapped;
-    return RealtimeMergeResult.updated(
-      nextTasks,
-      'Task/${event.operation} updated id=${shortSyncId(remote.id)} local=${existing.id} '
-      'title="${mapped.title}" list=${existing.listId}->${mapped.listId} '
-      'order=${formatSyncTimestamp(existing.orderDateTime)}->${formatSyncTimestamp(mapped.orderDateTime)} '
-      'committedOrder=${formatSyncTimestamp(existing.committedOrder)}->${formatSyncTimestamp(mapped.committedOrder)} '
-      'ck=${shortSyncId(mapped.changeKey)}',
+  final existingBefore = currentTasks
+      .where((t) => t.remoteId == remote.id)
+      .firstOrNull;
+  if (!remote.isDeleted &&
+      !remote.isIgnored &&
+      (remote.parentFolderId == null || remote.parentFolderId!.isEmpty) &&
+      existingBefore == null) {
+    return RealtimeMergeResult.unhandled(
+      'Task/${event.operation} id=${shortSyncId(remote.id)} missing parentFolderId for new task',
     );
   }
 
-  final newLocalId = idGenerator('task');
-  final mapped = taskFromRemote(
-    remote,
-    localId: newLocalId,
-    listId: resolvedListId,
-    existingSteps: const [],
+  final reconciled = reconcileRemoteTaskChanges(
+    lists: lists,
+    currentTasks: currentTasks,
+    changes: [
+      (
+        remote: remote,
+        fallbackLocalListId: null,
+        preserveStepsWhenMissing: preserveStepsWhenMissing,
+      ),
+    ],
+    dirtyTaskIds: dirtyTaskIds,
+    pendingDeletedTaskRemoteIds: pendingDeletedTaskRemoteIds,
     idGenerator: idGenerator,
   );
+
+  if (reconciled.unknownParentFolderIds.isNotEmpty) {
+    return RealtimeMergeResult.unhandled(
+      'Task/${event.operation} id=${shortSyncId(remote.id)} unknown parentFolder=${shortSyncId(remote.parentFolderId)}',
+    );
+  }
+
+  final after = reconciled.tasks
+      .where((t) => t.remoteId == remote.id)
+      .firstOrNull;
+
+  if (remote.isDeleted || remote.isIgnored) {
+    if (existingBefore == null) {
+      return RealtimeMergeResult.noOp(
+        'Task/${event.operation} id=${shortSyncId(remote.id)} already absent',
+      );
+    }
+    if (after != null) {
+      return RealtimeMergeResult.noOp(
+        'Task/${event.operation} id=${shortSyncId(remote.id)} skipped (local dirty local=${existingBefore.id})',
+      );
+    }
+    return RealtimeMergeResult.updated(
+      reconciled.tasks,
+      'Task/${event.operation} id=${shortSyncId(remote.id)} removed local=${existingBefore.id} title="${existingBefore.title}"',
+    );
+  }
+
+  if (existingBefore != null && dirtyTaskIds.contains(existingBefore.id)) {
+    if (after != null && after.changeKey != existingBefore.changeKey) {
+      return RealtimeMergeResult.updated(
+        reconciled.tasks,
+        'Task/${event.operation} id=${shortSyncId(remote.id)} local=${existingBefore.id} dirty: updated changeKey only',
+      );
+    }
+    return RealtimeMergeResult.noOp(
+      'Task/${event.operation} id=${shortSyncId(remote.id)} local=${existingBefore.id} skipped (local dirty)',
+    );
+  }
+
+  if (after == null) {
+    return RealtimeMergeResult.noOp(
+      'Task/${event.operation} id=${shortSyncId(remote.id)} no-op',
+    );
+  }
+
+  if (existingBefore != null) {
+    return RealtimeMergeResult.updated(
+      reconciled.tasks,
+      'Task/${event.operation} updated id=${shortSyncId(remote.id)} local=${existingBefore.id} '
+      'title="${after.title}" list=${existingBefore.listId}->${after.listId} '
+      'order=${formatSyncTimestamp(existingBefore.orderDateTime)}->${formatSyncTimestamp(after.orderDateTime)} '
+      'committedOrder=${formatSyncTimestamp(existingBefore.committedOrder)}->${formatSyncTimestamp(after.committedOrder)} '
+      'ck=${shortSyncId(after.changeKey)}',
+    );
+  }
+
   return RealtimeMergeResult.updated(
-    [...currentTasks, mapped],
-    'Task/${event.operation} created id=${shortSyncId(remote.id)} local=$newLocalId '
-    'title="${mapped.title}" list=${mapped.listId} '
-    'order=${formatSyncTimestamp(mapped.orderDateTime)} '
-    'committedOrder=${formatSyncTimestamp(mapped.committedOrder)}',
+    reconciled.tasks,
+    'Task/${event.operation} created id=${shortSyncId(remote.id)} local=${after.id} '
+    'title="${after.title}" list=${after.listId} '
+    'order=${formatSyncTimestamp(after.orderDateTime)} '
+    'committedOrder=${formatSyncTimestamp(after.committedOrder)}',
   );
 }
 

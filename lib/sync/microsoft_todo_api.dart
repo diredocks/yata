@@ -144,6 +144,19 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
 
   final Queue<String> _ownRequestOrder = Queue<String>();
   final Set<String> _ownRequestSet = <String>{};
+  DateTime? _throttleUntil;
+
+  Future<void> _awaitThrottleGate() async {
+    final until = _throttleUntil;
+    if (until == null) return;
+    final remaining = until.difference(DateTime.now());
+    if (remaining > Duration.zero) {
+      await _delay(remaining);
+    }
+    if (_throttleUntil == until) {
+      _throttleUntil = null;
+    }
+  }
 
   String _nextRequestId() {
     final id = generateUuidV4();
@@ -229,10 +242,18 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
         };
       }
 
+      await _awaitThrottleGate();
       var response = await executeOnce();
       final retryDelay = _extractThrottleDelay(response);
       if (retryDelay != null) {
+        final nextUntil = DateTime.now().add(retryDelay);
+        if (_throttleUntil == null || nextUntil.isAfter(_throttleUntil!)) {
+          _throttleUntil = nextUntil;
+        }
         await _delay(retryDelay);
+        if (_throttleUntil == nextUntil) {
+          _throttleUntil = null;
+        }
         response = await executeOnce();
       }
 

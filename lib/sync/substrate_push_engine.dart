@@ -11,6 +11,7 @@ import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import 'microsoft_todo_api.dart';
 import 'substrate_sync_mappers.dart';
+import 'sync_concurrency.dart';
 import 'sync_guard.dart';
 import 'sync_log_format.dart';
 import 'text_merge.dart';
@@ -607,7 +608,7 @@ class SubstratePushEngine {
         );
       }
 
-      await _runWithConcurrency(
+      await runWithConcurrency(
         taskOpsByLocalId.values.toList(),
         _maxConcurrentTaskPushes,
         (opsForTask) async {
@@ -629,33 +630,6 @@ class SubstratePushEngine {
     } finally {
       outbox.endBatch();
     }
-  }
-
-  Future<void> _runWithConcurrency<T>(
-    List<T> items,
-    int maxConcurrent,
-    Future<void> Function(T item) action,
-  ) async {
-    if (items.isEmpty) return;
-    var nextIndex = 0;
-    var aborted = false;
-    Future<void> worker() async {
-      while (!aborted && nextIndex < items.length) {
-        final index = nextIndex;
-        nextIndex += 1;
-        try {
-          await action(items[index]);
-        } catch (_) {
-          aborted = true;
-          rethrow;
-        }
-      }
-    }
-
-    final workerCount = maxConcurrent < items.length
-        ? maxConcurrent
-        : items.length;
-    await Future.wait([for (var i = 0; i < workerCount; i++) worker()]);
   }
 
   Set<T>? _decodeEnumFields<T extends Enum>(

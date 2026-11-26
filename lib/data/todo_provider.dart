@@ -434,9 +434,10 @@ class TodoNotifier extends Notifier<TodoState> {
 
     final persistFutures = <Future<Object?>>[
       ...settingsPersistFutures,
-      repository.saveGroups(sortedGroups),
-      repository.saveLists(sortedLists),
-      repository.saveTasks(syncedTasks),
+      if (groups != null) repository.saveGroups(sortedGroups),
+      if (lists != null || settingsPatch != null)
+        repository.saveLists(sortedLists),
+      if (tasks != null) repository.saveTasks(syncedTasks),
       if (expandedOutcome.changed)
         settings.saveCompletedExpandedByList(expandedOutcome.expanded),
     ];

@@ -9,7 +9,9 @@ import '../data/todo_settings_sync.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import 'microsoft_todo_api.dart';
+import 'remote_change_reconciler.dart';
 import 'substrate_sync_mappers.dart';
+import 'sync_concurrency.dart';
 import 'sync_log_format.dart';
 
 final _log = appLogFor('SyncEngine');
@@ -364,17 +366,9 @@ class SubstratePullEngine {
       }
     }
 
-    final seenActiveRemoteTaskIds = <String>{};
     final fullSyncedListIds = <String>{};
-    final deferredDeletesByFolder = <String, Set<String>>{};
-    final ignoredRemoteIds = <String>{};
-    final tasksById = {for (final t in workingTasks) t.id: t};
-    final taskIdByRemoteId = <String, String>{
-      for (final t in workingTasks)
-        if (t.remoteId != null) t.remoteId!: t.id,
-    };
 
-    final fetches = await _mapWithConcurrency(
+    final fetches = await mapWithConcurrency(
       pullFolderRemoteIds,
       _maxConcurrentFolderFetches,
       (folderRemoteId) async {
@@ -409,6 +403,7 @@ class SubstratePullEngine {
       },
     );
 
+    final allChanges = <RemoteTaskChange>[];
     for (var index = 0; index < pullFolderRemoteIds.length; index++) {
       final folderRemoteId = pullFolderRemoteIds[index];
       final localListId = localListIdByFolderRemoteId[folderRemoteId]!;
@@ -424,123 +419,47 @@ class SubstratePullEngine {
         fullSyncedListIds.add(localListId);
       }
 
-      var addedCount = 0;
-      var updatedCount = 0;
-      var orderChangedCount = 0;
-      var deletedCount = 0;
-      var ignoredCount = 0;
-
       for (final remote in taskDeltaResult.items) {
-        if (remote.isIgnored) {
-          ignoredCount += 1;
-          ignoredRemoteIds.add(remote.id);
-          continue;
-        }
-        if (remote.isDeleted) {
-          deletedCount += 1;
-          (deferredDeletesByFolder[remote.id] ??= <String>{}).add(localListId);
-          continue;
-        }
-        if (pendingDeletedTaskRemotes.contains(remote.id)) {
-          continue;
-        }
-        seenActiveRemoteTaskIds.add(remote.id);
-
-        final resolvedListId =
-            (remote.parentFolderId != null
-                ? localListIdByFolderRemoteId[remote.parentFolderId!]
-                : null) ??
-            localListId;
-
-        final existingId = taskIdByRemoteId[remote.id];
-        final existing = existingId != null ? tasksById[existingId] : null;
-        if (existing != null) {
-          updatedCount += 1;
-          final isPending = pendingTasks.contains(existing.id);
-          final orderChanged =
-              !isPending &&
-              (existing.orderDateTime != remote.orderDateTime ||
-                  existing.committedOrder != remote.committedOrder ||
-                  existing.listId != resolvedListId);
-          if (orderChanged) {
-            orderChangedCount += 1;
-          }
-          tasksById[existing.id] = isPending
-              ? existing.copyWith(
-                  changeKey: remote.changeKey ?? existing.changeKey,
-                )
-              : taskFromRemote(
-                  remote,
-                  localId: existing.id,
-                  listId: resolvedListId,
-                  existingSteps: existing.steps,
-                  idGenerator: idGenerator,
-                  existingCompletedAt: existing.completedAt,
-                );
-        } else {
-          addedCount += 1;
-          final newLocalId = idGenerator('task');
-          final created = taskFromRemote(
-            remote,
-            localId: newLocalId,
-            listId: resolvedListId,
-            existingSteps: const [],
-            idGenerator: idGenerator,
-          );
-          tasksById[newLocalId] = created;
-          taskIdByRemoteId[remote.id] = newLocalId;
-        }
+        allChanges.add((
+          remote: remote,
+          fallbackLocalListId: localListId,
+          preserveStepsWhenMissing: false,
+        ));
       }
 
       _log.info(
         'Phase 10b folder="${listTitleByLocalId[localListId] ?? localListId}" '
         'remote=${shortSyncId(folderRemoteId)} mode=${mode.label} '
-        'items=${taskDeltaResult.items.length} added=$addedCount '
-        'updated=$updatedCount orderChanged=$orderChangedCount '
-        'deleted=$deletedCount ignored=$ignoredCount '
+        'items=${taskDeltaResult.items.length} '
         'hasDeltaLink=${taskDeltaResult.deltaLink != null}',
       );
     }
 
-    for (final ignoredRemoteId in ignoredRemoteIds) {
-      final localId = taskIdByRemoteId[ignoredRemoteId];
-      if (localId == null || pendingTasks.contains(localId)) continue;
-      tasksById.remove(localId);
-    }
+    final reconciled = reconcileRemoteTaskChanges(
+      lists: workingLists,
+      currentTasks: workingTasks,
+      changes: allChanges,
+      dirtyTaskIds: pendingTasks,
+      pendingDeletedTaskRemoteIds: pendingDeletedTaskRemotes,
+      idGenerator: idGenerator,
+    );
 
-    for (final entry in deferredDeletesByFolder.entries) {
-      final deletedRemoteId = entry.key;
-      final deletedFromListIds = entry.value;
-      if (seenActiveRemoteTaskIds.contains(deletedRemoteId)) continue;
-      final localId = taskIdByRemoteId[deletedRemoteId];
-      if (localId == null || pendingTasks.contains(localId)) continue;
-      final localTask = tasksById[localId];
-      if (localTask == null || !deletedFromListIds.contains(localTask.listId)) {
-        continue;
-      }
-      tasksById.remove(localId);
-    }
-
+    var nextTasks = reconciled.tasks;
     if (fullSyncedListIds.isNotEmpty) {
-      final staleLocalIds = [
-        for (final task in tasksById.values)
-          if (task.remoteId != null &&
-              fullSyncedListIds.contains(task.listId) &&
-              !seenActiveRemoteTaskIds.contains(task.remoteId) &&
-              !pendingTasks.contains(task.id) &&
-              !justPushedTaskIds.contains(task.id))
-            task.id,
-      ];
-      for (final localId in staleLocalIds) {
-        final removed = tasksById.remove(localId);
-        if (removed != null) {
-          _log.fine(
-            'Phase 10b full-sync prune stale local=${removed.id} '
-            'remote=${shortSyncId(removed.remoteId)} '
-            'title="${removed.title}" list=${removed.listId}',
-          );
-        }
-      }
+      nextTasks = _pruneStale(
+        items: nextTasks,
+        shouldKeep: (task) =>
+            task.remoteId == null ||
+            !fullSyncedListIds.contains(task.listId) ||
+            reconciled.seenActiveRemoteIds.contains(task.remoteId) ||
+            pendingTasks.contains(task.id) ||
+            justPushedTaskIds.contains(task.id),
+        onPruned: (removed) => _log.fine(
+          'Phase 10b full-sync prune stale local=${removed.id} '
+          'remote=${shortSyncId(removed.remoteId)} '
+          'title="${removed.title}" list=${removed.listId}',
+        ),
+      );
     }
 
     final pulledFolderRemoteIds = pullFolderRemoteIds.toSet();
@@ -552,7 +471,7 @@ class SubstratePullEngine {
       await settings.savePendingTaskFolderPulls(remainingPendingPulls);
     }
     await settings.saveTaskDeltaLinks(taskDeltaLinks);
-    return tasksById.values.toList();
+    return nextTasks;
   }
 
   AsyncAppResult<_DeltaFetchResult<T>> _fetchDeltaWithMode<T>({
@@ -596,34 +515,5 @@ class SubstratePullEngine {
       }
     }
     return kept;
-  }
-
-  Future<List<R>> _mapWithConcurrency<T, R>(
-    List<T> items,
-    int maxConcurrent,
-    Future<R> Function(T item) action,
-  ) async {
-    if (items.isEmpty) return const [];
-    final results = List<R?>.filled(items.length, null);
-    var nextIndex = 0;
-    var aborted = false;
-    Future<void> worker() async {
-      while (!aborted && nextIndex < items.length) {
-        final index = nextIndex;
-        nextIndex += 1;
-        try {
-          results[index] = await action(items[index]);
-        } catch (_) {
-          aborted = true;
-          rethrow;
-        }
-      }
-    }
-
-    final workerCount = maxConcurrent < items.length
-        ? maxConcurrent
-        : items.length;
-    await Future.wait([for (var i = 0; i < workerCount; i++) worker()]);
-    return [for (final result in results) result as R];
   }
 }
