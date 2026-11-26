@@ -898,7 +898,9 @@ void main() {
         final localCopy = merged.firstWhere((l) => l.id == 'list_new_copy');
         expect(localCopy.remoteId, isNull);
         expect(
-          merged.any((l) => l.remoteId == 'rf-old-copy' && l.id != 'list_new_copy'),
+          merged.any(
+            (l) => l.remoteId == 'rf-old-copy' && l.id != 'list_new_copy',
+          ),
           isTrue,
         );
       },
@@ -969,201 +971,192 @@ void main() {
       },
     );
 
-    test(
-      'mid-batch push failure commits partial remoteIds and does not duplicate tasks on retry',
-      () async {
-        final h = await createSyncTestHarness(
-          accountId: 'acct_partial_push_retry',
-          defaultTasksFolderRemoteId: 'rf-default',
-          lists: const [
-            TodoList(id: 'list_src', title: 'Source', remoteId: 'rf-src'),
-          ],
-          tasks: [
-            TaskItem(
-              id: 't_src_1',
-              listId: 'list_src',
-              title: 'Alpha',
-              createdAt: DateTime.utc(2026, 11, 22, 8),
-              remoteId: 'rt-src-1',
-              remoteParentFolderId: 'rf-src',
+    test('mid-batch push failure commits partial remoteIds and does not duplicate tasks on retry', () async {
+      final h = await createSyncTestHarness(
+        accountId: 'acct_partial_push_retry',
+        defaultTasksFolderRemoteId: 'rf-default',
+        lists: const [
+          TodoList(id: 'list_src', title: 'Source', remoteId: 'rf-src'),
+        ],
+        tasks: [
+          TaskItem(
+            id: 't_src_1',
+            listId: 'list_src',
+            title: 'Alpha',
+            createdAt: DateTime.utc(2026, 11, 22, 8),
+            remoteId: 'rt-src-1',
+            remoteParentFolderId: 'rf-src',
+          ),
+          TaskItem(
+            id: 't_src_2',
+            listId: 'list_src',
+            title: 'Beta',
+            createdAt: DateTime.utc(2026, 11, 22, 9),
+            remoteId: 'rt-src-2',
+            remoteParentFolderId: 'rf-src',
+          ),
+        ],
+      );
+
+      h.container.read(tasksViewPresenterProvider).duplicateList('list_src');
+
+      var createdCount = 0;
+      var failedOnce = false;
+      h.api.onCreateFolder = (payload) async {
+        return RemoteTodoFolder(
+          id: 'rf-dup-1',
+          name: payload['Name'] as String,
+        );
+      };
+      h.api.onCreateTask = (folderRemoteId, payload) async {
+        final subject = payload['Subject'] as String;
+        if (subject == 'Beta' && !failedOnce) {
+          failedOnce = true;
+          throw const AppError.network(message: 'transient error');
+        }
+        createdCount += 1;
+        return RemoteTodoTask(
+          id: 'rt-dup-$createdCount',
+          subject: subject,
+          parentFolderId: folderRemoteId,
+          changeKey: 'ck-$createdCount',
+        );
+      };
+
+      final todoNotifier = h.container.read(todoProvider.notifier);
+      final service = CloudSyncService(
+        authClient: h.authClient,
+        todoApi: h.api,
+        tokenStorage: AuthTokenStorage(h.prefs),
+      );
+
+      final firstResult = await service.syncAccount(
+        account: h.account,
+        currentState: h.container.read(todoProvider),
+        repository: h.repository,
+        settings: h.settings,
+        idGenerator: todoNotifier.nextId,
+        readLatestState: () => h.container.read(todoProvider),
+        onPushCommitted: (pushOutcome) => todoNotifier.commitPushBatch(
+          ackedSeqs: pushOutcome.ackedSeqs,
+          pushedGroups: pushOutcome.pushedGroups,
+          pushedLists: pushOutcome.pushedLists,
+          pushedTasks: pushOutcome.pushedTasks,
+          clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
+        ),
+        kind: SyncKind.pushOnly,
+      );
+      expect(firstResult.isError(), isTrue);
+
+      // Alpha and the duplicated folder should already be committed with remoteIds.
+      final midState = h.container.read(todoProvider);
+      final dupList = midState.lists.firstWhere((l) => l.title == 'Source (1)');
+      expect(dupList.remoteId, 'rf-dup-1');
+      final alpha = midState.tasks.firstWhere(
+        (t) => t.listId == dupList.id && t.title == 'Alpha',
+      );
+      expect(alpha.remoteId, isNotNull);
+
+      h.api.callLog.clear();
+      final secondResult = await service.syncAccount(
+        account: h.account,
+        currentState: h.container.read(todoProvider),
+        repository: h.repository,
+        settings: h.settings,
+        idGenerator: todoNotifier.nextId,
+        readLatestState: () => h.container.read(todoProvider),
+        onPushCommitted: (pushOutcome) => todoNotifier.commitPushBatch(
+          ackedSeqs: pushOutcome.ackedSeqs,
+          pushedGroups: pushOutcome.pushedGroups,
+          pushedLists: pushOutcome.pushedLists,
+          pushedTasks: pushOutcome.pushedTasks,
+          clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
+        ),
+        kind: SyncKind.pushOnly,
+      );
+      expect(secondResult.isSuccess(), isTrue);
+
+      // Retry only created Beta, never duplicated the folder or Alpha.
+      expect(h.api.callLog.where((c) => c == 'POST taskfolders'), isEmpty);
+      expect(
+        h.api.callLog.where(
+          (c) => c.startsWith('POST taskfolders/rf-dup-1/tasks'),
+        ),
+        hasLength(1),
+      );
+      expect(createdCount, 2);
+    });
+
+    test('in-flight deleteList during pushOutbox skips creating tasks for deleted list', () async {
+      final h = await createSyncTestHarness(
+        accountId: 'acct_inflight_delete',
+        defaultTasksFolderRemoteId: 'rf-default',
+        lists: const [
+          TodoList(id: 'list_src', title: 'Source', remoteId: 'rf-src'),
+        ],
+        tasks: [
+          TaskItem(
+            id: 't_src_1',
+            listId: 'list_src',
+            title: 'Alpha',
+            createdAt: DateTime.utc(2026, 11, 22, 8),
+            remoteId: 'rt-src-1',
+            remoteParentFolderId: 'rf-src',
+          ),
+        ],
+      );
+
+      h.container.read(tasksViewPresenterProvider).duplicateList('list_src');
+      final dupList = h.container
+          .read(todoProvider)
+          .lists
+          .firstWhere((l) => l.title == 'Source (1)');
+
+      h.api.onCreateFolder = (payload) async {
+        // Simulate user deleting the duplicated list while createFolder is in flight.
+        h.container.read(tasksViewPresenterProvider).deleteList(dupList.id);
+        return RemoteTodoFolder(
+          id: 'rf-dup-gone',
+          name: payload['Name'] as String,
+        );
+      };
+
+      final todoNotifier = h.container.read(todoProvider.notifier);
+      final service = CloudSyncService(
+        authClient: h.authClient,
+        todoApi: h.api,
+        tokenStorage: AuthTokenStorage(h.prefs),
+      );
+
+      await service
+          .syncAccount(
+            account: h.account,
+            currentState: h.container.read(todoProvider),
+            repository: h.repository,
+            settings: h.settings,
+            idGenerator: todoNotifier.nextId,
+            readLatestState: () => h.container.read(todoProvider),
+            onPushCommitted: (pushOutcome) => todoNotifier.commitPushBatch(
+              ackedSeqs: pushOutcome.ackedSeqs,
+              pushedGroups: pushOutcome.pushedGroups,
+              pushedLists: pushOutcome.pushedLists,
+              pushedTasks: pushOutcome.pushedTasks,
+              clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
             ),
-            TaskItem(
-              id: 't_src_2',
-              listId: 'list_src',
-              title: 'Beta',
-              createdAt: DateTime.utc(2026, 11, 22, 9),
-              remoteId: 'rt-src-2',
-              remoteParentFolderId: 'rf-src',
-            ),
-          ],
-        );
-
-        h.container.read(tasksViewPresenterProvider).duplicateList('list_src');
-
-        var createdCount = 0;
-        var failedOnce = false;
-        h.api.onCreateFolder = (payload) async {
-          return RemoteTodoFolder(
-            id: 'rf-dup-1',
-            name: payload['Name'] as String,
+            kind: SyncKind.pushOnly,
+          )
+          .fold(
+            (outcome) => outcome,
+            (error) => fail('unexpected sync failure: ${error.describe()}'),
           );
-        };
-        h.api.onCreateTask = (folderRemoteId, payload) async {
-          final subject = payload['Subject'] as String;
-          if (subject == 'Beta' && !failedOnce) {
-            failedOnce = true;
-            throw const AppError.network(message: 'transient error');
-          }
-          createdCount += 1;
-          return RemoteTodoTask(
-            id: 'rt-dup-$createdCount',
-            subject: subject,
-            parentFolderId: folderRemoteId,
-            changeKey: 'ck-$createdCount',
-          );
-        };
 
-        final todoNotifier = h.container.read(todoProvider.notifier);
-        final service = CloudSyncService(
-          authClient: h.authClient,
-          todoApi: h.api,
-          tokenStorage: AuthTokenStorage(h.prefs),
-        );
-
-        final firstResult = await service.syncAccount(
-          account: h.account,
-          currentState: h.container.read(todoProvider),
-          repository: h.repository,
-          settings: h.settings,
-          idGenerator: todoNotifier.nextId,
-          readLatestState: () => h.container.read(todoProvider),
-          onPushCommitted: (pushOutcome) => todoNotifier.commitPushBatch(
-            ackedSeqs: pushOutcome.ackedSeqs,
-            pushedGroups: pushOutcome.pushedGroups,
-            pushedLists: pushOutcome.pushedLists,
-            pushedTasks: pushOutcome.pushedTasks,
-            clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
-          ),
-          kind: SyncKind.pushOnly,
-        );
-        expect(firstResult.isError(), isTrue);
-
-        // Alpha and the duplicated folder should already be committed with remoteIds.
-        final midState = h.container.read(todoProvider);
-        final dupList = midState.lists.firstWhere((l) => l.title == 'Source (1)');
-        expect(dupList.remoteId, 'rf-dup-1');
-        final alpha = midState.tasks.firstWhere(
-          (t) => t.listId == dupList.id && t.title == 'Alpha',
-        );
-        expect(alpha.remoteId, isNotNull);
-
-        h.api.callLog.clear();
-        final secondResult = await service.syncAccount(
-          account: h.account,
-          currentState: h.container.read(todoProvider),
-          repository: h.repository,
-          settings: h.settings,
-          idGenerator: todoNotifier.nextId,
-          readLatestState: () => h.container.read(todoProvider),
-          onPushCommitted: (pushOutcome) => todoNotifier.commitPushBatch(
-            ackedSeqs: pushOutcome.ackedSeqs,
-            pushedGroups: pushOutcome.pushedGroups,
-            pushedLists: pushOutcome.pushedLists,
-            pushedTasks: pushOutcome.pushedTasks,
-            clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
-          ),
-          kind: SyncKind.pushOnly,
-        );
-        expect(secondResult.isSuccess(), isTrue);
-
-        // Retry only created Beta, never duplicated the folder or Alpha.
-        expect(
-          h.api.callLog.where((c) => c == 'POST taskfolders'),
-          isEmpty,
-        );
-        expect(
-          h.api.callLog.where(
-            (c) => c.startsWith('POST taskfolders/rf-dup-1/tasks'),
-          ),
-          hasLength(1),
-        );
-        expect(createdCount, 2);
-      },
-    );
-
-    test(
-      'in-flight deleteList during pushOutbox skips creating tasks for deleted list',
-      () async {
-        final h = await createSyncTestHarness(
-          accountId: 'acct_inflight_delete',
-          defaultTasksFolderRemoteId: 'rf-default',
-          lists: const [
-            TodoList(id: 'list_src', title: 'Source', remoteId: 'rf-src'),
-          ],
-          tasks: [
-            TaskItem(
-              id: 't_src_1',
-              listId: 'list_src',
-              title: 'Alpha',
-              createdAt: DateTime.utc(2026, 11, 22, 8),
-              remoteId: 'rt-src-1',
-              remoteParentFolderId: 'rf-src',
-            ),
-          ],
-        );
-
-        h.container.read(tasksViewPresenterProvider).duplicateList('list_src');
-        final dupList = h.container
-            .read(todoProvider)
-            .lists
-            .firstWhere((l) => l.title == 'Source (1)');
-
-        h.api.onCreateFolder = (payload) async {
-          // Simulate user deleting the duplicated list while createFolder is in flight.
-          h.container.read(tasksViewPresenterProvider).deleteList(dupList.id);
-          return RemoteTodoFolder(
-            id: 'rf-dup-gone',
-            name: payload['Name'] as String,
-          );
-        };
-
-        final todoNotifier = h.container.read(todoProvider.notifier);
-        final service = CloudSyncService(
-          authClient: h.authClient,
-          todoApi: h.api,
-          tokenStorage: AuthTokenStorage(h.prefs),
-        );
-
-        await service
-            .syncAccount(
-              account: h.account,
-              currentState: h.container.read(todoProvider),
-              repository: h.repository,
-              settings: h.settings,
-              idGenerator: todoNotifier.nextId,
-              readLatestState: () => h.container.read(todoProvider),
-              onPushCommitted: (pushOutcome) => todoNotifier.commitPushBatch(
-                ackedSeqs: pushOutcome.ackedSeqs,
-                pushedGroups: pushOutcome.pushedGroups,
-                pushedLists: pushOutcome.pushedLists,
-                pushedTasks: pushOutcome.pushedTasks,
-                clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
-              ),
-              kind: SyncKind.pushOnly,
-            )
-            .fold(
-              (outcome) => outcome,
-              (error) => fail('unexpected sync failure: ${error.describe()}'),
-            );
-
-        // No tasks were created for the deleted folder!
-        expect(
-          h.api.callLog.where(
-            (c) => c.startsWith('POST taskfolders/rf-dup-gone/tasks'),
-          ),
-          isEmpty,
-        );
-      },
-    );
+      // No tasks were created for the deleted folder!
+      expect(
+        h.api.callLog.where(
+          (c) => c.startsWith('POST taskfolders/rf-dup-gone/tasks'),
+        ),
+        isEmpty,
+      );
+    });
   });
 }

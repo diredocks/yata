@@ -262,8 +262,9 @@ class SyncNotifier extends Notifier<SyncState> {
     unawaited(
       syncNow(
         forceFullSync: accountChanged,
-        reason: (accountChanged ? SyncReason.accountChanged : SyncReason.startup)
-            .label,
+        reason:
+            (accountChanged ? SyncReason.accountChanged : SyncReason.startup)
+                .label,
       ),
     );
   }

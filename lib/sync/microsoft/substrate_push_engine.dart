@@ -180,452 +180,463 @@ class SubstratePushEngine {
       }
 
       return await guardApiCall(() async {
-
-      // 1. Settings
-      for (final op in batch) {
-        if (op.entityType != SyncEntityType.setting) continue;
-        final latestState = readLatestState?.call() ?? currentState;
-        final wireValue = extractSettingValueForKey(latestState, op.localId);
-        if (wireValue != null) {
-          (await todoApi.patchSetting(ctx, op.localId, wireValue)).getOrThrow();
-        }
-        await commitOp(seq: op.seq);
-      }
-
-      // 2. Step, Task, and Folder deletions
-      for (final op in batch) {
-        if (op.kind != SyncOpKind.delete) continue;
-        if (op.entityType == SyncEntityType.step) {
-          final taskRemoteId =
-              op.parentRemoteId ??
-              (op.parentLocalId != null
-                  ? outbox.resolveRemoteId(
-                      SyncEntityType.task,
-                      op.parentLocalId!,
-                    )
-                  : null);
-          final stepRemoteId =
-              op.remoteId ??
-              outbox.resolveRemoteId(SyncEntityType.step, op.localId);
-          if (taskRemoteId != null && stepRemoteId != null) {
-            await _deleteOne(
-              () => todoApi.deleteStep(ctx, taskRemoteId, stepRemoteId),
-            );
+        // 1. Settings
+        for (final op in batch) {
+          if (op.entityType != SyncEntityType.setting) continue;
+          final latestState = readLatestState?.call() ?? currentState;
+          final wireValue = extractSettingValueForKey(latestState, op.localId);
+          if (wireValue != null) {
+            (await todoApi.patchSetting(
+              ctx,
+              op.localId,
+              wireValue,
+            )).getOrThrow();
           }
-          await commitOp(
-            seq: op.seq,
-            clearedRemoteIdKey: (
-              type: SyncEntityType.step,
-              localId: op.localId,
-            ),
-          );
-        } else if (op.entityType == SyncEntityType.task) {
-          final remoteId =
-              op.remoteId ??
-              outbox.resolveRemoteId(SyncEntityType.task, op.localId);
-          if (remoteId != null) {
-            deletedTaskRemoteIds.add(remoteId);
-            await _deleteOne(() => todoApi.deleteTask(ctx, remoteId));
-          }
-          await commitOp(
-            seq: op.seq,
-            clearedRemoteIdKey: (
-              type: SyncEntityType.task,
-              localId: op.localId,
-            ),
-          );
-        } else if (op.entityType == SyncEntityType.list) {
-          final remoteId =
-              op.remoteId ??
-              outbox.resolveRemoteId(SyncEntityType.list, op.localId);
-          if (remoteId != null) {
-            deletedListRemoteIds.add(remoteId);
-            await _deleteOne(
-              () => todoApi.deleteFolder(ctx, remoteId),
-              treatAsDeletedOn: (e) =>
-                  e.isNotFound || e.isCantDeleteDefaultFolder,
-            );
-          }
-          await commitOp(
-            seq: op.seq,
-            clearedRemoteIdKey: (
-              type: SyncEntityType.list,
-              localId: op.localId,
-            ),
-          );
-        }
-      }
-
-      // 3. Folder group upserts
-      for (final op in batch) {
-        if (op.entityType != SyncEntityType.group ||
-            op.kind != SyncOpKind.upsert) {
-          continue;
-        }
-        final rawGroup = findLiveGroup(op.localId);
-        final resolvedGroupRemoteId =
-            rawGroup?.remoteId ??
-            outbox.resolveRemoteId(SyncEntityType.group, op.localId);
-        final group =
-            rawGroup != null &&
-                rawGroup.remoteId == null &&
-                resolvedGroupRemoteId != null
-            ? rawGroup.copyWith(remoteId: resolvedGroupRemoteId)
-            : rawGroup;
-        if (group == null ||
-            (group.remoteId != null &&
-                deletedGroupRemoteIds.contains(group.remoteId))) {
           await commitOp(seq: op.seq);
-          continue;
         }
-        if (group.remoteId == null) {
-          final created = (await todoApi.createFolderGroup(
-            ctx,
-            name: group.title,
-            orderDateTime: group.orderDateTime ?? nowUtc,
-          )).getOrThrow();
-          outbox.recordRemoteId(SyncEntityType.group, group.id, created.id);
-          await commitOp(
-            seq: op.seq,
-            group: group.copyWith(
-              remoteId: created.id,
-              orderDateTime: created.orderDateTime ?? group.orderDateTime,
-              updatedAt: nowUtc,
-            ),
-          );
-        } else {
-          final dirtyFields = _decodeEnumFields(
-            op.fields,
-            GroupDirtyField.values,
-          );
-          final patchPayload = buildGroupPatchPayload(
-            group,
-            dirtyFields: dirtyFields,
-          );
-          if (patchPayload.isEmpty) {
-            await commitOp(seq: op.seq, group: group);
+
+        // 2. Step, Task, and Folder deletions
+        for (final op in batch) {
+          if (op.kind != SyncOpKind.delete) continue;
+          if (op.entityType == SyncEntityType.step) {
+            final taskRemoteId =
+                op.parentRemoteId ??
+                (op.parentLocalId != null
+                    ? outbox.resolveRemoteId(
+                        SyncEntityType.task,
+                        op.parentLocalId!,
+                      )
+                    : null);
+            final stepRemoteId =
+                op.remoteId ??
+                outbox.resolveRemoteId(SyncEntityType.step, op.localId);
+            if (taskRemoteId != null && stepRemoteId != null) {
+              await _deleteOne(
+                () => todoApi.deleteStep(ctx, taskRemoteId, stepRemoteId),
+              );
+            }
+            await commitOp(
+              seq: op.seq,
+              clearedRemoteIdKey: (
+                type: SyncEntityType.step,
+                localId: op.localId,
+              ),
+            );
+          } else if (op.entityType == SyncEntityType.task) {
+            final remoteId =
+                op.remoteId ??
+                outbox.resolveRemoteId(SyncEntityType.task, op.localId);
+            if (remoteId != null) {
+              deletedTaskRemoteIds.add(remoteId);
+              await _deleteOne(() => todoApi.deleteTask(ctx, remoteId));
+            }
+            await commitOp(
+              seq: op.seq,
+              clearedRemoteIdKey: (
+                type: SyncEntityType.task,
+                localId: op.localId,
+              ),
+            );
+          } else if (op.entityType == SyncEntityType.list) {
+            final remoteId =
+                op.remoteId ??
+                outbox.resolveRemoteId(SyncEntityType.list, op.localId);
+            if (remoteId != null) {
+              deletedListRemoteIds.add(remoteId);
+              await _deleteOne(
+                () => todoApi.deleteFolder(ctx, remoteId),
+                treatAsDeletedOn: (e) =>
+                    e.isNotFound || e.isCantDeleteDefaultFolder,
+              );
+            }
+            await commitOp(
+              seq: op.seq,
+              clearedRemoteIdKey: (
+                type: SyncEntityType.list,
+                localId: op.localId,
+              ),
+            );
+          }
+        }
+
+        // 3. Folder group upserts
+        for (final op in batch) {
+          if (op.entityType != SyncEntityType.group ||
+              op.kind != SyncOpKind.upsert) {
             continue;
           }
-          _log.fine(
-            'Phase 4 PATCH group=${group.id} remote=${shortSyncId(group.remoteId)} '
-            'keys=${patchPayload.keys.toList()}',
-          );
-          final remoteGroup =
-              (await todoApi
-                      .patchFolderGroup(ctx, group.remoteId!, patchPayload)
-                      .recover((error) async {
-                        if (!error.isNotFound) {
-                          return Failure<RemoteFolderGroup, AppError>(error);
-                        }
-                        return todoApi.createFolderGroup(
-                          ctx,
-                          name: group.title,
-                          orderDateTime: group.orderDateTime ?? nowUtc,
-                        );
-                      }))
-                  .getOrThrow();
-          outbox.recordRemoteId(SyncEntityType.group, group.id, remoteGroup.id);
-          await commitOp(
-            seq: op.seq,
-            group: group.copyWith(
-              remoteId: remoteGroup.id,
-              title: remoteGroup.name.isNotEmpty
-                  ? remoteGroup.name
-                  : group.title,
-              orderDateTime: remoteGroup.orderDateTime ?? group.orderDateTime,
-              updatedAt: nowUtc,
-            ),
-          );
+          final rawGroup = findLiveGroup(op.localId);
+          final resolvedGroupRemoteId =
+              rawGroup?.remoteId ??
+              outbox.resolveRemoteId(SyncEntityType.group, op.localId);
+          final group =
+              rawGroup != null &&
+                  rawGroup.remoteId == null &&
+                  resolvedGroupRemoteId != null
+              ? rawGroup.copyWith(remoteId: resolvedGroupRemoteId)
+              : rawGroup;
+          if (group == null ||
+              (group.remoteId != null &&
+                  deletedGroupRemoteIds.contains(group.remoteId))) {
+            await commitOp(seq: op.seq);
+            continue;
+          }
+          if (group.remoteId == null) {
+            final created = (await todoApi.createFolderGroup(
+              ctx,
+              name: group.title,
+              orderDateTime: group.orderDateTime ?? nowUtc,
+            )).getOrThrow();
+            outbox.recordRemoteId(SyncEntityType.group, group.id, created.id);
+            await commitOp(
+              seq: op.seq,
+              group: group.copyWith(
+                remoteId: created.id,
+                orderDateTime: created.orderDateTime ?? group.orderDateTime,
+                updatedAt: nowUtc,
+              ),
+            );
+          } else {
+            final dirtyFields = _decodeEnumFields(
+              op.fields,
+              GroupDirtyField.values,
+            );
+            final patchPayload = buildGroupPatchPayload(
+              group,
+              dirtyFields: dirtyFields,
+            );
+            if (patchPayload.isEmpty) {
+              await commitOp(seq: op.seq, group: group);
+              continue;
+            }
+            _log.fine(
+              'Phase 4 PATCH group=${group.id} remote=${shortSyncId(group.remoteId)} '
+              'keys=${patchPayload.keys.toList()}',
+            );
+            final remoteGroup =
+                (await todoApi
+                        .patchFolderGroup(ctx, group.remoteId!, patchPayload)
+                        .recover((error) async {
+                          if (!error.isNotFound) {
+                            return Failure<RemoteFolderGroup, AppError>(error);
+                          }
+                          return todoApi.createFolderGroup(
+                            ctx,
+                            name: group.title,
+                            orderDateTime: group.orderDateTime ?? nowUtc,
+                          );
+                        }))
+                    .getOrThrow();
+            outbox.recordRemoteId(
+              SyncEntityType.group,
+              group.id,
+              remoteGroup.id,
+            );
+            await commitOp(
+              seq: op.seq,
+              group: group.copyWith(
+                remoteId: remoteGroup.id,
+                title: remoteGroup.name.isNotEmpty
+                    ? remoteGroup.name
+                    : group.title,
+                orderDateTime: remoteGroup.orderDateTime ?? group.orderDateTime,
+                updatedAt: nowUtc,
+              ),
+            );
+          }
         }
-      }
 
-      String? resolveGroupRemoteId(String? groupId) {
-        if (groupId == null) return null;
-        return findLiveGroup(groupId)?.remoteId ??
-            outbox.resolveRemoteId(SyncEntityType.group, groupId);
-      }
+        String? resolveGroupRemoteId(String? groupId) {
+          if (groupId == null) return null;
+          return findLiveGroup(groupId)?.remoteId ??
+              outbox.resolveRemoteId(SyncEntityType.group, groupId);
+        }
 
-      // 4. Folder upserts (BEFORE deleting folder groups to prevent 9018)
-      for (final op in batch) {
-        if (op.entityType != SyncEntityType.list ||
-            op.kind != SyncOpKind.upsert) {
-          continue;
-        }
-        final rawList = findLiveList(op.localId);
-        final resolvedListRemoteId =
-            rawList?.remoteId ??
-            outbox.resolveRemoteId(SyncEntityType.list, op.localId);
-        final list =
-            rawList != null &&
-                rawList.remoteId == null &&
-                resolvedListRemoteId != null
-            ? rawList.copyWith(remoteId: resolvedListRemoteId)
-            : rawList;
-        if (list == null ||
-            (list.remoteId != null &&
-                deletedListRemoteIds.contains(list.remoteId)) ||
-            (list.isSmartList && list.smartType != SmartListType.tasks)) {
-          await commitOp(seq: op.seq);
-          continue;
-        }
-        final parentGroupRemoteId = resolveGroupRemoteId(list.groupId);
-        if (!list.isSmartList && list.remoteId == null) {
-          final created = (await todoApi.createFolder(
-            ctx,
-            buildFolderCreatePayload(
+        // 4. Folder upserts (BEFORE deleting folder groups to prevent 9018)
+        for (final op in batch) {
+          if (op.entityType != SyncEntityType.list ||
+              op.kind != SyncOpKind.upsert) {
+            continue;
+          }
+          final rawList = findLiveList(op.localId);
+          final resolvedListRemoteId =
+              rawList?.remoteId ??
+              outbox.resolveRemoteId(SyncEntityType.list, op.localId);
+          final list =
+              rawList != null &&
+                  rawList.remoteId == null &&
+                  resolvedListRemoteId != null
+              ? rawList.copyWith(remoteId: resolvedListRemoteId)
+              : rawList;
+          if (list == null ||
+              (list.remoteId != null &&
+                  deletedListRemoteIds.contains(list.remoteId)) ||
+              (list.isSmartList && list.smartType != SmartListType.tasks)) {
+            await commitOp(seq: op.seq);
+            continue;
+          }
+          final parentGroupRemoteId = resolveGroupRemoteId(list.groupId);
+          if (!list.isSmartList && list.remoteId == null) {
+            final created = (await todoApi.createFolder(
+              ctx,
+              buildFolderCreatePayload(
+                list,
+                parentGroupRemoteId: parentGroupRemoteId,
+                nowUtc: nowUtc,
+              ),
+            )).getOrThrow();
+            outbox.recordRemoteId(SyncEntityType.list, list.id, created.id);
+            await commitOp(
+              seq: op.seq,
+              list: list.copyWith(
+                remoteId: created.id,
+                orderDateTime: created.orderDateTime ?? list.orderDateTime,
+                updatedAt: nowUtc,
+              ),
+            );
+          } else if (list.remoteId != null) {
+            final dirtyFields = _decodeEnumFields(
+              op.fields,
+              ListDirtyField.values,
+            );
+            final patchPayload = buildFolderPatchPayload(
               list,
               parentGroupRemoteId: parentGroupRemoteId,
-              nowUtc: nowUtc,
-            ),
-          )).getOrThrow();
-          outbox.recordRemoteId(SyncEntityType.list, list.id, created.id);
-          await commitOp(
-            seq: op.seq,
-            list: list.copyWith(
-              remoteId: created.id,
-              orderDateTime: created.orderDateTime ?? list.orderDateTime,
-              updatedAt: nowUtc,
-            ),
-          );
-        } else if (list.remoteId != null) {
-          final dirtyFields = _decodeEnumFields(
-            op.fields,
-            ListDirtyField.values,
-          );
-          final patchPayload = buildFolderPatchPayload(
-            list,
-            parentGroupRemoteId: parentGroupRemoteId,
-            dirtyFields: dirtyFields,
-          );
-          if (patchPayload.isEmpty) {
-            await commitOp(seq: op.seq, list: list);
-            continue;
-          }
-          _log.fine(
-            'Phase 5 PATCH folder=${list.id} remote=${shortSyncId(list.remoteId)} '
-            'keys=${patchPayload.keys.toList()}',
-          );
-          final remoteFolder =
-              (await todoApi
-                      .patchFolder(ctx, list.remoteId!, patchPayload)
-                      .recover((error) async {
-                        if (!error.isNotFound) {
-                          return Failure<RemoteTodoFolder, AppError>(error);
-                        }
-                        return todoApi.createFolder(
-                          ctx,
-                          buildFolderCreatePayload(
-                            list,
-                            parentGroupRemoteId: parentGroupRemoteId,
-                            nowUtc: nowUtc,
-                          ),
-                        );
-                      }))
-                  .getOrThrow();
-          outbox.recordRemoteId(SyncEntityType.list, list.id, remoteFolder.id);
-          await commitOp(
-            seq: op.seq,
-            list: list.copyWith(
-              remoteId: remoteFolder.id,
-              title: list.title,
-              orderDateTime: remoteFolder.orderDateTime ?? list.orderDateTime,
-              updatedAt: nowUtc,
-            ),
-          );
-        } else {
-          await commitOp(seq: op.seq);
-        }
-      }
-
-      // 5. Folder group deletions
-      for (final op in batch) {
-        if (op.entityType != SyncEntityType.group ||
-            op.kind != SyncOpKind.delete) {
-          continue;
-        }
-        final remoteId =
-            op.remoteId ??
-            outbox.resolveRemoteId(SyncEntityType.group, op.localId);
-        if (remoteId != null) {
-          await _deleteOne(() => todoApi.deleteFolderGroup(ctx, remoteId));
-        }
-        await commitOp(
-          seq: op.seq,
-          clearedRemoteIdKey: (
-            type: SyncEntityType.group,
-            localId: op.localId,
-          ),
-        );
-      }
-
-      // 6. Task & step upserts (bounded concurrency across distinct tasks)
-      String? resolveLiveListRemoteId(String listId) {
-        final liveList = findLiveList(listId);
-        if (liveList == null) return null;
-        return liveList.remoteId ??
-            outbox.resolveRemoteId(SyncEntityType.list, listId);
-      }
-
-      final taskOpsByLocalId = <String, List<SyncOutboxOp>>{};
-      for (final op in batch) {
-        if (op.entityType != SyncEntityType.task ||
-            op.kind != SyncOpKind.upsert) {
-          continue;
-        }
-        (taskOpsByLocalId[op.localId] ??= <SyncOutboxOp>[]).add(op);
-      }
-
-      Future<void> pushSingleTaskOp(SyncOutboxOp op) async {
-        final rawTask = findLiveTask(op.localId);
-        final resolvedTaskRemoteId =
-            rawTask?.remoteId ??
-            outbox.resolveRemoteId(SyncEntityType.task, op.localId);
-        final task =
-            rawTask != null &&
-                rawTask.remoteId == null &&
-                resolvedTaskRemoteId != null
-            ? rawTask.copyWith(remoteId: resolvedTaskRemoteId)
-            : rawTask;
-        if (task == null ||
-            (task.remoteId != null &&
-                deletedTaskRemoteIds.contains(task.remoteId))) {
-          await commitOp(seq: op.seq);
-          return;
-        }
-        final folderRemoteId = resolveLiveListRemoteId(task.listId);
-        if (folderRemoteId == null) {
-          if (findLiveList(task.listId) == null) {
-            // Parent list was deleted locally while push was in flight.
+              dirtyFields: dirtyFields,
+            );
+            if (patchPayload.isEmpty) {
+              await commitOp(seq: op.seq, list: list);
+              continue;
+            }
+            _log.fine(
+              'Phase 5 PATCH folder=${list.id} remote=${shortSyncId(list.remoteId)} '
+              'keys=${patchPayload.keys.toList()}',
+            );
+            final remoteFolder =
+                (await todoApi
+                        .patchFolder(ctx, list.remoteId!, patchPayload)
+                        .recover((error) async {
+                          if (!error.isNotFound) {
+                            return Failure<RemoteTodoFolder, AppError>(error);
+                          }
+                          return todoApi.createFolder(
+                            ctx,
+                            buildFolderCreatePayload(
+                              list,
+                              parentGroupRemoteId: parentGroupRemoteId,
+                              nowUtc: nowUtc,
+                            ),
+                          );
+                        }))
+                    .getOrThrow();
+            outbox.recordRemoteId(
+              SyncEntityType.list,
+              list.id,
+              remoteFolder.id,
+            );
+            await commitOp(
+              seq: op.seq,
+              list: list.copyWith(
+                remoteId: remoteFolder.id,
+                title: list.title,
+                orderDateTime: remoteFolder.orderDateTime ?? list.orderDateTime,
+                updatedAt: nowUtc,
+              ),
+            );
+          } else {
             await commitOp(seq: op.seq);
           }
-          return;
         }
 
-        final isCreate = task.remoteId == null;
-        final dirtyFields = isCreate
-            ? null
-            : _decodeEnumFields(op.fields, TaskDirtyField.values);
-        final payload = buildTaskWritePayload(
-          task,
-          parentFolderRemoteId: folderRemoteId,
-          isCreate: isCreate,
-          firstDayOfWeek: currentState.startOfWeek,
-          dirtyFields: dirtyFields,
-        );
-
-        if (!isCreate && payload.isEmpty) {
-          _log.fine(
-            'Phase 10a SKIP task PATCH (steps-only) local=${task.id} '
-            'remote=${shortSyncId(task.remoteId)}',
+        // 5. Folder group deletions
+        for (final op in batch) {
+          if (op.entityType != SyncEntityType.group ||
+              op.kind != SyncOpKind.delete) {
+            continue;
+          }
+          final remoteId =
+              op.remoteId ??
+              outbox.resolveRemoteId(SyncEntityType.group, op.localId);
+          if (remoteId != null) {
+            await _deleteOne(() => todoApi.deleteFolderGroup(ctx, remoteId));
+          }
+          await commitOp(
+            seq: op.seq,
+            clearedRemoteIdKey: (
+              type: SyncEntityType.group,
+              localId: op.localId,
+            ),
           );
+        }
+
+        // 6. Task & step upserts (bounded concurrency across distinct tasks)
+        String? resolveLiveListRemoteId(String listId) {
+          final liveList = findLiveList(listId);
+          if (liveList == null) return null;
+          return liveList.remoteId ??
+              outbox.resolveRemoteId(SyncEntityType.list, listId);
+        }
+
+        final taskOpsByLocalId = <String, List<SyncOutboxOp>>{};
+        for (final op in batch) {
+          if (op.entityType != SyncEntityType.task ||
+              op.kind != SyncOpKind.upsert) {
+            continue;
+          }
+          (taskOpsByLocalId[op.localId] ??= <SyncOutboxOp>[]).add(op);
+        }
+
+        Future<void> pushSingleTaskOp(SyncOutboxOp op) async {
+          final rawTask = findLiveTask(op.localId);
+          final resolvedTaskRemoteId =
+              rawTask?.remoteId ??
+              outbox.resolveRemoteId(SyncEntityType.task, op.localId);
+          final task =
+              rawTask != null &&
+                  rawTask.remoteId == null &&
+                  resolvedTaskRemoteId != null
+              ? rawTask.copyWith(remoteId: resolvedTaskRemoteId)
+              : rawTask;
+          if (task == null ||
+              (task.remoteId != null &&
+                  deletedTaskRemoteIds.contains(task.remoteId))) {
+            await commitOp(seq: op.seq);
+            return;
+          }
+          final folderRemoteId = resolveLiveListRemoteId(task.listId);
+          if (folderRemoteId == null) {
+            if (findLiveList(task.listId) == null) {
+              // Parent list was deleted locally while push was in flight.
+              await commitOp(seq: op.seq);
+            }
+            return;
+          }
+
+          final isCreate = task.remoteId == null;
+          final dirtyFields = isCreate
+              ? null
+              : _decodeEnumFields(op.fields, TaskDirtyField.values);
+          final payload = buildTaskWritePayload(
+            task,
+            parentFolderRemoteId: folderRemoteId,
+            isCreate: isCreate,
+            firstDayOfWeek: currentState.startOfWeek,
+            dirtyFields: dirtyFields,
+          );
+
+          if (!isCreate && payload.isEmpty) {
+            _log.fine(
+              'Phase 10a SKIP task PATCH (steps-only) local=${task.id} '
+              'remote=${shortSyncId(task.remoteId)}',
+            );
+            final syncedSteps = await _syncStepsForTask(
+              ctx: ctx,
+              outbox: outbox,
+              taskRemoteId: task.remoteId!,
+              localSteps: task.steps,
+              dirtyStepIds: op.stepIds,
+            );
+            await commitOp(
+              seq: op.seq,
+              task: task.copyWith(steps: syncedSteps, updatedAt: nowUtc),
+            );
+            return;
+          }
+
+          final patchOutcome = isCreate
+              ? (
+                  remoteTask: (await todoApi.createTask(
+                    ctx,
+                    folderRemoteId,
+                    payload,
+                  )).getOrThrow(),
+                  mergedNote: null,
+                  preservedRemoteStatus: false,
+                )
+              : await _patchTaskWithConflictRetry(
+                  ctx: ctx,
+                  task: task,
+                  payload: payload,
+                  folderRemoteId: folderRemoteId,
+                  firstDayOfWeek: currentState.startOfWeek,
+                  dirtyFields: dirtyFields,
+                  baseNote: op.baseNote,
+                );
+          final remoteTask = patchOutcome.remoteTask;
+          outbox.recordRemoteId(SyncEntityType.task, task.id, remoteTask.id);
+          final wasRecreated = !isCreate && remoteTask.id != task.remoteId;
+          final stepsToSync = wasRecreated
+              ? [for (final s in task.steps) s.copyWith(remoteId: null)]
+              : task.steps;
+          final Set<String>? stepDirtyIdsForTask;
+          if (wasRecreated || isCreate || dirtyFields == null) {
+            stepDirtyIdsForTask = null;
+          } else if (dirtyFields.contains(TaskDirtyField.steps)) {
+            stepDirtyIdsForTask = op.stepIds;
+          } else {
+            stepDirtyIdsForTask = const <String>{};
+          }
           final syncedSteps = await _syncStepsForTask(
             ctx: ctx,
             outbox: outbox,
-            taskRemoteId: task.remoteId!,
-            localSteps: task.steps,
-            dirtyStepIds: op.stepIds,
+            taskRemoteId: remoteTask.id,
+            localSteps: stepsToSync,
+            dirtyStepIds: stepDirtyIdsForTask,
           );
+          final needsFollowUpPull =
+              isCreate ||
+              !isReorderOnlyTaskPatch(
+                dirtyFields,
+                isCompleted: task.isCompleted,
+              );
           await commitOp(
             seq: op.seq,
-            task: task.copyWith(steps: syncedSteps, updatedAt: nowUtc),
+            task: task.copyWith(
+              remoteId: remoteTask.id,
+              remoteParentFolderId: remoteTask.parentFolderId ?? folderRemoteId,
+              changeKey: remoteTask.changeKey ?? task.changeKey,
+              orderDateTime: remoteTask.orderDateTime ?? task.orderDateTime,
+              committedOrder: remoteTask.committedOrder ?? task.committedOrder,
+              note: patchOutcome.mergedNote ?? task.note,
+              isCompleted: patchOutcome.preservedRemoteStatus
+                  ? remoteTask.isCompleted
+                  : task.isCompleted,
+              completedAt: patchOutcome.preservedRemoteStatus
+                  ? remoteTask.completedDateTime
+                  : task.completedAt,
+              dueDate: patchOutcome.preservedRemoteStatus
+                  ? (remoteTask.dueDate ?? task.dueDate)
+                  : task.dueDate,
+              steps: syncedSteps,
+              updatedAt: nowUtc,
+            ),
+            followUpFolderRemoteId: needsFollowUpPull ? folderRemoteId : null,
           );
-          return;
+          _log.fine(
+            'Phase 10a ${isCreate ? "CREATE" : "PATCH"} local=${task.id} '
+            'remote=${shortSyncId(remoteTask.id)} title="${task.title}" '
+            'keys=${payload.keys.toList()}',
+          );
         }
 
-        final patchOutcome = isCreate
-            ? (
-                remoteTask: (await todoApi.createTask(
-                  ctx,
-                  folderRemoteId,
-                  payload,
-                )).getOrThrow(),
-                mergedNote: null,
-                preservedRemoteStatus: false,
-              )
-            : await _patchTaskWithConflictRetry(
-                ctx: ctx,
-                task: task,
-                payload: payload,
-                folderRemoteId: folderRemoteId,
-                firstDayOfWeek: currentState.startOfWeek,
-                dirtyFields: dirtyFields,
-                baseNote: op.baseNote,
-              );
-        final remoteTask = patchOutcome.remoteTask;
-        outbox.recordRemoteId(SyncEntityType.task, task.id, remoteTask.id);
-        final wasRecreated = !isCreate && remoteTask.id != task.remoteId;
-        final stepsToSync = wasRecreated
-            ? [for (final s in task.steps) s.copyWith(remoteId: null)]
-            : task.steps;
-        final Set<String>? stepDirtyIdsForTask;
-        if (wasRecreated || isCreate || dirtyFields == null) {
-          stepDirtyIdsForTask = null;
-        } else if (dirtyFields.contains(TaskDirtyField.steps)) {
-          stepDirtyIdsForTask = op.stepIds;
-        } else {
-          stepDirtyIdsForTask = const <String>{};
-        }
-        final syncedSteps = await _syncStepsForTask(
-          ctx: ctx,
-          outbox: outbox,
-          taskRemoteId: remoteTask.id,
-          localSteps: stepsToSync,
-          dirtyStepIds: stepDirtyIdsForTask,
+        await runWithConcurrency(
+          taskOpsByLocalId.values.toList(),
+          _maxConcurrentTaskPushes,
+          (opsForTask) async {
+            for (final op in opsForTask) {
+              await pushSingleTaskOp(op);
+            }
+          },
         );
-        final needsFollowUpPull =
-            isCreate ||
-            !isReorderOnlyTaskPatch(
-              dirtyFields,
-              isCompleted: task.isCompleted,
-            );
-        await commitOp(
-          seq: op.seq,
-          task: task.copyWith(
-            remoteId: remoteTask.id,
-            remoteParentFolderId: remoteTask.parentFolderId ?? folderRemoteId,
-            changeKey: remoteTask.changeKey ?? task.changeKey,
-            orderDateTime: remoteTask.orderDateTime ?? task.orderDateTime,
-            committedOrder: remoteTask.committedOrder ?? task.committedOrder,
-            note: patchOutcome.mergedNote ?? task.note,
-            isCompleted: patchOutcome.preservedRemoteStatus
-                ? remoteTask.isCompleted
-                : task.isCompleted,
-            completedAt: patchOutcome.preservedRemoteStatus
-                ? remoteTask.completedDateTime
-                : task.completedAt,
-            dueDate: patchOutcome.preservedRemoteStatus
-                ? (remoteTask.dueDate ?? task.dueDate)
-                : task.dueDate,
-            steps: syncedSteps,
-            updatedAt: nowUtc,
-          ),
-          followUpFolderRemoteId: needsFollowUpPull ? folderRemoteId : null,
-        );
-        _log.fine(
-          'Phase 10a ${isCreate ? "CREATE" : "PATCH"} local=${task.id} '
-          'remote=${shortSyncId(remoteTask.id)} title="${task.title}" '
-          'keys=${payload.keys.toList()}',
-        );
-      }
 
-      await runWithConcurrency(
-        taskOpsByLocalId.values.toList(),
-        _maxConcurrentTaskPushes,
-        (opsForTask) async {
-          for (final op in opsForTask) {
-            await pushSingleTaskOp(op);
-          }
-        },
-      );
-
-      return OutboxPushOutcome(
-        ackedSeqs: ackedSeqs,
-        pushedGroups: pushedGroups,
-        pushedLists: pushedLists,
-        pushedTasks: pushedTasks,
-        clearedRemoteIdKeys: clearedRemoteIdKeys,
-        followUpPullFolderRemoteIds: followUpPullFolderRemoteIds,
-      );
+        return OutboxPushOutcome(
+          ackedSeqs: ackedSeqs,
+          pushedGroups: pushedGroups,
+          pushedLists: pushedLists,
+          pushedTasks: pushedTasks,
+          clearedRemoteIdKeys: clearedRemoteIdKeys,
+          followUpPullFolderRemoteIds: followUpPullFolderRemoteIds,
+        );
       }, operation: 'pushOutbox');
     } finally {
       outbox.endBatch();
@@ -793,8 +804,7 @@ class SubstratePushEngine {
       final resolvedStepRemoteId =
           rawStep.remoteId ??
           outbox.resolveRemoteId(SyncEntityType.step, rawStep.id);
-      final step =
-          rawStep.remoteId == null && resolvedStepRemoteId != null
+      final step = rawStep.remoteId == null && resolvedStepRemoteId != null
           ? rawStep.copyWith(remoteId: resolvedStepRemoteId)
           : rawStep;
       final stepOrder =

@@ -92,11 +92,7 @@ RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
     if (remoteId.isEmpty) {
       return RealtimeMergeResult.unhandled('Task/Deleted missing Id');
     }
-    remote = RemoteTodoTask(
-      id: remoteId,
-      subject: '',
-      isDeleted: true,
-    );
+    remote = RemoteTodoTask(id: remoteId, subject: '', isDeleted: true);
     preserveStepsWhenMissing = false;
   } else {
     if (event.payload == null) {
@@ -107,7 +103,9 @@ RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
     final payloadMap = _normalizeEntityPayload(event);
     remote = RemoteTodoTask.fromJson(payloadMap);
     if (remote.id.isEmpty) {
-      return RealtimeMergeResult.unhandled('Task/${event.operation} missing Id');
+      return RealtimeMergeResult.unhandled(
+        'Task/${event.operation} missing Id',
+      );
     }
     preserveStepsWhenMissing = !payloadMap.containsKey('Subtasks');
   }
