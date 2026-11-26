@@ -28,6 +28,7 @@ _TodoList _$TodoListFromJson(Map<String, dynamic> json) => _TodoList(
     json['themePhoto'],
     unknownValue: JsonKey.nullForUndefinedEnumValue,
   ),
+  customBackgroundPath: json['customBackgroundPath'] as String?,
   icon: _readSmartTypeForIcon(json, 'icon') == null
       ? Icons.format_list_bulleted
       : _iconFromJson(_readSmartTypeForIcon(json, 'icon')),
@@ -53,6 +54,7 @@ Map<String, dynamic> _$TodoListToJson(_TodoList instance) => <String, dynamic>{
   'emoji': instance.emoji,
   'themeColor': _$ListThemeColorEnumMap[instance.themeColor]!,
   'themePhoto': _$ListThemePhotoEnumMap[instance.themePhoto],
+  'customBackgroundPath': instance.customBackgroundPath,
   'sortOption': _$TaskSortOptionEnumMap[instance.sortOption]!,
   'sortAscending': instance.sortAscending,
   'showCompleted': instance.showCompleted,

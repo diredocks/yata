@@ -128,12 +128,18 @@ List<TodoList> mergeFoldersDelta({
       remote.themeColor,
       fallbackColor: existing.themeColor,
     );
+    final remoteThemeChanged =
+        theme.themeColor != existing.themeColor ||
+        theme.themePhoto != existing.themePhoto;
     return existing.copyWith(
       title: title ?? existing.title,
       emoji: title != null ? emoji : existing.emoji,
       groupId: updateGroup ? groupId : existing.groupId,
       themeColor: theme.themeColor,
       themePhoto: theme.themePhoto,
+      customBackgroundPath: remoteThemeChanged
+          ? null
+          : existing.customBackgroundPath,
       showCompleted: remote.showCompletedTasks,
       sortOption: remote.sortOption,
       sortAscending: remote.sortAscending,

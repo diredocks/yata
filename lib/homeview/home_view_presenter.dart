@@ -25,6 +25,7 @@ class HomeViewPresenter {
     String? groupId,
     String? emoji,
     ListThemePhoto? themePhoto,
+    String? customBackgroundPath,
   }) {
     final existingOrders = groupId != null
         ? _state.lists
@@ -43,6 +44,7 @@ class HomeViewPresenter {
       emoji: emoji,
       themeColor: themeColor,
       themePhoto: themePhoto,
+      customBackgroundPath: customBackgroundPath,
       icon: Icons.format_list_bulleted,
       sortAscending: false,
       orderDateTime: computeNewOrderDateTime(

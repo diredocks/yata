@@ -462,9 +462,14 @@ TodoList _applySmartListPatch({
   if (patch.hasTheme &&
       mapping.themeColorKey != null &&
       canApplySetting(mapping.themeColorKey!)) {
+    final nextColor = patch.themeColor ?? updated.themeColor;
+    final nextPhoto = patch.clearThemePhoto ? null : patch.themePhoto;
+    final themeChanged =
+        nextColor != updated.themeColor || nextPhoto != updated.themePhoto;
     updated = updated.copyWith(
-      themeColor: patch.themeColor ?? updated.themeColor,
-      themePhoto: patch.clearThemePhoto ? null : patch.themePhoto,
+      themeColor: nextColor,
+      themePhoto: nextPhoto,
+      customBackgroundPath: themeChanged ? null : updated.customBackgroundPath,
     );
   }
   if (patch.sortOption != null &&

@@ -1,8 +1,11 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../../theme/theme_picker_sheet.dart';
+import '../../data/todo_provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/todo_list.dart';
+import '../../theme/custom_background_service.dart';
+import '../../theme/theme_picker_sheet.dart';
 import '../../theme/todo_theme.dart';
 
 const List<String> _defaultListEmojis = [
@@ -38,12 +41,14 @@ class ListEditorResult {
     this.emoji,
     required this.themeColor,
     this.themePhoto,
+    this.customBackgroundPath,
   });
 
   final String title;
   final String? emoji;
   final ListThemeColor themeColor;
   final ListThemePhoto? themePhoto;
+  final String? customBackgroundPath;
 }
 
 /// Unified list creation & editing dialog matching `edit_list_dialog.xml`
@@ -56,6 +61,7 @@ Future<ListEditorResult?> showListEditorDialog({
   String? initialEmoji,
   ListThemeColor initialColor = ListThemeColor.blue,
   ListThemePhoto? initialPhoto,
+  String? initialCustomBackgroundPath,
 }) {
   return showDialog<ListEditorResult>(
     context: context,
@@ -66,11 +72,12 @@ Future<ListEditorResult?> showListEditorDialog({
       initialEmoji: initialEmoji,
       initialColor: initialColor,
       initialPhoto: initialPhoto,
+      initialCustomBackgroundPath: initialCustomBackgroundPath,
     ),
   );
 }
 
-class _EditListDialog extends StatefulWidget {
+class _EditListDialog extends ConsumerStatefulWidget {
   const _EditListDialog({
     required this.dialogTitle,
     required this.confirmLabel,
@@ -78,6 +85,7 @@ class _EditListDialog extends StatefulWidget {
     this.initialEmoji,
     required this.initialColor,
     this.initialPhoto,
+    this.initialCustomBackgroundPath,
   });
 
   final String dialogTitle;
@@ -86,15 +94,17 @@ class _EditListDialog extends StatefulWidget {
   final String? initialEmoji;
   final ListThemeColor initialColor;
   final ListThemePhoto? initialPhoto;
+  final String? initialCustomBackgroundPath;
 
   @override
-  State<_EditListDialog> createState() => _EditListDialogState();
+  ConsumerState<_EditListDialog> createState() => _EditListDialogState();
 }
 
-class _EditListDialogState extends State<_EditListDialog> {
+class _EditListDialogState extends ConsumerState<_EditListDialog> {
   late final TextEditingController _controller;
   late ListThemeColor _selectedColor;
   ListThemePhoto? _selectedPhoto;
+  String? _selectedCustomBackgroundPath;
   String? _selectedEmoji;
   bool _showEmojiPicker = false;
 
@@ -105,6 +115,7 @@ class _EditListDialogState extends State<_EditListDialog> {
     _selectedEmoji = widget.initialEmoji;
     _selectedColor = widget.initialColor;
     _selectedPhoto = widget.initialPhoto;
+    _selectedCustomBackgroundPath = widget.initialCustomBackgroundPath;
   }
 
   @override
@@ -122,8 +133,35 @@ class _EditListDialogState extends State<_EditListDialog> {
         emoji: _selectedEmoji,
         themeColor: _selectedColor,
         themePhoto: _selectedPhoto,
+        customBackgroundPath: _selectedCustomBackgroundPath,
       ),
     );
+  }
+
+  Future<void> _handleAddCustom() async {
+    final savedPath = await pickAndSaveCustomBackground(
+      context: context,
+      ref: ref,
+    );
+    if (savedPath != null && mounted) {
+      setState(() {
+        _selectedPhoto = null;
+        _selectedCustomBackgroundPath = savedPath;
+      });
+    }
+  }
+
+  Future<void> _handleDeleteCustom(CustomBackground bg) async {
+    final deleted = await confirmAndDeleteCustomBackground(
+      context: context,
+      ref: ref,
+      background: bg,
+    );
+    if (deleted && _selectedCustomBackgroundPath == bg.filePath && mounted) {
+      setState(() {
+        _selectedCustomBackgroundPath = null;
+      });
+    }
   }
 
   @override
@@ -225,10 +263,17 @@ class _EditListDialogState extends State<_EditListDialog> {
               ThemePickerView(
                 selectedColor: _selectedColor,
                 selectedPhoto: _selectedPhoto,
-                onSelectTheme: (color, photo) => setState(() {
+                selectedCustomBackgroundPath: _selectedCustomBackgroundPath,
+                customBackgrounds: ref.watch(
+                  todoProvider.select((s) => s.customBackgrounds),
+                ),
+                onSelectTheme: (color, photo, customPath) => setState(() {
                   _selectedColor = color;
                   _selectedPhoto = photo;
+                  _selectedCustomBackgroundPath = customPath;
                 }),
+                onAddCustomBackground: _handleAddCustom,
+                onDeleteCustomBackground: _handleDeleteCustom,
               ),
             ],
           ),

@@ -86,6 +86,8 @@ class TasksViewPresenter {
     ListThemeColor? themeColor,
     ListThemePhoto? themePhoto,
     bool clearThemePhoto = false,
+    String? customBackgroundPath,
+    bool clearCustomBackgroundPath = false,
   }) {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return;
@@ -100,6 +102,9 @@ class TasksViewPresenter {
               themePhoto: clearThemePhoto
                   ? null
                   : (themePhoto ?? list.themePhoto),
+              customBackgroundPath: clearCustomBackgroundPath
+                  ? null
+                  : (customBackgroundPath ?? list.customBackgroundPath),
             ),
     );
   }
@@ -108,10 +113,15 @@ class TasksViewPresenter {
     String listId,
     ListThemeColor themeColor, {
     ListThemePhoto? themePhoto,
+    String? customBackgroundPath,
   }) {
     _updateListById(
       listId,
-      (list) => list.copyWith(themeColor: themeColor, themePhoto: themePhoto),
+      (list) => list.copyWith(
+        themeColor: themeColor,
+        themePhoto: themePhoto,
+        customBackgroundPath: customBackgroundPath,
+      ),
     );
   }
 

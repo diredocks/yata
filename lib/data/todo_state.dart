@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
+import '../theme/custom_background_service.dart';
 import 'todo_sorting.dart';
 
 part 'todo_state.freezed.dart';
@@ -47,6 +48,7 @@ abstract class TodoState with _$TodoState {
     @Default(<int>[1, 2, 3, 4, 5, 6, 7]) List<int> routineNotificationDays,
     @Default(false) bool quickAddNotificationEnabled,
     @Default(<String, bool>{}) Map<String, bool> completedExpandedByList,
+    @Default(<CustomBackground>[]) List<CustomBackground> customBackgrounds,
     @Default(0) int mutationVersion,
   }) = _TodoState;
 

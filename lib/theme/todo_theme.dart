@@ -277,10 +277,22 @@ class TodoColors {
     TodoList list, {
     Brightness brightness = Brightness.light,
   }) {
+    if (list.customBackgroundPath != null) {
+      return customPhotoFabBackgroundFor(brightness: brightness);
+    }
     if (list.themePhoto != null) {
       return photoFabBackgroundFor(list.themePhoto!);
     }
     return accentFor(list.themeColor, brightness: brightness);
+  }
+
+  /// Neutral dark-grey FAB/accent matching `CustomThemeDefaults.kt` (`dark_grey_top` / `dark_grey_bottom`).
+  static Color customPhotoFabBackgroundFor({
+    Brightness brightness = Brightness.light,
+  }) {
+    return brightness == Brightness.dark
+        ? const Color(0xFF5A5A5A)
+        : const Color(0xFF3E3E3E);
   }
 
   /// Exact photo FAB colors from mstodo.apk (`colors.xml` `image_*_fab_color`).

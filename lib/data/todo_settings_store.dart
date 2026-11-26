@@ -9,6 +9,7 @@ import '../account/account_local_storage.dart';
 import '../core/logging/app_logger.dart';
 import '../models/todo_list.dart';
 import '../sync/microsoft/todo_wire_codecs.dart';
+import '../theme/custom_background_service.dart';
 
 final _log = appLogFor('TodoSettingsStore');
 
@@ -43,6 +44,7 @@ class TodoSettings {
     this.routineNotificationDays = const <int>[1, 2, 3, 4, 5, 6, 7],
     this.quickAddNotificationEnabled = false,
     this.completedExpandedByList = const <String, bool>{},
+    this.customBackgrounds = const <CustomBackground>[],
     this.lastMyDayResetDate,
   });
 
@@ -74,6 +76,7 @@ class TodoSettings {
   final List<int> routineNotificationDays;
   final bool quickAddNotificationEnabled;
   final Map<String, bool> completedExpandedByList;
+  final List<CustomBackground> customBackgrounds;
   final String? lastMyDayResetDate;
 }
 
@@ -112,6 +115,7 @@ class TodoSettingsStore {
   String get _selectedListIdKey => _k('selected_list_id');
   String get _lastEnteredListIdKey => _k('last_entered_list_id');
   String get _completedExpandedByListKey => _k('completed_expanded_by_list');
+  String get _customBackgroundsKey => _k('custom_backgrounds');
   String get _themeModeKey => _k('theme_mode');
   String get _addNewTasksOnTopKey => _k('add_new_tasks_on_top');
   String get _moveStarredToTopKey => _k('move_starred_to_top');
@@ -216,6 +220,7 @@ class TodoSettingsStore {
       quickAddNotificationEnabled:
           _prefs.getBool(_quickAddNotificationKey) ?? false,
       completedExpandedByList: _parseCompletedExpandedByList(),
+      customBackgrounds: _parseCustomBackgrounds(),
       lastMyDayResetDate: _prefs.getString(_lastMyDayResetKey),
     );
   }
@@ -261,6 +266,30 @@ class TodoSettingsStore {
       _setOrRemoveString(
         _completedExpandedByListKey,
         value.isEmpty ? null : jsonEncode(value),
+      );
+
+  List<CustomBackground> _parseCustomBackgrounds() {
+    final raw = _prefs.getString(_customBackgroundsKey);
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return decoded
+          .map(CustomBackground.fromJson)
+          .whereType<CustomBackground>()
+          .toList(growable: false);
+    } catch (error) {
+      _log.warning('discarding unreadable $_customBackgroundsKey', error);
+      return const [];
+    }
+  }
+
+  Future<void> saveCustomBackgrounds(List<CustomBackground> value) =>
+      _setOrRemoveString(
+        _customBackgroundsKey,
+        value.isEmpty
+            ? null
+            : jsonEncode(value.map((e) => e.toJson()).toList()),
       );
 
   Future<void> saveThemeMode(ThemeMode mode) =>

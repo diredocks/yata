@@ -65,6 +65,7 @@ class _HomeViewScreenState extends ConsumerState<HomeViewScreen> {
       result.themeColor,
       emoji: result.emoji,
       themePhoto: result.themePhoto,
+      customBackgroundPath: result.customBackgroundPath,
     );
     final created = ref.read(todoProvider).selectedList;
     widget.onSelectList(created);

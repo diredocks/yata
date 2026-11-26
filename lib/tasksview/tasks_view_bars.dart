@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -332,10 +334,14 @@ class TasksSliverAppBar extends StatelessWidget {
             children: [
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 260),
-                child: currentList.themePhoto != null
+                child:
+                    (currentList.customBackgroundPath != null ||
+                        currentList.themePhoto != null)
                     ? Stack(
                         key: ValueKey(
-                          'header_photo_${currentList.themePhoto!.name}',
+                          currentList.customBackgroundPath != null
+                              ? 'header_custom_${currentList.customBackgroundPath}'
+                              : 'header_photo_${currentList.themePhoto!.name}',
                         ),
                         fit: StackFit.expand,
                         children: [
@@ -349,12 +355,19 @@ class TasksSliverAppBar extends StatelessWidget {
                                 minHeight: fullHeight,
                                 maxHeight: fullHeight,
                                 alignment: Alignment.topCenter,
-                                child: Image.asset(
-                                  TodoColors.photoAssetFor(
-                                    currentList.themePhoto!,
-                                  ),
-                                  fit: BoxFit.cover,
-                                ),
+                                child: currentList.customBackgroundPath != null
+                                    ? Image.file(
+                                        File(currentList.customBackgroundPath!),
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, _, _) =>
+                                            Container(color: backgroundColor),
+                                      )
+                                    : Image.asset(
+                                        TodoColors.photoAssetFor(
+                                          currentList.themePhoto!,
+                                        ),
+                                        fit: BoxFit.cover,
+                                      ),
                               );
                             },
                           ),
@@ -440,7 +453,8 @@ class TasksSliverAppBar extends StatelessWidget {
 }
 
 Color tasksBannerBackgroundColor(BuildContext context, TodoList currentList) {
-  if (currentList.themePhoto != null) {
+  if (currentList.customBackgroundPath != null ||
+      currentList.themePhoto != null) {
     return Colors.black.withValues(alpha: 0.35);
   }
   if (Theme.of(context).brightness == Brightness.dark) {

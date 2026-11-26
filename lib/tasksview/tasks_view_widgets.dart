@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:material_ui/material_ui.dart';
@@ -38,25 +39,37 @@ class TasksViewBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final customPath = currentList.customBackgroundPath;
     final photo = currentList.themePhoto;
+    final Widget child;
+    if (customPath != null) {
+      child = SizedBox.expand(
+        key: ValueKey('bg_custom_$customPath'),
+        child: Image.file(
+          File(customPath),
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => Container(color: backgroundColor),
+        ),
+      );
+    } else if (photo != null) {
+      child = SizedBox.expand(
+        key: ValueKey('bg_photo_${photo.name}'),
+        child: Image.asset(TodoColors.photoAssetFor(photo), fit: BoxFit.cover),
+      );
+    } else {
+      child = SizedBox.expand(
+        key: const ValueKey('bg_color'),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          color: backgroundColor,
+        ),
+      );
+    }
+
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 260),
-      child: photo != null
-          ? SizedBox.expand(
-              key: ValueKey('bg_photo_${photo.name}'),
-              child: Image.asset(
-                TodoColors.photoAssetFor(photo),
-                fit: BoxFit.cover,
-              ),
-            )
-          : SizedBox.expand(
-              key: const ValueKey('bg_color'),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOutCubic,
-                color: backgroundColor,
-              ),
-            ),
+      child: child,
     );
   }
 }
@@ -84,7 +97,9 @@ class TasksViewFab extends StatelessWidget {
         mode != TasksViewMode.browsing ||
         currentList.smartType == SmartListType.completed;
     final isDark = brightness == Brightness.dark;
+    final customPath = currentList.customBackgroundPath;
     final photo = currentList.themePhoto;
+    final hasPhotoBg = customPath != null || photo != null;
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 200),
@@ -99,13 +114,17 @@ class TasksViewFab extends StatelessWidget {
           : FloatingActionButton(
               key: const ValueKey('fab_visible'),
               onPressed: onPressed,
-              backgroundColor: photo != null
+              backgroundColor: customPath != null
+                  ? TodoColors.customPhotoFabBackgroundFor(
+                      brightness: brightness,
+                    )
+                  : photo != null
                   ? TodoColors.photoFabBackgroundFor(photo)
                   : TodoColors.fabBackgroundFor(
                       currentList.themeColor,
                       brightness: brightness,
                     ),
-              foregroundColor: photo != null
+              foregroundColor: hasPhotoBg
                   ? (isDark ? Colors.black : Colors.white)
                   : TodoColors.fabForegroundFor(
                       currentList.themeColor,

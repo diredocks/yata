@@ -16,7 +16,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$TodoList {
 
- String get id; String get title;@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) SmartListType? get smartType; String? get groupId; String? get emoji;@JsonKey(unknownEnumValue: ListThemeColor.blue) ListThemeColor get themeColor;@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ListThemePhoto? get themePhoto;@JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) IconData get icon;@JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) TaskSortOption get sortOption; bool get sortAscending; bool get showCompleted; String? get remoteId;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get orderDateTime;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get updatedAt;
+ String get id; String get title;@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) SmartListType? get smartType; String? get groupId; String? get emoji;@JsonKey(unknownEnumValue: ListThemeColor.blue) ListThemeColor get themeColor;@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ListThemePhoto? get themePhoto; String? get customBackgroundPath;@JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) IconData get icon;@JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) TaskSortOption get sortOption; bool get sortAscending; bool get showCompleted; String? get remoteId;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get orderDateTime;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get updatedAt;
 /// Create a copy of TodoList
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -30,20 +30,20 @@ $TodoListCopyWith<TodoList> get copyWith => _$TodoListCopyWithImpl<TodoList>(thi
 @override
 bool operator ==(Object other) {
   final _this = this as TodoList;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is TodoList&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.title, _this.title) || other.title == _this.title)&&(identical(other.smartType, _this.smartType) || other.smartType == _this.smartType)&&(identical(other.groupId, _this.groupId) || other.groupId == _this.groupId)&&(identical(other.emoji, _this.emoji) || other.emoji == _this.emoji)&&(identical(other.themeColor, _this.themeColor) || other.themeColor == _this.themeColor)&&(identical(other.themePhoto, _this.themePhoto) || other.themePhoto == _this.themePhoto)&&(identical(other.icon, _this.icon) || other.icon == _this.icon)&&(identical(other.sortOption, _this.sortOption) || other.sortOption == _this.sortOption)&&(identical(other.sortAscending, _this.sortAscending) || other.sortAscending == _this.sortAscending)&&(identical(other.showCompleted, _this.showCompleted) || other.showCompleted == _this.showCompleted)&&(identical(other.remoteId, _this.remoteId) || other.remoteId == _this.remoteId)&&(identical(other.orderDateTime, _this.orderDateTime) || other.orderDateTime == _this.orderDateTime)&&(identical(other.updatedAt, _this.updatedAt) || other.updatedAt == _this.updatedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is TodoList&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.title, _this.title) || other.title == _this.title)&&(identical(other.smartType, _this.smartType) || other.smartType == _this.smartType)&&(identical(other.groupId, _this.groupId) || other.groupId == _this.groupId)&&(identical(other.emoji, _this.emoji) || other.emoji == _this.emoji)&&(identical(other.themeColor, _this.themeColor) || other.themeColor == _this.themeColor)&&(identical(other.themePhoto, _this.themePhoto) || other.themePhoto == _this.themePhoto)&&(identical(other.customBackgroundPath, _this.customBackgroundPath) || other.customBackgroundPath == _this.customBackgroundPath)&&(identical(other.icon, _this.icon) || other.icon == _this.icon)&&(identical(other.sortOption, _this.sortOption) || other.sortOption == _this.sortOption)&&(identical(other.sortAscending, _this.sortAscending) || other.sortAscending == _this.sortAscending)&&(identical(other.showCompleted, _this.showCompleted) || other.showCompleted == _this.showCompleted)&&(identical(other.remoteId, _this.remoteId) || other.remoteId == _this.remoteId)&&(identical(other.orderDateTime, _this.orderDateTime) || other.orderDateTime == _this.orderDateTime)&&(identical(other.updatedAt, _this.updatedAt) || other.updatedAt == _this.updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as TodoList;
-  return Object.hash(runtimeType,_this.id,_this.title,_this.smartType,_this.groupId,_this.emoji,_this.themeColor,_this.themePhoto,_this.icon,_this.sortOption,_this.sortAscending,_this.showCompleted,_this.remoteId,_this.orderDateTime,_this.updatedAt);
+  return Object.hash(runtimeType,_this.id,_this.title,_this.smartType,_this.groupId,_this.emoji,_this.themeColor,_this.themePhoto,_this.customBackgroundPath,_this.icon,_this.sortOption,_this.sortAscending,_this.showCompleted,_this.remoteId,_this.orderDateTime,_this.updatedAt);
 }
 
 @override
 String toString() {
   final _this = this as TodoList;
-  return 'TodoList(id: ${_this.id}, title: ${_this.title}, smartType: ${_this.smartType}, groupId: ${_this.groupId}, emoji: ${_this.emoji}, themeColor: ${_this.themeColor}, themePhoto: ${_this.themePhoto}, icon: ${_this.icon}, sortOption: ${_this.sortOption}, sortAscending: ${_this.sortAscending}, showCompleted: ${_this.showCompleted}, remoteId: ${_this.remoteId}, orderDateTime: ${_this.orderDateTime}, updatedAt: ${_this.updatedAt})';
+  return 'TodoList(id: ${_this.id}, title: ${_this.title}, smartType: ${_this.smartType}, groupId: ${_this.groupId}, emoji: ${_this.emoji}, themeColor: ${_this.themeColor}, themePhoto: ${_this.themePhoto}, customBackgroundPath: ${_this.customBackgroundPath}, icon: ${_this.icon}, sortOption: ${_this.sortOption}, sortAscending: ${_this.sortAscending}, showCompleted: ${_this.showCompleted}, remoteId: ${_this.remoteId}, orderDateTime: ${_this.orderDateTime}, updatedAt: ${_this.updatedAt})';
 }
 
 
@@ -54,7 +54,7 @@ abstract mixin class $TodoListCopyWith<$Res>  {
   factory $TodoListCopyWith(TodoList value, $Res Function(TodoList) _then) = _$TodoListCopyWithImpl;
 @useResult
 $Res call({
- String id, String title,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) SmartListType? smartType, String? groupId, String? emoji,@JsonKey(unknownEnumValue: ListThemeColor.blue) ListThemeColor themeColor,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ListThemePhoto? themePhoto,@JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) IconData icon,@JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) TaskSortOption sortOption, bool sortAscending, bool showCompleted, String? remoteId,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? orderDateTime,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? updatedAt
+ String id, String title,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) SmartListType? smartType, String? groupId, String? emoji,@JsonKey(unknownEnumValue: ListThemeColor.blue) ListThemeColor themeColor,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ListThemePhoto? themePhoto, String? customBackgroundPath,@JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) IconData icon,@JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) TaskSortOption sortOption, bool sortAscending, bool showCompleted, String? remoteId,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? orderDateTime,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? updatedAt
 });
 
 
@@ -71,7 +71,7 @@ class _$TodoListCopyWithImpl<$Res>
 
 /// Create a copy of TodoList
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? title = null,Object? smartType = freezed,Object? groupId = freezed,Object? emoji = freezed,Object? themeColor = null,Object? themePhoto = freezed,Object? icon = null,Object? sortOption = null,Object? sortAscending = null,Object? showCompleted = null,Object? remoteId = freezed,Object? orderDateTime = freezed,Object? updatedAt = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? title = null,Object? smartType = freezed,Object? groupId = freezed,Object? emoji = freezed,Object? themeColor = null,Object? themePhoto = freezed,Object? customBackgroundPath = freezed,Object? icon = null,Object? sortOption = null,Object? sortAscending = null,Object? showCompleted = null,Object? remoteId = freezed,Object? orderDateTime = freezed,Object? updatedAt = freezed,}) {
   return _then(TodoList(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,title: null == title ? _self.title : title // ignore: cast_nullable_to_non_nullable
@@ -80,7 +80,8 @@ as SmartListType?,groupId: freezed == groupId ? _self.groupId : groupId // ignor
 as String?,emoji: freezed == emoji ? _self.emoji : emoji // ignore: cast_nullable_to_non_nullable
 as String?,themeColor: null == themeColor ? _self.themeColor : themeColor // ignore: cast_nullable_to_non_nullable
 as ListThemeColor,themePhoto: freezed == themePhoto ? _self.themePhoto : themePhoto // ignore: cast_nullable_to_non_nullable
-as ListThemePhoto?,icon: null == icon ? _self.icon : icon // ignore: cast_nullable_to_non_nullable
+as ListThemePhoto?,customBackgroundPath: freezed == customBackgroundPath ? _self.customBackgroundPath : customBackgroundPath // ignore: cast_nullable_to_non_nullable
+as String?,icon: null == icon ? _self.icon : icon // ignore: cast_nullable_to_non_nullable
 as IconData,sortOption: null == sortOption ? _self.sortOption : sortOption // ignore: cast_nullable_to_non_nullable
 as TaskSortOption,sortAscending: null == sortAscending ? _self.sortAscending : sortAscending // ignore: cast_nullable_to_non_nullable
 as bool,showCompleted: null == showCompleted ? _self.showCompleted : showCompleted // ignore: cast_nullable_to_non_nullable
@@ -172,10 +173,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  SmartListType? smartType,  String? groupId,  String? emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue)  ListThemeColor themeColor, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ListThemePhoto? themePhoto, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson)  IconData icon, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder)  TaskSortOption sortOption,  bool sortAscending,  bool showCompleted,  String? remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  SmartListType? smartType,  String? groupId,  String? emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue)  ListThemeColor themeColor, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ListThemePhoto? themePhoto,  String? customBackgroundPath, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson)  IconData icon, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder)  TaskSortOption sortOption,  bool sortAscending,  bool showCompleted,  String? remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _TodoList() when $default != null:
-return $default(_that.id,_that.title,_that.smartType,_that.groupId,_that.emoji,_that.themeColor,_that.themePhoto,_that.icon,_that.sortOption,_that.sortAscending,_that.showCompleted,_that.remoteId,_that.orderDateTime,_that.updatedAt);case _:
+return $default(_that.id,_that.title,_that.smartType,_that.groupId,_that.emoji,_that.themeColor,_that.themePhoto,_that.customBackgroundPath,_that.icon,_that.sortOption,_that.sortAscending,_that.showCompleted,_that.remoteId,_that.orderDateTime,_that.updatedAt);case _:
   return orElse();
 
 }
@@ -193,10 +194,10 @@ return $default(_that.id,_that.title,_that.smartType,_that.groupId,_that.emoji,_
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  SmartListType? smartType,  String? groupId,  String? emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue)  ListThemeColor themeColor, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ListThemePhoto? themePhoto, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson)  IconData icon, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder)  TaskSortOption sortOption,  bool sortAscending,  bool showCompleted,  String? remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  SmartListType? smartType,  String? groupId,  String? emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue)  ListThemeColor themeColor, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ListThemePhoto? themePhoto,  String? customBackgroundPath, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson)  IconData icon, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder)  TaskSortOption sortOption,  bool sortAscending,  bool showCompleted,  String? remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)  $default,) {final _that = this;
 switch (_that) {
 case _TodoList():
-return $default(_that.id,_that.title,_that.smartType,_that.groupId,_that.emoji,_that.themeColor,_that.themePhoto,_that.icon,_that.sortOption,_that.sortAscending,_that.showCompleted,_that.remoteId,_that.orderDateTime,_that.updatedAt);case _:
+return $default(_that.id,_that.title,_that.smartType,_that.groupId,_that.emoji,_that.themeColor,_that.themePhoto,_that.customBackgroundPath,_that.icon,_that.sortOption,_that.sortAscending,_that.showCompleted,_that.remoteId,_that.orderDateTime,_that.updatedAt);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -213,10 +214,10 @@ return $default(_that.id,_that.title,_that.smartType,_that.groupId,_that.emoji,_
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  SmartListType? smartType,  String? groupId,  String? emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue)  ListThemeColor themeColor, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ListThemePhoto? themePhoto, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson)  IconData icon, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder)  TaskSortOption sortOption,  bool sortAscending,  bool showCompleted,  String? remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  SmartListType? smartType,  String? groupId,  String? emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue)  ListThemeColor themeColor, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)  ListThemePhoto? themePhoto,  String? customBackgroundPath, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson)  IconData icon, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder)  TaskSortOption sortOption,  bool sortAscending,  bool showCompleted,  String? remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)?  $default,) {final _that = this;
 switch (_that) {
 case _TodoList() when $default != null:
-return $default(_that.id,_that.title,_that.smartType,_that.groupId,_that.emoji,_that.themeColor,_that.themePhoto,_that.icon,_that.sortOption,_that.sortAscending,_that.showCompleted,_that.remoteId,_that.orderDateTime,_that.updatedAt);case _:
+return $default(_that.id,_that.title,_that.smartType,_that.groupId,_that.emoji,_that.themeColor,_that.themePhoto,_that.customBackgroundPath,_that.icon,_that.sortOption,_that.sortAscending,_that.showCompleted,_that.remoteId,_that.orderDateTime,_that.updatedAt);case _:
   return null;
 
 }
@@ -228,7 +229,7 @@ return $default(_that.id,_that.title,_that.smartType,_that.groupId,_that.emoji,_
 @JsonSerializable()
 
 class _TodoList extends TodoList {
-  const _TodoList({required this.id, required this.title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) this.smartType, this.groupId, this.emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue) this.themeColor = ListThemeColor.blue, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) this.themePhoto, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) this.icon = Icons.format_list_bulleted, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) this.sortOption = TaskSortOption.defaultOrder, this.sortAscending = true, this.showCompleted = true, this.remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.updatedAt}): super._();
+  const _TodoList({required this.id, required this.title, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) this.smartType, this.groupId, this.emoji, @JsonKey(unknownEnumValue: ListThemeColor.blue) this.themeColor = ListThemeColor.blue, @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) this.themePhoto, this.customBackgroundPath, @JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) this.icon = Icons.format_list_bulleted, @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) this.sortOption = TaskSortOption.defaultOrder, this.sortAscending = true, this.showCompleted = true, this.remoteId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.updatedAt}): super._();
   factory _TodoList.fromJson(Map<String, dynamic> json) => _$TodoListFromJson(json);
 
 @override final  String id;
@@ -238,6 +239,7 @@ class _TodoList extends TodoList {
 @override final  String? emoji;
 @override@JsonKey(unknownEnumValue: ListThemeColor.blue) final  ListThemeColor themeColor;
 @override@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) final  ListThemePhoto? themePhoto;
+@override final  String? customBackgroundPath;
 @override@JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) final  IconData icon;
 @override@JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) final  TaskSortOption sortOption;
 @override@JsonKey() final  bool sortAscending;
@@ -259,18 +261,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _TodoList&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.smartType, smartType) || other.smartType == smartType)&&(identical(other.groupId, groupId) || other.groupId == groupId)&&(identical(other.emoji, emoji) || other.emoji == emoji)&&(identical(other.themeColor, themeColor) || other.themeColor == themeColor)&&(identical(other.themePhoto, themePhoto) || other.themePhoto == themePhoto)&&(identical(other.icon, icon) || other.icon == icon)&&(identical(other.sortOption, sortOption) || other.sortOption == sortOption)&&(identical(other.sortAscending, sortAscending) || other.sortAscending == sortAscending)&&(identical(other.showCompleted, showCompleted) || other.showCompleted == showCompleted)&&(identical(other.remoteId, remoteId) || other.remoteId == remoteId)&&(identical(other.orderDateTime, orderDateTime) || other.orderDateTime == orderDateTime)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _TodoList&&(identical(other.id, id) || other.id == id)&&(identical(other.title, title) || other.title == title)&&(identical(other.smartType, smartType) || other.smartType == smartType)&&(identical(other.groupId, groupId) || other.groupId == groupId)&&(identical(other.emoji, emoji) || other.emoji == emoji)&&(identical(other.themeColor, themeColor) || other.themeColor == themeColor)&&(identical(other.themePhoto, themePhoto) || other.themePhoto == themePhoto)&&(identical(other.customBackgroundPath, customBackgroundPath) || other.customBackgroundPath == customBackgroundPath)&&(identical(other.icon, icon) || other.icon == icon)&&(identical(other.sortOption, sortOption) || other.sortOption == sortOption)&&(identical(other.sortAscending, sortAscending) || other.sortAscending == sortAscending)&&(identical(other.showCompleted, showCompleted) || other.showCompleted == showCompleted)&&(identical(other.remoteId, remoteId) || other.remoteId == remoteId)&&(identical(other.orderDateTime, orderDateTime) || other.orderDateTime == orderDateTime)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,id,title,smartType,groupId,emoji,themeColor,themePhoto,icon,sortOption,sortAscending,showCompleted,remoteId,orderDateTime,updatedAt);
+    return Object.hash(runtimeType,id,title,smartType,groupId,emoji,themeColor,themePhoto,customBackgroundPath,icon,sortOption,sortAscending,showCompleted,remoteId,orderDateTime,updatedAt);
 }
 
 @override
 String toString() {
-    return 'TodoList(id: $id, title: $title, smartType: $smartType, groupId: $groupId, emoji: $emoji, themeColor: $themeColor, themePhoto: $themePhoto, icon: $icon, sortOption: $sortOption, sortAscending: $sortAscending, showCompleted: $showCompleted, remoteId: $remoteId, orderDateTime: $orderDateTime, updatedAt: $updatedAt)';
+    return 'TodoList(id: $id, title: $title, smartType: $smartType, groupId: $groupId, emoji: $emoji, themeColor: $themeColor, themePhoto: $themePhoto, customBackgroundPath: $customBackgroundPath, icon: $icon, sortOption: $sortOption, sortAscending: $sortAscending, showCompleted: $showCompleted, remoteId: $remoteId, orderDateTime: $orderDateTime, updatedAt: $updatedAt)';
 }
 
 
@@ -281,7 +283,7 @@ abstract mixin class _$TodoListCopyWith<$Res> implements $TodoListCopyWith<$Res>
   factory _$TodoListCopyWith(_TodoList value, $Res Function(_TodoList) _then) = __$TodoListCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String title,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) SmartListType? smartType, String? groupId, String? emoji,@JsonKey(unknownEnumValue: ListThemeColor.blue) ListThemeColor themeColor,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ListThemePhoto? themePhoto,@JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) IconData icon,@JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) TaskSortOption sortOption, bool sortAscending, bool showCompleted, String? remoteId,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? orderDateTime,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? updatedAt
+ String id, String title,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) SmartListType? smartType, String? groupId, String? emoji,@JsonKey(unknownEnumValue: ListThemeColor.blue) ListThemeColor themeColor,@JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue) ListThemePhoto? themePhoto, String? customBackgroundPath,@JsonKey(includeToJson: false, readValue: _readSmartTypeForIcon, fromJson: _iconFromJson) IconData icon,@JsonKey(unknownEnumValue: TaskSortOption.defaultOrder) TaskSortOption sortOption, bool sortAscending, bool showCompleted, String? remoteId,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? orderDateTime,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? updatedAt
 });
 
 
@@ -298,7 +300,7 @@ class __$TodoListCopyWithImpl<$Res>
 
 /// Create a copy of TodoList
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? title = null,Object? smartType = freezed,Object? groupId = freezed,Object? emoji = freezed,Object? themeColor = null,Object? themePhoto = freezed,Object? icon = null,Object? sortOption = null,Object? sortAscending = null,Object? showCompleted = null,Object? remoteId = freezed,Object? orderDateTime = freezed,Object? updatedAt = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? title = null,Object? smartType = freezed,Object? groupId = freezed,Object? emoji = freezed,Object? themeColor = null,Object? themePhoto = freezed,Object? customBackgroundPath = freezed,Object? icon = null,Object? sortOption = null,Object? sortAscending = null,Object? showCompleted = null,Object? remoteId = freezed,Object? orderDateTime = freezed,Object? updatedAt = freezed,}) {
   return _then(_TodoList(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,title: null == title ? _self.title : title // ignore: cast_nullable_to_non_nullable
@@ -307,7 +309,8 @@ as SmartListType?,groupId: freezed == groupId ? _self.groupId : groupId // ignor
 as String?,emoji: freezed == emoji ? _self.emoji : emoji // ignore: cast_nullable_to_non_nullable
 as String?,themeColor: null == themeColor ? _self.themeColor : themeColor // ignore: cast_nullable_to_non_nullable
 as ListThemeColor,themePhoto: freezed == themePhoto ? _self.themePhoto : themePhoto // ignore: cast_nullable_to_non_nullable
-as ListThemePhoto?,icon: null == icon ? _self.icon : icon // ignore: cast_nullable_to_non_nullable
+as ListThemePhoto?,customBackgroundPath: freezed == customBackgroundPath ? _self.customBackgroundPath : customBackgroundPath // ignore: cast_nullable_to_non_nullable
+as String?,icon: null == icon ? _self.icon : icon // ignore: cast_nullable_to_non_nullable
 as IconData,sortOption: null == sortOption ? _self.sortOption : sortOption // ignore: cast_nullable_to_non_nullable
 as TaskSortOption,sortAscending: null == sortAscending ? _self.sortAscending : sortAscending // ignore: cast_nullable_to_non_nullable
 as bool,showCompleted: null == showCompleted ? _self.showCompleted : showCompleted // ignore: cast_nullable_to_non_nullable

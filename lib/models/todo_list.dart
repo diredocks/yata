@@ -118,6 +118,7 @@ abstract class TodoList with _$TodoList {
     ListThemeColor themeColor,
     @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)
     ListThemePhoto? themePhoto,
+    String? customBackgroundPath,
     @Default(Icons.format_list_bulleted)
     @JsonKey(
       includeToJson: false,

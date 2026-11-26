@@ -11,6 +11,7 @@ import '../models/account.dart';
 import '../models/default_lists.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
+import '../theme/custom_background_service.dart';
 import 'sync_outbox.dart';
 import 'todo_database.dart';
 import 'todo_repository.dart';
@@ -45,6 +46,12 @@ final todoRepositoryProvider = Provider<TodoRepository>((ref) {
     ref.watch(todoDatabaseProvider) ?? sharedFallbackTodoDatabase,
     ref.watch(todoSettingsStoreProvider),
   );
+});
+
+final customBackgroundServiceProvider = Provider<CustomBackgroundService>((
+  ref,
+) {
+  return CustomBackgroundService();
 });
 
 class TodoNotifier extends Notifier<TodoState> {
@@ -185,6 +192,46 @@ class TodoNotifier extends Notifier<TodoState> {
       routineNotificationDays: settings.routineNotificationDays,
       quickAddNotificationEnabled: settings.quickAddNotificationEnabled,
       completedExpandedByList: settings.completedExpandedByList,
+      customBackgrounds: settings.customBackgrounds,
+    );
+  }
+
+  void addCustomBackground(CustomBackground background) {
+    final updated = [
+      background,
+      ...state.customBackgrounds.where((b) => b.id != background.id),
+    ];
+    state = state.copyWith(customBackgrounds: updated);
+    unawaited(settings.saveCustomBackgrounds(updated));
+  }
+
+  void deleteCustomBackground(CustomBackground background) {
+    final updatedBackgrounds = state.customBackgrounds
+        .where(
+          (b) => b.id != background.id && b.filePath != background.filePath,
+        )
+        .toList(growable: false);
+    final updatedLists = [
+      for (final list in state.lists)
+        if (list.customBackgroundPath == background.filePath)
+          list.copyWith(customBackgroundPath: null)
+        else
+          list,
+    ];
+    final listsChanged = !const ListEquality<TodoList>().equals(
+      state.lists,
+      updatedLists,
+    );
+    state = state.copyWith(
+      customBackgrounds: updatedBackgrounds,
+      lists: listsChanged ? updatedLists : state.lists,
+    );
+    unawaited(settings.saveCustomBackgrounds(updatedBackgrounds));
+    if (listsChanged) {
+      unawaited(repository.saveLists(updatedLists));
+    }
+    unawaited(
+      ref.read(customBackgroundServiceProvider).deleteFile(background.filePath),
     );
   }
 

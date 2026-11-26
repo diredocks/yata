@@ -377,6 +377,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           initialEmoji: currentList.emoji,
           initialColor: currentList.themeColor,
           initialPhoto: currentList.themePhoto,
+          initialCustomBackgroundPath: currentList.customBackgroundPath,
         );
         if (result == null) return;
         notifier.updateList(
@@ -387,6 +388,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           themeColor: result.themeColor,
           themePhoto: result.themePhoto,
           clearThemePhoto: result.themePhoto == null,
+          customBackgroundPath: result.customBackgroundPath,
+          clearCustomBackgroundPath: result.customBackgroundPath == null,
         );
       case ListMenuAction.sort:
         await showTasksSortSheet(
@@ -416,11 +419,14 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           context: context,
           currentColor: currentList.themeColor,
           currentPhoto: currentList.themePhoto,
-          onSelectTheme: (color, photo) => notifier.changeListTheme(
-            currentList.id,
-            color,
-            themePhoto: photo,
-          ),
+          currentCustomBackgroundPath: currentList.customBackgroundPath,
+          onSelectTheme: (color, photo, customBackgroundPath) =>
+              notifier.changeListTheme(
+                currentList.id,
+                color,
+                themePhoto: photo,
+                customBackgroundPath: customBackgroundPath,
+              ),
         );
       case ListMenuAction.sendCopy:
         await _shareListCopy(state, currentList);
@@ -687,7 +693,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       currentList.themeColor,
       brightness: brightness,
     );
-    final headerFg = currentList.themePhoto != null
+    final hasPhotoBackground =
+        currentList.customBackgroundPath != null ||
+        currentList.themePhoto != null;
+    final headerFg = hasPhotoBackground
         ? Colors.white
         : TodoColors.headerForegroundFor(
             currentList.themeColor,
@@ -701,7 +710,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         : null;
     final overlayStyle = switch (_mode) {
       TasksViewMode.browsing =>
-        currentList.themePhoto != null
+        hasPhotoBackground
             ? TodoTheme.systemUiOverlayStyleForBrightness(Brightness.dark)
             : TodoTheme.systemUiOverlayStyleFor(backgroundColor),
       TasksViewMode.reordering ||
