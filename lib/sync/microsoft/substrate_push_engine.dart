@@ -30,6 +30,9 @@ class OutboxPushOutcome {
     required this.pushedTasks,
     required this.clearedRemoteIdKeys,
     required this.followUpPullFolderRemoteIds,
+    this.deletedGroupRemoteIds = const {},
+    this.deletedListRemoteIds = const {},
+    this.deletedTaskRemoteIds = const {},
   });
 
   final List<int> ackedSeqs;
@@ -42,11 +45,20 @@ class OutboxPushOutcome {
   /// than the push response tells us (recurring spawn, move, conflict merge).
   final Set<String> followUpPullFolderRemoteIds;
 
+  /// Remote IDs deleted during this push (used as tombstone barriers against
+  /// concurrent in-flight pulls).
+  final Set<String> deletedGroupRemoteIds;
+  final Set<String> deletedListRemoteIds;
+  final Set<String> deletedTaskRemoteIds;
+
   bool get didWork =>
       ackedSeqs.isNotEmpty ||
       pushedGroups.isNotEmpty ||
       pushedLists.isNotEmpty ||
-      pushedTasks.isNotEmpty;
+      pushedTasks.isNotEmpty ||
+      deletedGroupRemoteIds.isNotEmpty ||
+      deletedListRemoteIds.isNotEmpty ||
+      deletedTaskRemoteIds.isNotEmpty;
 }
 
 /// Whether [dirtyFields] describes nothing but an intra-list position change.
@@ -117,6 +129,9 @@ class SubstratePushEngine {
         TaskItem? task,
         ({SyncEntityType type, String localId})? clearedRemoteIdKey,
         String? followUpFolderRemoteId,
+        String? deletedGroupRemoteId,
+        String? deletedListRemoteId,
+        String? deletedTaskRemoteId,
       }) async {
         ackedSeqs.add(seq);
         if (group != null) pushedGroups[group.id] = group;
@@ -140,6 +155,15 @@ class SubstratePushEngine {
                   : const [],
               followUpPullFolderRemoteIds: followUpFolderRemoteId != null
                   ? {followUpFolderRemoteId}
+                  : const {},
+              deletedGroupRemoteIds: deletedGroupRemoteId != null
+                  ? {deletedGroupRemoteId}
+                  : const {},
+              deletedListRemoteIds: deletedListRemoteId != null
+                  ? {deletedListRemoteId}
+                  : const {},
+              deletedTaskRemoteIds: deletedTaskRemoteId != null
+                  ? {deletedTaskRemoteId}
                   : const {},
             ),
           );
@@ -258,6 +282,7 @@ class SubstratePushEngine {
                 type: SyncEntityType.task,
                 localId: op.localId,
               ),
+              deletedTaskRemoteId: remoteId,
             );
           } else if (op.entityType == SyncEntityType.list) {
             final remoteId =
@@ -277,6 +302,7 @@ class SubstratePushEngine {
                 type: SyncEntityType.list,
                 localId: op.localId,
               ),
+              deletedListRemoteId: remoteId,
             );
           }
         }
@@ -480,6 +506,7 @@ class SubstratePushEngine {
               op.remoteId ??
               outbox.resolveRemoteId(SyncEntityType.group, op.localId);
           if (remoteId != null) {
+            deletedGroupRemoteIds.add(remoteId);
             await _deleteOne(() => todoApi.deleteFolderGroup(ctx, remoteId));
           }
           await commitOp(
@@ -488,6 +515,7 @@ class SubstratePushEngine {
               type: SyncEntityType.group,
               localId: op.localId,
             ),
+            deletedGroupRemoteId: remoteId,
           );
         }
 
@@ -735,6 +763,9 @@ class SubstratePushEngine {
           pushedTasks: pushedTasks,
           clearedRemoteIdKeys: clearedRemoteIdKeys,
           followUpPullFolderRemoteIds: followUpPullFolderRemoteIds,
+          deletedGroupRemoteIds: deletedGroupRemoteIds,
+          deletedListRemoteIds: deletedListRemoteIds,
+          deletedTaskRemoteIds: deletedTaskRemoteIds,
         );
       }, operation: 'pushOutbox');
     } finally {

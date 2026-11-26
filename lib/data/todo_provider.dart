@@ -374,6 +374,9 @@ class TodoNotifier extends Notifier<TodoState> {
     List<TodoList>? lists,
     List<TaskItem>? tasks,
     SyncedSettingsPatch? settingsPatch,
+    Set<String> protectedGroupIds = const {},
+    Set<String> protectedListIds = const {},
+    Set<String> protectedTaskIds = const {},
   }) async {
     final outbox = repository.outbox;
 
@@ -384,29 +387,32 @@ class TodoNotifier extends Notifier<TodoState> {
       required String Function(T) idOf,
       required T Function(T current, T pulled) mergeLocalPending,
       required T Function(T current, T pulled) mergeClean,
+      Set<String> extraProtectedIds = const {},
     }) {
       if (pulledItems == null) return currentItems;
       final pulledById = {for (final item in pulledItems) idOf(item): item};
       final currentIds = {for (final item in currentItems) idOf(item)};
+      bool isProtected(String id) =>
+          outbox.hasPending(type, id) || extraProtectedIds.contains(id);
       final result = <T>[];
       for (final current in currentItems) {
         final id = idOf(current);
         final pulled = pulledById[id];
         if (pulled == null) {
-          if (outbox.hasPending(type, id)) {
+          if (isProtected(id)) {
             result.add(current);
           }
           continue;
         }
         result.add(
-          outbox.hasPending(type, id)
+          isProtected(id)
               ? mergeLocalPending(current, pulled)
               : mergeClean(current, pulled),
         );
       }
       for (final pulled in pulledItems) {
         final id = idOf(pulled);
-        if (!currentIds.contains(id) && !outbox.hasPending(type, id)) {
+        if (!currentIds.contains(id) && !isProtected(id)) {
           result.add(pulled);
         }
       }
@@ -418,6 +424,7 @@ class TodoNotifier extends Notifier<TodoState> {
       pulledItems: groups,
       type: SyncEntityType.group,
       idOf: (g) => g.id,
+      extraProtectedIds: protectedGroupIds,
       mergeLocalPending: (current, pulled) =>
           current.copyWith(remoteId: pulled.remoteId ?? current.remoteId),
       mergeClean: (current, pulled) =>
@@ -429,6 +436,7 @@ class TodoNotifier extends Notifier<TodoState> {
       pulledItems: lists,
       type: SyncEntityType.list,
       idOf: (l) => l.id,
+      extraProtectedIds: protectedListIds,
       mergeLocalPending: (current, pulled) =>
           current.copyWith(remoteId: pulled.remoteId ?? current.remoteId),
       mergeClean: (current, pulled) => isSyncableFolderList(current)
@@ -451,6 +459,7 @@ class TodoNotifier extends Notifier<TodoState> {
       pulledItems: tasks,
       type: SyncEntityType.task,
       idOf: (t) => t.id,
+      extraProtectedIds: protectedTaskIds,
       mergeLocalPending: (current, pulled) =>
           current.copyWith(changeKey: pulled.changeKey ?? current.changeKey),
       mergeClean: (current, pulled) => pulled,
