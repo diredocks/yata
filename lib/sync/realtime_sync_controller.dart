@@ -52,12 +52,15 @@ class RealtimeSyncController {
 
   bool get hasPendingEvents => _pendingEvents.isNotEmpty;
 
-  static bool _shouldForceFullSyncForEvent(RealtimeEvent event) {
-    final typeLower = event.type.trim().toLowerCase();
-    return typeLower == 'task' ||
-        typeLower == 'taskfolder' ||
-        typeLower == 'foldergroup';
-  }
+  static bool _shouldForceFullSyncForEvent(RealtimeEvent event) =>
+      switch (event.entityType) {
+        RealtimeEventEntityType.task ||
+        RealtimeEventEntityType.taskFolder ||
+        RealtimeEventEntityType.folderGroup => true,
+        RealtimeEventEntityType.setting ||
+        RealtimeEventEntityType.keepAlive ||
+        RealtimeEventEntityType.unknown => false,
+      };
 
   void ensureStartedFor(MicrosoftAccount account) {
     if (_disposed || _accountId == account.id) return;
@@ -262,12 +265,11 @@ class RealtimeSyncController {
 
     final todoNotifier = ref.read(todoProvider.notifier);
     final currentState = ref.read(todoProvider);
-    final typeLower = event.type.trim().toLowerCase();
     final prefix = fromQueue ? '(drained) ' : '';
 
     final outbox = todoNotifier.repository.outbox;
-    switch (typeLower) {
-      case 'task':
+    switch (event.entityType) {
+      case RealtimeEventEntityType.task:
         return _commitMerge(
           mergeRealtimeTaskEvent(
             event: event,
@@ -284,7 +286,7 @@ class RealtimeSyncController {
           apply: todoNotifier.applyRemoteTasksSnapshot,
         );
 
-      case 'taskfolder':
+      case RealtimeEventEntityType.taskFolder:
         return _commitMerge(
           mergeRealtimeFolderEvent(
             event: event,
@@ -305,7 +307,7 @@ class RealtimeSyncController {
           ),
         );
 
-      case 'foldergroup':
+      case RealtimeEventEntityType.folderGroup:
         return _commitMerge(
           mergeRealtimeFolderGroupEvent(
             event: event,
@@ -321,7 +323,7 @@ class RealtimeSyncController {
           apply: todoNotifier.applyRemoteGroupsSnapshot,
         );
 
-      case 'setting':
+      case RealtimeEventEntityType.setting:
         return _commitMerge(
           mergeRealtimeSettingEvent(
             event: event,
@@ -332,7 +334,8 @@ class RealtimeSyncController {
           apply: todoNotifier.applyRemoteSettingsPatch,
         );
 
-      default:
+      case RealtimeEventEntityType.keepAlive:
+      case RealtimeEventEntityType.unknown:
         _log.info(
           '${prefix}non-direct event type=${event.type} op=${event.operation}; '
           'fallback to sync (forceFullSync=false)',

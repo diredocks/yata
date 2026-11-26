@@ -53,6 +53,23 @@ abstract class SyncState with _$SyncState {
   bool get requiresRelogin => status == SyncStatus.requiresRelogin;
 }
 
+enum SyncReason {
+  manual('manual'),
+  debounced('debounced'),
+  localMutation('local_mutation'),
+  startup('startup'),
+  accountChanged('account_changed'),
+  appResumed('app_resumed'),
+  periodic('periodic'),
+  realtimeReconnected('realtime_reconnected'),
+  realtimeOverflow('realtime_overflow'),
+  outboxPending('outbox_pending'),
+  queued('queued');
+
+  const SyncReason(this.label);
+  final String label;
+}
+
 class _SyncCommand {
   const _SyncCommand(this.kind, this.reason);
 
@@ -79,7 +96,7 @@ class SyncNotifier extends Notifier<SyncState> {
   DateTime? _debounceStartedAt;
   DateTime? _debounceDeadline;
   SyncKind? _pendingKind;
-  String _pendingReason = 'debounced';
+  String _pendingReason = SyncReason.debounced.label;
   Timer? _periodicTimer;
   RealtimeSyncController? _realtimeController;
 
@@ -174,14 +191,14 @@ class SyncNotifier extends Notifier<SyncState> {
     _debounceStartedAt = null;
     _debounceDeadline = null;
     _pendingKind = null;
-    _pendingReason = 'debounced';
+    _pendingReason = SyncReason.debounced.label;
   }
 
   void _startPeriodicSync() {
     if (_disposed || !_isForeground || _periodicTimer != null) return;
     _periodicTimer = Timer.periodic(_periodicSyncInterval, (_) {
       if (!_disposed && _isForeground) {
-        unawaited(syncNow(reason: 'periodic'));
+        unawaited(syncNow(reason: SyncReason.periodic.label));
       }
     });
   }
@@ -229,7 +246,7 @@ class SyncNotifier extends Notifier<SyncState> {
     scheduleDebouncedSync(
       delay: _foregroundDebounceDuration,
       forceFullSync: false,
-      reason: 'app_resumed',
+      reason: SyncReason.appResumed.label,
     );
   }
 
@@ -245,7 +262,8 @@ class SyncNotifier extends Notifier<SyncState> {
     unawaited(
       syncNow(
         forceFullSync: accountChanged,
-        reason: accountChanged ? 'account_changed' : 'startup',
+        reason: (accountChanged ? SyncReason.accountChanged : SyncReason.startup)
+            .label,
       ),
     );
   }
@@ -374,7 +392,9 @@ class SyncNotifier extends Notifier<SyncState> {
                 .outbox
                 .ops
                 .any((op) => op.kind == SyncOpKind.delete)) {
-          _enqueueCommand(const _SyncCommand(SyncKind.pushOnly, 'outbox_pending'));
+          _enqueueCommand(
+            _SyncCommand(SyncKind.pushOnly, SyncReason.outboxPending.label),
+          );
         }
         if (!_disposed) {
           nextCommand = _queuedCommand;

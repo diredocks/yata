@@ -141,6 +141,40 @@ class RemoteTaskStep {
   }
 }
 
+enum RemoteTaskStatus {
+  notStarted,
+  inProgress,
+  waitingOnOthers,
+  completed,
+  deferred,
+  unknown;
+
+  static RemoteTaskStatus parse(String? raw) =>
+      switch (raw?.trim().toLowerCase()) {
+        'notstarted' => RemoteTaskStatus.notStarted,
+        'inprogress' => RemoteTaskStatus.inProgress,
+        'waitingonothers' => RemoteTaskStatus.waitingOnOthers,
+        'completed' => RemoteTaskStatus.completed,
+        'deferred' => RemoteTaskStatus.deferred,
+        _ => RemoteTaskStatus.unknown,
+      };
+}
+
+enum RemoteTaskImportance {
+  low,
+  normal,
+  high,
+  unknown;
+
+  static RemoteTaskImportance parse(String? raw) =>
+      switch (raw?.trim().toLowerCase()) {
+        'low' => RemoteTaskImportance.low,
+        'normal' => RemoteTaskImportance.normal,
+        'high' => RemoteTaskImportance.high,
+        _ => RemoteTaskImportance.unknown,
+      };
+}
+
 class RemoteTodoTask {
   const RemoteTodoTask({
     required this.id,
@@ -196,9 +230,14 @@ class RemoteTodoTask {
   final List<RemoteTaskStep> subtasks;
   final bool isDeleted;
 
-  bool get isCompleted => status.toLowerCase() == 'completed';
+  RemoteTaskStatus get parsedStatus => RemoteTaskStatus.parse(status);
 
-  bool get isImportant => importance.toLowerCase() == 'high';
+  RemoteTaskImportance get parsedImportance =>
+      RemoteTaskImportance.parse(importance);
+
+  bool get isCompleted => parsedStatus == RemoteTaskStatus.completed;
+
+  bool get isImportant => parsedImportance == RemoteTaskImportance.high;
 
   bool get hasRecurrence =>
       recurrence != RecurrenceType.none ||
@@ -270,6 +309,40 @@ class DeltaPageResult<T> {
   final String? deltaLink;
 }
 
+enum RealtimeEventEntityType {
+  task,
+  taskFolder,
+  folderGroup,
+  setting,
+  keepAlive,
+  unknown;
+
+  static RealtimeEventEntityType parse(String? raw) =>
+      switch (raw?.trim().toLowerCase()) {
+        'task' => RealtimeEventEntityType.task,
+        'taskfolder' => RealtimeEventEntityType.taskFolder,
+        'foldergroup' => RealtimeEventEntityType.folderGroup,
+        'setting' => RealtimeEventEntityType.setting,
+        'keepalive' => RealtimeEventEntityType.keepAlive,
+        _ => RealtimeEventEntityType.unknown,
+      };
+}
+
+enum RealtimeEventOperation {
+  created,
+  updated,
+  deleted,
+  unsupported;
+
+  static RealtimeEventOperation parse(String? raw) =>
+      switch (raw?.trim().toLowerCase()) {
+        'created' => RealtimeEventOperation.created,
+        'updated' => RealtimeEventOperation.updated,
+        'deleted' => RealtimeEventOperation.deleted,
+        _ => RealtimeEventOperation.unsupported,
+      };
+}
+
 class RealtimeEvent {
   const RealtimeEvent({
     this.id,
@@ -285,7 +358,11 @@ class RealtimeEvent {
   final String? requestId;
   final Map<String, dynamic>? payload;
 
-  bool get isKeepAlive => type.trim().toLowerCase() == 'keepalive';
+  RealtimeEventEntityType get entityType => RealtimeEventEntityType.parse(type);
+
+  RealtimeEventOperation get op => RealtimeEventOperation.parse(operation);
+
+  bool get isKeepAlive => entityType == RealtimeEventEntityType.keepAlive;
 
   factory RealtimeEvent.fromJson(Map<String, dynamic> json) {
     return RealtimeEvent(

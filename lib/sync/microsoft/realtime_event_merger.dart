@@ -44,16 +44,6 @@ class RealtimeMergeResult<T> {
 
 typedef RealtimeFolderUpdate = ({List<TodoList> lists, List<TaskItem>? tasks});
 
-enum _RealtimeOp { created, updated, deleted, unsupported }
-
-_RealtimeOp _parseRealtimeOp(String? raw) =>
-    switch (raw?.trim().toLowerCase()) {
-      'created' => _RealtimeOp.created,
-      'updated' => _RealtimeOp.updated,
-      'deleted' => _RealtimeOp.deleted,
-      _ => _RealtimeOp.unsupported,
-    };
-
 String _resolveDeleteRemoteId(RealtimeEvent event) {
   final eventId = event.id?.trim();
   if (eventId != null && eventId.isNotEmpty) return eventId;
@@ -82,14 +72,14 @@ RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
   required Set<String> pendingDeletedTaskRemoteIds,
   required String Function(String prefix) idGenerator,
 }) {
-  if (event.type.trim().toLowerCase() != 'task') {
+  if (event.entityType != RealtimeEventEntityType.task) {
     return RealtimeMergeResult.unhandled(
       'non-task event type=${event.type} op=${event.operation}',
     );
   }
 
-  final op = _parseRealtimeOp(event.operation);
-  if (op == _RealtimeOp.unsupported) {
+  final op = event.op;
+  if (op == RealtimeEventOperation.unsupported) {
     return RealtimeMergeResult.unhandled(
       'Task/${event.operation} unsupported op',
     );
@@ -97,7 +87,7 @@ RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
 
   final RemoteTodoTask remote;
   final bool preserveStepsWhenMissing;
-  if (op == _RealtimeOp.deleted) {
+  if (op == RealtimeEventOperation.deleted) {
     final remoteId = _resolveDeleteRemoteId(event);
     if (remoteId.isEmpty) {
       return RealtimeMergeResult.unhandled('Task/Deleted missing Id');
@@ -228,7 +218,7 @@ RealtimeMergeResult<List<ListGroup>> mergeRealtimeFolderGroupEvent({
   required Set<String> pendingDeletedGroupRemoteIds,
   required String Function(String prefix) idGenerator,
 }) {
-  if (event.type.trim().toLowerCase() != 'foldergroup') {
+  if (event.entityType != RealtimeEventEntityType.folderGroup) {
     return RealtimeMergeResult.unhandled(
       'non-group event type=${event.type} op=${event.operation}',
     );
@@ -260,11 +250,11 @@ RealtimeMergeResult<List<ListGroup>> mergeRealtimeFolderGroupEvent({
     );
   }
 
-  final op = _parseRealtimeOp(event.operation);
-  if (op == _RealtimeOp.deleted) {
+  final op = event.op;
+  if (op == RealtimeEventOperation.deleted) {
     return applyDelete(_resolveDeleteRemoteId(event), 'FolderGroup/Deleted');
   }
-  if (op == _RealtimeOp.unsupported) {
+  if (op == RealtimeEventOperation.unsupported) {
     return RealtimeMergeResult.unhandled(
       'FolderGroup/${event.operation} unsupported op',
     );
@@ -322,7 +312,7 @@ RealtimeMergeResult<RealtimeFolderUpdate> mergeRealtimeFolderEvent({
   required Set<String> pendingDeletedListRemoteIds,
   required String Function(String prefix) idGenerator,
 }) {
-  if (event.type.trim().toLowerCase() != 'taskfolder') {
+  if (event.entityType != RealtimeEventEntityType.taskFolder) {
     return RealtimeMergeResult.unhandled(
       'non-folder event type=${event.type} op=${event.operation}',
     );
@@ -365,11 +355,11 @@ RealtimeMergeResult<RealtimeFolderUpdate> mergeRealtimeFolderEvent({
     );
   }
 
-  final op = _parseRealtimeOp(event.operation);
-  if (op == _RealtimeOp.deleted) {
+  final op = event.op;
+  if (op == RealtimeEventOperation.deleted) {
     return applyDelete(_resolveDeleteRemoteId(event), 'TaskFolder/Deleted');
   }
-  if (op == _RealtimeOp.unsupported) {
+  if (op == RealtimeEventOperation.unsupported) {
     return RealtimeMergeResult.unhandled(
       'TaskFolder/${event.operation} unsupported op',
     );
@@ -443,13 +433,14 @@ RealtimeMergeResult<SyncedSettingsPatch> mergeRealtimeSettingEvent({
   required RealtimeEvent event,
   required Set<String> dirtySettingKeys,
 }) {
-  if (event.type.trim().toLowerCase() != 'setting') {
+  if (event.entityType != RealtimeEventEntityType.setting) {
     return RealtimeMergeResult.unhandled(
       'non-setting event type=${event.type} op=${event.operation}',
     );
   }
-  final op = _parseRealtimeOp(event.operation);
-  if ((op != _RealtimeOp.updated && op != _RealtimeOp.created) ||
+  final op = event.op;
+  if ((op != RealtimeEventOperation.updated &&
+          op != RealtimeEventOperation.created) ||
       event.payload == null) {
     return RealtimeMergeResult.unhandled(
       'Setting/${event.operation} id=${shortSyncId(event.id)} missing payload',
