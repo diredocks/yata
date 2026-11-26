@@ -34,7 +34,9 @@ class ListActionsService {
     if (_isFlutterTest) return false;
     try {
       final info = await Printing.info();
-      return info.canPrint && info.canConvertHtml;
+      // `printing`'s Android plugin omits `canConvertHtml` from `printingInfo()`,
+      // leaving `info.canConvertHtml == false` even though `convertHtml` works.
+      return info.canPrint;
     } on Object catch (e) {
       _log.warning('isPrintSupported failed: $e');
       return false;
@@ -114,7 +116,7 @@ class ListActionsService {
     if (_isFlutterTest) return false;
     try {
       final info = await Printing.info();
-      if (!info.canPrint || !info.canConvertHtml) return false;
+      if (!info.canPrint) return false;
       await Printing.layoutPdf(
         name: jobName,
         // Native WebView HTML->PDF preserves system CJK and emoji fonts
