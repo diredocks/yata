@@ -62,10 +62,6 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   final Set<String> _collapsedCompletedListBuckets = {};
   late final DelayedTaskCompletionController _completionController;
   final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
-  bool _isShortcutSupported = false;
-  bool _isPrintSupported = false;
-  String? _checkedShortcutId;
-  bool _isCurrentShortcutPinned = false;
 
   @override
   void initState() {
@@ -73,53 +69,6 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     _completionController = DelayedTaskCompletionController(
       onCommit: ref.read(tasksViewPresenterProvider).setTaskCompleted,
     );
-    unawaited(_loadShortcutSupport());
-    unawaited(_loadPrintSupport());
-  }
-
-  Future<void> _loadShortcutSupport() async {
-    final supported = await ref
-        .read(listActionsServiceProvider)
-        .isShortcutSupported();
-    if (!mounted || !supported) return;
-    setState(() => _isShortcutSupported = true);
-    if (_checkedShortcutId != null) {
-      unawaited(_refreshShortcutPinned(_checkedShortcutId!));
-    }
-  }
-
-  Future<void> _loadPrintSupport() async {
-    final supported = await ref
-        .read(listActionsServiceProvider)
-        .isPrintSupported();
-    if (!mounted || !supported) return;
-    setState(() => _isPrintSupported = true);
-  }
-
-  String _shortcutIdFor(TodoList list) {
-    final accountId = ref.read(accountProvider).activeAccount?.id ?? 'local';
-    return '$accountId|${list.id}';
-  }
-
-  Future<void> _refreshShortcutPinned(String shortcutId) async {
-    if (!_isShortcutSupported) return;
-    final pinned = await ref
-        .read(listActionsServiceProvider)
-        .isShortcutPinned(shortcutId);
-    if (!mounted || _checkedShortcutId != shortcutId) return;
-    if (_isCurrentShortcutPinned != pinned) {
-      setState(() => _isCurrentShortcutPinned = pinned);
-    }
-  }
-
-  void _ensureShortcutStateFor(TodoList list) {
-    final shortcutId = _shortcutIdFor(list);
-    if (_checkedShortcutId == shortcutId) return;
-    _checkedShortcutId = shortcutId;
-    _isCurrentShortcutPinned = false;
-    if (_isShortcutSupported) {
-      unawaited(_refreshShortcutPinned(shortcutId));
-    }
   }
 
   @override
@@ -486,7 +435,8 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
 
   Future<void> _pinOrUpdateListShortcut(TodoList currentList) async {
     final l10n = AppLocalizations.of(context);
-    final shortcutId = _shortcutIdFor(currentList);
+    final accountId = ref.read(accountProvider).activeAccount?.id;
+    final shortcutId = shortcutIdForList(accountId, currentList.id);
     final label = localizedListTitle(l10n, currentList);
     final colorArgb = TodoColors.listAccentFor(
       currentList,
@@ -502,12 +452,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
           smartType: currentList.smartType?.name,
           emoji: currentList.emoji,
         );
-    if (!mounted) return;
+    if (!mounted || result == null) return;
+    ref.invalidate(shortcutPinnedProvider(shortcutId));
     if (result == ShortcutPinResult.updated) {
-      setState(() => _isCurrentShortcutPinned = true);
       _showSnackBar(l10n.shortcutUpdated);
-    } else if (result == ShortcutPinResult.requested) {
-      unawaited(_refreshShortcutPinned(shortcutId));
     }
   }
 
@@ -708,6 +656,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(todoProvider);
+    final accountId = ref.watch(
+      accountProvider.select((s) => s.activeAccount?.id),
+    );
     final isMicrosoft = ref.watch(
       accountProvider.select((s) => s.activeAccount?.isMicrosoft ?? false),
     );
@@ -715,7 +666,11 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final brightness = Theme.of(context).brightness;
     final isDark = brightness == Brightness.dark;
     final currentList = state.selectedList;
-    _ensureShortcutStateFor(currentList);
+    final shortcutId = shortcutIdForList(accountId, currentList.id);
+    final showShortcut = ref.watch(shortcutSupportedProvider).value ?? false;
+    final isShortcutPinned =
+        ref.watch(shortcutPinnedProvider(shortcutId)).value ?? false;
+    final showPrint = ref.watch(listPrintSupportedProvider).value ?? false;
     final notifier = ref.read(tasksViewPresenterProvider);
     final actionPresenter = ref.read(tasksActionPresenterProvider);
 
@@ -830,9 +785,9 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                     backgroundColor: backgroundColor,
                     accentColor: accentColor,
                     activeTasksCount: active.length,
-                    showShortcut: _isShortcutSupported,
-                    isShortcutPinned: _isCurrentShortcutPinned,
-                    showPrint: _isPrintSupported,
+                    showShortcut: showShortcut,
+                    isShortcutPinned: isShortcutPinned,
+                    showPrint: showPrint,
                     isDark: isDark,
                     isMicrosoft: isMicrosoft,
                     mode: _mode,

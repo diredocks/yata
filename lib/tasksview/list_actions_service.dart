@@ -14,6 +14,9 @@ const String kShortcutChannelName = 'top.clickfling.yata/shortcut';
 
 enum ShortcutPinResult { requested, updated }
 
+String shortcutIdForList(String? accountId, String listId) =>
+    '${accountId ?? 'local'}|$listId';
+
 /// Bridges list-level platform actions: Share (via `share_plus`), Print (via
 /// `printing`), and Homescreen Shortcut (via Android [kShortcutChannelName]).
 class ListActionsService {
@@ -116,8 +119,9 @@ class ListActionsService {
         name: jobName,
         // Native WebView HTML->PDF preserves system CJK and emoji fonts
         // without bundling large font assets into the app.
-        // ignore: deprecated_member_use
-        onLayout: (format) => Printing.convertHtml(format: format, html: html),
+        onLayout: (format) =>
+            // ignore: deprecated_member_use
+            Printing.convertHtml(format: format, html: html),
       );
       return true;
     } on Object catch (e) {
@@ -130,3 +134,20 @@ class ListActionsService {
 final listActionsServiceProvider = Provider<ListActionsService>(
   (_) => const ListActionsService(),
 );
+
+final listPrintSupportedProvider = FutureProvider<bool>(
+  (ref) => ref.watch(listActionsServiceProvider).isPrintSupported(),
+);
+
+final shortcutSupportedProvider = FutureProvider<bool>(
+  (ref) => ref.watch(listActionsServiceProvider).isShortcutSupported(),
+);
+
+final shortcutPinnedProvider = FutureProvider.family<bool, String>((
+  ref,
+  shortcutId,
+) async {
+  final supported = await ref.watch(shortcutSupportedProvider.future);
+  if (!supported) return false;
+  return ref.watch(listActionsServiceProvider).isShortcutPinned(shortcutId);
+});
