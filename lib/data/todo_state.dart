@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -52,7 +53,7 @@ abstract class TodoState with _$TodoState {
   bool isCompletedExpanded(String listId) {
     final explicit = completedExpandedByList[listId];
     if (explicit != null) return explicit;
-    final list = lists.where((l) => l.id == listId).firstOrNull;
+    final list = lists.firstWhereOrNull((l) => l.id == listId);
     return list?.showCompleted ?? true;
   }
 
@@ -65,7 +66,7 @@ abstract class TodoState with _$TodoState {
 
   TaskItem? get selectedTask {
     if (selectedTaskId == null) return null;
-    return tasks.where((task) => task.id == selectedTaskId).firstOrNull;
+    return tasks.firstWhereOrNull((task) => task.id == selectedTaskId);
   }
 
   List<TaskItem> tasksForList(TodoList list) {

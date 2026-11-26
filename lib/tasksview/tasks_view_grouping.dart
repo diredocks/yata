@@ -112,10 +112,7 @@ List<({String listId, String title, List<TaskItem> tasks})> groupTasksByList(
   List<TaskItem> tasks,
   List<TodoList> lists,
 ) {
-  final grouped = <String, List<TaskItem>>{};
-  for (final task in tasks) {
-    grouped.putIfAbsent(task.listId, () => []).add(task);
-  }
+  final grouped = tasks.groupListsBy((task) => task.listId);
   return [
     for (final entry in grouped.entries)
       (

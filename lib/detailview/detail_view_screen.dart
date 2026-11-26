@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
@@ -106,11 +107,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
 
     if (confirmRequired) {
       final stepTitle =
-          task.steps
-              .where((s) => s.id == stepId)
-              .map((s) => s.title)
-              .firstOrNull ??
-          '';
+          task.steps.firstWhereOrNull((s) => s.id == stepId)?.title ?? '';
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -176,7 +173,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final task = state.tasks.where((t) => t.id == widget.taskId).firstOrNull;
+    final task = state.tasks.firstWhereOrNull((t) => t.id == widget.taskId);
     if (task == null) {
       return const SizedBox.shrink();
     }
@@ -198,9 +195,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
         ? TodoColors.secondaryTextDark
         : TodoColors.secondaryTextLight;
 
-    final originList = state.lists
-        .where((l) => l.id == task.listId)
-        .firstOrNull;
+    final originList = state.lists.firstWhereOrNull((l) => l.id == task.listId);
     final listAccent = originList == null
         ? (isDark ? TodoColors.attentionDark : TodoColors.attentionLight)
         : TodoColors.listAccentFor(originList, brightness: theme.brightness);

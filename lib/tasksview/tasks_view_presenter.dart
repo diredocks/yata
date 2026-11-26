@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/order_date_time.dart';
@@ -129,7 +130,7 @@ class TasksViewPresenter {
   }
 
   void duplicateList(String listId, {bool keepCompleted = true}) {
-    final source = _state.lists.where((l) => l.id == listId).firstOrNull;
+    final source = _state.lists.firstWhereOrNull((l) => l.id == listId);
     if (source == null || source.isSmartList) return;
 
     final now = DateTime.now();
@@ -425,7 +426,7 @@ class TasksViewPresenter {
   }
 
   void toggleTaskCompleted(String taskId) {
-    final target = _state.tasks.where((t) => t.id == taskId).firstOrNull;
+    final target = _state.tasks.firstWhereOrNull((t) => t.id == taskId);
     if (target == null) return;
     setTaskCompleted(taskId, completed: !target.isCompleted);
   }

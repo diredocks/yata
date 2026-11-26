@@ -131,8 +131,7 @@ class WidgetEventProcessor {
 
   void _applySingleOp(WidgetPendingOp op) {
     final target = _read(todoProvider).tasks
-        .where((t) => t.id == op.taskId)
-        .firstOrNull;
+        .firstWhereOrNull((t) => t.id == op.taskId);
     if (target == null) return;
 
     final presenter = _read(tasksViewPresenterProvider);

@@ -1,3 +1,5 @@
+import 'package:collection/collection.dart';
+
 /// Default spacing (`4096s`) used by Microsoft To Do for `OrderDateTime`
 /// and `CommittedOrder` positioning (higher timestamp = closer to top).
 const Duration kOrderDateTimeStep = Duration(seconds: 4096);
@@ -97,16 +99,9 @@ Map<int, DateTime> computeReorderedOrderDateTimes(
     };
   }
 
-  final nonNull = reorderedOrders
-      .whereType<DateTime>()
-      .map((d) => d.toUtc())
-      .toList();
-  DateTime anchor;
-  if (nonNull.isNotEmpty) {
-    anchor = nonNull.reduce((a, b) => b.isAfter(a) ? b : a);
-  } else {
-    anchor = (fallbackNow ?? DateTime.now()).toUtc();
-  }
+  final anchor =
+      reorderedOrders.whereType<DateTime>().map((d) => d.toUtc()).maxOrNull ??
+      (fallbackNow ?? DateTime.now()).toUtc();
   return {
     for (var i = 0; i < n; i++)
       i: anchor.subtract(Duration(seconds: kOrderDateTimeStep.inSeconds * i)),
@@ -147,19 +142,15 @@ DateTime computeNewOrderDateTime({
   required bool addToTop,
   DateTime? fallbackNow,
 }) {
-  final nonNull = existingOrders
-      .whereType<DateTime>()
-      .map((d) => d.toUtc())
-      .toList();
-  if (nonNull.isEmpty) {
+  final nonNull = existingOrders.whereType<DateTime>().map((d) => d.toUtc());
+  final extremeDt = addToTop ? nonNull.maxOrNull : nonNull.minOrNull;
+  if (extremeDt == null) {
     return (fallbackNow ?? DateTime.now()).toUtc();
   }
   if (addToTop) {
-    final maxDt = nonNull.reduce((a, b) => b.isAfter(a) ? b : a);
     final now = (fallbackNow ?? DateTime.now()).toUtc();
-    final minNext = maxDt.add(kOrderDateTimeStep);
+    final minNext = extremeDt.add(kOrderDateTimeStep);
     return now.isAfter(minNext) ? now : minNext;
   }
-  final minDt = nonNull.reduce((a, b) => b.isBefore(a) ? b : a);
-  return minDt.subtract(kOrderDateTimeStep);
+  return extremeDt.subtract(kOrderDateTimeStep);
 }

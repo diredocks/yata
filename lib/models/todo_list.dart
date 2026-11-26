@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -92,7 +93,7 @@ enum PlannedGroupOption { ungroup, byDueDate, byList }
 
 IconData _iconFromJson(Object? raw) {
   if (raw is String) {
-    final type = SmartListType.values.where((e) => e.name == raw).firstOrNull;
+    final type = SmartListType.values.firstWhereOrNull((e) => e.name == raw);
     return TodoList.iconForSmartType(type);
   }
   return Icons.format_list_bulleted;

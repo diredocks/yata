@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/order_date_time.dart';
@@ -219,7 +220,7 @@ class DetailViewPresenter {
         updated.add(task);
         continue;
       }
-      final step = task.steps.where((s) => s.id == stepId).firstOrNull;
+      final step = task.steps.firstWhereOrNull((s) => s.id == stepId);
       if (step == null || step.isCompleted) {
         updated.add(task);
         continue;

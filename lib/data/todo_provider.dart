@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -603,7 +604,7 @@ class TodoNotifier extends Notifier<TodoState> {
   void setCompletedExpanded(String listId, bool expanded) {
     final nextExpanded = Map<String, bool>.from(state.completedExpandedByList)
       ..[listId] = expanded;
-    final target = state.lists.where((l) => l.id == listId).firstOrNull;
+    final target = state.lists.firstWhereOrNull((l) => l.id == listId);
     final shouldSyncListShowCompleted =
         target != null &&
         target.smartType != SmartListType.all &&

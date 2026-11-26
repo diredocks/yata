@@ -488,7 +488,7 @@ String? extractSettingValueForKey(TodoState state, String key) {
   }
 
   for (final entry in smartListSettingKeyMap.entries) {
-    final list = state.lists.where((l) => l.id == entry.key).firstOrNull;
+    final list = state.lists.firstWhereOrNull((l) => l.id == entry.key);
     if (list == null) continue;
     final mapping = entry.value;
     if (key == mapping.showCompletedKey) {

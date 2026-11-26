@@ -116,9 +116,9 @@ RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
     );
   }
 
-  final existingBefore = currentTasks
-      .where((t) => t.remoteId == remote.id)
-      .firstOrNull;
+  final existingBefore = currentTasks.firstWhereOrNull(
+    (t) => t.remoteId == remote.id,
+  );
   if (!remote.isDeleted &&
       !remote.isIgnored &&
       (remote.parentFolderId == null || remote.parentFolderId!.isEmpty) &&
@@ -149,9 +149,9 @@ RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
     );
   }
 
-  final after = reconciled.tasks
-      .where((t) => t.remoteId == remote.id)
-      .firstOrNull;
+  final after = reconciled.tasks.firstWhereOrNull(
+    (t) => t.remoteId == remote.id,
+  );
 
   if (remote.isDeleted || remote.isIgnored) {
     if (existingBefore == null) {

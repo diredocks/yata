@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -126,9 +127,9 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
         }
     }
     if (isWide && action.listId != null) {
-      final matched = state.lists
-          .where((l) => l.id == action.listId)
-          .firstOrNull;
+      final matched = state.lists.firstWhereOrNull(
+        (l) => l.id == action.listId,
+      );
       if (matched != null) {
         ref.read(todoProvider.notifier).selectList(matched.id);
       }
