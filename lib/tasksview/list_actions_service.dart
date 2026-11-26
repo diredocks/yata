@@ -3,29 +3,40 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../core/logging/app_logger.dart';
 
 final _log = appLogFor('ListActionsService');
 
-const String kListActionsChannelName = 'top.clickfling.yata/list_actions';
+const String kShortcutChannelName = 'top.clickfling.yata/shortcut';
 
 enum ShortcutPinResult { requested, updated }
 
-/// Bridges list-level platform actions (Share, Print, and Homescreen Shortcut)
-/// to Android via [kListActionsChannelName], matching `yp/n`, `fq/i`, and
-/// `wo/c0` in `mstodo.apk`.
+/// Bridges list-level platform actions: Share (via `share_plus`), Print (via
+/// `printing`), and Homescreen Shortcut (via Android [kShortcutChannelName]).
 class ListActionsService {
   const ListActionsService();
 
-  static const MethodChannel _channel = MethodChannel(kListActionsChannelName);
+  static const MethodChannel _channel = MethodChannel(kShortcutChannelName);
+
+  static bool get _isFlutterTest =>
+      Platform.environment.containsKey('FLUTTER_TEST');
 
   static bool get _isAndroid =>
-      !kIsWeb &&
-      !Platform.environment.containsKey('FLUTTER_TEST') &&
-      Platform.isAndroid;
+      !kIsWeb && !_isFlutterTest && Platform.isAndroid;
 
-  bool get isPrintSupported => _isAndroid;
+  Future<bool> isPrintSupported() async {
+    if (_isFlutterTest) return false;
+    try {
+      final info = await Printing.info();
+      return info.canPrint && info.canConvertHtml;
+    } on Object catch (e) {
+      _log.warning('isPrintSupported failed: $e');
+      return false;
+    }
+  }
 
   Future<T?> _invoke<T>(
     String method, [
@@ -80,16 +91,40 @@ class ListActionsService {
   Future<bool> shareText({
     required String subject,
     required String text,
-  }) async =>
-      await _invoke<bool>('shareText', {'subject': subject, 'text': text}) ??
-      false;
+  }) async {
+    if (_isFlutterTest || text.isEmpty) return false;
+    try {
+      await SharePlus.instance.share(
+        ShareParams(text: text, subject: subject.isEmpty ? null : subject),
+      );
+      return true;
+    } on Object catch (e) {
+      _log.warning('shareText failed: $e');
+      return false;
+    }
+  }
 
   Future<bool> printHtml({
     required String jobName,
     required String html,
-  }) async =>
-      await _invoke<bool>('printHtml', {'jobName': jobName, 'html': html}) ??
-      false;
+  }) async {
+    if (_isFlutterTest) return false;
+    try {
+      final info = await Printing.info();
+      if (!info.canPrint || !info.canConvertHtml) return false;
+      await Printing.layoutPdf(
+        name: jobName,
+        // Native WebView HTML->PDF preserves system CJK and emoji fonts
+        // without bundling large font assets into the app.
+        // ignore: deprecated_member_use
+        onLayout: (format) => Printing.convertHtml(format: format, html: html),
+      );
+      return true;
+    } on Object catch (e) {
+      _log.warning('printHtml failed: $e');
+      return false;
+    }
+  }
 }
 
 final listActionsServiceProvider = Provider<ListActionsService>(

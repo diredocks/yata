@@ -63,6 +63,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   late final DelayedTaskCompletionController _completionController;
   final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
   bool _isShortcutSupported = false;
+  bool _isPrintSupported = false;
   String? _checkedShortcutId;
   bool _isCurrentShortcutPinned = false;
 
@@ -73,6 +74,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       onCommit: ref.read(tasksViewPresenterProvider).setTaskCompleted,
     );
     unawaited(_loadShortcutSupport());
+    unawaited(_loadPrintSupport());
   }
 
   Future<void> _loadShortcutSupport() async {
@@ -84,6 +86,14 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     if (_checkedShortcutId != null) {
       unawaited(_refreshShortcutPinned(_checkedShortcutId!));
     }
+  }
+
+  Future<void> _loadPrintSupport() async {
+    final supported = await ref
+        .read(listActionsServiceProvider)
+        .isPrintSupported();
+    if (!mounted || !supported) return;
+    setState(() => _isPrintSupported = true);
   }
 
   String _shortcutIdFor(TodoList list) {
@@ -706,7 +716,6 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final isDark = brightness == Brightness.dark;
     final currentList = state.selectedList;
     _ensureShortcutStateFor(currentList);
-    final listActions = ref.watch(listActionsServiceProvider);
     final notifier = ref.read(tasksViewPresenterProvider);
     final actionPresenter = ref.read(tasksActionPresenterProvider);
 
@@ -823,7 +832,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                     activeTasksCount: active.length,
                     showShortcut: _isShortcutSupported,
                     isShortcutPinned: _isCurrentShortcutPinned,
-                    showPrint: listActions.isPrintSupported,
+                    showPrint: _isPrintSupported,
                     isDark: isDark,
                     isMicrosoft: isMicrosoft,
                     mode: _mode,

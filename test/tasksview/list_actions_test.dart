@@ -23,7 +23,7 @@ class _FakeListActionsService implements ListActionsService {
   String? lastPinnedLabel;
 
   @override
-  bool get isPrintSupported => true;
+  Future<bool> isPrintSupported() async => true;
 
   @override
   Future<bool> isShortcutSupported() async => true;

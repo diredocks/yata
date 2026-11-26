@@ -1,4 +1,4 @@
-package top.clickfling.yata.actions
+package top.clickfling.yata.shortcut
 
 import android.app.Activity
 import android.content.Context
@@ -12,11 +12,7 @@ import android.graphics.Paint
 import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
-import android.print.PrintAttributes
-import android.print.PrintManager
 import android.text.TextPaint
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.DrawableCompat
@@ -28,14 +24,13 @@ import top.clickfling.yata.MainActivity
 import top.clickfling.yata.R
 import kotlin.math.roundToInt
 
-class ListActionsChannel(private val activity: Activity) {
+class ShortcutChannel(private val activity: Activity) {
 
     companion object {
-        const val CHANNEL_NAME = "top.clickfling.yata/list_actions"
+        const val CHANNEL_NAME = "top.clickfling.yata/shortcut"
     }
 
     private var channel: MethodChannel? = null
-    private val activePrintWebViews = mutableSetOf<WebView>()
 
     fun attach(flutterEngine: FlutterEngine) {
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_NAME).apply {
@@ -48,25 +43,10 @@ class ListActionsChannel(private val activity: Activity) {
     fun detach() {
         channel?.setMethodCallHandler(null)
         channel = null
-        for (webView in activePrintWebViews) {
-            webView.stopLoading()
-            webView.destroy()
-        }
-        activePrintWebViews.clear()
     }
 
     private fun handleMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
-            "shareText" -> {
-                val subject = call.argument<String>("subject") ?: ""
-                val text = call.argument<String>("text") ?: ""
-                result.success(shareText(subject, text))
-            }
-            "printHtml" -> {
-                val jobName = call.argument<String>("jobName") ?: "Yata"
-                val html = call.argument<String>("html") ?: ""
-                result.success(printHtml(jobName, html))
-            }
             "isShortcutSupported" -> {
                 result.success(shortcutManagerOrNull() != null)
             }
@@ -98,39 +78,6 @@ class ListActionsChannel(private val activity: Activity) {
             }
             else -> result.notImplemented()
         }
-    }
-
-    private fun shareText(subject: String, text: String): Boolean {
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            if (subject.isNotEmpty()) {
-                putExtra(Intent.EXTRA_SUBJECT, subject)
-            }
-            putExtra(Intent.EXTRA_TEXT, text)
-        }
-        val chooser = Intent.createChooser(intent, null)
-        activity.startActivity(chooser)
-        return true
-    }
-
-    private fun printHtml(jobName: String, html: String): Boolean {
-        val printManager = activity.getSystemService(Context.PRINT_SERVICE) as? PrintManager
-            ?: return false
-        val webView = WebView(activity)
-        activePrintWebViews.add(webView)
-        webView.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView, url: String) {
-                activePrintWebViews.remove(view)
-                if (activity.isFinishing || activity.isDestroyed) {
-                    view.destroy()
-                    return
-                }
-                val adapter = view.createPrintDocumentAdapter(jobName)
-                printManager.print(jobName, adapter, PrintAttributes.Builder().build())
-            }
-        }
-        webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
-        return true
     }
 
     private fun shortcutManagerOrNull(): ShortcutManager? {
