@@ -295,6 +295,26 @@ class TodoColors {
         : const Color(0xFF3E3E3E);
   }
 
+  /// Resolves the floating button background and foreground colors for [list].
+  static ({Color background, Color foreground}) fabColorsFor(
+    TodoList list, {
+    Brightness brightness = Brightness.light,
+  }) {
+    final isDark = brightness == Brightness.dark;
+    final customPath = list.customBackgroundPath;
+    final photo = list.themePhoto;
+    final hasPhotoBg = customPath != null || photo != null;
+    final background = customPath != null
+        ? customPhotoFabBackgroundFor(brightness: brightness)
+        : photo != null
+        ? photoFabBackgroundFor(photo)
+        : fabBackgroundFor(list.themeColor, brightness: brightness);
+    final foreground = hasPhotoBg
+        ? (isDark ? Colors.black : Colors.white)
+        : fabForegroundFor(list.themeColor, brightness: brightness);
+    return (background: background, foreground: foreground);
+  }
+
   /// Exact photo FAB colors from mstodo.apk (`colors.xml` `image_*_fab_color`).
   static Color photoFabBackgroundFor(ListThemePhoto photo) {
     return switch (photo) {

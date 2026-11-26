@@ -96,10 +96,10 @@ class TasksViewFab extends StatelessWidget {
     final hideFab =
         mode != TasksViewMode.browsing ||
         currentList.smartType == SmartListType.completed;
-    final isDark = brightness == Brightness.dark;
-    final customPath = currentList.customBackgroundPath;
-    final photo = currentList.themePhoto;
-    final hasPhotoBg = customPath != null || photo != null;
+    final fabColors = TodoColors.fabColorsFor(
+      currentList,
+      brightness: brightness,
+    );
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 200),
@@ -114,22 +114,8 @@ class TasksViewFab extends StatelessWidget {
           : FloatingActionButton(
               key: const ValueKey('fab_visible'),
               onPressed: onPressed,
-              backgroundColor: customPath != null
-                  ? TodoColors.customPhotoFabBackgroundFor(
-                      brightness: brightness,
-                    )
-                  : photo != null
-                  ? TodoColors.photoFabBackgroundFor(photo)
-                  : TodoColors.fabBackgroundFor(
-                      currentList.themeColor,
-                      brightness: brightness,
-                    ),
-              foregroundColor: hasPhotoBg
-                  ? (isDark ? Colors.black : Colors.white)
-                  : TodoColors.fabForegroundFor(
-                      currentList.themeColor,
-                      brightness: brightness,
-                    ),
+              backgroundColor: fabColors.background,
+              foregroundColor: fabColors.foreground,
               tooltip: l10n.addTaskPlaceholder,
               child: const Icon(Icons.add),
             ),

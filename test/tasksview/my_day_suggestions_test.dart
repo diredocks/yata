@@ -1,0 +1,151 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:yata/data/todo_provider.dart';
+import 'package:yata/l10n/app_localizations.dart';
+import 'package:yata/models/task_item.dart';
+import 'package:yata/tasksview/my_day_suggestions.dart';
+import 'package:yata/tasksview/tasks_view_screen.dart';
+
+void main() {
+  test('computeMyDaySuggestions groups eligible tasks into local buckets', () {
+    final now = DateTime(2026, 11, 26, 10, 0);
+    final tasks = [
+      TaskItem(
+        id: 't_in_my_day',
+        listId: 'tasks',
+        title: 'Already in My Day',
+        isInMyDay: true,
+        myDayDate: now,
+        createdAt: now,
+      ),
+      TaskItem(
+        id: 't_completed',
+        listId: 'tasks',
+        title: 'Completed task',
+        isCompleted: true,
+        dueDate: now,
+        createdAt: now,
+      ),
+      TaskItem(
+        id: 't_today',
+        listId: 'tasks',
+        title: 'Due today',
+        dueDate: DateTime(2026, 11, 26),
+        createdAt: now,
+      ),
+      TaskItem(
+        id: 't_yesterday',
+        listId: 'tasks',
+        title: 'From yesterday',
+        myDayDate: DateTime(2026, 11, 25),
+        createdAt: now,
+      ),
+      TaskItem(
+        id: 't_overdue',
+        listId: 'tasks',
+        title: 'Overdue task',
+        dueDate: DateTime(2026, 11, 24),
+        createdAt: now,
+      ),
+      TaskItem(
+        id: 't_upcoming',
+        listId: 'tasks',
+        title: 'Upcoming task',
+        dueDate: DateTime(2026, 11, 28),
+        createdAt: now,
+      ),
+      TaskItem(
+        id: 't_recent',
+        listId: 'tasks',
+        title: 'Recently added',
+        createdAt: now,
+      ),
+    ];
+
+    final buckets = computeMyDaySuggestions(tasks, now: now);
+    expect(buckets.map((b) => b.type).toList(), [
+      SuggestionBucketType.today,
+      SuggestionBucketType.yesterday,
+      SuggestionBucketType.overdue,
+      SuggestionBucketType.upcoming,
+      SuggestionBucketType.recentlyAdded,
+    ]);
+    expect(buckets[0].tasks.single.id, 't_today');
+    expect(buckets[1].tasks.single.id, 't_yesterday');
+    expect(buckets[2].tasks.single.id, 't_overdue');
+    expect(buckets[3].tasks.single.id, 't_upcoming');
+    expect(buckets[4].tasks.single.id, 't_recent');
+  });
+
+  testWidgets('My Day suggestions button opens sheet and adds task to My Day', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'yata.accounts': '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+      'yata.active_account_id': 'test',
+    });
+    final prefs = await SharedPreferences.getInstance();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: TasksViewScreen(onOpenTask: (_) {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(TasksViewScreen)),
+    );
+    final notifier = container.read(todoProvider.notifier);
+    final state = container.read(todoProvider);
+    final suggested = TaskItem(
+      id: 'suggested_1',
+      listId: 'tasks',
+      title: 'Pick up groceries',
+      createdAt: DateTime.now(),
+    );
+    notifier.commit(state.copyWith(tasks: [suggested]));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('my_day_suggestions_button')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('my_day_suggestions_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Suggestions'), findsNWidgets(2));
+    expect(find.text('Recently added'), findsOneWidget);
+    expect(find.text('Pick up groceries'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('add_suggestion_suggested_1')));
+    await tester.pumpAndSettle();
+
+    expect(
+      container
+          .read(todoProvider)
+          .tasks
+          .singleWhere((t) => t.id == 'suggested_1')
+          .isInMyDay,
+      isTrue,
+    );
+    expect(find.text('No suggestions for today'), findsOneWidget);
+
+    // Non-My-Day list should not show the suggestions button.
+    await tester.tap(find.byTooltip('Done'));
+    await tester.pumpAndSettle();
+    notifier.selectList('tasks');
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('my_day_suggestions_button')),
+      findsNothing,
+    );
+  });
+}

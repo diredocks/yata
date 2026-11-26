@@ -18,6 +18,7 @@ import '../view/delayed_task_completion.dart';
 import 'completion_sound_service.dart';
 import 'list_actions_service.dart';
 import 'list_export_formatter.dart';
+import 'my_day_suggestions_sheet.dart';
 import 'renamelist/list_editor_dialog.dart';
 import 'richentry/task_entry_sheet.dart';
 import 'tasks_action_presenter.dart';
@@ -789,51 +790,74 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                 ),
                 body: SafeArea(
                   top: false,
-                  child: TasksViewScrollBody(
-                    l10n: l10n,
-                    state: state,
-                    currentList: currentList,
-                    listTitle: listTitle,
-                    subtitle: subtitle,
-                    headerFg: headerFg,
-                    backgroundColor: backgroundColor,
-                    accentColor: accentColor,
-                    activeTasksCount: active.length,
-                    showShortcut: showShortcut,
-                    isShortcutPinned: isShortcutPinned,
-                    showPrint: showPrint,
-                    isDark: isDark,
-                    isMicrosoft: isMicrosoft,
-                    mode: _mode,
-                    scrollOffset: _scrollOffset,
-                    scrollController: _scrollController,
-                    nestedScrollKey: _nestedScrollKey,
-                    overlayStyle: overlayStyle,
-                    hasBackButton: widget.onBackPressed != null,
-                    taskSlivers: taskSlivers,
-                    showEmptyState: showEmptyState,
-                    onBackPressed: widget.onBackPressed,
-                    onScrollToTop: _scrollToTop,
-                    onSelectMenuAction: (action) =>
-                        _handleMenuAction(action, state, currentList),
-                    onToggleSortDirection: () =>
-                        notifier.toggleListSortDirection(currentList.id),
-                    onClearSort: () => notifier.setListSortOption(
-                      currentList.id,
-                      TaskSortOption.defaultOrder,
-                    ),
-                    onOpenPlannedFilter: () => showPlannedFilterSheet(
-                      context: context,
-                      currentFilter: state.plannedDueDateFilter,
-                      onSelectFilter: notifier.setPlannedDueDateFilter,
-                    ),
-                    onScrollOffsetChanged: (offset) =>
-                        setState(() => _scrollOffset = offset),
-                    onScrollEnd: _snapHeaderIfNeeded,
-                    onPointerDown: (y) => _dragPointerStartY = y,
-                    onPointerMove: _handlePointerMove,
-                    onPointerEnd: _stopDragAutoScroll,
-                    onRefresh: () => ref.read(syncProvider.notifier).refresh(),
+                  child: Stack(
+                    children: [
+                      TasksViewScrollBody(
+                        l10n: l10n,
+                        state: state,
+                        currentList: currentList,
+                        listTitle: listTitle,
+                        subtitle: subtitle,
+                        headerFg: headerFg,
+                        backgroundColor: backgroundColor,
+                        accentColor: accentColor,
+                        activeTasksCount: active.length,
+                        showShortcut: showShortcut,
+                        isShortcutPinned: isShortcutPinned,
+                        showPrint: showPrint,
+                        isDark: isDark,
+                        isMicrosoft: isMicrosoft,
+                        mode: _mode,
+                        scrollOffset: _scrollOffset,
+                        scrollController: _scrollController,
+                        nestedScrollKey: _nestedScrollKey,
+                        overlayStyle: overlayStyle,
+                        hasBackButton: widget.onBackPressed != null,
+                        taskSlivers: taskSlivers,
+                        showEmptyState: showEmptyState,
+                        onBackPressed: widget.onBackPressed,
+                        onScrollToTop: _scrollToTop,
+                        onSelectMenuAction: (action) =>
+                            _handleMenuAction(action, state, currentList),
+                        onToggleSortDirection: () =>
+                            notifier.toggleListSortDirection(currentList.id),
+                        onClearSort: () => notifier.setListSortOption(
+                          currentList.id,
+                          TaskSortOption.defaultOrder,
+                        ),
+                        onOpenPlannedFilter: () => showPlannedFilterSheet(
+                          context: context,
+                          currentFilter: state.plannedDueDateFilter,
+                          onSelectFilter: notifier.setPlannedDueDateFilter,
+                        ),
+                        onScrollOffsetChanged: (offset) =>
+                            setState(() => _scrollOffset = offset),
+                        onScrollEnd: _snapHeaderIfNeeded,
+                        onPointerDown: (y) => _dragPointerStartY = y,
+                        onPointerMove: _handlePointerMove,
+                        onPointerEnd: _stopDragAutoScroll,
+                        onRefresh: () =>
+                            ref.read(syncProvider.notifier).refresh(),
+                      ),
+                      if (currentList.smartType == SmartListType.myDay &&
+                          _mode == TasksViewMode.browsing)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 26,
+                          child: Center(
+                            child: MyDaySuggestionsButton(
+                              currentList: currentList,
+                              label: l10n.suggestions,
+                              onPressed: () => showMyDaySuggestionsSheet(
+                                context: context,
+                                accentColor: accentColor,
+                                onOpenTask: widget.onOpenTask,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
                 floatingActionButton: TasksViewFab(
