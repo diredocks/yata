@@ -1,6 +1,7 @@
 package top.clickfling.yata.widget
 
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.work.CoroutineWorker
@@ -16,23 +17,30 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.FlutterCallbackInformation
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.TimeoutException
+
+private typealias KotlinResult<T> = kotlin.Result<T>
 
 class WidgetSyncWorker(
     appContext: Context,
     workerParams: WorkerParameters,
 ) : CoroutineWorker(appContext, workerParams) {
 
+    private data class CallbackHandles(
+        val dispatcherHandle: Long,
+        val callbackHandle: Long,
+    )
+
     override suspend fun doWork(): Result {
         val reason = inputData.getString(KEY_REASON) ?: ""
-        val dispatcherHandle = HomeWidgetPlugin.getDispatcherHandle(applicationContext)
-        val callbackHandle = HomeWidgetPlugin.getHandle(applicationContext)
-        if (dispatcherHandle == 0L || callbackHandle == 0L) {
-            Log.w(TAG, "Missing home_widget callback handles; skipping background sync")
+        val handles = resolveHandles().getOrElse { error ->
+            Log.w(TAG, error.message ?: "Missing home_widget callback handles; skipping sync")
             clearRefreshingIfNeeded()
             return Result.success()
         }
@@ -41,96 +49,114 @@ class WidgetSyncWorker(
         var engine: FlutterEngine? = null
 
         return try {
-            val uriString = "yata://widget/sync?reason=${android.net.Uri.encode(reason)}"
-            val initialized = withContext(Dispatchers.Main) {
-                val loader = FlutterInjector.instance().flutterLoader()
-                loader.startInitialization(applicationContext)
-                loader.ensureInitializationComplete(applicationContext, null)
-
-                val callbackInfo =
-                    FlutterCallbackInformation.lookupCallbackInformation(dispatcherHandle)
-                if (callbackInfo == null) {
-                    Log.w(
-                        TAG,
-                        "Failed to lookup FlutterCallbackInformation for handle=$dispatcherHandle",
-                    )
-                    return@withContext false
-                }
-
-                val createdEngine = FlutterEngine(applicationContext)
-                engine = createdEngine
-
-                val bgChannel = MethodChannel(
-                    createdEngine.dartExecutor.binaryMessenger,
-                    HOME_WIDGET_BG_CHANNEL,
-                )
-                bgChannel.setMethodCallHandler { call, result ->
-                    when (call.method) {
-                        "HomeWidget.backgroundInitialized" -> {
-                            bgChannel.invokeMethod(
-                                "",
-                                listOf(callbackHandle, uriString, callbackHandle),
-                            )
-                            result.success(null)
-                        }
-                        else -> result.notImplemented()
-                    }
-                }
-
-                val syncChannel = MethodChannel(
-                    createdEngine.dartExecutor.binaryMessenger,
-                    WidgetSyncChannel.CHANNEL_NAME,
-                )
-                syncChannel.setMethodCallHandler { call, result ->
-                    when (call.method) {
-                        WidgetSyncChannel.METHOD_BACKGROUND_SYNC_COMPLETED -> {
-                            result.success(null)
-                            syncCompleted.complete(Unit)
-                        }
-                        else -> result.notImplemented()
-                    }
-                }
-
-                val callback = DartExecutor.DartCallback(
-                    applicationContext.assets,
-                    loader.findAppBundlePath(),
-                    callbackInfo,
-                )
-                createdEngine.dartExecutor.executeDartCallback(callback)
-                true
-            }
-
-            if (!initialized) {
-                return Result.success()
-            }
-
-            val completed = withTimeoutOrNull(SYNC_TIMEOUT_MS) {
-                syncCompleted.await()
-            } != null
-
-            if (!completed) {
-                Log.w(TAG, "Widget background sync timed out after ${SYNC_TIMEOUT_MS}ms (reason=$reason)")
-                Result.failure()
-            } else {
-                Result.success()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Widget background sync failed (reason=$reason)", e)
-            Result.failure()
+            runSync(reason, handles, syncCompleted) { engine = it }.fold(
+                onSuccess = { Result.success() },
+                onFailure = { error ->
+                    Log.e(TAG, "Widget background sync failed (reason=$reason)", error)
+                    Result.failure()
+                },
+            )
         } finally {
             withContext(NonCancellable) {
-                val engineToDestroy = engine
-                if (engineToDestroy != null) {
-                    withContext(Dispatchers.Main) {
-                        try {
-                            engineToDestroy.destroy()
-                        } catch (e: Exception) {
-                            Log.w(TAG, "Error destroying background FlutterEngine", e)
-                        }
-                    }
-                }
+                destroyEngine(engine)
                 clearRefreshingIfNeeded()
             }
+        }
+    }
+
+    private fun resolveHandles(): KotlinResult<CallbackHandles> {
+        val dispatcher = HomeWidgetPlugin.getDispatcherHandle(applicationContext)
+        val callback = HomeWidgetPlugin.getHandle(applicationContext)
+        if (dispatcher == 0L || callback == 0L) {
+            return KotlinResult.failure(
+                IllegalStateException("Missing home_widget callback handles; skipping background sync"),
+            )
+        }
+        return KotlinResult.success(CallbackHandles(dispatcher, callback))
+    }
+
+    private suspend fun runSync(
+        reason: String,
+        handles: CallbackHandles,
+        syncCompleted: CompletableDeferred<Unit>,
+        onEngineCreated: (FlutterEngine) -> Unit,
+    ): KotlinResult<Unit> = runCatching {
+        val uriString = "yata://widget/sync?reason=${Uri.encode(reason)}"
+        val started = startEngineOnMain(handles, uriString, syncCompleted, onEngineCreated)
+        if (!started) {
+            Log.w(TAG, "Failed to lookup FlutterCallbackInformation for handle=${handles.dispatcherHandle}")
+            return KotlinResult.success(Unit)
+        }
+
+        val completed = withTimeoutOrNull(SYNC_TIMEOUT_MS) { syncCompleted.await() } != null
+        if (!completed) {
+            throw TimeoutException("Widget background sync timed out after ${SYNC_TIMEOUT_MS}ms")
+        }
+    }.onFailure { error ->
+        if (error is CancellationException) throw error
+    }
+
+    private suspend fun startEngineOnMain(
+        handles: CallbackHandles,
+        uriString: String,
+        syncCompleted: CompletableDeferred<Unit>,
+        onEngineCreated: (FlutterEngine) -> Unit,
+    ): Boolean = withContext(Dispatchers.Main) {
+        val loader = FlutterInjector.instance().flutterLoader()
+        loader.startInitialization(applicationContext)
+        loader.ensureInitializationComplete(applicationContext, null)
+
+        val callbackInfo =
+            FlutterCallbackInformation.lookupCallbackInformation(handles.dispatcherHandle)
+                ?: return@withContext false
+
+        val createdEngine = FlutterEngine(applicationContext)
+        onEngineCreated(createdEngine)
+        registerChannels(createdEngine, handles.callbackHandle, uriString, syncCompleted)
+
+        val callback = DartExecutor.DartCallback(
+            applicationContext.assets,
+            loader.findAppBundlePath(),
+            callbackInfo,
+        )
+        createdEngine.dartExecutor.executeDartCallback(callback)
+        true
+    }
+
+    private fun registerChannels(
+        engine: FlutterEngine,
+        callbackHandle: Long,
+        uriString: String,
+        syncCompleted: CompletableDeferred<Unit>,
+    ) {
+        val messenger = engine.dartExecutor.binaryMessenger
+
+        val bgChannel = MethodChannel(messenger, HOME_WIDGET_BG_CHANNEL)
+        bgChannel.setMethodCallHandler { call, result ->
+            if (call.method == "HomeWidget.backgroundInitialized") {
+                bgChannel.invokeMethod("", listOf(callbackHandle, uriString, callbackHandle))
+                result.success(null)
+            } else {
+                result.notImplemented()
+            }
+        }
+
+        val syncChannel = MethodChannel(messenger, WidgetSyncChannel.CHANNEL_NAME)
+        syncChannel.setMethodCallHandler { call, result ->
+            if (call.method == WidgetSyncChannel.METHOD_BACKGROUND_SYNC_COMPLETED) {
+                result.success(null)
+                syncCompleted.complete(Unit)
+            } else {
+                result.notImplemented()
+            }
+        }
+    }
+
+    private suspend fun destroyEngine(engine: FlutterEngine?) {
+        if (engine == null) return
+        withContext(Dispatchers.Main) {
+            runCatching { engine.destroy() }
+                .onFailure { Log.w(TAG, "Error destroying background FlutterEngine", it) }
         }
     }
 
