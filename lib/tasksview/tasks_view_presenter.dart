@@ -156,10 +156,15 @@ class TasksViewPresenter {
         fallbackNow: now,
       ),
     );
+    // Choosing not to keep completed tasks drops them from the copy entirely;
+    // remaining tasks and their steps keep their completion state.
+    final tasksToCopy = _state.tasks.where(
+      (t) => t.listId == listId && (keepCompleted || !t.isCompleted),
+    );
     var copyIndex = 0;
     final baseTaskOrder = now.toUtc();
     final copiedTasks = [
-      for (final task in _state.tasks.where((t) => t.listId == listId))
+      for (final task in tasksToCopy)
         task.copyWith(
           id: _store.nextId('task'),
           listId: newListId,
@@ -169,15 +174,9 @@ class TasksViewPresenter {
           changeKey: null,
           orderDateTime: baseTaskOrder.subtract(Duration(seconds: copyIndex++)),
           committedOrder: null,
-          isCompleted: keepCompleted ? task.isCompleted : false,
-          completedAt: keepCompleted ? task.completedAt?.toUtc() : null,
           steps: [
             for (final step in task.steps)
-              step.copyWith(
-                id: _store.nextId('step'),
-                remoteId: null,
-                isCompleted: keepCompleted ? step.isCompleted : false,
-              ),
+              step.copyWith(id: _store.nextId('step'), remoteId: null),
           ],
         ),
     ];

@@ -197,6 +197,70 @@ void main() {
     expect(state.activeCountForList(completedList), 0);
   });
 
+  test('duplicateList drops completed tasks when they are not kept', () async {
+    final container = await _createContainer();
+    addTearDown(container.dispose);
+
+    final homePresenter = container.read(homeViewPresenterProvider);
+    final tasksPresenter = container.read(tasksViewPresenterProvider);
+    final detailPresenter = container.read(detailViewPresenterProvider);
+
+    homePresenter.addList('Release', ListThemeColor.blue);
+    final listId = container.read(todoProvider).selectedListId;
+
+    tasksPresenter.addTask(title: 'Active');
+    tasksPresenter.addTask(title: 'Done');
+    tasksPresenter.addTask(title: 'Partial');
+
+    TaskItem taskByTitle(String title) => container
+        .read(todoProvider)
+        .tasks
+        .firstWhere((t) => t.title == title && t.listId == listId);
+
+    tasksPresenter.setTaskCompleted(taskByTitle('Done').id, completed: true);
+    detailPresenter.addStep(taskByTitle('Partial').id, 'Step A');
+    detailPresenter.toggleStepCompleted(
+      taskByTitle('Partial').id,
+      taskByTitle('Partial').steps.first.id,
+    );
+
+    // Keeping completed tasks copies them with their completion state.
+    tasksPresenter.duplicateList(listId, keepCompleted: true);
+    final keptList = container.read(todoProvider).selectedList;
+    final keptTasks = container.read(todoProvider).tasksForList(keptList);
+    expect(
+      keptTasks.map((t) => t.title),
+      containsAll(['Active', 'Done', 'Partial']),
+    );
+    final keptDone = keptTasks.firstWhere((t) => t.title == 'Done');
+    expect(keptDone.isCompleted, isTrue);
+    expect(keptDone.completedAt, isNotNull);
+
+    // Dropping completed tasks omits them entirely while leaving the other
+    // tasks and their step completion state untouched.
+    tasksPresenter.duplicateList(listId, keepCompleted: false);
+    final droppedList = container.read(todoProvider).selectedList;
+    final droppedTasks = container.read(todoProvider).tasksForList(droppedList);
+    expect(
+      droppedTasks.map((t) => t.title),
+      unorderedEquals(['Active', 'Partial']),
+    );
+    final droppedPartial = droppedTasks.firstWhere((t) => t.title == 'Partial');
+    expect(droppedPartial.isCompleted, isFalse);
+    expect(droppedPartial.steps.single.isCompleted, isTrue);
+
+    // The source list itself is untouched.
+    final sourceTasks = container
+        .read(todoProvider)
+        .tasksForList(
+          container.read(todoProvider).lists.firstWhere((l) => l.id == listId),
+        );
+    expect(
+      sourceTasks.map((t) => t.title),
+      unorderedEquals(['Active', 'Done', 'Partial']),
+    );
+  });
+
   test(
     'Steps promote/empty-rename, noteUpdatedAt guard, batchCopy & Search',
     () async {
