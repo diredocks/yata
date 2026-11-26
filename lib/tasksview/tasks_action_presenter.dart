@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/order_date_time.dart';
@@ -201,19 +203,13 @@ class TasksActionPresenter {
   }
 
   void batchDeleteTasks(Set<String> taskIds) {
-    final removedAttachments = <TaskAttachment>[
-      for (final task in _state.tasks)
-        if (taskIds.contains(task.id)) ...task.attachments,
-    ];
+    final removed = _state.tasks.where((t) => taskIds.contains(t.id)).toList();
     final updated = _state.tasks.where((t) => !taskIds.contains(t.id)).toList();
-    if (removedAttachments.isNotEmpty) {
+    unawaited(
       _ref
           .read(attachmentServiceProvider)
-          .deleteUnreferencedCaches(
-            removedAttachments,
-            remainingTasks: updated,
-          );
-    }
+          .deleteUnreferencedTaskCaches(removed, remainingTasks: updated),
+    );
     _commitTasks(
       updated,
       clearSelectedTaskId:

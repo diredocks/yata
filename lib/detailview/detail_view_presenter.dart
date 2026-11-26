@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -147,16 +149,13 @@ class DetailViewPresenter {
   }
 
   void deleteTask(String taskId) {
-    final removed = _state.tasks.firstWhereOrNull((t) => t.id == taskId);
+    final removed = _state.tasks.where((t) => t.id == taskId).toList();
     final updated = _state.tasks.where((t) => t.id != taskId).toList();
-    if (removed != null && removed.attachments.isNotEmpty) {
+    unawaited(
       _ref
           .read(attachmentServiceProvider)
-          .deleteUnreferencedCaches(
-            removed.attachments,
-            remainingTasks: updated,
-          );
-    }
+          .deleteUnreferencedTaskCaches(removed, remainingTasks: updated),
+    );
     _commitTasks(updated, clearSelectedTaskId: _state.selectedTaskId == taskId);
   }
 
@@ -195,9 +194,11 @@ class DetailViewPresenter {
       ),
     );
     if (removed != null) {
-      _ref.read(attachmentServiceProvider).deleteUnreferencedCaches([
-        removed,
-      ], remainingTasks: _state.tasks);
+      unawaited(
+        _ref.read(attachmentServiceProvider).deleteUnreferencedCaches([
+          removed,
+        ], remainingTasks: _state.tasks),
+      );
     }
   }
 
