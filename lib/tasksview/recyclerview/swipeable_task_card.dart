@@ -1,9 +1,8 @@
-import 'dart:math' as math;
-
 import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../theme/todo_theme.dart';
+import '../tasks_view_widgets.dart';
 
 /// Swipe-to-action wrapper matching `ep/a2.java` (`TouchHelperTaskViewItemCallback`)
 /// and `ep/o0.java` (`SwipeBackgroundHelper`):
@@ -40,7 +39,6 @@ class _SwipeableTaskCardState extends State<SwipeableTaskCard>
   static const double _swipeThreshold = 0.4;
   static const double _flingVelocityThreshold = 1100.0;
   static const double _flingMinRatio = 0.25;
-  static const double _minEdgeExclusion = 32.0;
   static const double _circleGrowthFactor = 3.0;
   static const Color _itemSwipedColor = Color(0x29000000);
   static const Duration _flingDuration = Duration(milliseconds: 180);
@@ -122,15 +120,7 @@ class _SwipeableTaskCardState extends State<SwipeableTaskCard>
   /// side-swipe back gestures are never hijacked by task card swiping.
   bool _shouldAcceptPointer(PointerEvent event) {
     if (!widget.enabled) return false;
-    final mediaQuery = MediaQuery.maybeOf(context);
-    if (mediaQuery == null) return true;
-    final screenWidth = mediaQuery.size.width;
-    if (screenWidth <= 0) return true;
-    final gestureInsets = mediaQuery.systemGestureInsets;
-    final leftEdge = math.max(_minEdgeExclusion, gestureInsets.left);
-    final rightEdge = math.max(_minEdgeExclusion, gestureInsets.right);
-    final x = event.position.dx;
-    return x > leftEdge && x < screenWidth - rightEdge;
+    return !isInScreenEdgeZone(context, event.position.dx);
   }
 
   void _handleDragStart(DragStartDetails details) {

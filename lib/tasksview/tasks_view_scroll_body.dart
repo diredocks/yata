@@ -123,7 +123,7 @@ class TasksViewScrollBody extends StatelessWidget {
       return scrollWithShadow;
     }
 
-    return RefreshIndicator(
+    return _EdgeSafeRefreshIndicator(
       edgeOffset: topPadding,
       notificationPredicate: _refreshNotificationPredicate,
       onRefresh: onRefresh,
@@ -244,6 +244,58 @@ class TasksViewScrollBody extends StatelessWidget {
             TasksRuledLinesSliver(isDark: isDark),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Wraps [RefreshIndicator] so drags starting in the left/right screen edge
+/// zones (e.g. mobile side-swipe back gestures with slight downward motion)
+/// do not pull out the refresh indicator.
+class _EdgeSafeRefreshIndicator extends StatefulWidget {
+  const _EdgeSafeRefreshIndicator({
+    required this.edgeOffset,
+    required this.notificationPredicate,
+    required this.onRefresh,
+    required this.color,
+    required this.backgroundColor,
+    required this.child,
+  });
+
+  final double edgeOffset;
+  final ScrollNotificationPredicate notificationPredicate;
+  final RefreshCallback onRefresh;
+  final Color color;
+  final Color backgroundColor;
+  final Widget child;
+
+  @override
+  State<_EdgeSafeRefreshIndicator> createState() =>
+      _EdgeSafeRefreshIndicatorState();
+}
+
+class _EdgeSafeRefreshIndicatorState extends State<_EdgeSafeRefreshIndicator> {
+  final Set<int> _edgePointers = <int>{};
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      edgeOffset: widget.edgeOffset,
+      notificationPredicate: (notification) =>
+          _edgePointers.isEmpty && widget.notificationPredicate(notification),
+      onRefresh: widget.onRefresh,
+      color: widget.color,
+      backgroundColor: widget.backgroundColor,
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (event) {
+          if (isInScreenEdgeZone(context, event.position.dx)) {
+            _edgePointers.add(event.pointer);
+          }
+        },
+        onPointerUp: (event) => _edgePointers.remove(event.pointer),
+        onPointerCancel: (event) => _edgePointers.remove(event.pointer),
+        child: widget.child,
       ),
     );
   }

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:material_ui/material_ui.dart';
 
 import '../l10n/app_localizations.dart';
@@ -5,6 +7,23 @@ import '../models/todo_list.dart';
 import '../theme/todo_theme.dart';
 import 'recyclerview/ruled_lines_painter.dart';
 import 'tasks_view_bars.dart';
+
+/// Returns whether [globalX] falls within the left/right screen edge zones
+/// reserved for mobile system back-swipe gestures.
+bool isInScreenEdgeZone(
+  BuildContext context,
+  double globalX, {
+  double minEdgeWidth = 32.0,
+}) {
+  final mediaQuery = MediaQuery.maybeOf(context);
+  if (mediaQuery == null) return false;
+  final screenWidth = mediaQuery.size.width;
+  if (screenWidth <= 0) return false;
+  final gestureInsets = mediaQuery.systemGestureInsets;
+  final leftEdge = math.max(minEdgeWidth, gestureInsets.left);
+  final rightEdge = math.max(minEdgeWidth, gestureInsets.right);
+  return globalX <= leftEdge || globalX >= screenWidth - rightEdge;
+}
 
 /// Animated photo or color backdrop for [TasksViewScreen].
 class TasksViewBackground extends StatelessWidget {

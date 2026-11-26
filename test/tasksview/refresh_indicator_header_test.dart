@@ -113,4 +113,84 @@ void main() {
       await tester.pumpAndSettle();
     },
   );
+
+  testWidgets(
+    'Pulling down from left or right screen edge does not trigger RefreshIndicator',
+    (WidgetTester tester) async {
+      final account = Account.microsoft(
+        id: 'acct_ms',
+        displayName: 'MS User',
+        email: 'ms@example.com',
+        createdAt: DateTime.utc(2026, 1, 1),
+        microsoftUserId: 'cid1',
+      );
+      SharedPreferences.setMockInitialValues({
+        'yata.accounts': jsonEncode([account.toJson()]),
+        'yata.active_account_id': 'acct_ms',
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            microsoftAuthClientProvider.overrideWithValue(FakeAuthClient()),
+            microsoftTodoApiProvider.overrideWithValue(FakeSubstrateApi()),
+          ],
+          child: const YataApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Tasks'));
+      await tester.pumpAndSettle();
+
+      final refreshIndicator = find.byType(RefreshIndicator);
+      expect(refreshIndicator, findsOneWidget);
+
+      // Drag diagonally down from the left edge (x = 16) -> must NOT pull out RefreshIndicator.
+      final leftEdgeGesture = await tester.startGesture(const Offset(16, 300));
+      await leftEdgeGesture.moveBy(const Offset(60, 200));
+      await tester.pump();
+
+      final sizeTransitionLeft = find.descendant(
+        of: refreshIndicator,
+        matching: find.byType(SizeTransition),
+      );
+      if (sizeTransitionLeft.evaluate().isNotEmpty) {
+        expect(
+          tester.widget<SizeTransition>(sizeTransitionLeft).sizeFactor.value,
+          0.0,
+        );
+      }
+      await leftEdgeGesture.up();
+      await tester.pumpAndSettle();
+
+      // Drag diagonally down from the right edge (x = 384) -> must NOT pull out RefreshIndicator.
+      final rightEdgeGesture = await tester.startGesture(
+        const Offset(384, 300),
+      );
+      await rightEdgeGesture.moveBy(const Offset(-60, 200));
+      await tester.pump();
+
+      final sizeTransitionRight = find.descendant(
+        of: refreshIndicator,
+        matching: find.byType(SizeTransition),
+      );
+      if (sizeTransitionRight.evaluate().isNotEmpty) {
+        expect(
+          tester.widget<SizeTransition>(sizeTransitionRight).sizeFactor.value,
+          0.0,
+        );
+      }
+      await rightEdgeGesture.up();
+      await tester.pumpAndSettle();
+    },
+  );
 }
