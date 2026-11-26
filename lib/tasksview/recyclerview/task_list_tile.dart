@@ -115,7 +115,7 @@ class TaskListTile extends StatelessWidget {
           children: [
             _MetaItem(
               icon: Icons.calendar_today_outlined,
-              label: formatRelativeDate(context, task.dueDate!),
+              label: formatRelativeDate(l10n, task.dueDate!),
               color: dueColor,
             ),
             if (task.hasRecurrence) ...[

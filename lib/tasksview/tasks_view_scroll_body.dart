@@ -22,6 +22,9 @@ class TasksViewScrollBody extends StatelessWidget {
     required this.backgroundColor,
     required this.accentColor,
     required this.activeTasksCount,
+    required this.showShortcut,
+    required this.isShortcutPinned,
+    required this.showPrint,
     required this.isDark,
     required this.isMicrosoft,
     required this.mode,
@@ -54,6 +57,9 @@ class TasksViewScrollBody extends StatelessWidget {
   final Color backgroundColor;
   final Color accentColor;
   final int activeTasksCount;
+  final bool showShortcut;
+  final bool isShortcutPinned;
+  final bool showPrint;
   final bool isDark;
   final bool isMicrosoft;
   final TasksViewMode mode;
@@ -166,6 +172,9 @@ class TasksViewScrollBody extends StatelessWidget {
               headerFg: headerFg,
               backgroundColor: backgroundColor,
               activeTasksCount: activeTasksCount,
+              showShortcut: showShortcut,
+              isShortcutPinned: isShortcutPinned,
+              showPrint: showPrint,
               isDark: isDark,
               overlayStyle: overlayStyle,
               onBackPressed: onBackPressed,

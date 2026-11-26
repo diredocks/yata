@@ -2,12 +2,14 @@ package top.clickfling.yata
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import top.clickfling.yata.actions.ListActionsChannel
 import top.clickfling.yata.font.SystemFontChannel
 import top.clickfling.yata.notification.NotificationSettingsChannel
 import top.clickfling.yata.widget.WidgetSyncChannel
 import top.clickfling.yata.window.WindowFocusChannel
 
 class MainActivity : FlutterActivity() {
+    private var listActionsChannel: ListActionsChannel? = null
     private var systemFontChannel: SystemFontChannel? = null
     private var notificationSettingsChannel: NotificationSettingsChannel? = null
     private var windowFocusChannel: WindowFocusChannel? = null
@@ -16,6 +18,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         detachChannels()
+        listActionsChannel = ListActionsChannel(this).also { it.attach(flutterEngine) }
         systemFontChannel = SystemFontChannel().also { it.attach(flutterEngine) }
         notificationSettingsChannel =
             NotificationSettingsChannel(this).also { it.attach(flutterEngine) }
@@ -39,6 +42,8 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun detachChannels() {
+        listActionsChannel?.detach()
+        listActionsChannel = null
         systemFontChannel?.detach()
         systemFontChannel = null
         notificationSettingsChannel?.detach()

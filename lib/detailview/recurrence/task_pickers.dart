@@ -9,17 +9,23 @@ import '../../sync/microsoft/substrate_time_codecs.dart';
 
 /// Formats a date relative to today (`Today`, `Tomorrow`, `Yesterday`, or `MMMd`/`yMMMd`),
 /// matching `yp.r.D` in `mstodo.apk`.
-String formatRelativeDate(BuildContext context, DateTime date) {
-  final l10n = AppLocalizations.of(context);
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
+String formatRelativeDate(
+  AppLocalizations l10n,
+  DateTime date, {
+  DateTime? now,
+  String? locale,
+}) {
+  final current = (now ?? DateTime.now()).toLocal();
+  final today = DateTime(current.year, current.month, current.day);
   final target = DateTime(date.year, date.month, date.day);
   final diff = target.difference(today).inDays;
   if (diff == 0) return l10n.today;
   if (diff == 1) return l10n.tomorrow;
   if (diff == -1) return l10n.yesterday;
-  if (date.year != now.year) return DateFormat.yMMMd().format(date);
-  return DateFormat.MMMd().format(date);
+  if (date.year != current.year) {
+    return DateFormat.yMMMd(locale).format(date);
+  }
+  return DateFormat.MMMd(locale).format(date);
 }
 
 /// Formats a reminder timestamp as `Remind me at <time>` (plus relative date if not today).
@@ -35,7 +41,7 @@ String formatReminderLabel(BuildContext context, DateTime reminderAt) {
   if (isToday) {
     return l10n.remindMeAt(timeStr);
   }
-  return '${l10n.remindMeAt(timeStr)}, ${formatRelativeDate(context, localReminder)}';
+  return '${l10n.remindMeAt(timeStr)}, ${formatRelativeDate(l10n, localReminder)}';
 }
 
 String _formatRelativeTimestampLabel(

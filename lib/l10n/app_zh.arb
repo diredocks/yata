@@ -233,5 +233,15 @@
   "repeatEveryIntervalOnDays": "每 {interval} {unit}的 {days}",
   "labelWithHint": "{label} ({hint})",
   "dateRangeShort": "{startDay} - {endDay} {month}",
-  "weekdayTimeHint": "{weekday} {time}"
+  "weekdayTimeHint": "{weekday} {time}",
+  "sendCopy": "发送副本",
+  "printList": "打印此列表",
+  "addShortcut": "将快捷方式添加到主屏幕",
+  "updateShortcut": "更新主屏幕快捷方式",
+  "copiedToClipboard": "已将列表复制到剪贴板",
+  "shortcutAdded": "已将快捷方式添加到主屏幕",
+  "shortcutUpdated": "主屏幕快捷方式已更新",
+  "printedWithApp": "使用 {appName} 打印",
+  "printError": "无法打印列表",
+  "shareError": "无法分享列表"
 }

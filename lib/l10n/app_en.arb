@@ -408,5 +408,22 @@
         "type": "String"
       }
     }
-  }
+  },
+  "sendCopy": "Send a copy",
+  "printList": "Print list",
+  "addShortcut": "Add shortcut to homescreen",
+  "updateShortcut": "Update homescreen shortcut",
+  "copiedToClipboard": "Copied list to clipboard",
+  "shortcutAdded": "Shortcut added to homescreen",
+  "shortcutUpdated": "Homescreen shortcut updated",
+  "printedWithApp": "Printed with {appName}",
+  "@printedWithApp": {
+    "placeholders": {
+      "appName": {
+        "type": "String"
+      }
+    }
+  },
+  "printError": "Unable to print list",
+  "shareError": "Unable to share list"
 }

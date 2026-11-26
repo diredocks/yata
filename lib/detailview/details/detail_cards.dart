@@ -113,7 +113,7 @@ class TaskSchedulingCardView extends StatelessWidget {
                 ? (task.isOverdue ? TodoColors.overdueRed : accent)
                 : secondaryText,
             label: task.dueDate != null
-                ? l10n.dueOn(formatRelativeDate(context, task.dueDate!))
+                ? l10n.dueOn(formatRelativeDate(l10n, task.dueDate!))
                 : l10n.addDueDate,
             labelColor: task.dueDate != null
                 ? (task.isOverdue ? TodoColors.overdueRed : accent)

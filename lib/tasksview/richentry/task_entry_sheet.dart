@@ -352,7 +352,7 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
                     label: Text(
                       _dueDate == null
                           ? l10n.addDueDate
-                          : l10n.dueOn(formatRelativeDate(context, _dueDate!)),
+                          : l10n.dueOn(formatRelativeDate(l10n, _dueDate!)),
                     ),
                     selected: _dueDate != null,
                     showCheckmark: false,

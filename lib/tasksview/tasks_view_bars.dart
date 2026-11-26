@@ -15,8 +15,11 @@ enum ListMenuAction {
   sort,
   groupBy,
   reorder,
+  addShortcut,
   changeTheme,
+  sendCopy,
   duplicate,
+  printList,
   delete,
 }
 
@@ -51,8 +54,11 @@ bool supportsTaskReordering(TodoList list, int activeTasksCount) {
 List<PopupMenuEntry<ListMenuAction>> buildListMenuItems(
   AppLocalizations l10n,
   TodoList list,
-  int activeTasksCount,
-) {
+  int activeTasksCount, {
+  required bool showShortcut,
+  required bool isShortcutPinned,
+  required bool showPrint,
+}) {
   final isCustom = !list.isSmartList;
   final supportsSort =
       isCustom ||
@@ -88,17 +94,35 @@ List<PopupMenuEntry<ListMenuAction>> buildListMenuItems(
         icon: Icons.reorder,
         label: l10n.reorderTasks,
       ),
+    if (showShortcut)
+      buildTasksPopupMenuItem(
+        value: ListMenuAction.addShortcut,
+        icon: Icons.add_to_home_screen_outlined,
+        label: isShortcutPinned ? l10n.updateShortcut : l10n.addShortcut,
+      ),
     buildTasksPopupMenuItem(
       value: ListMenuAction.changeTheme,
       icon: Icons.palette_outlined,
       label: l10n.changeTheme,
     ),
-    if (isCustom) ...[
+    buildTasksPopupMenuItem(
+      value: ListMenuAction.sendCopy,
+      icon: Icons.share_outlined,
+      label: l10n.sendCopy,
+    ),
+    if (isCustom)
       buildTasksPopupMenuItem(
         value: ListMenuAction.duplicate,
         icon: Icons.copy_outlined,
         label: l10n.duplicateList,
       ),
+    if (showPrint)
+      buildTasksPopupMenuItem(
+        value: ListMenuAction.printList,
+        icon: Icons.print_outlined,
+        label: l10n.printList,
+      ),
+    if (isCustom) ...[
       const PopupMenuDivider(),
       buildTasksPopupMenuItem(
         value: ListMenuAction.delete,
@@ -241,6 +265,9 @@ class TasksSliverAppBar extends StatelessWidget {
     required this.headerFg,
     required this.backgroundColor,
     required this.activeTasksCount,
+    required this.showShortcut,
+    required this.isShortcutPinned,
+    required this.showPrint,
     required this.isDark,
     required this.overlayStyle,
     required this.onBackPressed,
@@ -255,6 +282,9 @@ class TasksSliverAppBar extends StatelessWidget {
   final Color headerFg;
   final Color backgroundColor;
   final int activeTasksCount;
+  final bool showShortcut;
+  final bool isShortcutPinned;
+  final bool showPrint;
   final bool isDark;
   final SystemUiOverlayStyle overlayStyle;
   final VoidCallback? onBackPressed;
@@ -283,8 +313,14 @@ class TasksSliverAppBar extends StatelessWidget {
           icon: Icon(Icons.more_vert, color: headerFg),
           tooltip: l10n.moreOptions,
           onSelected: onSelectMenuAction,
-          itemBuilder: (_) =>
-              buildListMenuItems(l10n, currentList, activeTasksCount),
+          itemBuilder: (_) => buildListMenuItems(
+            l10n,
+            currentList,
+            activeTasksCount,
+            showShortcut: showShortcut,
+            isShortcutPinned: isShortcutPinned,
+            showPrint: showPrint,
+          ),
         ),
       ],
       flexibleSpace: GestureDetector(
