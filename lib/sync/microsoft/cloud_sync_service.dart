@@ -177,7 +177,8 @@ class CloudSyncService {
     ),
   );
 
-  /// Pulls remote state according to [kind] without running a Push pass.
+  /// Pulls remote changes as a stateless patch and applies them against the
+  /// latest live local state using monotonic outbox sequence numbers.
   AsyncAppResult<SyncOutcome> pullAccount({
     required MicrosoftAccount account,
     required TodoState currentState,
@@ -187,26 +188,24 @@ class CloudSyncService {
     TodoState Function()? readLatestState,
     SyncKind kind = SyncKind.delta,
     String reason = 'pull',
-    PullSyncBarrier? barrier,
+    bool Function()? isCancelled,
+    int? pruneProtectSinceSeq,
   }) => _runWithAuthRetry<SyncOutcome>(
     account: account,
     settings: settings,
     operation: 'pullPhase',
-    run: (ctx) {
-      final state = readLatestState?.call() ?? currentState;
-      return _executePull(
-        ctx: ctx,
-        workingGroups: state.groups,
-        workingLists: state.lists,
-        workingTasks: state.tasks,
-        repository: repository,
-        settings: settings,
-        idGenerator: idGenerator,
-        kind: kind,
-        reason: reason,
-        barrier: barrier,
-      );
-    },
+    run: (ctx) => _executePull(
+      ctx: ctx,
+      fallbackState: currentState,
+      readLatestState: readLatestState,
+      repository: repository,
+      settings: settings,
+      idGenerator: idGenerator,
+      kind: kind,
+      reason: reason,
+      isCancelled: isCancelled,
+      pruneProtectSinceSeq: pruneProtectSinceSeq,
+    ),
   );
 
   /// Runs a combined sync pass: Push Outbox -> commit pushed IDs -> Pull.
@@ -248,10 +247,13 @@ class CloudSyncService {
     required SyncKind kind,
     required String reason,
   }) async {
+    final outbox = repository.outbox;
+    final pruneProtectSinceSeq = outbox.lastSeq;
+
     _log.info(
       'start reason=$reason kind=${kind.name} '
       'localLists=${currentState.lists.length} localTasks=${currentState.tasks.length} '
-      'outboxOps=${repository.outbox.ops.length}',
+      'outboxOps=${outbox.ops.length}',
     );
 
     final pushOutcome = await _executePush(
@@ -264,39 +266,36 @@ class CloudSyncService {
       reason: reason,
     );
 
-    final List<ListGroup> workingGroups;
-    final List<TodoList> workingLists;
-    final List<TaskItem> workingTasks;
+    final TodoState fallbackState;
     if (onPushCommitted != null) {
-      final latest = readLatestState?.call() ?? currentState;
-      workingGroups = latest.groups;
-      workingLists = latest.lists;
-      workingTasks = latest.tasks;
+      fallbackState = readLatestState?.call() ?? currentState;
     } else {
-      workingGroups = [
-        for (final g in currentState.groups)
-          pushOutcome.pushedGroups[g.id] ?? g,
-      ];
-      workingLists = [
-        for (final l in currentState.lists) pushOutcome.pushedLists[l.id] ?? l,
-      ];
-      workingTasks = [
-        for (final t in currentState.tasks) pushOutcome.pushedTasks[t.id] ?? t,
-      ];
+      fallbackState = currentState.copyWith(
+        groups: [
+          for (final g in currentState.groups)
+            pushOutcome.pushedGroups[g.id] ?? g,
+        ],
+        lists: [
+          for (final l in currentState.lists)
+            pushOutcome.pushedLists[l.id] ?? l,
+        ],
+        tasks: [
+          for (final t in currentState.tasks)
+            pushOutcome.pushedTasks[t.id] ?? t,
+        ],
+      );
     }
 
-    final barrier = PullSyncBarrier()..recordPrePullPush(pushOutcome);
     return _executePull(
       ctx: ctx,
-      workingGroups: workingGroups,
-      workingLists: workingLists,
-      workingTasks: workingTasks,
+      fallbackState: fallbackState,
+      readLatestState: onPushCommitted != null ? readLatestState : null,
       repository: repository,
       settings: settings,
       idGenerator: idGenerator,
       kind: kind,
       reason: reason,
-      barrier: barrier,
+      pruneProtectSinceSeq: pruneProtectSinceSeq,
       pushedTasksCount: pushOutcome.pushedTasks.length,
     );
   }
@@ -349,89 +348,71 @@ class CloudSyncService {
 
   Future<SyncOutcome> _executePull({
     required SubstrateRequestContext ctx,
-    required List<ListGroup> workingGroups,
-    required List<TodoList> workingLists,
-    required List<TaskItem> workingTasks,
+    required TodoState fallbackState,
+    required TodoState Function()? readLatestState,
     required TodoRepository repository,
     required TodoSettingsStore settings,
     required String Function(String prefix) idGenerator,
     required SyncKind kind,
     required String reason,
-    PullSyncBarrier? barrier,
+    bool Function()? isCancelled,
+    int? pruneProtectSinceSeq,
     int pushedTasksCount = 0,
   }) async {
     final outbox = repository.outbox;
+    final pullStartSeq = outbox.lastSeq;
+    final effectivePruneSeq = pruneProtectSinceSeq ?? pullStartSeq;
+    final startState = readLatestState?.call() ?? fallbackState;
+
     _log.info(
       'pull start reason=$reason kind=${kind.name} '
-      'localLists=${workingLists.length} localTasks=${workingTasks.length}',
+      'localLists=${startState.lists.length} localTasks=${startState.tasks.length}',
     );
 
+    final knownFolderRemoteIds = <String>{
+      for (final l in startState.lists)
+        if (l.remoteId != null) l.remoteId!,
+    };
+
     try {
-      switch (kind) {
-        case SyncKind.pushOnly:
-          final mergedTasks = await _pullEngine.pullSelectiveFolders(
-            ctx: ctx,
-            settings: settings,
-            workingLists: workingLists,
-            workingTasks: workingTasks,
-            outbox: outbox,
-            idGenerator: idGenerator,
-            barrier: barrier,
-          );
-          return SyncOutcome(
-            groups: workingGroups,
-            lists: workingLists,
-            tasks: mergedTasks,
-            pushedTasksCount: pushedTasksCount,
-            syncedAt: DateTime.now().toUtc(),
-          );
+      final patch = await _pullEngine.fetchPatch(
+        ctx: ctx,
+        settings: settings,
+        knownFolderRemoteIds: knownFolderRemoteIds,
+        forceFullSync: kind == SyncKind.full,
+        isSelective: kind == SyncKind.pushOnly,
+        isCancelled: isCancelled,
+      );
 
-        case SyncKind.delta:
-          final pulled = await _pullEngine.pullDelta(
-            ctx: ctx,
-            settings: settings,
-            workingGroups: workingGroups,
-            workingLists: workingLists,
-            workingTasks: workingTasks,
-            outbox: outbox,
-            idGenerator: idGenerator,
-            barrier: barrier,
-          );
-          return SyncOutcome(
-            groups: pulled.groups,
-            lists: pulled.lists,
-            tasks: pulled.tasks,
-            settingsPatch: pulled.settingsPatch,
-            pushedTasksCount: pushedTasksCount,
-            syncedAt: DateTime.now().toUtc(),
-          );
+      // Reconcile once against the latest live state (not startState).
+      final liveState = readLatestState?.call() ?? fallbackState;
+      final applied = await _pullEngine.applyPatch(
+        patch: patch,
+        settings: settings,
+        liveGroups: liveState.groups,
+        liveLists: liveState.lists,
+        liveTasks: liveState.tasks,
+        outbox: outbox,
+        idGenerator: idGenerator,
+        pullStartSeq: pullStartSeq,
+        pruneProtectSinceSeq: effectivePruneSeq,
+      );
 
-        case SyncKind.full:
-          final pulled = await _pullEngine.pullFull(
-            ctx: ctx,
-            settings: settings,
-            workingGroups: workingGroups,
-            workingLists: workingLists,
-            workingTasks: workingTasks,
-            outbox: outbox,
-            idGenerator: idGenerator,
-            barrier: barrier,
-          );
-          return SyncOutcome(
-            groups: pulled.groups,
-            lists: pulled.lists,
-            tasks: pulled.tasks,
-            settingsPatch: pulled.settingsPatch,
-            pushedTasksCount: pushedTasksCount,
-            syncedAt: DateTime.now().toUtc(),
-          );
-      }
+      return SyncOutcome(
+        groups: applied.groups,
+        lists: applied.lists,
+        tasks: applied.tasks,
+        settingsPatch: applied.settingsPatch,
+        pushedTasksCount: pushedTasksCount,
+        syncedAt: DateTime.now().toUtc(),
+      );
     } on SyncCancelledException {
       _log.info('pull cancelled reason=$reason kind=${kind.name}');
+      final liveState = readLatestState?.call() ?? fallbackState;
       return SyncOutcome(
-        groups: workingGroups,
-        lists: workingLists,
-        tasks: workingTasks,
+        groups: liveState.groups,
+        lists: liveState.lists,
+        tasks: liveState.tasks,
         pushedTasksCount: pushedTasksCount,
         syncedAt: DateTime.now().toUtc(),
         cancelled: true,

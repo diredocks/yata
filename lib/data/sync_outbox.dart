@@ -105,11 +105,14 @@ class SyncOutboxQueue {
 
   final List<SyncOutboxOp> _ops = [];
   final Map<String, String> _remoteIdByKey = {};
+  final Map<String, int> _ackedEntitySeq = {};
+  final Map<String, int> _deletedRemoteSeq = {};
   int _lastSeq = 0;
   int _inFlightUpToSeq = 0;
 
   bool get isEmpty => _ops.isEmpty;
   bool get isNotEmpty => _ops.isNotEmpty;
+  int get lastSeq => _lastSeq;
   List<SyncOutboxOp> get ops => List<SyncOutboxOp>.unmodifiable(_ops);
   Map<String, String> get remoteIdMap =>
       Map<String, String>.unmodifiable(_remoteIdByKey);
@@ -145,9 +148,21 @@ class SyncOutboxQueue {
     _inFlightUpToSeq = 0;
   }
 
-  /// Acknowledges a single completed operation [seq].
+  /// Acknowledges a single completed operation [seq], recording a monotonic
+  /// commit sequence for concurrent pull reconciliation and delete tombstones.
   void ackOp(int seq) {
-    _ops.removeWhere((op) => op.seq == seq);
+    final idx = _ops.indexWhere((op) => op.seq == seq);
+    if (idx < 0) return;
+    final op = _ops.removeAt(idx);
+    final commitSeq = _nextSeq();
+    _ackedEntitySeq[op.key] = commitSeq;
+    if (op.kind == SyncOpKind.delete) {
+      final remoteId =
+          op.remoteId ?? resolveRemoteId(op.entityType, op.localId);
+      if (remoteId != null) {
+        _deletedRemoteSeq[remoteKey(op.entityType, remoteId)] = commitSeq;
+      }
+    }
   }
 
   /// Enqueues an upsert, coalescing with any pending (non-in-flight) upsert
@@ -301,6 +316,28 @@ class SyncOutboxQueue {
         (op.remoteId ?? resolveRemoteId(type, op.localId))!,
   };
 
+  /// Local IDs with pending ops or acknowledged commits strictly after [sinceSeq].
+  Set<String> modifiedLocalIdsSince(SyncEntityType type, int sinceSeq) {
+    final prefix = '${type.name}::';
+    return {
+      ...pendingLocalIds(type),
+      for (final entry in _ackedEntitySeq.entries)
+        if (entry.value > sinceSeq && entry.key.startsWith(prefix))
+          entry.key.substring(prefix.length),
+    };
+  }
+
+  /// Remote IDs with pending deletes or acknowledged deletes strictly after [sinceSeq].
+  Set<String> deletedRemoteIdsSince(SyncEntityType type, int sinceSeq) {
+    final prefix = '${type.name}::';
+    return {
+      ...pendingDeletedRemoteIds(type),
+      for (final entry in _deletedRemoteSeq.entries)
+        if (entry.value > sinceSeq && entry.key.startsWith(prefix))
+          entry.key.substring(prefix.length),
+    };
+  }
+
   Set<GroupDirtyField>? pendingGroupFields(String localId) {
     final fields = <GroupDirtyField>{};
     for (final op in _ops) {
@@ -371,6 +408,8 @@ class SyncOutboxQueue {
   void clear() {
     _ops.clear();
     _remoteIdByKey.clear();
+    _ackedEntitySeq.clear();
+    _deletedRemoteSeq.clear();
     _lastSeq = 0;
     _inFlightUpToSeq = 0;
   }
