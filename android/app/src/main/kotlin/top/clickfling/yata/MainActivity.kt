@@ -26,6 +26,16 @@ class MainActivity : FlutterActivity() {
         widgetSyncChannel = WidgetSyncChannel().also { it.attach(flutterEngine) }
     }
 
+    override fun onResume() {
+        super.onResume()
+        widgetSyncChannel?.setForeground(true)
+    }
+
+    override fun onPause() {
+        widgetSyncChannel?.setForeground(false)
+        super.onPause()
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         windowFocusChannel?.notifyWindowFocusChanged(hasFocus)

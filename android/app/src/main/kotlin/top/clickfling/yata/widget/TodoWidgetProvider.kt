@@ -11,7 +11,6 @@ import android.net.Uri
 import android.os.Build
 import android.view.View
 import android.widget.RemoteViews
-import es.antonborri.home_widget.HomeWidgetBackgroundReceiver
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
 import es.antonborri.home_widget.HomeWidgetPlugin
 import es.antonborri.home_widget.HomeWidgetProvider
@@ -51,6 +50,9 @@ class TodoWidgetProvider : HomeWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         if (intent.action == ACTION_WIDGET_REFRESH) {
+            if (!canDispatchSync(context)) {
+                return
+            }
             TodoWidgetData.markRefreshRequested(context)
             refreshAllWidgets(context, notifyList = false)
             dispatchSync(context, "refresh")
@@ -100,14 +102,15 @@ class TodoWidgetProvider : HomeWidgetProvider() {
         }
     }
 
+    private fun canDispatchSync(context: Context): Boolean {
+        return WidgetSyncChannel.canDispatch() ||
+            HomeWidgetPlugin.getDispatcherHandle(context) != 0L
+    }
+
     private fun dispatchSync(context: Context, reason: String) {
         if (WidgetSyncChannel.dispatchIfAttached(reason)) return
         if (HomeWidgetPlugin.getDispatcherHandle(context) == 0L) return
-        val bgIntent = Intent(context, HomeWidgetBackgroundReceiver::class.java).apply {
-            action = "es.antonborri.home_widget.action.BACKGROUND"
-            data = Uri.parse("yata://widget/sync?reason=${Uri.encode(reason)}")
-        }
-        HomeWidgetBackgroundReceiver().onReceive(context, bgIntent)
+        WidgetSyncWorker.enqueue(context, reason)
     }
 
     private fun startActivityForWidget(context: Context, intent: Intent) {

@@ -284,5 +284,6 @@ Future<void> homeWidgetBackgroundCallback(Uri? uri) async {
   } finally {
     container?.dispose();
     await database.close();
+    await FlutterHomeWidgetTransport.notifyBackgroundSyncCompleted(reason);
   }
 }
