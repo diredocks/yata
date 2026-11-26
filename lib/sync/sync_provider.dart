@@ -10,6 +10,7 @@ import '../data/sync_outbox.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
 import 'microsoft/cloud_sync_service.dart';
+import 'microsoft/substrate_pull_engine.dart';
 import 'microsoft/substrate_push_engine.dart';
 import 'realtime_sync_controller.dart';
 import 'sync_guard.dart';
@@ -83,10 +84,47 @@ class _SyncCommand {
   }
 }
 
-class _PullCancelToken {
-  bool cancelled = false;
+/// Coalescing timer with a bounded maximum postponement cap.
+class _CoalescingDebouncer {
+  _CoalescingDebouncer(this.maxCoalesceDelay);
+
+  final Duration maxCoalesceDelay;
+  Timer? _timer;
+  DateTime? _startedAt;
+  DateTime? _deadline;
+
+  bool get isActive => _timer != null && _timer!.isActive;
+
+  Duration schedule(Duration delay, void Function() onFire) {
+    final now = DateTime.now();
+    final isPending = _deadline != null && _deadline!.isAfter(now);
+    final DateTime fireAt;
+    if (isPending && _startedAt != null) {
+      final cap = _startedAt!.add(
+        delay > maxCoalesceDelay ? delay : maxCoalesceDelay,
+      );
+      final extended = now.add(delay);
+      fireAt = extended.isAfter(cap) ? cap : extended;
+    } else {
+      _startedAt = now;
+      fireAt = now.add(delay);
+    }
+
+    _timer?.cancel();
+    _deadline = fireAt;
+    final fireIn = fireAt.difference(now);
+    _timer = Timer(fireIn, () {
+      cancel();
+      onFire();
+    });
+    return fireIn;
+  }
+
   void cancel() {
-    cancelled = true;
+    _timer?.cancel();
+    _timer = null;
+    _startedAt = null;
+    _deadline = null;
   }
 }
 
@@ -100,14 +138,10 @@ class SyncNotifier extends Notifier<SyncState> {
   static const _foregroundDebounceDuration = Duration(milliseconds: 500);
   static const _periodicSyncInterval = Duration(seconds: 120);
 
-  Timer? _pushDebounceTimer;
-  DateTime? _pushDebounceStartedAt;
-  DateTime? _pushDebounceDeadline;
+  final _pushDebouncer = _CoalescingDebouncer(_maxCoalesceDelay);
   String? _pendingPushReason;
 
-  Timer? _pullDebounceTimer;
-  DateTime? _pullDebounceStartedAt;
-  DateTime? _pullDebounceDeadline;
+  final _pullDebouncer = _CoalescingDebouncer(_maxCoalesceDelay);
   SyncKind? _pendingPullKind;
   String _pendingPullReason = SyncReason.debounced.label;
 
@@ -122,23 +156,8 @@ class SyncNotifier extends Notifier<SyncState> {
 
   Future<void>? _activePull;
   _SyncCommand? _queuedPullCommand;
-  _PullCancelToken? _pullCancelToken;
-
-  /// Tombstones and pushed IDs recorded while [_activePull] is in flight so a
-  /// concurrent Push cannot cause stale Pull snapshots to resurrect deleted
-  /// items or overwrite newly pushed items.
-  final Set<String> _pullTombstoneGroupRemoteIds = <String>{};
-  final Set<String> _pullTombstoneListRemoteIds = <String>{};
-  final Set<String> _pullTombstoneTaskRemoteIds = <String>{};
-  final Set<String> _pullJustPushedGroupIds = <String>{};
-  final Set<String> _pullJustPushedListIds = <String>{};
-  final Set<String> _pullJustPushedTaskIds = <String>{};
-  final Set<String> _pullConcurrentPushedGroupIds = <String>{};
-  final Set<String> _pullConcurrentPushedListIds = <String>{};
-  final Set<String> _pullConcurrentPushedTaskIds = <String>{};
-  final Set<String> _pendingPullJustPushedGroupIds = <String>{};
-  final Set<String> _pendingPullJustPushedListIds = <String>{};
-  final Set<String> _pendingPullJustPushedTaskIds = <String>{};
+  PullSyncBarrier? _activePullBarrier;
+  PullSyncBarrier? _pendingPrePullBarrier;
 
   bool get _hasActiveSync => _activePush != null || _activePull != null;
 
@@ -198,7 +217,8 @@ class SyncNotifier extends Notifier<SyncState> {
       _cancelPullDebounce();
       _queuedPushReason = null;
       _queuedPullCommand = null;
-      _pullCancelToken?.cancel();
+      _activePullBarrier?.cancel();
+      _pendingPrePullBarrier = null;
       return const SyncState();
     }
 
@@ -222,25 +242,20 @@ class SyncNotifier extends Notifier<SyncState> {
     _cancelPullDebounce();
     _queuedPushReason = null;
     _queuedPullCommand = null;
-    _pullCancelToken?.cancel();
+    _activePullBarrier?.cancel();
+    _pendingPrePullBarrier = null;
     _stopPeriodicSync();
     _realtimeController?.dispose();
     _realtimeController = null;
   }
 
   void _cancelPushDebounce() {
-    _pushDebounceTimer?.cancel();
-    _pushDebounceTimer = null;
-    _pushDebounceStartedAt = null;
-    _pushDebounceDeadline = null;
+    _pushDebouncer.cancel();
     _pendingPushReason = null;
   }
 
   void _cancelPullDebounce() {
-    _pullDebounceTimer?.cancel();
-    _pullDebounceTimer = null;
-    _pullDebounceStartedAt = null;
-    _pullDebounceDeadline = null;
+    _pullDebouncer.cancel();
     _pendingPullKind = null;
     _pendingPullReason = SyncReason.debounced.label;
   }
@@ -271,15 +286,13 @@ class SyncNotifier extends Notifier<SyncState> {
 
     if (_activePull != null) {
       _log.info('onAppPaused: cancelling in-flight pull to prioritize push');
-      _pullCancelToken?.cancel();
+      _activePullBarrier?.cancel();
       _queuedPullCommand = null;
     }
     _cancelPullDebounce();
 
     final pendingPushReason = _pendingPushReason;
-    if (pendingPushReason != null &&
-        _pushDebounceTimer != null &&
-        _pushDebounceTimer!.isActive) {
+    if (pendingPushReason != null && _pushDebouncer.isActive) {
       _cancelPushDebounce();
       _log.info(
         'onAppPaused: flushing pending push reason=$pendingPushReason',
@@ -357,34 +370,12 @@ class SyncNotifier extends Notifier<SyncState> {
       _pendingPullReason = reason;
     }
 
-    final now = DateTime.now();
-    final startedAt = _pullDebounceStartedAt;
-    final deadline = _pullDebounceDeadline;
-    final isPending = deadline != null && deadline.isAfter(now);
-    final DateTime fireAt;
-    if (isPending && startedAt != null) {
-      final cap = startedAt.add(
-        delay > _maxCoalesceDelay ? delay : _maxCoalesceDelay,
-      );
-      final extended = now.add(delay);
-      fireAt = extended.isAfter(cap) ? cap : extended;
-    } else {
-      _pullDebounceStartedAt = now;
-      fireAt = now.add(delay);
-    }
-    _log.info(
-      'scheduleDebouncedSync reason=$_pendingPullReason kind=${merged.name} '
-      'delay=${delay.inMilliseconds}ms '
-      'fireIn=${fireAt.difference(now).inMilliseconds}ms',
-    );
-
-    _pullDebounceTimer?.cancel();
-    _pullDebounceDeadline = fireAt;
-    _pullDebounceTimer = Timer(fireAt.difference(now), () {
+    final fireIn = _pullDebouncer.schedule(delay, () {
       if (_disposed) return;
       final pendingKind = _pendingPullKind ?? SyncKind.delta;
       final pendingReason = _pendingPullReason;
-      _cancelPullDebounce();
+      _pendingPullKind = null;
+      _pendingPullReason = SyncReason.debounced.label;
       unawaited(
         syncNow(
           forceFullSync: pendingKind == SyncKind.full,
@@ -392,6 +383,10 @@ class SyncNotifier extends Notifier<SyncState> {
         ),
       );
     });
+    _log.info(
+      'scheduleDebouncedSync reason=$_pendingPullReason kind=${merged.name} '
+      'delay=${delay.inMilliseconds}ms fireIn=${fireIn.inMilliseconds}ms',
+    );
   }
 
   /// Schedules an independent local Outbox push pass (never blocked by pulls).
@@ -403,36 +398,16 @@ class SyncNotifier extends Notifier<SyncState> {
     if (_disposed || active is! MicrosoftAccount) return;
 
     _pendingPushReason ??= reason;
-
-    final now = DateTime.now();
-    final startedAt = _pushDebounceStartedAt;
-    final deadline = _pushDebounceDeadline;
-    final isPending = deadline != null && deadline.isAfter(now);
-    final DateTime fireAt;
-    if (isPending && startedAt != null) {
-      final cap = startedAt.add(
-        delay > _maxCoalesceDelay ? delay : _maxCoalesceDelay,
-      );
-      final extended = now.add(delay);
-      fireAt = extended.isAfter(cap) ? cap : extended;
-    } else {
-      _pushDebounceStartedAt = now;
-      fireAt = now.add(delay);
-    }
-    _log.info(
-      'scheduleDebouncedSync reason=$reason kind=${SyncKind.pushOnly.name} '
-      'delay=${delay.inMilliseconds}ms '
-      'fireIn=${fireAt.difference(now).inMilliseconds}ms',
-    );
-
-    _pushDebounceTimer?.cancel();
-    _pushDebounceDeadline = fireAt;
-    _pushDebounceTimer = Timer(fireAt.difference(now), () {
+    final fireIn = _pushDebouncer.schedule(delay, () {
       if (_disposed) return;
       final pendingReason = _pendingPushReason ?? SyncReason.localMutation.label;
-      _cancelPushDebounce();
+      _pendingPushReason = null;
       unawaited(_pushNow(reason: pendingReason));
     });
+    _log.info(
+      'scheduleDebouncedSync reason=$reason kind=${SyncKind.pushOnly.name} '
+      'delay=${delay.inMilliseconds}ms fireIn=${fireIn.inMilliseconds}ms',
+    );
   }
 
   /// Runs a push (if any outbox ops are pending) followed by a pull of [kind],
@@ -450,10 +425,12 @@ class SyncNotifier extends Notifier<SyncState> {
         ref.read(todoProvider.notifier).repository.outbox.isNotEmpty;
 
     if (hasOutbox && _activePull == null) {
+      final prePullBarrier = PullSyncBarrier();
+      _pendingPrePullBarrier = prePullBarrier;
       await _pushNow(
         reason: reason,
         enqueueFollowUpPull: false,
-        recordForNextPull: true,
+        prePullBarrier: prePullBarrier,
       );
       if (_disposed) return;
     } else if (hasOutbox) {
@@ -466,7 +443,7 @@ class SyncNotifier extends Notifier<SyncState> {
   Future<void> _pushNow({
     String reason = 'local_mutation',
     bool enqueueFollowUpPull = true,
-    bool recordForNextPull = false,
+    PullSyncBarrier? prePullBarrier,
   }) {
     if (_disposed) return Future<void>.value();
     final active = ref.read(accountProvider).activeAccount;
@@ -486,7 +463,7 @@ class SyncNotifier extends Notifier<SyncState> {
         await _runPushLoop(
           reason,
           enqueueFollowUpPull: enqueueFollowUpPull,
-          recordForNextPull: recordForNextPull,
+          prePullBarrier: prePullBarrier,
         );
       } finally {
         if (!completer.isCompleted) completer.complete();
@@ -526,7 +503,7 @@ class SyncNotifier extends Notifier<SyncState> {
   Future<void> _runPushLoop(
     String initialReason, {
     bool enqueueFollowUpPull = true,
-    bool recordForNextPull = false,
+    PullSyncBarrier? prePullBarrier,
   }) async {
     state = state.copyWith(status: SyncStatus.syncing, error: null);
     String? nextReason = initialReason;
@@ -539,7 +516,7 @@ class SyncNotifier extends Notifier<SyncState> {
         nextReason = null;
         final outcome = await _pushOnce(
           reason: currentReason,
-          recordForNextPull: recordForNextPull,
+          prePullBarrier: prePullBarrier,
         );
         if (outcome != null) {
           lastSucceeded = true;
@@ -585,7 +562,7 @@ class SyncNotifier extends Notifier<SyncState> {
 
   Future<OutboxPushOutcome?> _pushOnce({
     required String reason,
-    bool recordForNextPull = false,
+    PullSyncBarrier? prePullBarrier,
   }) async {
     final active = ref.read(accountProvider).activeAccount;
     if (_disposed || active is! MicrosoftAccount) return null;
@@ -607,22 +584,11 @@ class SyncNotifier extends Notifier<SyncState> {
             ref.read(accountProvider).activeAccount?.id != active.id) {
           return;
         }
-        if (_activePull != null) {
-          _pullTombstoneGroupRemoteIds.addAll(
-            pushOutcome.deletedGroupRemoteIds,
-          );
-          _pullTombstoneListRemoteIds.addAll(pushOutcome.deletedListRemoteIds);
-          _pullTombstoneTaskRemoteIds.addAll(pushOutcome.deletedTaskRemoteIds);
-          _pullJustPushedGroupIds.addAll(pushOutcome.pushedGroups.keys);
-          _pullJustPushedListIds.addAll(pushOutcome.pushedLists.keys);
-          _pullJustPushedTaskIds.addAll(pushOutcome.pushedTasks.keys);
-          _pullConcurrentPushedGroupIds.addAll(pushOutcome.pushedGroups.keys);
-          _pullConcurrentPushedListIds.addAll(pushOutcome.pushedLists.keys);
-          _pullConcurrentPushedTaskIds.addAll(pushOutcome.pushedTasks.keys);
-        } else if (recordForNextPull) {
-          _pendingPullJustPushedGroupIds.addAll(pushOutcome.pushedGroups.keys);
-          _pendingPullJustPushedListIds.addAll(pushOutcome.pushedLists.keys);
-          _pendingPullJustPushedTaskIds.addAll(pushOutcome.pushedTasks.keys);
+        final activeBarrier = _activePullBarrier;
+        if (activeBarrier != null) {
+          activeBarrier.recordConcurrentPush(pushOutcome);
+        } else if (prePullBarrier != null) {
+          prePullBarrier.recordPrePullPush(pushOutcome);
         }
         await todoNotifier.commitPushBatch(
           ackedSeqs: pushOutcome.ackedSeqs,
@@ -668,25 +634,12 @@ class SyncNotifier extends Notifier<SyncState> {
       }
     } finally {
       _queuedPullCommand = null;
-      _pullCancelToken = null;
+      _activePullBarrier = null;
       _activePull = null;
-      _clearPullBarriers();
     }
     if (!_disposed && !_hasActiveSync) {
       await _drainRealtimeIfReady();
     }
-  }
-
-  void _clearPullBarriers() {
-    _pullTombstoneGroupRemoteIds.clear();
-    _pullTombstoneListRemoteIds.clear();
-    _pullTombstoneTaskRemoteIds.clear();
-    _pullJustPushedGroupIds.clear();
-    _pullJustPushedListIds.clear();
-    _pullJustPushedTaskIds.clear();
-    _pullConcurrentPushedGroupIds.clear();
-    _pullConcurrentPushedListIds.clear();
-    _pullConcurrentPushedTaskIds.clear();
   }
 
   Future<bool> _pullOnce({
@@ -697,21 +650,9 @@ class SyncNotifier extends Notifier<SyncState> {
     if (_disposed || active is! MicrosoftAccount) return false;
 
     final forceFullSync = kind == SyncKind.full;
-    _clearPullBarriers();
-    if (_pendingPullJustPushedGroupIds.isNotEmpty) {
-      _pullJustPushedGroupIds.addAll(_pendingPullJustPushedGroupIds);
-      _pendingPullJustPushedGroupIds.clear();
-    }
-    if (_pendingPullJustPushedListIds.isNotEmpty) {
-      _pullJustPushedListIds.addAll(_pendingPullJustPushedListIds);
-      _pendingPullJustPushedListIds.clear();
-    }
-    if (_pendingPullJustPushedTaskIds.isNotEmpty) {
-      _pullJustPushedTaskIds.addAll(_pendingPullJustPushedTaskIds);
-      _pendingPullJustPushedTaskIds.clear();
-    }
-    final cancelToken = _PullCancelToken();
-    _pullCancelToken = cancelToken;
+    final barrier = _pendingPrePullBarrier ?? PullSyncBarrier();
+    _pendingPrePullBarrier = null;
+    _activePullBarrier = barrier;
 
     _log.info(
       'sync start account=${active.id} reason=$reason '
@@ -731,16 +672,7 @@ class SyncNotifier extends Notifier<SyncState> {
       readLatestState: () => ref.read(todoProvider),
       kind: kind,
       reason: reason,
-      isCancelled: () => _disposed || cancelToken.cancelled,
-      readExtraDeletedGroupRemoteIds: () =>
-          Set<String>.of(_pullTombstoneGroupRemoteIds),
-      readExtraDeletedListRemoteIds: () =>
-          Set<String>.of(_pullTombstoneListRemoteIds),
-      readExtraDeletedTaskRemoteIds: () =>
-          Set<String>.of(_pullTombstoneTaskRemoteIds),
-      readJustPushedGroupIds: () => Set<String>.of(_pullJustPushedGroupIds),
-      readJustPushedListIds: () => Set<String>.of(_pullJustPushedListIds),
-      readJustPushedTaskIds: () => Set<String>.of(_pullJustPushedTaskIds),
+      barrier: barrier,
     );
 
     if (_disposed) return false;
@@ -766,9 +698,14 @@ class SyncNotifier extends Notifier<SyncState> {
             lists: kind == SyncKind.pushOnly ? null : outcome.lists,
             tasks: outcome.tasks,
             settingsPatch: outcome.settingsPatch,
-            protectedGroupIds: Set<String>.of(_pullConcurrentPushedGroupIds),
-            protectedListIds: Set<String>.of(_pullConcurrentPushedListIds),
-            protectedTaskIds: Set<String>.of(_pullConcurrentPushedTaskIds),
+            protectedGroupIds: Set<String>.of(barrier.concurrentPushedGroupIds),
+            protectedListIds: Set<String>.of(barrier.concurrentPushedListIds),
+            protectedTaskIds: Set<String>.of(barrier.concurrentPushedTaskIds),
+            excludedDeletedGroupIds: Set<String>.of(
+              barrier.deletedGroupLocalIds,
+            ),
+            excludedDeletedListIds: Set<String>.of(barrier.deletedListLocalIds),
+            excludedDeletedTaskIds: Set<String>.of(barrier.deletedTaskLocalIds),
           );
         }
         await ref
