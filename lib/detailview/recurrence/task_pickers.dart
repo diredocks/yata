@@ -247,7 +247,12 @@ Future<DateTime?> showReminderPickerSheet(
   final today = DateTime(now.year, now.month, now.day);
   final showLaterToday = now.hour < 20 || (now.hour == 20 && now.minute <= 29);
   final baseHour = now.hour + (now.minute >= 29 ? 1 : 0) + 3;
-  final laterTodayLocal = DateTime(today.year, today.month, today.day, baseHour);
+  final laterTodayLocal = DateTime(
+    today.year,
+    today.month,
+    today.day,
+    baseHour,
+  );
   final tmr = today.add(const Duration(days: 1));
   final tomorrowLocal = DateTime(tmr.year, tmr.month, tmr.day, 9);
   final nextWeekDate = computeNextWeekDate(today, startOfWeek);
@@ -355,10 +360,7 @@ Future<DateTime?> showReminderPickerSheet(
 enum CustomRecurrenceUnit { days, weeks, months, years }
 
 class RecurrencePickResult {
-  const RecurrencePickResult({
-    required this.recurrence,
-    this.rawRecurrence,
-  });
+  const RecurrencePickResult({required this.recurrence, this.rawRecurrence});
 
   final RecurrenceType recurrence;
   final Map<String, dynamic>? rawRecurrence;
@@ -382,11 +384,7 @@ Set<int> _parseWeekDays(Map<String, dynamic>? raw) {
   return result;
 }
 
-String _unitLabel(
-  AppLocalizations l10n,
-  CustomRecurrenceUnit unit,
-  int count,
-) {
+String _unitLabel(AppLocalizations l10n, CustomRecurrenceUnit unit, int count) {
   return switch (unit) {
     CustomRecurrenceUnit.days => l10n.repeatDaysUnit(count),
     CustomRecurrenceUnit.weeks => l10n.repeatWeeksUnit(count),
@@ -419,8 +417,7 @@ String formatRecurrenceLabel(
         : 1;
     final weekDays = _parseWeekDays(rawRecurrence);
     const monToFri = {1, 2, 3, 4, 5};
-    final isMonToFri =
-        weekDays.length == 5 && weekDays.containsAll(monToFri);
+    final isMonToFri = weekDays.length == 5 && weekDays.containsAll(monToFri);
     final isCustom =
         rawType == 'custom' ||
         interval > 1 ||
@@ -435,9 +432,7 @@ String formatRecurrenceLabel(
         _ => null,
       };
       if (unit != null) {
-        if (interval == 1 &&
-            unit == CustomRecurrenceUnit.weeks &&
-            isMonToFri) {
+        if (interval == 1 && unit == CustomRecurrenceUnit.weeks && isMonToFri) {
           return l10n.repeatWeekdays;
         }
         final unitStr = _unitLabel(l10n, unit, interval);
@@ -685,9 +680,13 @@ class _CustomRecurrenceDialogState extends State<_CustomRecurrenceDialog> {
     _selectedDays = <int>{
       if (initialDays.isNotEmpty)
         ...initialDays
-      else if (widget.initialRecurrence == RecurrenceType.weekdays)
-        ...const [1, 2, 3, 4, 5]
-      else
+      else if (widget.initialRecurrence == RecurrenceType.weekdays) ...const [
+        1,
+        2,
+        3,
+        4,
+        5,
+      ] else
         (widget.dueDate ?? DateTime.now()).weekday,
     };
   }

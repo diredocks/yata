@@ -69,66 +69,71 @@ void main() {
     return (container.decoration as BoxDecoration?)?.color;
   }
 
-  testWidgets('TasksSortBanner uses dark translucent surface in dark mode even for light theme colors', (
-    WidgetTester tester,
-  ) async {
-    final lightThemes = ListThemeColor.values.where(TodoColors.isLightTheme);
-    for (final color in lightThemes) {
+  testWidgets(
+    'TasksSortBanner uses dark translucent surface in dark mode even for light theme colors',
+    (WidgetTester tester) async {
+      final lightThemes = ListThemeColor.values.where(TodoColors.isLightTheme);
+      for (final color in lightThemes) {
+        final bgColor = await pumpSortBannerAndGetBgColor(
+          tester,
+          brightness: Brightness.dark,
+          list: buildList(themeColor: color),
+        );
+        expect(
+          bgColor,
+          Colors.white.withValues(alpha: 0.10),
+          reason:
+              'Dark mode with $color should not use light-mode white 0.72 background',
+        );
+      }
+    },
+  );
+
+  testWidgets(
+    'TasksSortBanner uses dark translucent surface in dark mode for saturated theme colors',
+    (WidgetTester tester) async {
       final bgColor = await pumpSortBannerAndGetBgColor(
         tester,
         brightness: Brightness.dark,
-        list: buildList(themeColor: color),
+        list: buildList(themeColor: ListThemeColor.blue),
       );
-      expect(
-        bgColor,
-        Colors.white.withValues(alpha: 0.10),
-        reason: 'Dark mode with $color should not use light-mode white 0.72 background',
-      );
-    }
-  });
+      expect(bgColor, Colors.white.withValues(alpha: 0.10));
+    },
+  );
 
-  testWidgets('TasksSortBanner uses dark translucent surface in dark mode for saturated theme colors', (
-    WidgetTester tester,
-  ) async {
-    final bgColor = await pumpSortBannerAndGetBgColor(
-      tester,
-      brightness: Brightness.dark,
-      list: buildList(themeColor: ListThemeColor.blue),
-    );
-    expect(bgColor, Colors.white.withValues(alpha: 0.10));
-  });
+  testWidgets(
+    'TasksSortBanner uses dark scrim for photo themes in both light and dark modes',
+    (WidgetTester tester) async {
+      for (final brightness in [Brightness.light, Brightness.dark]) {
+        final bgColor = await pumpSortBannerAndGetBgColor(
+          tester,
+          brightness: brightness,
+          list: buildList(
+            themeColor: ListThemeColor.lightBlue,
+            themePhoto: ListThemePhoto.beach,
+          ),
+        );
+        expect(bgColor, Colors.black.withValues(alpha: 0.35));
+      }
+    },
+  );
 
-  testWidgets('TasksSortBanner uses dark scrim for photo themes in both light and dark modes', (
-    WidgetTester tester,
-  ) async {
-    for (final brightness in [Brightness.light, Brightness.dark]) {
-      final bgColor = await pumpSortBannerAndGetBgColor(
+  testWidgets(
+    'TasksSortBanner keeps light-mode background colors for solid color themes',
+    (WidgetTester tester) async {
+      final lightBg = await pumpSortBannerAndGetBgColor(
         tester,
-        brightness: brightness,
-        list: buildList(
-          themeColor: ListThemeColor.lightBlue,
-          themePhoto: ListThemePhoto.beach,
-        ),
+        brightness: Brightness.light,
+        list: buildList(themeColor: ListThemeColor.lightBlue),
       );
-      expect(bgColor, Colors.black.withValues(alpha: 0.35));
-    }
-  });
+      expect(lightBg, Colors.white.withValues(alpha: 0.72));
 
-  testWidgets('TasksSortBanner keeps light-mode background colors for solid color themes', (
-    WidgetTester tester,
-  ) async {
-    final lightBg = await pumpSortBannerAndGetBgColor(
-      tester,
-      brightness: Brightness.light,
-      list: buildList(themeColor: ListThemeColor.lightBlue),
-    );
-    expect(lightBg, Colors.white.withValues(alpha: 0.72));
-
-    final saturatedBg = await pumpSortBannerAndGetBgColor(
-      tester,
-      brightness: Brightness.light,
-      list: buildList(themeColor: ListThemeColor.blue),
-    );
-    expect(saturatedBg, Colors.black.withValues(alpha: 0.25));
-  });
+      final saturatedBg = await pumpSortBannerAndGetBgColor(
+        tester,
+        brightness: Brightness.light,
+        list: buildList(themeColor: ListThemeColor.blue),
+      );
+      expect(saturatedBg, Colors.black.withValues(alpha: 0.25));
+    },
+  );
 }
