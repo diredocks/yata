@@ -263,10 +263,7 @@ class SyncNotifier extends Notifier<SyncState> {
 
     if (accountChanged) {
       unawaited(
-        syncNow(
-          forceFullSync: true,
-          reason: SyncReason.accountChanged.label,
-        ),
+        syncNow(forceFullSync: true, reason: SyncReason.accountChanged.label),
       );
       return;
     }

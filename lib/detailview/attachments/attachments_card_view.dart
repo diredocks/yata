@@ -213,10 +213,7 @@ class _AttachmentLeadingBadge extends StatelessWidget {
       content = SizedBox(
         width: 18,
         height: 18,
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          color: accentColor,
-        ),
+        child: CircularProgressIndicator(strokeWidth: 2, color: accentColor),
       );
     } else if (attachment.isLinkOnly) {
       content = Icon(Icons.open_in_new, size: 20, color: accentColor);

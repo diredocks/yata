@@ -110,9 +110,7 @@ RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
       );
     }
     preserveStepsWhenMissing = !payloadMap.containsKey('Subtasks');
-    preserveAttachmentsWhenMissing = !payloadMap.containsKey(
-      'LinkedEntities',
-    );
+    preserveAttachmentsWhenMissing = !payloadMap.containsKey('LinkedEntities');
   }
 
   if (pendingDeletedTaskRemoteIds.contains(remote.id)) {

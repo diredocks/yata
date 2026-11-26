@@ -84,80 +84,83 @@ void main() {
   });
 
   group('AttachmentService', () {
-    test('enforces 25 MB cumulative per-task limit and stages/opens files', () async {
-      final tempDir = await Directory.systemTemp.createTemp('yata_att_test_');
-      addTearDown(() => tempDir.delete(recursive: true));
+    test(
+      'enforces 25 MB cumulative per-task limit and stages/opens files',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp('yata_att_test_');
+        addTearDown(() => tempDir.delete(recursive: true));
 
-      final sourceFile = File('${tempDir.path}/source.txt');
-      await sourceFile.writeAsBytes(Uint8List.fromList([1, 2, 3, 4, 5]));
+        final sourceFile = File('${tempDir.path}/source.txt');
+        await sourceFile.writeAsBytes(Uint8List.fromList([1, 2, 3, 4, 5]));
 
-      String? openedPath;
-      String? openedType;
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+        String? openedPath;
+        String? openedType;
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
 
-      // Build service directly with test overrides.
-      late AttachmentService service;
-      final overrideContainer = ProviderContainer(
-        overrides: [
-          attachmentServiceProvider.overrideWith((ref) {
-            service = AttachmentService(
-              ref,
-              storageRootProvider: () async => tempDir,
-              openFileFn: (path, {type}) async {
-                openedPath = path;
-                openedType = type;
-                return OpenResult(type: ResultType.done, message: 'done');
-              },
-            );
-            return service;
-          }),
-        ],
-      );
-      addTearDown(overrideContainer.dispose);
-      service = overrideContainer.read(attachmentServiceProvider);
+        // Build service directly with test overrides.
+        late AttachmentService service;
+        final overrideContainer = ProviderContainer(
+          overrides: [
+            attachmentServiceProvider.overrideWith((ref) {
+              service = AttachmentService(
+                ref,
+                storageRootProvider: () async => tempDir,
+                openFileFn: (path, {type}) async {
+                  openedPath = path;
+                  openedType = type;
+                  return OpenResult(type: ResultType.done, message: 'done');
+                },
+              );
+              return service;
+            }),
+          ],
+        );
+        addTearDown(overrideContainer.dispose);
+        service = overrideContainer.read(attachmentServiceProvider);
 
-      const existingAtt = TaskAttachment(
-        id: 'att-1',
-        displayName: 'big.bin',
-        size: kMaxTaskAttachmentTotalBytes - 10,
-      );
-      final task = TaskItem(
-        id: 't-1',
-        listId: 'l-1',
-        title: 'Test',
-        createdAt: DateTime.now().toUtc(),
-        attachments: const [existingAtt],
-      );
+        const existingAtt = TaskAttachment(
+          id: 'att-1',
+          displayName: 'big.bin',
+          size: kMaxTaskAttachmentTotalBytes - 10,
+        );
+        final task = TaskItem(
+          id: 't-1',
+          listId: 'l-1',
+          title: 'Test',
+          createdAt: DateTime.now().toUtc(),
+          attachments: const [existingAtt],
+        );
 
-      expect(service.exceedsTaskSizeLimit(task, 10), isFalse);
-      expect(service.exceedsTaskSizeLimit(task, 11), isTrue);
+        expect(service.exceedsTaskSizeLimit(task, 10), isFalse);
+        expect(service.exceedsTaskSizeLimit(task, 11), isTrue);
 
-      expect(
-        AttachmentService.sanitizeFileName('../../evil:name?.pdf'),
-        'evil_name_.pdf',
-      );
+        expect(
+          AttachmentService.sanitizeFileName('../../evil:name?.pdf'),
+          'evil_name_.pdf',
+        );
 
-      final staged = await service.stageLocalFile(
-        attachmentId: 'att-2',
-        sourcePath: sourceFile.path,
-        fileName: 'notes.txt',
-      );
-      expect(staged.size, 5);
-      expect(await File(staged.localPath).exists(), isTrue);
+        final staged = await service.stageLocalFile(
+          attachmentId: 'att-2',
+          sourcePath: sourceFile.path,
+          fileName: 'notes.txt',
+        );
+        expect(staged.size, 5);
+        expect(await File(staged.localPath).exists(), isTrue);
 
-      final openRes = await service.openAttachment(
-        TaskAttachment(
-          id: 'att-2',
-          displayName: 'notes.txt',
-          contentType: 'text/plain',
-          localPath: staged.localPath,
-        ),
-      );
-      expect(openRes.isSuccess(), isTrue);
-      expect(openedPath, staged.localPath);
-      expect(openedType, 'text/plain');
-    });
+        final openRes = await service.openAttachment(
+          TaskAttachment(
+            id: 'att-2',
+            displayName: 'notes.txt',
+            contentType: 'text/plain',
+            localPath: staged.localPath,
+          ),
+        );
+        expect(openRes.isSuccess(), isTrue);
+        expect(openedPath, staged.localPath);
+        expect(openedType, 'text/plain');
+      },
+    );
   });
 
   group('Attachment Outbox & Push Engine', () {
@@ -171,11 +174,7 @@ void main() {
 
       final api = FakeSubstrateApi();
       final outbox = SyncOutboxQueue();
-      final list = TodoList(
-        id: 'l-1',
-        title: 'Tasks',
-        remoteId: 'rf-1',
-      );
+      final list = TodoList(id: 'l-1', title: 'Tasks', remoteId: 'rf-1');
       final taskBefore = TaskItem(
         id: 't-1',
         listId: 'l-1',
@@ -233,10 +232,7 @@ void main() {
         nowUtc: DateTime.utc(2026, 11, 26),
       )).getOrThrow();
 
-      expect(
-        api.callLog,
-        contains('POST tasks/rt-1/attachments (hello.txt)'),
-      );
+      expect(api.callLog, contains('POST tasks/rt-1/attachments (hello.txt)'));
       final pushedTask = pushOutcome.pushedTasks['t-1']!;
       expect(pushedTask.attachments.single.remoteId, isNotNull);
       expect(pushedTask.attachments.single.isTransferring, isFalse);
@@ -284,68 +280,69 @@ void main() {
   });
 
   group('Attachments UI widgets', () {
-    testWidgets('AttachmentsCardView renders attachments, states, and callbacks', (
-      tester,
-    ) async {
-      var addTapped = false;
-      TaskAttachment? tappedAtt;
-      TaskAttachment? deletedAtt;
+    testWidgets(
+      'AttachmentsCardView renders attachments, states, and callbacks',
+      (tester) async {
+        var addTapped = false;
+        TaskAttachment? tappedAtt;
+        TaskAttachment? deletedAtt;
 
-      final task = TaskItem(
-        id: 't-1',
-        listId: 'l-1',
-        title: 'Task',
-        createdAt: DateTime.utc(2026, 11, 26),
-        attachments: const [
-          TaskAttachment(
-            id: 'att-1',
-            displayName: 'spec.pdf',
-            remoteId: 're-1',
-            size: 1024 * 1024,
-            localPath: '/tmp/spec.pdf',
-          ),
-          TaskAttachment(
-            id: 'att-2',
-            displayName: 'uploading.png',
-            size: 2048,
-            localPath: '/tmp/uploading.png',
-            isTransferring: true,
-          ),
-        ],
-      );
+        final task = TaskItem(
+          id: 't-1',
+          listId: 'l-1',
+          title: 'Task',
+          createdAt: DateTime.utc(2026, 11, 26),
+          attachments: const [
+            TaskAttachment(
+              id: 'att-1',
+              displayName: 'spec.pdf',
+              remoteId: 're-1',
+              size: 1024 * 1024,
+              localPath: '/tmp/spec.pdf',
+            ),
+            TaskAttachment(
+              id: 'att-2',
+              displayName: 'uploading.png',
+              size: 2048,
+              localPath: '/tmp/uploading.png',
+              isTransferring: true,
+            ),
+          ],
+        );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(
-            body: AttachmentsCardView(
-              task: task,
-              cardColor: Colors.white,
-              onAddAttachment: () => addTapped = true,
-              onTapAttachment: (a) => tappedAtt = a,
-              onDeleteAttachment: (a) => deletedAtt = a,
+        await tester.pumpWidget(
+          MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: AttachmentsCardView(
+                task: task,
+                cardColor: Colors.white,
+                onAddAttachment: () => addTapped = true,
+                onTapAttachment: (a) => tappedAtt = a,
+                onDeleteAttachment: (a) => deletedAtt = a,
+              ),
             ),
           ),
-        ),
-      );
+        );
 
-      expect(find.text('spec.pdf'), findsOneWidget);
-      expect(find.text('1.0 MB · PDF'), findsOneWidget);
-      expect(find.text('uploading.png'), findsOneWidget);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      // Only 1 close button (uploading local-only attachment hides delete button).
-      expect(find.byIcon(Icons.close), findsOneWidget);
+        expect(find.text('spec.pdf'), findsOneWidget);
+        expect(find.text('1.0 MB · PDF'), findsOneWidget);
+        expect(find.text('uploading.png'), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        // Only 1 close button (uploading local-only attachment hides delete button).
+        expect(find.byIcon(Icons.close), findsOneWidget);
 
-      await tester.tap(find.text('spec.pdf'));
-      expect(tappedAtt?.id, 'att-1');
+        await tester.tap(find.text('spec.pdf'));
+        expect(tappedAtt?.id, 'att-1');
 
-      await tester.tap(find.byIcon(Icons.close));
-      expect(deletedAtt?.id, 'att-1');
+        await tester.tap(find.byIcon(Icons.close));
+        expect(deletedAtt?.id, 'att-1');
 
-      await tester.tap(find.text('Add file'));
-      expect(addTapped, isTrue);
-    });
+        await tester.tap(find.text('Add file'));
+        expect(addTapped, isTrue);
+      },
+    );
 
     testWidgets('TaskListTile shows paperclip icon when task has attachments', (
       tester,

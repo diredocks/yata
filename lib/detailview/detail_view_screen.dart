@@ -172,9 +172,8 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
 
     final service = ref.read(attachmentServiceProvider);
     if (service.exceedsTaskSizeLimit(task, fileSize)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.attachmentTotalTooLarge)),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(l10n.attachmentTotalTooLarge)));
       return;
     }
 
@@ -210,9 +209,8 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
     if (attachment.isLinkOnly) {
       final res = await service.openAttachment(attachment);
       if (res.isError() && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.attachmentOpenError)),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(l10n.attachmentOpenError)));
       }
       return;
     }
@@ -223,9 +221,8 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
         await File(localPath).exists()) {
       final res = await service.openAttachment(attachment);
       if (res.isError() && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l10n.attachmentOpenError)),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(l10n.attachmentOpenError)));
       }
       return;
     }
@@ -242,9 +239,8 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
         task.id,
         attachment.copyWith(isTransferring: false),
       );
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.attachmentDownloadError)),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(l10n.attachmentDownloadError)));
       return;
     }
 
@@ -257,9 +253,8 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
 
     final openRes = await service.openAttachment(updatedAttachment);
     if (openRes.isError() && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.attachmentOpenError)),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(l10n.attachmentOpenError)));
     }
   }
 

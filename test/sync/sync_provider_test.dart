@@ -437,49 +437,40 @@ void main() {
       },
     );
 
-    test(
-      'syncOnSessionStart runs incremental delta sync first and then full sync when deltaLinks exist',
-      () async {
-        final fakeApi = FakeSubstrateApi()
-          ..onFetchGroupsDelta = ((dl) => DeltaPageResult(
-            items: const [],
-            deltaLink: dl ?? 'dl-groups-new',
-          ))
-          ..onFetchFoldersDelta = ((dl) => DeltaPageResult(
-            items: const [],
-            deltaLink: dl ?? 'dl-folders-new',
-          ))
-          ..onFetchTasksDelta = ((folderId, dl) => DeltaPageResult(
-            items: const [],
-            deltaLink: dl ?? 'dl-tasks-new',
-          ));
+    test('syncOnSessionStart runs incremental delta sync first and then full sync when deltaLinks exist', () async {
+      final fakeApi = FakeSubstrateApi()
+        ..onFetchGroupsDelta = ((dl) =>
+            DeltaPageResult(items: const [], deltaLink: dl ?? 'dl-groups-new'))
+        ..onFetchFoldersDelta = ((dl) =>
+            DeltaPageResult(items: const [], deltaLink: dl ?? 'dl-folders-new'))
+        ..onFetchTasksDelta = ((folderId, dl) =>
+            DeltaPageResult(items: const [], deltaLink: dl ?? 'dl-tasks-new'));
 
-        final h = await createSyncTestHarness(
-          accountId: 'acct_startup_delta',
-          lastSyncedAt: DateTime(2026, 11, 22, 12, 0),
-          api: fakeApi,
-          defaultTasksFolderRemoteId: 'rf-default',
-          groupsDeltaLink: 'dl-groups-saved',
-          foldersDeltaLink: 'dl-folders-saved',
-          taskDeltaLinks: const {'rf-default': 'dl-tasks-saved'},
-          startupSyncEnabled: true,
-        );
+      final h = await createSyncTestHarness(
+        accountId: 'acct_startup_delta',
+        lastSyncedAt: DateTime(2026, 11, 22, 12, 0),
+        api: fakeApi,
+        defaultTasksFolderRemoteId: 'rf-default',
+        groupsDeltaLink: 'dl-groups-saved',
+        foldersDeltaLink: 'dl-folders-saved',
+        taskDeltaLinks: const {'rf-default': 'dl-tasks-saved'},
+        startupSyncEnabled: true,
+      );
 
-        h.container.read(syncProvider.notifier).syncOnSessionStart();
-        await pumpEventQueue();
+      h.container.read(syncProvider.notifier).syncOnSessionStart();
+      await pumpEventQueue();
 
-        final groupsDeltaIdx = h.api.callLog.indexOf(
-          'GET foldergroups(dl-groups-saved)',
-        );
-        final groupsFullIdx = h.api.callLog.indexOf('GET foldergroups(null)');
-        expect(groupsDeltaIdx, greaterThanOrEqualTo(0));
-        expect(groupsFullIdx, greaterThan(groupsDeltaIdx));
+      final groupsDeltaIdx = h.api.callLog.indexOf(
+        'GET foldergroups(dl-groups-saved)',
+      );
+      final groupsFullIdx = h.api.callLog.indexOf('GET foldergroups(null)');
+      expect(groupsDeltaIdx, greaterThanOrEqualTo(0));
+      expect(groupsFullIdx, greaterThan(groupsDeltaIdx));
 
-        expect(h.api.callLog, contains('GET taskfolders(dl-folders-saved)'));
-        expect(h.api.callLog, contains('GET tasks(rf-default,dl-tasks-saved)'));
-        expect(h.api.callLog, contains('GET taskfolders(null)'));
-        expect(h.api.callLog, contains('GET tasks(rf-default,null)'));
-      },
-    );
+      expect(h.api.callLog, contains('GET taskfolders(dl-folders-saved)'));
+      expect(h.api.callLog, contains('GET tasks(rf-default,dl-tasks-saved)'));
+      expect(h.api.callLog, contains('GET taskfolders(null)'));
+      expect(h.api.callLog, contains('GET tasks(rf-default,null)'));
+    });
   });
 }

@@ -87,14 +87,12 @@ class AttachmentService {
       '.csv' => 'text/csv',
       '.json' => 'application/json',
       '.doc' => 'application/msword',
-      '.docx' =>
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       '.xls' => 'application/vnd.ms-excel',
       '.xlsx' =>
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       '.ppt' => 'application/vnd.ms-powerpoint',
-      '.pptx' =>
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      '.pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       '.zip' => 'application/zip',
       '.mp3' => 'audio/mpeg',
       '.mp4' => 'video/mp4',
@@ -184,7 +182,9 @@ class AttachmentService {
     final activeAccount = _ref.read(accountProvider).activeAccount;
     if (activeAccount is! MicrosoftAccount) {
       return const Failure(
-        AppError.auth(message: 'No active Microsoft account for attachment download'),
+        AppError.auth(
+          message: 'No active Microsoft account for attachment download',
+        ),
       );
     }
     final prefs = _ref.read(sharedPreferencesProvider);
@@ -221,13 +221,13 @@ class AttachmentService {
         final launched = await _launchUrlFn(uri);
         if (launched) return const Success(unit);
       }
-      return const Failure(
-        AppError.unknown(message: 'Failed to open link'),
-      );
+      return const Failure(AppError.unknown(message: 'Failed to open link'));
     }
 
     final localPath = attachment.localPath;
-    if (localPath == null || localPath.isEmpty || !await File(localPath).exists()) {
+    if (localPath == null ||
+        localPath.isEmpty ||
+        !await File(localPath).exists()) {
       return const Failure(
         AppError.unknown(message: 'Attachment is not cached locally'),
       );

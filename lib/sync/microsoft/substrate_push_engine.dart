@@ -233,11 +233,8 @@ class SubstratePushEngine {
                 outbox.resolveRemoteId(SyncEntityType.attachment, op.localId);
             if (taskRemoteId != null && attRemoteId != null) {
               await _deleteOne(
-                () => todoApi.deleteLinkedEntity(
-                  ctx,
-                  taskRemoteId,
-                  attRemoteId,
-                ),
+                () =>
+                    todoApi.deleteLinkedEntity(ctx, taskRemoteId, attRemoteId),
               );
             }
             await commitOp(
@@ -700,11 +697,7 @@ class SubstratePushEngine {
             bytes: bytes,
             contentType: att.contentType,
           )).getOrThrow();
-          outbox.recordRemoteId(
-            SyncEntityType.attachment,
-            att.id,
-            uploaded.id,
-          );
+          outbox.recordRemoteId(SyncEntityType.attachment, att.id, uploaded.id);
           final updatedAttachments = [
             for (final item in task.attachments)
               if (item.id == att.id)
