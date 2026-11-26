@@ -148,13 +148,15 @@ class DetailViewPresenter {
 
   void deleteTask(String taskId) {
     final removed = _state.tasks.firstWhereOrNull((t) => t.id == taskId);
-    if (removed != null) {
-      final attachments = _ref.read(attachmentServiceProvider);
-      for (final att in removed.attachments) {
-        attachments.deleteLocalCache(att.localPath);
-      }
-    }
     final updated = _state.tasks.where((t) => t.id != taskId).toList();
+    if (removed != null && removed.attachments.isNotEmpty) {
+      _ref
+          .read(attachmentServiceProvider)
+          .deleteUnreferencedCaches(
+            removed.attachments,
+            remainingTasks: updated,
+          );
+    }
     _commitTasks(updated, clearSelectedTaskId: _state.selectedTaskId == taskId);
   }
 
@@ -184,9 +186,6 @@ class DetailViewPresenter {
     final removed = task?.attachments.firstWhereOrNull(
       (a) => a.id == attachmentId,
     );
-    if (removed != null) {
-      _ref.read(attachmentServiceProvider).deleteLocalCache(removed.localPath);
-    }
     _updateTaskById(
       taskId,
       (task) => task.copyWith(
@@ -195,6 +194,11 @@ class DetailViewPresenter {
             .toList(),
       ),
     );
+    if (removed != null) {
+      _ref.read(attachmentServiceProvider).deleteUnreferencedCaches([
+        removed,
+      ], remainingTasks: _state.tasks);
+    }
   }
 
   void addStep(String taskId, String title) {

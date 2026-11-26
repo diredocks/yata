@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/order_date_time.dart';
 import '../data/todo_provider.dart';
+import '../detailview/attachments/attachment_service.dart';
 import '../detailview/recurrence/task_pickers.dart';
 import '../homeview/home_view_ordering.dart';
 import '../models/task_item.dart';
@@ -219,8 +220,20 @@ class TasksViewPresenter {
     final target = _state.lists[targetIndex];
     if (target.isSmartList) return;
 
+    final removedAttachments = <TaskAttachment>[
+      for (final task in _state.tasks)
+        if (task.listId == listId) ...task.attachments,
+    ];
     final updatedLists = _state.lists.where((l) => l.id != listId).toList();
     final updatedTasks = _state.tasks.where((t) => t.listId != listId).toList();
+    if (removedAttachments.isNotEmpty) {
+      _ref
+          .read(attachmentServiceProvider)
+          .deleteUnreferencedCaches(
+            removedAttachments,
+            remainingTasks: updatedTasks,
+          );
+    }
     var nextSelected = _state.selectedListId;
     if (_state.selectedListId == listId) {
       nextSelected = targetIndex > 0
