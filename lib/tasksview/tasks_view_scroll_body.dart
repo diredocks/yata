@@ -34,6 +34,7 @@ class TasksViewScrollBody extends StatelessWidget {
     required this.overlayStyle,
     required this.hasBackButton,
     required this.taskSlivers,
+    this.showEmptyState = false,
     required this.onBackPressed,
     required this.onScrollToTop,
     required this.onSelectMenuAction,
@@ -69,6 +70,7 @@ class TasksViewScrollBody extends StatelessWidget {
   final SystemUiOverlayStyle overlayStyle;
   final bool hasBackButton;
   final List<Widget> taskSlivers;
+  final bool showEmptyState;
 
   final VoidCallback? onBackPressed;
   final VoidCallback onScrollToTop;
@@ -241,7 +243,7 @@ class TasksViewScrollBody extends StatelessWidget {
                 onTap: onOpenPlannedFilter,
               ),
             ...taskSlivers,
-            TasksRuledLinesSliver(isDark: isDark),
+            if (!showEmptyState) TasksRuledLinesSliver(isDark: isDark),
           ],
         ),
       ),

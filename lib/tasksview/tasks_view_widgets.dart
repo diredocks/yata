@@ -293,3 +293,99 @@ class TasksRuledLinesSliver extends StatelessWidget {
     );
   }
 }
+
+/// Returns whether [smartType] displays an illustrated empty state when empty,
+/// matching `TasksViewFragment.K0` in the original app.
+bool hasSmartListEmptyState(SmartListType? smartType) {
+  return switch (smartType) {
+    SmartListType.tasks ||
+    SmartListType.important ||
+    SmartListType.planned ||
+    SmartListType.all ||
+    SmartListType.completed => true,
+    SmartListType.myDay || null => false,
+  };
+}
+
+/// Illustrated empty state matching `list_empty_state.xml` and
+/// `TasksViewFragment.p7`/`q7` in the original app.
+class SmartListEmptyState extends StatelessWidget {
+  const SmartListEmptyState({
+    super.key,
+    required this.l10n,
+    required this.currentList,
+    required this.textColor,
+    required this.isDark,
+  });
+
+  final AppLocalizations l10n;
+  final TodoList currentList;
+  final Color textColor;
+  final bool isDark;
+
+  String? _assetName() {
+    final suffix = isDark ? 'dark' : 'light';
+    return switch (currentList.smartType) {
+      SmartListType.tasks =>
+        'assets/images/empty_state/illustration_tasks_empty_state_$suffix.png',
+      SmartListType.important =>
+        'assets/images/empty_state/illustration_important_empty_state_$suffix.png',
+      SmartListType.planned =>
+        'assets/images/empty_state/illustration_planned_empty_state_$suffix.png',
+      SmartListType.all =>
+        'assets/images/empty_state/illustration_all_empty_state_$suffix.png',
+      SmartListType.completed =>
+        'assets/images/empty_state/illustration_completed_empty_state_$suffix.png',
+      SmartListType.myDay || null => null,
+    };
+  }
+
+  String? _message() {
+    return switch (currentList.smartType) {
+      SmartListType.tasks => l10n.emptyStateTasksList,
+      SmartListType.important => l10n.emptyStateImportantList,
+      SmartListType.planned => l10n.emptyStatePlannedList,
+      SmartListType.all => l10n.emptyStateAllList,
+      SmartListType.completed => l10n.emptyStateCompletedList,
+      SmartListType.myDay || null => null,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final asset = _assetName();
+    final message = _message();
+    if (asset == null || message == null) {
+      return const SizedBox.shrink();
+    }
+    final hasPhotoBg =
+        currentList.customBackgroundPath != null ||
+        currentList.themePhoto != null;
+
+    return Center(
+      child: Container(
+        key: ValueKey('smart_list_empty_state_${currentList.smartType!.name}'),
+        width: 256,
+        padding: const EdgeInsets.all(32),
+        decoration: hasPhotoBg
+            ? BoxDecoration(
+                color: const Color(0x99323232),
+                borderRadius: BorderRadius.circular(4),
+              )
+            : null,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(asset, width: 150, height: 150, fit: BoxFit.contain),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: textColor, fontSize: 16, height: 1.25),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

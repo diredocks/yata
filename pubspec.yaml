@@ -60,5 +60,6 @@ flutter:
   assets:
     - assets/animations/
     - assets/images/
+    - assets/images/empty_state/
     - assets/sounds/
     - assets/themes/

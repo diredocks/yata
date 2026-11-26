@@ -12,6 +12,7 @@ import 'recyclerview/task_list_tile.dart';
 import 'tasks_view_bars.dart';
 import 'tasks_view_dialogs.dart';
 import 'tasks_view_grouping.dart';
+import 'tasks_view_widgets.dart';
 
 /// Builds the task slivers (active, grouped, reorderable, completed) for [TasksViewScreen].
 class TasksSliverBuilder {
@@ -21,6 +22,7 @@ class TasksSliverBuilder {
     required this.currentList,
     required this.accentColor,
     required this.headerFg,
+    required this.isDark,
     required this.mode,
     required this.multiSelectedIds,
     required this.selectionNotifier,
@@ -47,6 +49,7 @@ class TasksSliverBuilder {
   final TodoList currentList;
   final Color accentColor;
   final Color headerFg;
+  final bool isDark;
   final TasksViewMode mode;
   final Set<String> multiSelectedIds;
   final ValueListenable<Set<String>> selectionNotifier;
@@ -86,6 +89,19 @@ class TasksSliverBuilder {
     required List<TaskItem> completedTasks,
   }) {
     if (activeTasks.isEmpty && completedTasks.isEmpty) {
+      if (hasSmartListEmptyState(currentList.smartType)) {
+        return [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: SmartListEmptyState(
+              l10n: l10n,
+              currentList: currentList,
+              textColor: headerFg,
+              isDark: isDark,
+            ),
+          ),
+        ];
+      }
       return const [SliverToBoxAdapter(child: SizedBox.shrink())];
     }
 

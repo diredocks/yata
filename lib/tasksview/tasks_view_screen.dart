@@ -721,12 +721,17 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       ),
     };
 
+    final showEmptyState =
+        active.isEmpty &&
+        completed.isEmpty &&
+        hasSmartListEmptyState(currentList.smartType);
     final taskSlivers = TasksSliverBuilder(
       l10n: l10n,
       state: state,
       currentList: currentList,
       accentColor: accentColor,
       headerFg: headerFg,
+      isDark: isDark,
       mode: _mode,
       multiSelectedIds: _multiSelectedIds,
       selectionNotifier: _selectionNotifier,
@@ -806,6 +811,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
                     overlayStyle: overlayStyle,
                     hasBackButton: widget.onBackPressed != null,
                     taskSlivers: taskSlivers,
+                    showEmptyState: showEmptyState,
                     onBackPressed: widget.onBackPressed,
                     onScrollToTop: _scrollToTop,
                     onSelectMenuAction: (action) =>
