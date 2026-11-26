@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:yata/data/todo_sorting.dart';
+import 'package:yata/data/todo_state.dart';
 import 'package:yata/l10n/app_localizations_en.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
@@ -12,6 +14,7 @@ TaskItem _task({
   bool isCompleted = false,
   DateTime? createdAt,
   DateTime? completedAt,
+  DateTime? updatedAt,
   DateTime? dueDate,
   DateTime? reminderAt,
 }) {
@@ -19,9 +22,10 @@ TaskItem _task({
     id: id,
     listId: listId,
     title: title,
-    createdAt: createdAt ?? DateTime(2026, 11, 20),
+    createdAt: createdAt ?? DateTime.utc(2026, 11, 20),
     isCompleted: isCompleted,
     completedAt: completedAt,
+    updatedAt: updatedAt,
     dueDate: dueDate,
     reminderAt: reminderAt,
   );
@@ -202,5 +206,102 @@ void main() {
       plannedFilterMenuLabel(l10n, PlannedDueDateFilter.all, now: now),
       'All planned',
     );
+  });
+
+  test('compareCompletedTasksDesc sorts by completion day DESC then updatedAt DESC', () {
+    // Same-day remote midnight completedAt ties broken by updatedAt DESC,
+    // even when createdAt is in the opposite order.
+    final firstCompleted = _task(
+      id: 't1',
+      isCompleted: true,
+      createdAt: DateTime.utc(2026, 11, 20, 9, 0),
+      completedAt: DateTime.utc(2026, 11, 23, 0, 0),
+      updatedAt: DateTime.utc(2026, 11, 23, 10, 0),
+    );
+    final secondCompleted = _task(
+      id: 't2',
+      isCompleted: true,
+      createdAt: DateTime.utc(2026, 11, 20, 8, 0),
+      completedAt: DateTime.utc(2026, 11, 23, 0, 0),
+      updatedAt: DateTime.utc(2026, 11, 23, 11, 0),
+    );
+    // Local completion with full time precision on the same UTC day still
+    // yields to a later remote completion on that day via updatedAt.
+    final thirdCompleted = _task(
+      id: 't3',
+      isCompleted: true,
+      createdAt: DateTime.utc(2026, 11, 20, 7, 0),
+      completedAt: DateTime.utc(2026, 11, 23, 12, 0),
+      updatedAt: DateTime.utc(2026, 11, 23, 12, 0),
+    );
+    final fourthRemoteLaterSameDay = _task(
+      id: 't4',
+      isCompleted: true,
+      createdAt: DateTime.utc(2026, 11, 20, 6, 0),
+      completedAt: DateTime.utc(2026, 11, 23, 0, 0),
+      updatedAt: DateTime.utc(2026, 11, 23, 13, 0),
+    );
+    // Older completion day stays below newer completion day even if edited
+    // more recently.
+    final olderDayEditedLater = _task(
+      id: 't0',
+      isCompleted: true,
+      createdAt: DateTime.utc(2026, 11, 20, 10, 0),
+      completedAt: DateTime.utc(2026, 11, 22, 0, 0),
+      updatedAt: DateTime.utc(2026, 11, 24, 15, 0),
+    );
+
+    final sorted = [
+      olderDayEditedLater,
+      firstCompleted,
+      thirdCompleted,
+      secondCompleted,
+      fourthRemoteLaterSameDay,
+    ]..sort(compareCompletedTasksDesc);
+
+    expect(sorted.map((t) => t.id), ['t4', 't3', 't2', 't1', 't0']);
+
+    // Completed smart list uses the same order for defaultOrder, and respects
+    // custom sortOption (e.g. alphabetical) when selected.
+    const completedDefault = TodoList(
+      id: 'completed',
+      title: 'Completed',
+      smartType: SmartListType.completed,
+    );
+    final completedAlpha = completedDefault.copyWith(
+      sortOption: TaskSortOption.alphabetical,
+      sortAscending: true,
+    );
+    final alphaTasks = [
+      firstCompleted.copyWith(title: 'Bravo'),
+      secondCompleted.copyWith(title: 'Alpha'),
+    ];
+    final state = TodoState(
+      lists: [completedDefault],
+      groups: const [],
+      tasks: alphaTasks,
+      selectedListId: 'completed',
+    );
+    expect(state.tasksForList(completedDefault).map((t) => t.id), ['t2', 't1']);
+    expect(state.tasksForList(completedAlpha).map((t) => t.id), ['t2', 't1']);
+
+    final customListAlpha = const TodoList(
+      id: 'tasks',
+      title: 'Tasks',
+      smartType: SmartListType.tasks,
+      sortOption: TaskSortOption.alphabetical,
+      sortAscending: true,
+    );
+    final customState = TodoState(
+      lists: [customListAlpha],
+      groups: const [],
+      tasks: alphaTasks,
+      selectedListId: 'tasks',
+    );
+    final splitAlpha = splitTasksForDisplay(
+      customState.tasksForList(customListAlpha),
+      customListAlpha,
+    );
+    expect(splitAlpha.completed.map((t) => t.id), ['t2', 't1']);
   });
 }
