@@ -24,18 +24,36 @@ enum SyncReason {
 
 enum PullScope { selective, delta, full }
 
-class PullCommand {
+/// A unit of sync work. [SyncNotifier.dispatch] routes each command to its
+/// lane; the push and pull lanes never share a queue.
+sealed class SyncCommand {
+  const SyncCommand(this.reason);
+
+  final SyncReason reason;
+}
+
+final class PushCommand extends SyncCommand {
+  const PushCommand([super.reason = SyncReason.localMutation]);
+}
+
+final class PullCommand extends SyncCommand {
   const PullCommand(
     this.scope,
-    this.reason, {
+    super.reason, {
     this.folderRemoteIds,
     this.pruneProtectSinceSeq,
   });
 
   final PullScope scope;
-  final SyncReason reason;
   final Set<String>? folderRemoteIds;
   final int? pruneProtectSinceSeq;
+
+  PullCommand protectSince(int seq) => PullCommand(
+    scope,
+    reason,
+    folderRemoteIds: folderRemoteIds,
+    pruneProtectSinceSeq: seq,
+  );
 
   PullCommand merge(PullCommand other) {
     final earliestPruneSeq = switch ((
@@ -174,4 +192,68 @@ class CoalescingRunner<T> {
     }());
     return completer.future;
   }
+}
+
+/// Debounced, single-flight command lane.
+///
+/// Commands submitted while the debounce timer is armed are coalesced into the
+/// pending slot; commands submitted while a cycle is running are coalesced into
+/// one queued follow-up. Both use the lane's [coalesce] rule.
+class SyncLane<C extends SyncCommand> {
+  SyncLane({
+    required Duration maxCoalesceDelay,
+    required C Function(C queued, C incoming) coalesce,
+    required this.onDebounced,
+  }) : _coalesce = coalesce,
+       _debouncer = CoalescingDebouncer(maxCoalesceDelay),
+       _runner = CoalescingRunner(coalesce: coalesce);
+
+  final C Function(C queued, C incoming) _coalesce;
+  final void Function(C command) onDebounced;
+  final CoalescingDebouncer _debouncer;
+  final CoalescingRunner<C> _runner;
+  C? _pending;
+
+  bool get isRunning => _runner.isRunning;
+  bool get hasQueued => _runner.hasQueued;
+  bool get isDebouncing => _debouncer.isActive;
+  C? get pending => _pending;
+
+  Duration submit(C command, Duration delay) {
+    final pending = _pending;
+    _pending = pending == null ? command : _coalesce(pending, command);
+    return _debouncer.schedule(delay, () {
+      final fire = _pending;
+      _pending = null;
+      if (fire != null) onDebounced(fire);
+    });
+  }
+
+  void enqueue(C command) => _runner.enqueue(command);
+
+  void cancelPending() {
+    _debouncer.cancel();
+    _pending = null;
+  }
+
+  void clearQueued() => _runner.clearQueued();
+
+  void reset() {
+    cancelPending();
+    _runner.clearQueued();
+  }
+
+  Future<void> run(
+    C command, {
+    required bool Function() isCancelled,
+    required Future<void> Function(C item) execute,
+    void Function(C merged)? onCoalesced,
+    Future<void> Function()? onCycleComplete,
+  }) => _runner.run(
+    command,
+    isCancelled: isCancelled,
+    execute: execute,
+    onCoalesced: onCoalesced,
+    onCycleComplete: onCycleComplete,
+  );
 }

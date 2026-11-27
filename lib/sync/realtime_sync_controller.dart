@@ -22,24 +22,21 @@ class RealtimeSyncController {
   RealtimeSyncController({
     required this.ref,
     required this.isSyncInFlight,
-    required this.onScheduleFallbackSync,
+    required this.onScheduleFallbackPull,
     required this.onOverflowResync,
     required this.onCatchupDeltaSync,
   });
 
   static const _reconnectDebounceDuration = Duration(milliseconds: 500);
+  static const _fallbackDebounceDuration = Duration(milliseconds: 200);
   static const _initialBackoff = Duration(seconds: 2);
   static const _maxBackoff = Duration(seconds: 60);
   static const _maxPendingEvents = 200;
 
   final Ref ref;
   final bool Function() isSyncInFlight;
-  final void Function({
-    required Duration delay,
-    required bool forceFullSync,
-    required SyncReason reason,
-  })
-  onScheduleFallbackSync;
+  final void Function(PullCommand command, Duration delay)
+  onScheduleFallbackPull;
   final void Function(SyncReason reason) onOverflowResync;
   final Future<void> Function(SyncReason reason) onCatchupDeltaSync;
 
@@ -62,6 +59,11 @@ class RealtimeSyncController {
         RealtimeEventEntityType.keepAlive ||
         RealtimeEventEntityType.unknown => false,
       };
+
+  static PullCommand _fallbackCommand(RealtimeEvent event) => PullCommand(
+    _shouldForceFullSyncForEvent(event) ? PullScope.full : PullScope.delta,
+    SyncReason.realtimeEvent,
+  );
 
   void ensureStartedFor(MicrosoftAccount account) {
     if (_disposed || _accountId == account.id) return;
@@ -116,10 +118,9 @@ class RealtimeSyncController {
         if (_needsSyncOnConnect) {
           _needsSyncOnConnect = false;
           _log.info('reconnected; scheduling delta sync');
-          onScheduleFallbackSync(
-            delay: _reconnectDebounceDuration,
-            forceFullSync: false,
-            reason: SyncReason.realtimeReconnected,
+          onScheduleFallbackPull(
+            const PullCommand(PullScope.delta, SyncReason.realtimeReconnected),
+            _reconnectDebounceDuration,
           );
         }
         if (event.isKeepAlive) return;
@@ -177,10 +178,9 @@ class RealtimeSyncController {
 
     final unhandled = await _applyRealtimeBatch(account, [event]);
     if (unhandled != null && !_disposed) {
-      onScheduleFallbackSync(
-        delay: const Duration(milliseconds: 200),
-        forceFullSync: _shouldForceFullSyncForEvent(unhandled),
-        reason: SyncReason.realtimeEvent,
+      onScheduleFallbackPull(
+        _fallbackCommand(unhandled),
+        _fallbackDebounceDuration,
       );
     }
   }
