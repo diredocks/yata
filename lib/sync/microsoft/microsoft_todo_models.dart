@@ -168,12 +168,9 @@ class RemoteLinkedEntity {
 
   factory RemoteLinkedEntity.fromJson(Map<String, dynamic> json) {
     final rawPreview = json['Preview'];
-    Map<String, dynamic>? previewMap = asJsonMap(rawPreview);
-    if (previewMap == null && rawPreview is String && rawPreview.isNotEmpty) {
-      try {
-        previewMap = asJsonMap(jsonDecode(rawPreview));
-      } catch (_) {}
-    }
+    final previewMap =
+        asJsonMap(rawPreview) ??
+        (rawPreview is String ? tryDecodeJsonMap(rawPreview) : null);
 
     return RemoteLinkedEntity(
       id: json['Id'] as String? ?? '',
@@ -467,4 +464,16 @@ Map<String, dynamic>? asJsonMap(dynamic value) {
   if (value is Map<String, dynamic>) return value;
   if (value is Map) return Map<String, dynamic>.from(value);
   return null;
+}
+
+/// Safely decodes a JSON object string into a map, returning `null` on empty
+/// input, non-object JSON, or malformed syntax.
+Map<String, dynamic>? tryDecodeJsonMap(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return null;
+  try {
+    return asJsonMap(jsonDecode(trimmed));
+  } on FormatException {
+    return null;
+  }
 }

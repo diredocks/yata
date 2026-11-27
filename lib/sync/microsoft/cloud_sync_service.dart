@@ -73,62 +73,68 @@ class CloudSyncService {
     MicrosoftAccount account,
     TodoSettingsStore settings, {
     bool forceRefreshToken = false,
-  }) async {
-    final AppResult<MicrosoftAuthTokens> tokensResult;
-    if (forceRefreshToken) {
-      final stored = await tokenStorage.loadTokens(account.id);
-      if (stored == null || stored.refreshToken.isEmpty) {
-        return const Failure(
-          AppError.auth(
-            message: 'Refresh token unavailable; please sign in again.',
-            code: 'no_refresh_token',
-            requiresReauth: true,
-          ),
-        );
-      }
-      tokensResult = await authClient.refreshTokens(
-        refreshToken: stored.refreshToken,
-        fallbackUserId: stored.userId.isNotEmpty
-            ? stored.userId
-            : account.microsoftUserId,
-      );
-      if (tokensResult.isSuccess()) {
-        await tokenStorage.saveTokens(account.id, tokensResult.getOrNull()!);
-      }
-    } else {
-      tokensResult = await authClient.ensureValidTokens(
-        accountId: account.id,
-        storage: tokenStorage,
-        fallbackCid: account.microsoftUserId,
-      );
-    }
-
-    if (tokensResult.isError()) {
-      return Failure(tokensResult.exceptionOrNull()!);
-    }
-    final tokens = tokensResult.getOrNull()!;
+  }) => _resolveTokens(account, forceRefreshToken: forceRefreshToken).flatMap((
+    tokens,
+  ) {
     final cid = tokens.userId.isNotEmpty
         ? tokens.userId
         : account.microsoftUserId;
-    var baseUrl = settings.loadCachedEndpointUrl();
-    if (baseUrl == null) {
-      final discovered = await guardApiCall(
-        () => authClient.discoverTodoEndpoint(cid),
-        operation: 'discoverEndpoint',
-      );
-      if (discovered.isError()) {
-        return Failure(discovered.exceptionOrNull()!);
-      }
-      baseUrl = discovered.getOrNull()!;
-      await settings.saveCachedEndpointUrl(baseUrl);
-    }
-    return Success(
-      SubstrateRequestContext(
+    return _resolveBaseUrl(settings, cid).map(
+      (baseUrl) => SubstrateRequestContext(
         baseUrl: baseUrl,
         accessToken: tokens.accessToken,
         cid: cid,
       ),
     );
+  });
+
+  AsyncAppResult<MicrosoftAuthTokens> _resolveTokens(
+    MicrosoftAccount account, {
+    required bool forceRefreshToken,
+  }) async {
+    if (!forceRefreshToken) {
+      return authClient.ensureValidTokens(
+        accountId: account.id,
+        storage: tokenStorage,
+        fallbackCid: account.microsoftUserId,
+      );
+    }
+    final stored = await tokenStorage.loadTokens(account.id);
+    if (stored == null || stored.refreshToken.isEmpty) {
+      return const Failure(
+        AppError.auth(
+          message: 'Refresh token unavailable; please sign in again.',
+          code: 'no_refresh_token',
+          requiresReauth: true,
+        ),
+      );
+    }
+    final refreshed = await authClient.refreshTokens(
+      refreshToken: stored.refreshToken,
+      fallbackUserId: stored.userId.isNotEmpty
+          ? stored.userId
+          : account.microsoftUserId,
+    );
+    if (refreshed.isSuccess()) {
+      await tokenStorage.saveTokens(account.id, refreshed.getOrNull()!);
+    }
+    return refreshed;
+  }
+
+  AsyncAppResult<String> _resolveBaseUrl(
+    TodoSettingsStore settings,
+    String cid,
+  ) async {
+    final cached = settings.loadCachedEndpointUrl();
+    if (cached != null) return Success(cached);
+    final discovered = await guardApiCall(
+      () => authClient.discoverTodoEndpoint(cid),
+      operation: 'discoverEndpoint',
+    );
+    if (discovered.isSuccess()) {
+      await settings.saveCachedEndpointUrl(discovered.getOrNull()!);
+    }
+    return discovered;
   }
 
   AsyncAppResult<T> _runWithAuthRetry<T extends Object>({
