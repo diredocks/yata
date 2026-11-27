@@ -79,6 +79,8 @@ Future<void> showMyDaySuggestionsSheet({
   required Color accentColor,
   required ValueChanged<TaskItem> onOpenTask,
 }) {
+  final isWide = MediaQuery.sizeOf(context).width >= 600;
+
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -94,7 +96,7 @@ Future<void> showMyDaySuggestionsSheet({
             accentColor: accentColor,
             scrollController: scrollController,
             onOpenTask: (task) {
-              Navigator.of(sheetContext).pop();
+              if (isWide) Navigator.of(sheetContext).pop();
               onOpenTask(task);
             },
           );
