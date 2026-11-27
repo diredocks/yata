@@ -44,7 +44,6 @@ sealed class Account with _$Account {
       _$AccountFromJson(json);
 
   bool get isMicrosoft => this is MicrosoftAccount;
-  bool get isLocal => this is LocalAccount;
 
   /// Derives a display name and subtitle/email from user login input.
   static ({String displayName, String email}) parseLoginInput(
