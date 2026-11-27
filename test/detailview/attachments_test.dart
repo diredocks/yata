@@ -544,7 +544,6 @@ void main() {
 
       // 3. signOut deletes acctA's entire attachment directory without touching acctB.
       await accountNotifier.signOut(acctA.id);
-      await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(
         await Directory(p.join(tempDir.path, 'attachments', acctA.id)).exists(),
         isFalse,

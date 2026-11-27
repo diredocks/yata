@@ -223,8 +223,8 @@ class AttachmentService {
       final accountDir = Directory(
         p.join(root.path, 'attachments', safeAccountId),
       );
-      if (await accountDir.exists()) {
-        await accountDir.delete(recursive: true);
+      if (accountDir.existsSync()) {
+        accountDir.deleteSync(recursive: true);
       }
     } catch (e) {
       _log.warning('Failed to delete account attachments: $e');

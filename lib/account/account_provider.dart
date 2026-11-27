@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -214,9 +212,9 @@ class AccountNotifier extends Notifier<AccountState> {
     state = AccountState(accounts: remaining, activeAccountId: nextActiveId);
     await _storage.saveAccounts(remaining);
     await _storage.saveActiveAccountId(nextActiveId);
-    unawaited(
-      ref.read(attachmentServiceProvider).deleteAccountAttachments(accountId),
-    );
+    await ref
+        .read(attachmentServiceProvider)
+        .deleteAccountAttachments(accountId);
   }
 }
 
