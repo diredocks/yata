@@ -23,6 +23,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import top.clickfling.yata.sync.YataBackgroundEngineHost
+import top.clickfling.yata.sync.YataSyncWorker
 import java.util.concurrent.TimeoutException
 
 private typealias KotlinResult<T> = kotlin.Result<T>
@@ -175,6 +177,16 @@ class WidgetSyncWorker(
         private const val SYNC_TIMEOUT_MS = 25_000L
 
         fun enqueue(context: Context, reason: String) {
+            if (YataBackgroundEngineHost.getCallbackHandle(context) != 0L) {
+                YataSyncWorker.enqueue(
+                    context = context,
+                    lane = YataSyncWorker.LANE_WIDGET,
+                    reason = reason,
+                    requiresNetwork = reason == "refresh",
+                    expedited = reason == "refresh",
+                )
+                return
+            }
             val builder = OneTimeWorkRequestBuilder<WidgetSyncWorker>()
                 .setInputData(workDataOf(KEY_REASON to reason))
 
