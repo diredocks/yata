@@ -550,5 +550,49 @@ void main() {
       );
       expect(await File(stagedB1.localPath).exists(), isTrue);
     });
+
+    test('cleanupPickedSource removes temp cache copies without touching originals outside tempDir', () async {
+      final rootDir = await Directory.systemTemp.createTemp('yata_clean_');
+      addTearDown(() => rootDir.delete(recursive: true));
+
+      final tempDir = Directory(p.join(rootDir.path, 'cache'))..createSync();
+      final userDir = Directory(p.join(rootDir.path, 'docs'))..createSync();
+
+      final pickedSubDir = Directory(p.join(tempDir.path, 'file_picker', '1'))
+        ..createSync(recursive: true);
+      final pickedTempFile = File(p.join(pickedSubDir.path, 'doc.pdf'))
+        ..writeAsBytesSync([1, 2, 3]);
+      final cameraTempFile = File(p.join(tempDir.path, 'cam_123.jpg'))
+        ..writeAsBytesSync([4, 5, 6]);
+      final userOriginal = File(p.join(userDir.path, 'original.pdf'))
+        ..writeAsBytesSync([7, 8, 9]);
+
+      final container = ProviderContainer(
+        overrides: [
+          attachmentServiceProvider.overrideWith(
+            (ref) => AttachmentService(
+              ref,
+              storageRootProvider: () async => rootDir,
+              tempDirProvider: () async => tempDir,
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final service = container.read(attachmentServiceProvider);
+
+      await service.cleanupPickedSource(pickedTempFile.path);
+      expect(await pickedTempFile.exists(), isFalse);
+      expect(await pickedSubDir.exists(), isFalse);
+      expect(await tempDir.exists(), isTrue);
+
+      await service.cleanupPickedSource(cameraTempFile.path);
+      expect(await cameraTempFile.exists(), isFalse);
+      expect(await tempDir.exists(), isTrue);
+
+      // Must never delete a user file outside tempDir (e.g. desktop picker).
+      await service.cleanupPickedSource(userOriginal.path);
+      expect(await userOriginal.exists(), isTrue);
+    });
   });
 }

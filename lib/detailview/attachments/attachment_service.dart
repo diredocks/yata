@@ -32,15 +32,18 @@ class AttachmentService {
   AttachmentService(
     this._ref, {
     Future<Directory> Function()? storageRootProvider,
+    Future<Directory> Function()? tempDirProvider,
     Future<OpenResult> Function(String filePath, {String? type})? openFileFn,
     Future<bool> Function(Uri uri)? launchUrlFn,
   }) : _storageRootProvider =
            storageRootProvider ?? getApplicationSupportDirectory,
+       _tempDirProvider = tempDirProvider ?? getTemporaryDirectory,
        _openFileFn = openFileFn ?? _defaultOpenFile,
        _launchUrlFn = launchUrlFn ?? _defaultLaunchUrl;
 
   final Ref _ref;
   final Future<Directory> Function() _storageRootProvider;
+  final Future<Directory> Function() _tempDirProvider;
   final Future<OpenResult> Function(String filePath, {String? type})
   _openFileFn;
   final Future<bool> Function(Uri uri) _launchUrlFn;
@@ -161,6 +164,32 @@ class AttachmentService {
     );
     await File(targetPath).writeAsBytes(bytes, flush: true);
     return targetPath;
+  }
+
+  /// Deletes a temporary picked/captured file at [sourcePath] only if it
+  /// resides inside the app's temporary cache directory (never deleting user
+  /// originals on desktop platforms).
+  Future<void> cleanupPickedSource(String? sourcePath) async {
+    if (sourcePath == null || sourcePath.isEmpty) return;
+    try {
+      final tempDir = await _tempDirProvider();
+      final canonicalTemp = p.canonicalize(tempDir.path);
+      final canonicalSource = p.canonicalize(sourcePath);
+      if (!p.isWithin(canonicalTemp, canonicalSource)) return;
+
+      final file = File(canonicalSource);
+      if (await file.exists()) {
+        await file.delete();
+      }
+      final parent = file.parent;
+      if (p.isWithin(canonicalTemp, parent.path) &&
+          await parent.exists() &&
+          (await parent.list().isEmpty)) {
+        await parent.delete();
+      }
+    } catch (e) {
+      _log.warning('Failed to clean up temporary picked file: $e');
+    }
   }
 
   /// Deletes the local cached file (and its parent attachment directory if empty).
