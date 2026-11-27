@@ -247,6 +247,32 @@ class DetailViewPresenter {
     );
   }
 
+  void reorderSteps(String taskId, int oldIndex, int newIndex) {
+    final task = _state.tasks.firstWhereOrNull((t) => t.id == taskId);
+    if (task == null) return;
+    final steps = task.steps;
+    if (oldIndex < 0 || oldIndex >= steps.length) return;
+    if (newIndex < 0 || newIndex >= steps.length || oldIndex == newIndex) {
+      return;
+    }
+
+    final reordered = [...steps];
+    final moved = reordered.removeAt(oldIndex);
+    reordered.insert(newIndex, moved);
+
+    final newPositions = computeReorderedOrderDateTimes(
+      [for (final s in reordered) s.orderDateTime],
+      newIndex,
+    );
+    for (final entry in newPositions.entries) {
+      reordered[entry.key] = reordered[entry.key].copyWith(
+        orderDateTime: entry.value,
+      );
+    }
+
+    _updateTaskById(taskId, (t) => t.copyWith(steps: reordered));
+  }
+
   void renameStep(String taskId, String stepId, String newTitle) {
     final trimmed = newTitle.trim();
     if (trimmed.isEmpty) {

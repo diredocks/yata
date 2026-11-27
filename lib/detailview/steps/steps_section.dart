@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+import 'dart:ui' show lerpDouble;
+
 import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -5,6 +8,14 @@ import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../theme/todo_theme.dart';
 import '../../view/task_checkbox.dart';
+
+class _StepItem {
+  _StepItem({required this.step, this.controller});
+
+  TaskStep step;
+  AnimationController? controller;
+  bool isExiting = false;
+}
 
 /// Steps list and add-step row matching `detailview/steps/`
 /// (`StepViewHolder` + `AddStepViewHolder`).
@@ -18,6 +29,7 @@ class StepsSection extends StatefulWidget {
     required this.onPromoteStepToTask,
     required this.onDeleteStep,
     required this.onAddStep,
+    this.onReorderSteps,
     this.accentColor,
   });
 
@@ -28,21 +40,22 @@ class StepsSection extends StatefulWidget {
   final ValueChanged<String> onPromoteStepToTask;
   final ValueChanged<String> onDeleteStep;
   final ValueChanged<String> onAddStep;
+  final void Function(int oldIndex, int newIndex)? onReorderSteps;
   final Color? accentColor;
 
   @override
   State<StepsSection> createState() => _StepsSectionState();
 }
 
-class _StepsSectionState extends State<StepsSection> {
+class _StepsSectionState extends State<StepsSection>
+    with TickerProviderStateMixin {
   static const _insertDuration = Duration(milliseconds: 220);
   static const _removeDuration = Duration(milliseconds: 220);
 
   final _stepController = TextEditingController();
   final _stepEditController = TextEditingController();
   final _addStepFocusNode = FocusNode();
-  GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
-  late List<TaskStep> _items;
+  late List<_StepItem> _items;
   String? _syncedTaskId;
   String? _editingStepId;
   bool _isAddStepFocused = false;
@@ -51,7 +64,7 @@ class _StepsSectionState extends State<StepsSection> {
   void initState() {
     super.initState();
     _syncedTaskId = widget.task.id;
-    _items = List<TaskStep>.of(widget.task.steps);
+    _items = [for (final s in widget.task.steps) _StepItem(step: s)];
     _addStepFocusNode.addListener(() {
       if (mounted) {
         setState(() => _isAddStepFocused = _addStepFocusNode.hasFocus);
@@ -63,15 +76,19 @@ class _StepsSectionState extends State<StepsSection> {
   void didUpdateWidget(covariant StepsSection oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (_syncedTaskId != widget.task.id) {
+      _disposeControllers();
       _syncedTaskId = widget.task.id;
       _stepController.clear();
       _editingStepId = null;
-      _listKey = GlobalKey<AnimatedListState>();
-      _items = List<TaskStep>.of(widget.task.steps);
+      _items = [for (final s in widget.task.steps) _StepItem(step: s)];
       return;
     }
-    if (_haveSameIdsInOrder(_items, widget.task.steps)) {
-      _items = List<TaskStep>.of(widget.task.steps);
+
+    final activeItems = _items.where((e) => !e.isExiting).toList();
+    if (_haveSameIdsInOrder(activeItems, widget.task.steps)) {
+      for (var i = 0; i < activeItems.length; i++) {
+        activeItems[i].step = widget.task.steps[i];
+      }
       return;
     }
     _syncDiff(widget.task.steps);
@@ -79,55 +96,117 @@ class _StepsSectionState extends State<StepsSection> {
 
   @override
   void dispose() {
+    _disposeControllers();
     _stepController.dispose();
     _stepEditController.dispose();
     _addStepFocusNode.dispose();
     super.dispose();
   }
 
-  bool _haveSameIdsInOrder(List<TaskStep> a, List<TaskStep> b) =>
+  void _disposeControllers() {
+    for (final item in _items) {
+      item.controller?.dispose();
+      item.controller = null;
+    }
+  }
+
+  bool _haveSameIdsInOrder(List<_StepItem> a, List<TaskStep> b) =>
       const IterableEquality<String>().equals(
-        a.map((step) => step.id),
+        a.map((item) => item.step.id),
         b.map((step) => step.id),
       );
 
   void _syncDiff(List<TaskStep> nextSteps) {
-    final listState = _listKey.currentState;
-    if (listState == null) {
-      _items = List<TaskStep>.of(nextSteps);
+    final nextIds = {for (final s in nextSteps) s.id};
+    final exitingWithIndex = <(int index, _StepItem item)>[];
+
+    for (var i = 0; i < _items.length; i++) {
+      final entry = _items[i];
+      if (entry.isExiting) {
+        exitingWithIndex.add((i, entry));
+        continue;
+      }
+      if (!nextIds.contains(entry.step.id)) {
+        entry.isExiting = true;
+        entry.controller?.dispose();
+        final controller = AnimationController(
+          vsync: this,
+          duration: _removeDuration,
+          value: 1.0,
+        );
+        entry.controller = controller;
+        controller.reverse().whenComplete(() {
+          if (!mounted) return;
+          controller.dispose();
+          if (entry.controller == controller) {
+            entry.controller = null;
+          }
+          setState(() {
+            _items.remove(entry);
+          });
+        });
+        exitingWithIndex.add((i, entry));
+      }
+    }
+
+    final existingById = {
+      for (final e in _items)
+        if (!e.isExiting) e.step.id: e,
+    };
+
+    final nextList = <_StepItem>[];
+    for (final step in nextSteps) {
+      final existing = existingById[step.id];
+      if (existing != null) {
+        existing.step = step;
+        nextList.add(existing);
+      } else {
+        final controller = AnimationController(
+          vsync: this,
+          duration: _insertDuration,
+        );
+        final entry = _StepItem(step: step, controller: controller);
+        controller.forward().whenComplete(() {
+          if (!mounted) return;
+          controller.dispose();
+          if (entry.controller == controller) {
+            entry.controller = null;
+          }
+        });
+        nextList.add(entry);
+      }
+    }
+
+    for (final (origIndex, exitingItem) in exitingWithIndex) {
+      final insertAt = math.min(origIndex, nextList.length);
+      nextList.insert(insertAt, exitingItem);
+    }
+
+    _items = nextList;
+  }
+
+  void _handleReorder(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _items.length) return;
+    if (newIndex < 0 || newIndex >= _items.length || oldIndex == newIndex) {
       return;
     }
+    if (_items[oldIndex].isExiting) return;
 
-    final nextIds = {for (final s in nextSteps) s.id};
-
-    // 1. Remove steps no longer present (iterate backwards to keep indices valid).
-    for (var i = _items.length - 1; i >= 0; i--) {
-      final existing = _items[i];
-      if (!nextIds.contains(existing.id)) {
-        _items.removeAt(i);
-        listState.removeItem(
-          i,
-          (context, animation) =>
-              _buildExitingItem(context, existing, animation),
-          duration: _removeDuration,
-        );
+    int activeIndexFor(int rawIndex) {
+      var active = 0;
+      for (var i = 0; i < rawIndex; i++) {
+        if (!_items[i].isExiting) active++;
       }
+      return active;
     }
 
-    // 2. Insert new steps and reorder/update existing steps to match nextSteps.
-    for (var i = 0; i < nextSteps.length; i++) {
-      final target = nextSteps[i];
-      final currentIndex = _items.indexWhere((s) => s.id == target.id);
-      if (currentIndex == -1) {
-        _items.insert(i, target);
-        listState.insertItem(i, duration: _insertDuration);
-      } else if (currentIndex != i) {
-        _items.removeAt(currentIndex);
-        _items.insert(i, target);
-      } else {
-        _items[i] = target;
-      }
-    }
+    final oldStepIndex = activeIndexFor(oldIndex);
+    final moved = _items.removeAt(oldIndex);
+    _items.insert(newIndex, moved);
+    final newStepIndex = activeIndexFor(newIndex);
+
+    setState(() {});
+    widget.onReorderSteps?.call(oldStepIndex, newStepIndex);
   }
 
   Widget _buildStepRow(BuildContext context, TaskStep step) {
@@ -234,21 +313,21 @@ class _StepsSectionState extends State<StepsSection> {
     );
   }
 
-  Widget _buildExitingItem(
-    BuildContext context,
-    TaskStep step,
-    Animation<double> animation,
-  ) {
-    final sizeCurve = CurvedAnimation(
-      parent: animation,
-      curve: Curves.easeInOutCubic,
-    );
-    final fadeCurve = CurvedAnimation(
-      parent: animation,
-      curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
-    );
-    return IgnorePointer(
-      child: KeyedSubtree(
+  Widget _buildListItem(BuildContext context, int index, bool canDrag) {
+    final entry = _items[index];
+    final step = entry.step;
+
+    if (entry.isExiting) {
+      final animation = entry.controller!;
+      final sizeCurve = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeInOutCubic,
+      );
+      final fadeCurve = CurvedAnimation(
+        parent: animation,
+        curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
+      );
+      return IgnorePointer(
         key: ValueKey('removing_step_${step.id}'),
         child: SizeTransition(
           sizeFactor: sizeCurve,
@@ -258,38 +337,33 @@ class _StepsSectionState extends State<StepsSection> {
             child: _buildStepRow(context, step),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildItem(
-    BuildContext context,
-    int index,
-    Animation<double> animation,
-  ) {
-    final step = _items[index];
-    Widget child = KeyedSubtree(
-      key: ValueKey('step_${step.id}'),
-      child: _buildStepRow(context, step),
-    );
-
-    if (animation.status == AnimationStatus.forward || !animation.isCompleted) {
-      final sizeCurve = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-      );
-      final fadeCurve = CurvedAnimation(
-        parent: animation,
-        curve: const Interval(0.2, 1.0, curve: Curves.easeOut),
-      );
-      child = SizeTransition(
-        sizeFactor: sizeCurve,
-        alignment: Alignment.topCenter,
-        child: FadeTransition(opacity: fadeCurve, child: child),
       );
     }
 
-    return child;
+    Widget row = _buildStepRow(context, step);
+    final controller = entry.controller;
+    if (controller != null && !controller.isCompleted) {
+      final sizeCurve = CurvedAnimation(
+        parent: controller,
+        curve: Curves.easeOutCubic,
+      );
+      final fadeCurve = CurvedAnimation(
+        parent: controller,
+        curve: const Interval(0.2, 1.0, curve: Curves.easeOut),
+      );
+      row = SizeTransition(
+        sizeFactor: sizeCurve,
+        alignment: Alignment.topCenter,
+        child: FadeTransition(opacity: fadeCurve, child: row),
+      );
+    }
+
+    return ReorderableDelayedDragStartListener(
+      key: ValueKey('step_${step.id}'),
+      index: index,
+      enabled: canDrag,
+      child: row,
+    );
   }
 
   @override
@@ -303,18 +377,50 @@ class _StepsSectionState extends State<StepsSection> {
     final accent =
         widget.accentColor ??
         (isDark ? TodoColors.attentionDark : TodoColors.attentionLight);
+    final activeCount = _items.where((e) => !e.isExiting).length;
+    final canDrag =
+        widget.onReorderSteps != null &&
+        _editingStepId == null &&
+        activeCount > 1;
+    final dragHighlightColor = Color.alphaBlend(
+      (isDark ? Colors.white : Colors.black).withValues(
+        alpha: isDark ? 0.06 : 0.04,
+      ),
+      widget.backgroundColor,
+    );
 
     return Material(
       color: widget.backgroundColor,
       child: Column(
         children: [
-          AnimatedList(
-            key: _listKey,
+          ReorderableListView.builder(
             shrinkWrap: true,
+            primary: false,
             physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
             padding: EdgeInsets.zero,
-            initialItemCount: _items.length,
-            itemBuilder: _buildItem,
+            itemCount: _items.length,
+            onReorderItem: _handleReorder,
+            proxyDecorator: (child, index, animation) {
+              return AnimatedBuilder(
+                animation: animation,
+                builder: (context, child) {
+                  final t = Curves.easeInOut.transform(animation.value);
+                  return Material(
+                    elevation: lerpDouble(0, 4, t) ?? 4,
+                    color: Color.lerp(
+                      widget.backgroundColor,
+                      dragHighlightColor,
+                      t,
+                    ),
+                    child: child,
+                  );
+                },
+                child: child,
+              );
+            },
+            itemBuilder: (context, index) =>
+                _buildListItem(context, index, canDrag),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 4, 12, 8),

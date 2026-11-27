@@ -416,6 +416,12 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                             onDeleteStep: (stepId) =>
                                 _confirmDeleteStep(task, stepId),
                             onAddStep: (val) => notifier.addStep(task.id, val),
+                            onReorderSteps: (oldIndex, newIndex) =>
+                                notifier.reorderSteps(
+                                  task.id,
+                                  oldIndex,
+                                  newIndex,
+                                ),
                           ),
                           Container(
                             height: 3,
