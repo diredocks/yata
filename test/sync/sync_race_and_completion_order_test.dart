@@ -4,15 +4,14 @@ import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/data/sync_outbox.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/data/todo_repository.dart';
-import 'package:yata/models/account.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
-import 'package:yata/sync/microsoft/cloud_sync_service.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_models.dart';
+import 'package:yata/sync/microsoft/substrate_pull_engine.dart';
+import 'package:yata/sync/microsoft/substrate_push_engine.dart';
 import 'package:yata/sync/microsoft/todo_wire_codecs.dart';
 import 'package:yata/sync/sync_provider.dart';
 import 'package:yata/tasksview/tasks_view_grouping.dart';
@@ -90,7 +89,7 @@ void main() {
     await Future.wait([saveTaskFuture, saveOutboxFuture]);
   });
 
-  test('CloudSyncService preserves local completedAt precision when remote returns same-day midnight CompletedDateTime', () async {
+  test('SubstratePullEngine preserves local completedAt precision when remote returns same-day midnight CompletedDateTime', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final repo = TodoRepository.forAccount(prefs, accountId: 'acct');
@@ -167,28 +166,6 @@ void main() {
       deltaLink: 'dl-tasks',
     );
 
-    final tokenStorage = AuthTokenStorage(prefs);
-    await tokenStorage.saveTokens(
-      'acct',
-      MicrosoftAuthTokens(
-        accessToken: 'tok-1',
-        refreshToken: 'rt-1',
-        expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
-        userId: 'cid1',
-      ),
-    );
-    final service = CloudSyncService(
-      authClient: FakeAuthClient(),
-      todoApi: fakeApi,
-      tokenStorage: tokenStorage,
-    );
-    final account = MicrosoftAccount(
-      id: 'acct',
-      displayName: 'Alice',
-      email: 'alice@outlook.com',
-      createdAt: DateTime.utc(2026, 11, 23),
-      microsoftUserId: 'cid1',
-    );
     const tasksList = TodoList(
       id: 'tasks',
       title: 'Tasks',
@@ -208,18 +185,21 @@ void main() {
     }
     await repo.saveOutbox();
 
-    final pushOutcome = (await service.pushAccount(
-      account: account,
+    final pushOutcome = (await SubstratePushEngine(fakeApi).pushOutbox(
       currentState: state,
-      repository: repo,
+      outbox: repo.outbox,
+      nowUtc: DateTime.now().toUtc(),
+      onItemCommitted: (o) async {
+        repo.outbox.ackBatch(o.ackedSeqs, o.clearedRemoteIdKeys);
+        await repo.saveOutbox();
+      },
     )).getOrThrow();
     final postPushState = state.copyWith(
       tasks: [for (final t in state.tasks) pushOutcome.pushedTasks[t.id] ?? t],
     );
-    final outcome = (await service.pullAccount(
-      account: account,
-      currentState: postPushState,
+    final outcome = (await SubstratePullEngine(fakeApi).pull(
       repository: repo,
+      currentState: postPushState,
       idGenerator: (p) => '${p}_gen',
     )).getOrThrow();
     final split = splitTasksForDisplay(outcome.tasks, tasksList);

@@ -12,10 +12,8 @@ import '../../account/account_provider.dart';
 import '../../core/error/app_error.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/result/app_result.dart';
-import '../../data/todo_provider.dart';
 import '../../models/account.dart';
 import '../../models/task_item.dart';
-import '../../sync/sync_provider.dart';
 
 final _log = appLogFor('Attachments');
 
@@ -248,22 +246,9 @@ class AttachmentService {
         ),
       );
     }
-    final repository = _ref.read(todoRepositoryProvider);
-    final syncService = _ref.read(cloudSyncServiceProvider);
-
-    final ctxResult = await syncService.resolveContext(
-      activeAccount,
-      repository,
-    );
-    if (ctxResult.isError()) {
-      return Failure(ctxResult.exceptionOrNull()!);
-    }
-    final ctx = ctxResult.getOrThrow();
-
-    final bytesResult = await syncService.todoApi.downloadAttachment(
-      ctx,
-      webLink,
-    );
+    final bytesResult = await _ref
+        .read(microsoftTodoApiProvider)
+        .downloadAttachment(webLink);
     if (bytesResult.isError()) {
       return Failure(bytesResult.exceptionOrNull()!);
     }

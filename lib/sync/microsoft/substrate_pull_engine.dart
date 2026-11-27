@@ -1,95 +1,94 @@
-import 'package:collection/collection.dart';
 import 'package:result_dart/result_dart.dart';
 
 import '../../core/error/app_error.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/result/app_result.dart';
-import '../../data/sync_outbox.dart';
 import '../../data/todo_repository.dart';
+import '../../data/todo_state.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
-import '../sync_concurrency.dart';
-import '../sync_log_format.dart';
+import '../sync_guard.dart';
 import 'microsoft_todo_api.dart';
 import 'remote_change_reconciler.dart';
 
 final _log = appLogFor('SyncEngine');
 
-class FullPullResult {
-  const FullPullResult({
+/// Result returned by a completed [SubstratePullEngine.pull] pass.
+class PullOutcome {
+  const PullOutcome({
     required this.groups,
     required this.lists,
     required this.tasks,
-    required this.remoteSettings,
+    required this.syncedAt,
+    this.remoteSettings,
+    this.isSelective = false,
+    this.cancelled = false,
   });
 
   final List<ListGroup> groups;
   final List<TodoList> lists;
   final List<TaskItem> tasks;
+
+  /// Null when the pass was selective or cancelled without settings.
   final Map<String, String>? remoteSettings;
+  final DateTime syncedAt;
+  final bool isSelective;
+  final bool cancelled;
 }
 
-enum DeltaFetchMode {
+enum _DeltaFetchMode {
   forcedFull('full(forced)', isFullFetch: true),
   recovered410('full(410)', isFullFetch: true),
   initialFull('full(initial)', isFullFetch: true),
   delta('delta', isFullFetch: false),
   missing('missing', isFullFetch: false);
 
-  const DeltaFetchMode(this.label, {required this.isFullFetch});
+  const _DeltaFetchMode(this.label, {required this.isFullFetch});
 
   final String label;
   final bool isFullFetch;
 }
 
-class DeltaFetchResult<T> {
-  const DeltaFetchResult({required this.page, required this.mode});
+class _DeltaFetchResult<T> {
+  const _DeltaFetchResult({required this.page, required this.mode});
 
   final DeltaPageResult<T> page;
-  final DeltaFetchMode mode;
+  final _DeltaFetchMode mode;
 
   bool get didFullFetch => mode.isFullFetch;
 }
 
-/// Outcome of [SubstratePullEngine.fetchPatch]: either a fetched remote patch
-/// or an explicit cooperative cancellation (without throwing exceptions).
-sealed class PullPatchFetch {
-  const PullPatchFetch();
+sealed class _PullFetch {
+  const _PullFetch();
 }
 
-final class PullPatchCancelled extends PullPatchFetch {
-  const PullPatchCancelled();
+final class _PullCancelled extends _PullFetch {
+  const _PullCancelled();
 }
 
-/// Pure remote payload returned by [SubstratePullEngine.fetchPatch].
-///
-/// Contains no local entity snapshots; it is applied atomically against the
-/// latest live local state in [SubstratePullEngine.applyPatch].
-final class RemotePullPatch extends PullPatchFetch {
-  const RemotePullPatch({
+final class _RemotePullPatch extends _PullFetch {
+  const _RemotePullPatch({
     required this.forceFullSync,
     required this.isSelective,
     this.remoteSettings,
     this.groupsFetch,
     this.foldersFetch,
     this.taskFetchesByFolderRemoteId = const {},
-    this.pulledFolderRemoteIds = const {},
   });
 
   final bool forceFullSync;
   final bool isSelective;
   final Map<String, String>? remoteSettings;
-  final DeltaFetchResult<RemoteFolderGroup>? groupsFetch;
-  final DeltaFetchResult<RemoteTodoFolder>? foldersFetch;
-  final Map<String, DeltaFetchResult<RemoteTodoTask>>
+  final _DeltaFetchResult<RemoteFolderGroup>? groupsFetch;
+  final _DeltaFetchResult<RemoteTodoFolder>? foldersFetch;
+  final Map<String, _DeltaFetchResult<RemoteTodoTask>>
   taskFetchesByFolderRemoteId;
-  final Set<String> pulledFolderRemoteIds;
 }
 
 /// Stateless remote fetcher & patch reconciler for Substrate v1 delta endpoints.
 ///
-/// Network fetches ([fetchPatch]) never hold local entity snapshots and never
-/// advance saved `deltaLink`s until [applyPatch] commits against live state.
+/// Network fetches never hold local entity snapshots and never advance saved
+/// `deltaLink`s until reconciliation commits against live local state.
 class SubstratePullEngine {
   const SubstratePullEngine(this.todoApi);
 
@@ -97,64 +96,123 @@ class SubstratePullEngine {
 
   final MicrosoftTodoApi todoApi;
 
-  /// Fetches remote settings, groups, folders, and/or tasks without touching
-  /// local entity snapshots or advancing saved `deltaLink`s.
-  AsyncAppResult<PullPatchFetch> fetchPatch({
-    required SubstrateRequestContext ctx,
+  /// Fetches remote settings, groups, folders, and/or tasks (or just
+  /// [onlyFolderRemoteIds] when performing a selective follow-up pull), then
+  /// reconciles them against the latest live state.
+  AsyncAppResult<PullOutcome> pull({
     required TodoRepository repository,
-    required Set<String> knownFolderRemoteIds,
-    required bool forceFullSync,
-    required bool isSelective,
+    required TodoState currentState,
+    required String Function(String prefix) idGenerator,
+    TodoState Function()? readLatestState,
+    bool forceFullSync = false,
+    Set<String>? onlyFolderRemoteIds,
     bool Function()? isCancelled,
+    int? pruneProtectSinceSeq,
+    String reason = 'pull',
   }) async {
-    bool cancelled() => isCancelled?.call() == true;
-    if (cancelled()) return const Success(PullPatchCancelled());
+    final outbox = repository.outbox;
+    final pullStartSeq = outbox.lastSeq;
+    final effectivePruneSeq = pruneProtectSinceSeq ?? pullStartSeq;
+    final startState = readLatestState?.call() ?? currentState;
+    final isSelective = onlyFolderRemoteIds != null;
 
+    bool cancelled() => isCancelled?.call() == true;
+
+    PullOutcome cancelledOutcome() {
+      final live = readLatestState?.call() ?? currentState;
+      _log.info('pull cancelled reason=$reason');
+      return PullOutcome(
+        groups: live.groups,
+        lists: live.lists,
+        tasks: live.tasks,
+        syncedAt: DateTime.now().toUtc(),
+        isSelective: isSelective,
+        cancelled: true,
+      );
+    }
+
+    if (cancelled()) return Success(cancelledOutcome());
+
+    _log.info(
+      'pull start reason=$reason '
+      'mode=${isSelective ? 'selective' : (forceFullSync ? 'full' : 'delta')} '
+      'localLists=${startState.lists.length} '
+      'localTasks=${startState.tasks.length}',
+    );
+
+    final knownFolderRemoteIds = <String>{
+      for (final l in startState.lists)
+        if (l.remoteId != null) l.remoteId!,
+    };
+
+    final AppResult<_PullFetch> fetchResult;
     if (isSelective) {
-      return _fetchSelectivePatch(
-        ctx: ctx,
+      fetchResult = await _fetchSelectivePatch(
         repository: repository,
         knownFolderRemoteIds: knownFolderRemoteIds,
+        onlyFolderRemoteIds: onlyFolderRemoteIds,
+        isCancelled: cancelled,
+      );
+    } else {
+      fetchResult = await _fetchFullOrDeltaPatch(
+        repository: repository,
+        knownFolderRemoteIds: knownFolderRemoteIds,
+        forceFullSync: forceFullSync,
         isCancelled: cancelled,
       );
     }
 
-    return _fetchFullOrDeltaPatch(
-      ctx: ctx,
-      repository: repository,
-      knownFolderRemoteIds: knownFolderRemoteIds,
-      forceFullSync: forceFullSync,
-      isCancelled: cancelled,
-    );
-  }
+    if (fetchResult.isError()) {
+      return Failure(fetchResult.exceptionOrNull()!);
+    }
+    final fetched = fetchResult.getOrNull()!;
+    if (fetched is! _RemotePullPatch || cancelled()) {
+      return Success(cancelledOutcome());
+    }
+    final patch = fetched;
 
-  AsyncAppResult<PullPatchFetch> _fetchSelectivePatch({
-    required SubstrateRequestContext ctx,
-    required TodoRepository repository,
-    required Set<String> knownFolderRemoteIds,
-    required bool Function() isCancelled,
-  }) async {
-    final pendingPulls = repository.loadPendingTaskFolderPulls();
-    final targetFolderRemoteIds = knownFolderRemoteIds
-        .where(pendingPulls.contains)
-        .toSet();
-    _log.info(
-      'pull selective folders=${targetFolderRemoteIds.length} '
-      'of=${knownFolderRemoteIds.length} '
-      'pending=${targetFolderRemoteIds.length}',
-    );
-    if (targetFolderRemoteIds.isEmpty) {
-      return const Success(
-        RemotePullPatch(
-          forceFullSync: false,
+    final liveState = readLatestState?.call() ?? currentState;
+    if (patch.isSelective && patch.taskFetchesByFolderRemoteId.isEmpty) {
+      return Success(
+        PullOutcome(
+          groups: liveState.groups,
+          lists: liveState.lists,
+          tasks: liveState.tasks,
+          syncedAt: DateTime.now().toUtc(),
           isSelective: true,
-          pulledFolderRemoteIds: {},
         ),
       );
     }
 
+    return _applyPatch(
+      patch: patch,
+      repository: repository,
+      liveState: liveState,
+      idGenerator: idGenerator,
+      pullStartSeq: pullStartSeq,
+      pruneProtectSinceSeq: effectivePruneSeq,
+    );
+  }
+
+  AsyncAppResult<_PullFetch> _fetchSelectivePatch({
+    required TodoRepository repository,
+    required Set<String> knownFolderRemoteIds,
+    required Set<String> onlyFolderRemoteIds,
+    required bool Function() isCancelled,
+  }) async {
+    final targetFolderRemoteIds = knownFolderRemoteIds.intersection(
+      onlyFolderRemoteIds,
+    );
+    _log.info(
+      'pull selective folders=${targetFolderRemoteIds.length} '
+      'of=${knownFolderRemoteIds.length}',
+    );
+    if (targetFolderRemoteIds.isEmpty) {
+      return const Success(
+        _RemotePullPatch(forceFullSync: false, isSelective: true),
+      );
+    }
     return _fetchTaskDeltas(
-      ctx: ctx,
       repository: repository,
       targetFolderRemoteIds: targetFolderRemoteIds,
       forceFullSync: false,
@@ -163,27 +221,26 @@ class SubstratePullEngine {
     );
   }
 
-  AsyncAppResult<PullPatchFetch> _fetchFullOrDeltaPatch({
-    required SubstrateRequestContext ctx,
+  AsyncAppResult<_PullFetch> _fetchFullOrDeltaPatch({
     required TodoRepository repository,
     required Set<String> knownFolderRemoteIds,
     required bool forceFullSync,
     required bool Function() isCancelled,
   }) async {
-    final settingsResult = await todoApi.getSettings(ctx);
+    final settingsResult = await todoApi.getSettings();
     if (settingsResult.isError()) {
       return Failure(settingsResult.exceptionOrNull()!);
     }
-    if (isCancelled()) return const Success(PullPatchCancelled());
+    if (isCancelled()) return const Success(_PullCancelled());
 
     final groupsResult = await _fetchDeltaWithMode(
       savedDeltaLink: repository.loadGroupsDeltaLink(),
       forceFullSync: forceFullSync,
       clearDeltaLink: () => repository.saveGroupsDeltaLink(null),
-      fetch: (dl) => todoApi.fetchFolderGroupsDelta(ctx, deltaLink: dl),
+      fetch: (dl) => todoApi.fetchFolderGroupsDelta(deltaLink: dl),
     );
     if (groupsResult.isError()) return Failure(groupsResult.exceptionOrNull()!);
-    if (isCancelled()) return const Success(PullPatchCancelled());
+    if (isCancelled()) return const Success(_PullCancelled());
 
     final groupsFetch = groupsResult.getOrNull()!;
     _log.info(
@@ -196,12 +253,12 @@ class SubstratePullEngine {
       savedDeltaLink: repository.loadFoldersDeltaLink(),
       forceFullSync: forceFullSync,
       clearDeltaLink: () => repository.saveFoldersDeltaLink(null),
-      fetch: (dl) => todoApi.fetchFoldersDelta(ctx, deltaLink: dl),
+      fetch: (dl) => todoApi.fetchFoldersDelta(deltaLink: dl),
     );
     if (foldersResult.isError()) {
       return Failure(foldersResult.exceptionOrNull()!);
     }
-    if (isCancelled()) return const Success(PullPatchCancelled());
+    if (isCancelled()) return const Success(_PullCancelled());
 
     final foldersFetch = foldersResult.getOrNull()!;
     final foldersPage = foldersFetch.page;
@@ -218,7 +275,6 @@ class SubstratePullEngine {
     );
 
     return _fetchTaskDeltas(
-      ctx: ctx,
       repository: repository,
       targetFolderRemoteIds: targetFolderRemoteIds,
       forceFullSync: forceFullSync,
@@ -254,16 +310,15 @@ class SubstratePullEngine {
     };
   }
 
-  AsyncAppResult<PullPatchFetch> _fetchTaskDeltas({
-    required SubstrateRequestContext ctx,
+  AsyncAppResult<_PullFetch> _fetchTaskDeltas({
     required TodoRepository repository,
     required Set<String> targetFolderRemoteIds,
     required bool forceFullSync,
     required bool isSelective,
     required bool Function() isCancelled,
     Map<String, String>? remoteSettings,
-    DeltaFetchResult<RemoteFolderGroup>? groupsFetch,
-    DeltaFetchResult<RemoteTodoFolder>? foldersFetch,
+    _DeltaFetchResult<RemoteFolderGroup>? groupsFetch,
+    _DeltaFetchResult<RemoteTodoFolder>? foldersFetch,
   }) async {
     final savedTaskDeltaLinks = repository.loadTaskDeltaLinks();
     final folderList = targetFolderRemoteIds.toList(growable: false);
@@ -272,7 +327,6 @@ class SubstratePullEngine {
       folderList,
       _maxConcurrentFolderFetches,
       (folderRemoteId) => _fetchSingleFolderTasks(
-        ctx: ctx,
         repository: repository,
         folderRemoteId: folderRemoteId,
         savedDeltaLink: savedTaskDeltaLinks[folderRemoteId],
@@ -282,28 +336,26 @@ class SubstratePullEngine {
       shouldStop: isCancelled,
     );
 
-    if (isCancelled()) return const Success(PullPatchCancelled());
+    if (isCancelled()) return const Success(_PullCancelled());
 
     return fetchesResult.map((fetches) {
       final taskFetches =
-          Map<String, DeltaFetchResult<RemoteTodoTask>>.fromIterables(
+          Map<String, _DeltaFetchResult<RemoteTodoTask>>.fromIterables(
             folderList,
             fetches,
           );
-      return RemotePullPatch(
+      return _RemotePullPatch(
         forceFullSync: forceFullSync,
         isSelective: isSelective,
         remoteSettings: remoteSettings,
         groupsFetch: groupsFetch,
         foldersFetch: foldersFetch,
         taskFetchesByFolderRemoteId: taskFetches,
-        pulledFolderRemoteIds: targetFolderRemoteIds,
       );
     });
   }
 
-  AsyncAppResult<DeltaFetchResult<RemoteTodoTask>> _fetchSingleFolderTasks({
-    required SubstrateRequestContext ctx,
+  AsyncAppResult<_DeltaFetchResult<RemoteTodoTask>> _fetchSingleFolderTasks({
     required TodoRepository repository,
     required String folderRemoteId,
     required String? savedDeltaLink,
@@ -319,41 +371,36 @@ class SubstratePullEngine {
         await repository.saveTaskDeltaLinks(next);
       },
       fetch: (dl) => todoApi.fetchTasksDelta(
-        ctx,
         folderRemoteId: folderRemoteId,
         deltaLink: dl,
       ),
     );
     return fetchResult.recover((error) {
       if (!isSelective || !error.isNotFound) {
-        return Failure<DeltaFetchResult<RemoteTodoTask>, AppError>(error);
+        return Failure<_DeltaFetchResult<RemoteTodoTask>, AppError>(error);
       }
       _log.info(
         'pull selective skipped missing folder '
         'remote=${shortSyncId(folderRemoteId)} error=${error.describe()}',
       );
-      return const Success<DeltaFetchResult<RemoteTodoTask>, AppError>(
-        DeltaFetchResult<RemoteTodoTask>(
+      return const Success<_DeltaFetchResult<RemoteTodoTask>, AppError>(
+        _DeltaFetchResult<RemoteTodoTask>(
           page: DeltaPageResult<RemoteTodoTask>(items: []),
-          mode: DeltaFetchMode.missing,
+          mode: _DeltaFetchMode.missing,
         ),
       );
     });
   }
 
-  /// Applies [patch] atomically against the latest live local state and
-  /// commits the resulting `deltaLink`s to [repository].
-  Future<FullPullResult> applyPatch({
-    required RemotePullPatch patch,
+  AsyncAppResult<PullOutcome> _applyPatch({
+    required _RemotePullPatch patch,
     required TodoRepository repository,
-    required List<ListGroup> liveGroups,
-    required List<TodoList> liveLists,
-    required List<TaskItem> liveTasks,
-    required SyncOutboxQueue outbox,
+    required TodoState liveState,
     required String Function(String prefix) idGenerator,
     required int pullStartSeq,
     required int pruneProtectSinceSeq,
-  }) async {
+  }) => guardApiCall(() async {
+    final outbox = repository.outbox;
     final protection = outbox.capturePullProtection(
       pullStartSeq: pullStartSeq,
       pruneProtectSinceSeq: pruneProtectSinceSeq,
@@ -401,16 +448,16 @@ class SubstratePullEngine {
 
     final reconciled = reconcileRemoteDelta(
       delta: delta,
-      liveGroups: liveGroups,
-      liveLists: liveLists,
-      liveTasks: liveTasks,
+      liveGroups: liveState.groups,
+      liveLists: liveState.lists,
+      liveTasks: liveState.tasks,
       protection: protection,
       idGenerator: idGenerator,
     );
 
-    final finalGroups = reconciled.groups ?? liveGroups;
-    final finalLists = reconciled.lists ?? liveLists;
-    final finalTasks = reconciled.tasks ?? liveTasks;
+    final finalGroups = reconciled.groups ?? liveState.groups;
+    final finalLists = reconciled.lists ?? liveState.lists;
+    final finalTasks = reconciled.tasks ?? liveState.tasks;
 
     final localListIdByFolderRemoteId = {
       for (final l in finalLists)
@@ -437,56 +484,30 @@ class SubstratePullEngine {
       );
     }
 
-    await _commitDeltaLinks(
-      patch: patch,
-      repository: repository,
-      localListIdByFolderRemoteId: localListIdByFolderRemoteId,
-      taskDeltaLinks: taskDeltaLinks,
-    );
-
-    return FullPullResult(
-      groups: finalGroups,
-      lists: finalLists,
-      tasks: finalTasks,
-      remoteSettings: reconciled.remoteSettings,
-    );
-  }
-
-  Future<void> _commitDeltaLinks({
-    required RemotePullPatch patch,
-    required TodoRepository repository,
-    required Map<String, String> localListIdByFolderRemoteId,
-    required Map<String, String> taskDeltaLinks,
-  }) async {
     final groupsDeltaLink = patch.groupsFetch?.page.deltaLink;
     final foldersDeltaLink = patch.foldersFetch?.page.deltaLink;
-    final pendingFolderPulls = repository.loadPendingTaskFolderPulls();
-    final livePendingFolderPulls = pendingFolderPulls
-        .where(localListIdByFolderRemoteId.containsKey)
-        .toSet();
-    final remainingPendingPulls = patch.isSelective
-        ? livePendingFolderPulls.difference(patch.pulledFolderRemoteIds)
-        : <String>{};
-    final pendingPullsChanged = !const SetEquality<String>().equals(
-      pendingFolderPulls,
-      remainingPendingPulls,
-    );
-    final updateTaskDeltaLinks =
-        patch.taskFetchesByFolderRemoteId.isNotEmpty || !patch.isSelective;
-
     await repository.saveSyncMetaBatch(
       groupsDeltaLink: groupsDeltaLink,
       updateGroupsDeltaLink: groupsDeltaLink != null,
       foldersDeltaLink: foldersDeltaLink,
       updateFoldersDeltaLink: foldersDeltaLink != null,
-      taskDeltaLinks: updateTaskDeltaLinks ? taskDeltaLinks : null,
-      pendingTaskFolderPulls: pendingPullsChanged
-          ? remainingPendingPulls
+      taskDeltaLinks:
+          patch.taskFetchesByFolderRemoteId.isNotEmpty || !patch.isSelective
+          ? taskDeltaLinks
           : null,
     );
-  }
 
-  AsyncAppResult<DeltaFetchResult<T>> _fetchDeltaWithMode<T>({
+    return PullOutcome(
+      groups: finalGroups,
+      lists: finalLists,
+      tasks: finalTasks,
+      remoteSettings: reconciled.remoteSettings,
+      syncedAt: DateTime.now().toUtc(),
+      isSelective: patch.isSelective,
+    );
+  }, operation: 'applyPullPatch');
+
+  AsyncAppResult<_DeltaFetchResult<T>> _fetchDeltaWithMode<T>({
     required String? savedDeltaLink,
     required bool forceFullSync,
     required Future<void> Function() clearDeltaLink,
@@ -504,12 +525,12 @@ class SubstratePullEngine {
       return fetch(null);
     });
     final mode = forceFullSync
-        ? DeltaFetchMode.forcedFull
+        ? _DeltaFetchMode.forcedFull
         : (recovered410
-              ? DeltaFetchMode.recovered410
+              ? _DeltaFetchMode.recovered410
               : (effectiveDelta == null
-                    ? DeltaFetchMode.initialFull
-                    : DeltaFetchMode.delta));
-    return result.map((page) => DeltaFetchResult(page: page, mode: mode));
+                    ? _DeltaFetchMode.initialFull
+                    : _DeltaFetchMode.delta));
+    return result.map((page) => _DeltaFetchResult(page: page, mode: mode));
   }
 }

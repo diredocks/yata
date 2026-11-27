@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:result_dart/result_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/core/error/app_error.dart';
@@ -109,38 +110,38 @@ void main() {
         return http.Response('{}', 200);
       });
 
-      final api = HttpMicrosoftTodoApi(
-        httpClient: mockClient,
-        delayFn: (_) async {},
-      );
       final ctx = SubstrateRequestContext(
         baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
         accessToken: 'tok',
         cid: 'CID:cid123',
       );
+      final api = HttpMicrosoftTodoApi.withStaticContext(
+        ctx,
+        httpClient: mockClient,
+        delayFn: (_) async {},
+      );
 
-      final groups = (await api.fetchFolderGroupsDelta(ctx)).getOrThrow();
+      final groups = (await api.fetchFolderGroupsDelta()).getOrThrow();
       expect(groups.items.length, 2);
       expect(groups.items.first.name, 'Group 1');
       expect(groups.items.last.name, 'Group 2');
       expect(groups.deltaLink, contains('deltatoken=g-dt'));
 
-      final settings = (await api.getSettings(ctx)).getOrThrow();
+      final settings = (await api.getSettings()).getOrThrow();
       expect(settings['ConfirmOnDelete'], 'false');
       expect(throttledCalls, 2);
 
-      final conflict409 = await api.patchTask(ctx, 't1', const {
+      final conflict409 = await api.patchTask('t1', const {
         'Subject': 'x',
       }, changeKey: 'ck-1');
       expect(conflict409.exceptionOrNull()?.isConflict, isTrue);
 
-      final conflict412 = await api.patchTask(ctx, 't412', const {
+      final conflict412 = await api.patchTask('t412', const {
         'Subject': 'x',
       }, changeKey: 'ck-stale');
       expect(conflict412.exceptionOrNull()?.isConflict, isTrue);
 
       final expired410 = await api.fetchTasksDelta(
-        ctx,
         folderRemoteId: 'f1',
         deltaLink: 'https://substrate.office.com/todob2/api/v1/tasks?deltatoken=expired',
       );
@@ -163,13 +164,16 @@ void main() {
         return http.StreamedResponse(Stream.value(utf8.encode(body)), 200);
       });
 
-      final api = HttpMicrosoftTodoApi(httpClient: mockClient);
       final ctx = SubstrateRequestContext(
         baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
         accessToken: 'tok',
         cid: 'cid1',
       );
-      final events = await api.connectRealtime(ctx).toList();
+      final api = HttpMicrosoftTodoApi.withStaticContext(
+        ctx,
+        httpClient: mockClient,
+      );
+      final events = await api.connectRealtime().toList();
       expect(events.length, 3);
       expect(events[0].isKeepAlive, isTrue);
       expect(events[1].id, 't1');
@@ -212,16 +216,17 @@ void main() {
         fail('Should not loop on identical NextLink');
       });
 
-      final api = HttpMicrosoftTodoApi(
-        httpClient: mockClient,
-        delayFn: (_) async {},
-      );
       final ctx = SubstrateRequestContext(
         baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
         accessToken: 'tok',
         cid: 'cid1',
       );
-      final groups = (await api.fetchFolderGroupsDelta(ctx)).getOrThrow();
+      final api = HttpMicrosoftTodoApi.withStaticContext(
+        ctx,
+        httpClient: mockClient,
+        delayFn: (_) async {},
+      );
+      final groups = (await api.fetchFolderGroupsDelta()).getOrThrow();
       expect(pageCall, 2);
       expect(groups.items.map((g) => g.name).toList(), ['Group 1', 'Group 2']);
       expect(groups.deltaLink, contains('deltatoken=g-lower'));
@@ -271,20 +276,18 @@ void main() {
         fail('Unexpected request #${requestedUris.length}: ${request.url}');
       });
 
-      final api = HttpMicrosoftTodoApi(
-        httpClient: mockClient,
-        delayFn: (_) async {},
-      );
       final ctx = SubstrateRequestContext(
         baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
         accessToken: 'tok',
         cid: 'cid1',
       );
-
-      final res = (await api.fetchTasksDelta(
+      final api = HttpMicrosoftTodoApi.withStaticContext(
         ctx,
-        folderRemoteId: 'f1',
-      )).getOrThrow();
+        httpClient: mockClient,
+        delayFn: (_) async {},
+      );
+
+      final res = (await api.fetchTasksDelta(folderRemoteId: 'f1')).getOrThrow();
 
       expect(requestedUris.length, 3);
       expect(res.items.map((t) => t.id).toList(), ['t1', 't2', 't3']);
@@ -325,18 +328,18 @@ void main() {
           fail('Should stop after Phase 2 returns terminal DeltaLink');
         });
 
-        final api = HttpMicrosoftTodoApi(
-          httpClient: mockClient,
-          delayFn: (_) async {},
-        );
         final ctx = SubstrateRequestContext(
           baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
           accessToken: 'tok',
           cid: 'cid1',
         );
+        final api = HttpMicrosoftTodoApi.withStaticContext(
+          ctx,
+          httpClient: mockClient,
+          delayFn: (_) async {},
+        );
 
         final res = (await api.fetchTasksDelta(
-          ctx,
           folderRemoteId: 'f1',
         )).getOrThrow();
 
@@ -362,18 +365,18 @@ void main() {
         );
       });
 
-      final api = HttpMicrosoftTodoApi(
-        httpClient: mockClient,
-        delayFn: (_) async {},
-      );
       final ctx = SubstrateRequestContext(
         baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
         accessToken: 'tok',
         cid: 'cid1',
       );
+      final api = HttpMicrosoftTodoApi.withStaticContext(
+        ctx,
+        httpClient: mockClient,
+        delayFn: (_) async {},
+      );
 
       final res = (await api.fetchTasksDelta(
-        ctx,
         folderRemoteId: 'f1',
         deltaLink: 'https://substrate.office.com/todob2/api/v1/tasks?parentFolderId=f1&deltatoken=prev',
       )).getOrThrow();
@@ -423,20 +426,18 @@ void main() {
         fail('Should stop on Phase 2 NextLink self-loop');
       });
 
-      final api = HttpMicrosoftTodoApi(
-        httpClient: mockClient,
-        delayFn: (_) async {},
-      );
       final ctx = SubstrateRequestContext(
         baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
         accessToken: 'tok',
         cid: 'cid1',
       );
-
-      final res = (await api.fetchTasksDelta(
+      final api = HttpMicrosoftTodoApi.withStaticContext(
         ctx,
-        folderRemoteId: 'f1',
-      )).getOrThrow();
+        httpClient: mockClient,
+        delayFn: (_) async {},
+      );
+
+      final res = (await api.fetchTasksDelta(folderRemoteId: 'f1')).getOrThrow();
 
       expect(calls, 3);
       expect(res.items.map((t) => t.id).toList(), ['t1', 't2', 't3']);
@@ -470,20 +471,18 @@ void main() {
         fail('Unexpected request #${requestedUrls.length}');
       });
 
-      final api = HttpMicrosoftTodoApi(
-        httpClient: mockClient,
-        delayFn: (_) async {},
-      );
       final ctx = SubstrateRequestContext(
         baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
         accessToken: 'tok',
         cid: 'cid1',
       );
-
-      final res = (await api.fetchTasksDelta(
+      final api = HttpMicrosoftTodoApi.withStaticContext(
         ctx,
-        folderRemoteId: 'f1',
-      )).getOrThrow();
+        httpClient: mockClient,
+        delayFn: (_) async {},
+      );
+
+      final res = (await api.fetchTasksDelta(folderRemoteId: 'f1')).getOrThrow();
 
       expect(requestedUrls, [
         'https://substrate.office.com/todob2/api/v1/tasks?\$expand=LinkedEntities&parentFolderId=f1&maxPageSize=50',
@@ -521,28 +520,131 @@ void main() {
         );
       });
 
-      final api = HttpMicrosoftTodoApi(
-        httpClient: mockClient,
-        delayFn: (_) async {},
-      );
       final ctx = SubstrateRequestContext(
         baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
         accessToken: 'tok',
         cid: 'cid1',
       );
+      final api = HttpMicrosoftTodoApi.withStaticContext(
+        ctx,
+        httpClient: mockClient,
+        delayFn: (_) async {},
+      );
 
-      final existing = (await api.createTask(ctx, 'f1', const {
+      final existing = (await api.createTask('f1', const {
         'Subject': 'Already created',
         'CreatedWithLocalId': 'local-1',
       })).getOrThrow();
       expect(existing.id, 'rt-existing');
       expect(existing.changeKey, 'ck-existing');
 
-      final conflict = await api.createTask(ctx, 'f1', const {
+      final conflict = await api.createTask('f1', const {
         'Subject': 'Conflict error',
         'CreatedWithLocalId': 'local-2',
       });
       expect(conflict.exceptionOrNull()?.isConflict, isTrue);
+    });
+
+    test('retries HTTP 401 with forceRefreshToken across REST, attachment download, and realtime, and surfaces requiresReauth on failure', () async {
+      final refreshFlags = <bool>[];
+      var restAttempts = 0;
+      var downloadAttempts = 0;
+      var realtimeAttempts = 0;
+      var failRefresh = false;
+
+      final mockClient = MockClient.streaming((request, _) async {
+        final authHeader = request.headers['Authorization'];
+        if (request.url.path.endsWith('/settings')) {
+          restAttempts += 1;
+          if (authHeader == 'Bearer stale-tok' || failRefresh) {
+            return http.StreamedResponse(
+              Stream.value(utf8.encode('{"error":{"message":"Unauthorized"}}')),
+              401,
+            );
+          }
+          expect(authHeader, 'Bearer fresh-tok');
+          return http.StreamedResponse(
+            Stream.value(
+              utf8.encode(
+                jsonEncode({
+                  'Value': [
+                    {'Key': 'ConfirmOnDelete', 'Value': 'true'},
+                  ],
+                }),
+              ),
+            ),
+            200,
+          );
+        }
+
+        if (request.url.path.endsWith('/files/f1')) {
+          downloadAttempts += 1;
+          if (authHeader == 'Bearer stale-tok') {
+            return http.StreamedResponse(const Stream.empty(), 401);
+          }
+          expect(authHeader, 'Bearer fresh-tok');
+          return http.StreamedResponse(Stream.value([7, 8, 9]), 200);
+        }
+
+        if (request.url.path.endsWith('/realtime')) {
+          realtimeAttempts += 1;
+          if (authHeader == 'Bearer stale-tok') {
+            return http.StreamedResponse(const Stream.empty(), 401);
+          }
+          expect(authHeader, 'Bearer fresh-tok');
+          return http.StreamedResponse(
+            Stream.value(utf8.encode('{"Type":"KeepAlive"}\n')),
+            200,
+          );
+        }
+
+        return http.StreamedResponse(const Stream.empty(), 404);
+      });
+
+      final api = HttpMicrosoftTodoApi(
+        httpClient: mockClient,
+        delayFn: (_) async {},
+        contextResolver: ({bool forceRefreshToken = false}) async {
+          refreshFlags.add(forceRefreshToken);
+          if (failRefresh && forceRefreshToken) {
+            return const Failure(
+              AppError.auth(
+                message: 'Token revoked',
+                code: 'invalid_grant',
+                requiresReauth: true,
+              ),
+            );
+          }
+          return Success(
+            SubstrateRequestContext(
+              baseUrl: MsaAuthConfig.defaultTodoApiBaseUrl,
+              accessToken: forceRefreshToken ? 'fresh-tok' : 'stale-tok',
+              cid: 'cid1',
+            ),
+          );
+        },
+      );
+
+      final settings = (await api.getSettings()).getOrThrow();
+      expect(settings['ConfirmOnDelete'], 'true');
+      expect(restAttempts, 2);
+
+      final bytes = (await api.downloadAttachment('/files/f1')).getOrThrow();
+      expect(bytes, [7, 8, 9]);
+      expect(downloadAttempts, 2);
+
+      final events = await api.connectRealtime().toList();
+      expect(events, hasLength(1));
+      expect(events.single.isKeepAlive, isTrue);
+      expect(realtimeAttempts, 2);
+      expect(refreshFlags, [false, true, false, true, false, true]);
+
+      // Refresh failure surfaces AuthError(requiresReauth: true).
+      failRefresh = true;
+      final failed = await api.getSettings();
+      final err = failed.exceptionOrNull();
+      expect(err, isA<AuthError>());
+      expect((err! as AuthError).requiresReauth, isTrue);
     });
   });
 }

@@ -7,12 +7,14 @@ import 'package:collection/collection.dart';
 import 'package:http/http.dart' as http;
 import 'package:result_dart/result_dart.dart';
 
+import '../../auth/microsoft_auth_service.dart';
 import '../../core/error/app_error.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/result/app_result.dart';
-import 'microsoft_todo_models.dart';
+import '../../data/todo_repository.dart';
+import '../../models/account.dart';
 import '../sync_guard.dart';
-import '../sync_log_format.dart';
+import 'microsoft_todo_models.dart';
 import 'todo_wire_codecs.dart';
 
 export 'microsoft_todo_models.dart';
@@ -20,144 +22,207 @@ export 'microsoft_todo_models.dart';
 final _log = appLogFor('SyncApi');
 final _realtimeLog = appLogFor('SyncRealtime');
 
+typedef SubstrateContextResolver =
+    AsyncAppResult<SubstrateRequestContext> Function({
+      bool forceRefreshToken,
+    });
+
+/// Resolves valid MSA bearer token, CID, and discovered Substrate base URL
+/// (caching the endpoint URL in SQLite [repository]).
+AsyncAppResult<SubstrateRequestContext> resolveSubstrateContext({
+  required MicrosoftAuthClient authClient,
+  required AuthTokenStorage tokenStorage,
+  required MicrosoftAccount account,
+  required TodoRepository repository,
+  bool forceRefreshToken = false,
+}) => _resolveTokens(
+  authClient: authClient,
+  tokenStorage: tokenStorage,
+  account: account,
+  forceRefreshToken: forceRefreshToken,
+).flatMap((tokens) {
+  final cid = tokens.userId.isNotEmpty
+      ? tokens.userId
+      : account.microsoftUserId;
+  return _resolveBaseUrl(
+    authClient: authClient,
+    repository: repository,
+    cid: cid,
+  ).map(
+    (baseUrl) => SubstrateRequestContext(
+      baseUrl: baseUrl,
+      accessToken: tokens.accessToken,
+      cid: cid,
+    ),
+  );
+});
+
+AsyncAppResult<MicrosoftAuthTokens> _resolveTokens({
+  required MicrosoftAuthClient authClient,
+  required AuthTokenStorage tokenStorage,
+  required MicrosoftAccount account,
+  required bool forceRefreshToken,
+}) async {
+  if (!forceRefreshToken) {
+    return authClient.ensureValidTokens(
+      accountId: account.id,
+      storage: tokenStorage,
+      fallbackCid: account.microsoftUserId,
+    );
+  }
+  final stored = await tokenStorage.loadTokens(account.id);
+  if (stored == null || stored.refreshToken.isEmpty) {
+    return const Failure(
+      AppError.auth(
+        message: 'Refresh token unavailable; please sign in again.',
+        code: 'no_refresh_token',
+        requiresReauth: true,
+      ),
+    );
+  }
+  final refreshed = await authClient.refreshTokens(
+    refreshToken: stored.refreshToken,
+    fallbackUserId: stored.userId.isNotEmpty
+        ? stored.userId
+        : account.microsoftUserId,
+  );
+  if (refreshed.isSuccess()) {
+    await tokenStorage.saveTokens(account.id, refreshed.getOrNull()!);
+  }
+  return refreshed;
+}
+
+AsyncAppResult<String> _resolveBaseUrl({
+  required MicrosoftAuthClient authClient,
+  required TodoRepository repository,
+  required String cid,
+}) async {
+  final cached = repository.loadCachedEndpointUrl();
+  if (cached != null) return Success(cached);
+  final discovered = await guardApiCall(
+    () => authClient.discoverTodoEndpoint(cid),
+    operation: 'discoverEndpoint',
+  );
+  if (discovered.isSuccess()) {
+    await repository.saveCachedEndpointUrl(discovered.getOrNull()!);
+  }
+  return discovered;
+}
+
 /// Abstract Substrate To Do v1 API client returning [AsyncAppResult].
 abstract class MicrosoftTodoApi {
-  AsyncAppResult<Map<String, String>> getSettings(SubstrateRequestContext ctx);
+  AsyncAppResult<Map<String, String>> getSettings();
 
-  AsyncAppResult<Unit> patchSetting(
-    SubstrateRequestContext ctx,
-    String key,
-    String value,
-  );
+  AsyncAppResult<Unit> patchSetting(String key, String value);
 
-  AsyncAppResult<DeltaPageResult<RemoteFolderGroup>> fetchFolderGroupsDelta(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<DeltaPageResult<RemoteFolderGroup>> fetchFolderGroupsDelta({
     String? deltaLink,
   });
 
-  AsyncAppResult<RemoteFolderGroup> createFolderGroup(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<RemoteFolderGroup> createFolderGroup({
     required String name,
     required DateTime orderDateTime,
   });
 
   AsyncAppResult<RemoteFolderGroup> patchFolderGroup(
-    SubstrateRequestContext ctx,
     String remoteId,
     Map<String, dynamic> patch,
   );
 
-  AsyncAppResult<Unit> deleteFolderGroup(
-    SubstrateRequestContext ctx,
-    String remoteId,
-  );
+  AsyncAppResult<Unit> deleteFolderGroup(String remoteId);
 
-  AsyncAppResult<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta({
     String? deltaLink,
   });
 
-  AsyncAppResult<RemoteTodoFolder> createFolder(
-    SubstrateRequestContext ctx,
-    Map<String, dynamic> payload,
-  );
+  AsyncAppResult<RemoteTodoFolder> createFolder(Map<String, dynamic> payload);
 
   AsyncAppResult<RemoteTodoFolder> patchFolder(
-    SubstrateRequestContext ctx,
     String remoteId,
     Map<String, dynamic> patch,
   );
 
-  AsyncAppResult<Unit> deleteFolder(
-    SubstrateRequestContext ctx,
-    String remoteId,
-  );
+  AsyncAppResult<Unit> deleteFolder(String remoteId);
 
-  AsyncAppResult<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta({
     required String folderRemoteId,
     String? deltaLink,
   });
 
-  AsyncAppResult<RemoteTodoTask> getTask(
-    SubstrateRequestContext ctx,
-    String taskRemoteId,
-  );
+  AsyncAppResult<RemoteTodoTask> getTask(String taskRemoteId);
 
   AsyncAppResult<RemoteTodoTask> createTask(
-    SubstrateRequestContext ctx,
     String folderRemoteId,
     Map<String, dynamic> payload,
   );
 
   AsyncAppResult<RemoteTodoTask> patchTask(
-    SubstrateRequestContext ctx,
     String taskRemoteId,
     Map<String, dynamic> patch, {
     String? changeKey,
   });
 
-  AsyncAppResult<Unit> deleteTask(
-    SubstrateRequestContext ctx,
-    String taskRemoteId,
-  );
+  AsyncAppResult<Unit> deleteTask(String taskRemoteId);
 
   AsyncAppResult<RemoteTaskStep> createStep(
-    SubstrateRequestContext ctx,
     String taskRemoteId, {
     required String subject,
     required DateTime orderDateTime,
   });
 
   AsyncAppResult<RemoteTaskStep> patchStep(
-    SubstrateRequestContext ctx,
     String taskRemoteId,
     String stepRemoteId,
     Map<String, dynamic> patch,
   );
 
-  AsyncAppResult<Unit> deleteStep(
-    SubstrateRequestContext ctx,
-    String taskRemoteId,
-    String stepRemoteId,
-  );
+  AsyncAppResult<Unit> deleteStep(String taskRemoteId, String stepRemoteId);
 
   AsyncAppResult<RemoteFileUpload> uploadAttachment(
-    SubstrateRequestContext ctx,
     String taskRemoteId, {
     required String fileName,
     required List<int> bytes,
     String? contentType,
   });
 
-  AsyncAppResult<Uint8List> downloadAttachment(
-    SubstrateRequestContext ctx,
-    String webLink,
-  );
+  AsyncAppResult<Uint8List> downloadAttachment(String webLink);
 
   AsyncAppResult<Unit> deleteLinkedEntity(
-    SubstrateRequestContext ctx,
     String taskRemoteId,
     String entityRemoteId,
   );
 
-  Stream<RealtimeEvent> connectRealtime(SubstrateRequestContext ctx);
+  Stream<RealtimeEvent> connectRealtime();
 
   bool isOwnRequestId(String? requestId);
 }
 
 class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
   HttpMicrosoftTodoApi({
+    required SubstrateContextResolver contextResolver,
     http.Client? httpClient,
     Future<void> Function(Duration)? delayFn,
-  }) : _http = httpClient ?? http.Client(),
+  }) : _resolveContext = contextResolver,
+       _http = httpClient ?? http.Client(),
        _delay = delayFn ?? Future<void>.delayed;
+
+  HttpMicrosoftTodoApi.withStaticContext(
+    SubstrateRequestContext context, {
+    http.Client? httpClient,
+    Future<void> Function(Duration)? delayFn,
+  }) : this(
+         contextResolver: ({bool forceRefreshToken = false}) async =>
+             Success(context),
+         httpClient: httpClient,
+         delayFn: delayFn,
+       );
 
   static const _userAgent = 'Microsoft To-Do/Android/2.178.8840.00.beta';
   static const _requestTimeout = Duration(seconds: 60);
   static const _maxDeltaPages = 200;
   static const _ownRequestHistoryLimit = 200;
 
+  final SubstrateContextResolver _resolveContext;
   final http.Client _http;
   final Future<void> Function(Duration) _delay;
   final String _cvPrefix = generateUuidV4().substring(0, 16);
@@ -231,6 +296,29 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
     return headers;
   }
 
+  AsyncAppResult<T> _runWithAuthRetry<T extends Object>(
+    AsyncAppResult<T> Function(SubstrateRequestContext ctx) run,
+  ) async {
+    AsyncAppResult<T> attempt({required bool forceRefreshToken}) =>
+        _resolveContext(forceRefreshToken: forceRefreshToken).flatMap(run);
+
+    final firstAttempt = await attempt(forceRefreshToken: false);
+    if (firstAttempt.exceptionOrNull() is! AuthError) {
+      return firstAttempt;
+    }
+
+    final retried = await attempt(forceRefreshToken: true);
+    return retried.mapError(
+      (error) => error is AuthError
+          ? AppError.auth(
+              message: error.message,
+              code: error.code,
+              requiresReauth: true,
+            )
+          : error,
+    );
+  }
+
   AsyncAppResult<http.Response> _sendWithThrottleRetry({
     required Future<http.Response> Function() executeOnce,
     required String operation,
@@ -259,39 +347,41 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
   }, operation: operation);
 
   AsyncAppResult<http.Response> _sendRequest({
-    required SubstrateRequestContext ctx,
     required String method,
-    required Uri uri,
+    required Uri Function(SubstrateRequestContext ctx) uriFor,
     bool trackChanges = false,
     String? ifMatch,
     Object? jsonBody,
     Set<int> acceptedStatusCodes = const {},
-  }) => _sendWithThrottleRetry(
-    operation: '$method ${uri.path}',
-    acceptedStatusCodes: acceptedStatusCodes,
-    executeOnce: () {
-      final headers = _buildHeaders(
-        ctx,
-        trackChanges: trackChanges,
-        ifMatch: ifMatch,
-      );
-      final encoded = jsonBody == null ? null : jsonEncode(jsonBody);
-      return switch (method) {
-        'GET' => _http.get(uri, headers: headers).timeout(_requestTimeout),
-        'POST' =>
-          _http
-              .post(uri, headers: headers, body: encoded)
-              .timeout(_requestTimeout),
-        'PATCH' =>
-          _http
-              .patch(uri, headers: headers, body: encoded)
-              .timeout(_requestTimeout),
-        'DELETE' =>
-          _http.delete(uri, headers: headers).timeout(_requestTimeout),
-        _ => throw ArgumentError('Unsupported HTTP method: $method'),
-      };
-    },
-  );
+  }) => _runWithAuthRetry((ctx) {
+    final uri = uriFor(ctx);
+    return _sendWithThrottleRetry(
+      operation: '$method ${uri.path}',
+      acceptedStatusCodes: acceptedStatusCodes,
+      executeOnce: () {
+        final headers = _buildHeaders(
+          ctx,
+          trackChanges: trackChanges,
+          ifMatch: ifMatch,
+        );
+        final encoded = jsonBody == null ? null : jsonEncode(jsonBody);
+        return switch (method) {
+          'GET' => _http.get(uri, headers: headers).timeout(_requestTimeout),
+          'POST' =>
+            _http
+                .post(uri, headers: headers, body: encoded)
+                .timeout(_requestTimeout),
+          'PATCH' =>
+            _http
+                .patch(uri, headers: headers, body: encoded)
+                .timeout(_requestTimeout),
+          'DELETE' =>
+            _http.delete(uri, headers: headers).timeout(_requestTimeout),
+          _ => throw ArgumentError('Unsupported HTTP method: $method'),
+        };
+      },
+    );
+  });
 
   Duration? _extractThrottleDelay(http.Response response) {
     final status = response.statusCode;
@@ -350,74 +440,60 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
     );
   }
 
-  AsyncAppResult<Map<String, dynamic>> _getJsonObject({
-    required SubstrateRequestContext ctx,
-    required Uri uri,
+  AsyncAppResult<Map<String, dynamic>> _requestJson({
+    required String method,
+    required String relativePath,
+    Map<String, dynamic>? body,
+    String? ifMatch,
     bool trackChanges = false,
   }) => _sendRequest(
-    ctx: ctx,
-    method: 'GET',
-    uri: uri,
+    method: method,
+    uriFor: (ctx) => ctx.endpointUri(relativePath),
+    jsonBody: body,
+    ifMatch: ifMatch,
     trackChanges: trackChanges,
   ).map((response) => _decodeJsonMap(response.body));
 
-  AsyncAppResult<Map<String, dynamic>> _postJsonObject({
-    required SubstrateRequestContext ctx,
-    required Uri uri,
-    required Map<String, dynamic> body,
-  }) => _sendRequest(
-    ctx: ctx,
-    method: 'POST',
-    uri: uri,
-    jsonBody: body,
-  ).map((response) => _decodeJsonMap(response.body));
-
-  AsyncAppResult<Map<String, dynamic>> _patchJsonObject({
-    required SubstrateRequestContext ctx,
-    required Uri uri,
-    required Map<String, dynamic> body,
-    String? ifMatch,
-  }) => _sendRequest(
-    ctx: ctx,
-    method: 'PATCH',
-    uri: uri,
-    ifMatch: ifMatch,
-    jsonBody: body,
-  ).map((response) => _decodeJsonMap(response.body));
-
-  AsyncAppResult<Unit> _deleteResource({
-    required SubstrateRequestContext ctx,
-    required Uri uri,
-  }) => _sendRequest(ctx: ctx, method: 'DELETE', uri: uri).map((_) => unit);
+  AsyncAppResult<Unit> _deleteResource(String relativePath) => _sendRequest(
+    method: 'DELETE',
+    uriFor: (ctx) => ctx.endpointUri(relativePath),
+  ).map((_) => unit);
 
   Map<String, dynamic> _decodeJsonMap(String body) =>
       tryDecodeJsonMap(body) ?? const {};
 
   AsyncAppResult<DeltaPageResult<T>> _fetchDeltaPages<T>({
-    required SubstrateRequestContext ctx,
-    required Uri initialUri,
+    required String initialRelativePath,
     required T Function(Map<String, dynamic> json) parser,
     String? deltaLink,
   }) async {
     final usedDelta = deltaLink != null && deltaLink.trim().isNotEmpty;
-    Uri? nextUri = usedDelta ? Uri.parse(deltaLink.trim()) : initialUri;
+    Uri? nextUri = usedDelta ? Uri.parse(deltaLink.trim()) : null;
     final visitedUris = <Uri>{};
     final items = <T>[];
     String? resolvedDeltaLink;
+    String? folderParam;
+    Uri? firstPageUri;
     var pages = 0;
 
-    while (nextUri != null && pages < _maxDeltaPages) {
+    while ((pages == 0 || nextUri != null) && pages < _maxDeltaPages) {
       pages += 1;
-      final currentUri = nextUri;
-      visitedUris.add(currentUri);
-      final pageResult = await _getJsonObject(
-        ctx: ctx,
-        uri: currentUri,
+      late Uri currentUri;
+      final pageResult = await _sendRequest(
+        method: 'GET',
+        uriFor: (ctx) {
+          currentUri = nextUri ?? ctx.endpointUri(initialRelativePath);
+          return currentUri;
+        },
         trackChanges: true,
-      );
+      ).map((response) => _decodeJsonMap(response.body));
       if (pageResult.isError()) {
         return Failure(pageResult.exceptionOrNull()!);
       }
+      firstPageUri ??= currentUri;
+      folderParam ??= currentUri.queryParameters['parentFolderId'];
+      visitedUris.add(currentUri);
+
       final page = pageResult.getOrThrow();
       final rawList =
           (page['Value'] ?? page['Values'] ?? page['value'] ?? page['values'])
@@ -453,12 +529,12 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
       }
     }
 
-    final folderParam = initialUri.queryParameters['parentFolderId'];
     final folderHint = folderParam != null
         ? ' folder=${shortSyncId(folderParam)}'
         : '';
     _log.fine(
-      'fetchDelta ${initialUri.path}$folderHint mode=${usedDelta ? "delta" : "full"} '
+      'fetchDelta ${firstPageUri?.path ?? initialRelativePath}$folderHint '
+      'mode=${usedDelta ? "delta" : "full"} '
       'pages=$pages items=${items.length} hasDeltaLink=${resolvedDeltaLink != null}',
     );
 
@@ -506,10 +582,8 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
   }
 
   @override
-  AsyncAppResult<Map<String, String>> getSettings(SubstrateRequestContext ctx) {
-    return _getJsonObject(ctx: ctx, uri: ctx.endpointUri('settings')).map((
-      json,
-    ) {
+  AsyncAppResult<Map<String, String>> getSettings() {
+    return _requestJson(method: 'GET', relativePath: 'settings').map((json) {
       final rawList =
           (json['Value'] ?? json['Values'] ?? json['value'])
               as List<dynamic>? ??
@@ -529,36 +603,28 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
   }
 
   @override
-  AsyncAppResult<Unit> patchSetting(
-    SubstrateRequestContext ctx,
-    String key,
-    String value,
-  ) => _sendRequest(
-    ctx: ctx,
+  AsyncAppResult<Unit> patchSetting(String key, String value) => _sendRequest(
     method: 'PATCH',
-    uri: ctx.endpointUri('settings/${Uri.encodeComponent(key)}'),
+    uriFor: (ctx) => ctx.endpointUri('settings/${Uri.encodeComponent(key)}'),
     jsonBody: {'Value': value},
   ).map((_) => unit);
 
   @override
-  AsyncAppResult<DeltaPageResult<RemoteFolderGroup>> fetchFolderGroupsDelta(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<DeltaPageResult<RemoteFolderGroup>> fetchFolderGroupsDelta({
     String? deltaLink,
   }) => _fetchDeltaPages<RemoteFolderGroup>(
-    ctx: ctx,
-    initialUri: ctx.endpointUri('foldergroups?maxPageSize=50'),
+    initialRelativePath: 'foldergroups?maxPageSize=50',
     deltaLink: deltaLink,
     parser: RemoteFolderGroup.fromJson,
   );
 
   @override
-  AsyncAppResult<RemoteFolderGroup> createFolderGroup(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<RemoteFolderGroup> createFolderGroup({
     required String name,
     required DateTime orderDateTime,
-  }) => _postJsonObject(
-    ctx: ctx,
-    uri: ctx.endpointUri('foldergroups'),
+  }) => _requestJson(
+    method: 'POST',
+    relativePath: 'foldergroups',
     body: {
       'Name': name,
       'OrderDateTime': formatSubstrateUtcTimestamp(orderDateTime),
@@ -567,105 +633,79 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
 
   @override
   AsyncAppResult<RemoteFolderGroup> patchFolderGroup(
-    SubstrateRequestContext ctx,
     String remoteId,
     Map<String, dynamic> patch,
-  ) => _patchJsonObject(
-    ctx: ctx,
-    uri: ctx.endpointUri('foldergroups/${Uri.encodeComponent(remoteId)}'),
+  ) => _requestJson(
+    method: 'PATCH',
+    relativePath: 'foldergroups/${Uri.encodeComponent(remoteId)}',
     body: patch,
   ).map(RemoteFolderGroup.fromJson);
 
   @override
-  AsyncAppResult<Unit> deleteFolderGroup(
-    SubstrateRequestContext ctx,
-    String remoteId,
-  ) => _deleteResource(
-    ctx: ctx,
-    uri: ctx.endpointUri('foldergroups/${Uri.encodeComponent(remoteId)}'),
-  );
+  AsyncAppResult<Unit> deleteFolderGroup(String remoteId) =>
+      _deleteResource('foldergroups/${Uri.encodeComponent(remoteId)}');
 
   @override
-  AsyncAppResult<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta({
     String? deltaLink,
   }) => _fetchDeltaPages<RemoteTodoFolder>(
-    ctx: ctx,
-    initialUri: ctx.endpointUri(
-      'taskfolders?\$select=*,AllExtensions/Com_Wunderlist_Import,AllExtensions/Com_Microsoft_Grocery_Configs&maxPageSize=50',
-    ),
+    initialRelativePath:
+        'taskfolders?\$select=*,AllExtensions/Com_Wunderlist_Import,AllExtensions/Com_Microsoft_Grocery_Configs&maxPageSize=50',
     deltaLink: deltaLink,
     parser: RemoteTodoFolder.fromJson,
   );
 
   @override
-  AsyncAppResult<RemoteTodoFolder> createFolder(
-    SubstrateRequestContext ctx,
-    Map<String, dynamic> payload,
-  ) => _postJsonObject(
-    ctx: ctx,
-    uri: ctx.endpointUri('taskfolders'),
-    body: payload,
-  ).map(RemoteTodoFolder.fromJson);
+  AsyncAppResult<RemoteTodoFolder> createFolder(Map<String, dynamic> payload) =>
+      _requestJson(
+        method: 'POST',
+        relativePath: 'taskfolders',
+        body: payload,
+      ).map(RemoteTodoFolder.fromJson);
 
   @override
   AsyncAppResult<RemoteTodoFolder> patchFolder(
-    SubstrateRequestContext ctx,
     String remoteId,
     Map<String, dynamic> patch,
-  ) => _patchJsonObject(
-    ctx: ctx,
-    uri: ctx.endpointUri(
-      'taskfolders/${Uri.encodeComponent(remoteId)}?\$select=*,AllExtensions/Com_Microsoft_Grocery_Configs',
-    ),
+  ) => _requestJson(
+    method: 'PATCH',
+    relativePath:
+        'taskfolders/${Uri.encodeComponent(remoteId)}?\$select=*,AllExtensions/Com_Microsoft_Grocery_Configs',
     body: patch,
   ).map(RemoteTodoFolder.fromJson);
 
   @override
-  AsyncAppResult<Unit> deleteFolder(
-    SubstrateRequestContext ctx,
-    String remoteId,
-  ) => _deleteResource(
-    ctx: ctx,
-    uri: ctx.endpointUri('taskfolders/${Uri.encodeComponent(remoteId)}'),
-  );
+  AsyncAppResult<Unit> deleteFolder(String remoteId) =>
+      _deleteResource('taskfolders/${Uri.encodeComponent(remoteId)}');
 
   @override
-  AsyncAppResult<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta({
     required String folderRemoteId,
     String? deltaLink,
   }) {
     final encodedFolderId = Uri.encodeQueryComponent(folderRemoteId);
     return _fetchDeltaPages<RemoteTodoTask>(
-      ctx: ctx,
-      initialUri: ctx.endpointUri(
-        'tasks?\$expand=LinkedEntities&parentFolderId=$encodedFolderId&maxPageSize=50',
-      ),
+      initialRelativePath:
+          'tasks?\$expand=LinkedEntities&parentFolderId=$encodedFolderId&maxPageSize=50',
       deltaLink: deltaLink,
       parser: RemoteTodoTask.fromJson,
     );
   }
 
   @override
-  AsyncAppResult<RemoteTodoTask> getTask(
-    SubstrateRequestContext ctx,
-    String taskRemoteId,
-  ) => _getJsonObject(
-    ctx: ctx,
-    uri: ctx.endpointUri('tasks/${Uri.encodeComponent(taskRemoteId)}'),
+  AsyncAppResult<RemoteTodoTask> getTask(String taskRemoteId) => _requestJson(
+    method: 'GET',
+    relativePath: 'tasks/${Uri.encodeComponent(taskRemoteId)}',
   ).map(RemoteTodoTask.fromJson);
 
   @override
   AsyncAppResult<RemoteTodoTask> createTask(
-    SubstrateRequestContext ctx,
     String folderRemoteId,
     Map<String, dynamic> payload,
   ) =>
       _sendRequest(
-        ctx: ctx,
         method: 'POST',
-        uri: ctx.endpointUri(
+        uriFor: (ctx) => ctx.endpointUri(
           'taskfolders/${Uri.encodeComponent(folderRemoteId)}/tasks',
         ),
         jsonBody: payload,
@@ -711,35 +751,28 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
 
   @override
   AsyncAppResult<RemoteTodoTask> patchTask(
-    SubstrateRequestContext ctx,
     String taskRemoteId,
     Map<String, dynamic> patch, {
     String? changeKey,
-  }) => _patchJsonObject(
-    ctx: ctx,
-    uri: ctx.endpointUri('tasks/${Uri.encodeComponent(taskRemoteId)}'),
+  }) => _requestJson(
+    method: 'PATCH',
+    relativePath: 'tasks/${Uri.encodeComponent(taskRemoteId)}',
     body: patch,
     ifMatch: changeKey,
   ).map(RemoteTodoTask.fromJson);
 
   @override
-  AsyncAppResult<Unit> deleteTask(
-    SubstrateRequestContext ctx,
-    String taskRemoteId,
-  ) => _deleteResource(
-    ctx: ctx,
-    uri: ctx.endpointUri('tasks/${Uri.encodeComponent(taskRemoteId)}'),
-  );
+  AsyncAppResult<Unit> deleteTask(String taskRemoteId) =>
+      _deleteResource('tasks/${Uri.encodeComponent(taskRemoteId)}');
 
   @override
   AsyncAppResult<RemoteTaskStep> createStep(
-    SubstrateRequestContext ctx,
     String taskRemoteId, {
     required String subject,
     required DateTime orderDateTime,
-  }) => _postJsonObject(
-    ctx: ctx,
-    uri: ctx.endpointUri('tasks/${Uri.encodeComponent(taskRemoteId)}/subtasks'),
+  }) => _requestJson(
+    method: 'POST',
+    relativePath: 'tasks/${Uri.encodeComponent(taskRemoteId)}/subtasks',
     body: {
       'Subject': subject,
       'OrderDateTime': formatSubstrateUtcTimestamp(orderDateTime),
@@ -748,105 +781,123 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
 
   @override
   AsyncAppResult<RemoteTaskStep> patchStep(
-    SubstrateRequestContext ctx,
     String taskRemoteId,
     String stepRemoteId,
     Map<String, dynamic> patch,
-  ) => _patchJsonObject(
-    ctx: ctx,
-    uri: ctx.endpointUri(
-      'tasks/${Uri.encodeComponent(taskRemoteId)}/subtasks/${Uri.encodeComponent(stepRemoteId)}',
-    ),
+  ) => _requestJson(
+    method: 'PATCH',
+    relativePath:
+        'tasks/${Uri.encodeComponent(taskRemoteId)}/subtasks/${Uri.encodeComponent(stepRemoteId)}',
     body: patch,
   ).map(RemoteTaskStep.fromJson);
 
   @override
-  AsyncAppResult<Unit> deleteStep(
-    SubstrateRequestContext ctx,
-    String taskRemoteId,
-    String stepRemoteId,
-  ) => _deleteResource(
-    ctx: ctx,
-    uri: ctx.endpointUri(
-      'tasks/${Uri.encodeComponent(taskRemoteId)}/subtasks/${Uri.encodeComponent(stepRemoteId)}',
-    ),
-  );
+  AsyncAppResult<Unit> deleteStep(String taskRemoteId, String stepRemoteId) =>
+      _deleteResource(
+        'tasks/${Uri.encodeComponent(taskRemoteId)}/subtasks/${Uri.encodeComponent(stepRemoteId)}',
+      );
 
   @override
   AsyncAppResult<RemoteFileUpload> uploadAttachment(
-    SubstrateRequestContext ctx,
     String taskRemoteId, {
     required String fileName,
     required List<int> bytes,
     String? contentType,
-  }) {
-    final uri = ctx.endpointUri(
-      'tasks/${Uri.encodeComponent(taskRemoteId)}/attachments',
-    );
-    return _sendWithThrottleRetry(
-      operation: 'uploadAttachment',
-      executeOnce: () async {
-        final request = http.MultipartRequest('POST', uri);
-        final headers = _buildHeaders(ctx)..remove('Content-Type');
-        request.headers.addAll(headers);
-        request.fields['jsonMetadata'] = jsonEncode({'Name': fileName});
-        request.files.add(
-          http.MultipartFile.fromBytes('attachment', bytes, filename: fileName),
-        );
-        final streamed = await _http.send(request).timeout(_requestTimeout);
-        return http.Response.fromStream(streamed);
-      },
-    ).map(
-      (response) => RemoteFileUpload.fromJson(_decodeJsonMap(response.body)),
-    );
-  }
+  }) =>
+      _runWithAuthRetry(
+        (ctx) => _sendWithThrottleRetry(
+          operation: 'uploadAttachment',
+          executeOnce: () async {
+            final uri = ctx.endpointUri(
+              'tasks/${Uri.encodeComponent(taskRemoteId)}/attachments',
+            );
+            final request = http.MultipartRequest('POST', uri);
+            final headers = _buildHeaders(ctx)..remove('Content-Type');
+            request.headers.addAll(headers);
+            request.fields['jsonMetadata'] = jsonEncode({'Name': fileName});
+            request.files.add(
+              http.MultipartFile.fromBytes(
+                'attachment',
+                bytes,
+                filename: fileName,
+              ),
+            );
+            final streamed = await _http.send(request).timeout(_requestTimeout);
+            return http.Response.fromStream(streamed);
+          },
+        ),
+      ).map(
+        (response) => RemoteFileUpload.fromJson(_decodeJsonMap(response.body)),
+      );
 
-  @override
-  AsyncAppResult<Uint8List> downloadAttachment(
+  Uri _resolveAttachmentDownloadUri(
     SubstrateRequestContext ctx,
     String webLink,
   ) {
-    final Uri uri;
     final trimmed = webLink.trim();
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      uri = Uri.parse(trimmed);
-    } else {
-      final base = Uri.parse(ctx.baseUrl);
-      final path = trimmed.startsWith('/') ? trimmed : '/$trimmed';
-      uri = Uri.parse('${base.scheme}://${base.authority}$path');
+      return Uri.parse(trimmed);
     }
-    return _sendWithThrottleRetry(
-      operation: 'downloadAttachment',
-      executeOnce: () {
-        final headers = _buildHeaders(ctx)
-          ..remove('Content-Type')
-          ..['Accept'] = '*/*';
-        return _http.get(uri, headers: headers).timeout(_requestTimeout);
-      },
-    ).map((response) => response.bodyBytes);
+    final base = Uri.parse(ctx.baseUrl);
+    final path = trimmed.startsWith('/') ? trimmed : '/$trimmed';
+    return Uri.parse('${base.scheme}://${base.authority}$path');
   }
 
   @override
+  AsyncAppResult<Uint8List> downloadAttachment(String webLink) =>
+      _runWithAuthRetry(
+        (ctx) => _sendWithThrottleRetry(
+          operation: 'downloadAttachment',
+          executeOnce: () {
+            final uri = _resolveAttachmentDownloadUri(ctx, webLink);
+            final headers = _buildHeaders(ctx)
+              ..remove('Content-Type')
+              ..['Accept'] = '*/*';
+            return _http.get(uri, headers: headers).timeout(_requestTimeout);
+          },
+        ),
+      ).map((response) => response.bodyBytes);
+
+  @override
   AsyncAppResult<Unit> deleteLinkedEntity(
-    SubstrateRequestContext ctx,
     String taskRemoteId,
     String entityRemoteId,
   ) => _deleteResource(
-    ctx: ctx,
-    uri: ctx.endpointUri(
-      'tasks/${Uri.encodeComponent(taskRemoteId)}/linkedentities/${Uri.encodeComponent(entityRemoteId)}',
-    ),
+    'tasks/${Uri.encodeComponent(taskRemoteId)}/linkedentities/${Uri.encodeComponent(entityRemoteId)}',
   );
 
-  @override
-  Stream<RealtimeEvent> connectRealtime(SubstrateRequestContext ctx) async* {
-    _realtimeLog.info('connecting GET realtime');
+  Future<http.StreamedResponse> _openRealtimeStream(
+    SubstrateRequestContext ctx,
+  ) {
     final request = http.Request('GET', ctx.endpointUri('realtime'));
     request.headers.addAll(_buildHeaders(ctx, longPolling: true));
+    return _http.send(request).timeout(_requestTimeout);
+  }
 
-    final streamed = await _http.send(request).timeout(_requestTimeout);
+  @override
+  Stream<RealtimeEvent> connectRealtime() async* {
+    _realtimeLog.info('connecting GET realtime');
+    var ctx = (await _resolveContext(
+      forceRefreshToken: false,
+    )).fold((value) => value, (error) => throw error);
+    var streamed = await _openRealtimeStream(ctx);
+    if (streamed.statusCode == 401) {
+      await streamed.stream.drain<void>().catchError((_) {});
+      ctx = (await _resolveContext(forceRefreshToken: true)).fold(
+        (value) => value,
+        (error) => throw error is AuthError
+            ? AppError.auth(
+                message: error.message,
+                code: error.code,
+                requiresReauth: true,
+              )
+            : error,
+      );
+      streamed = await _openRealtimeStream(ctx);
+    }
     _realtimeLog.info('connected status=${streamed.statusCode}');
     if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+      await streamed.stream.drain<void>().catchError((_) {});
       throw appErrorFromHttpStatus(
         statusCode: streamed.statusCode,
         message: 'Realtime stream failed (${streamed.statusCode})',

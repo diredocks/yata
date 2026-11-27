@@ -234,14 +234,8 @@ void main() {
       expect(outbox.ops.first.localId, 'att-1');
 
       final pushEngine = SubstratePushEngine(api);
-      final ctx = SubstrateRequestContext(
-        baseUrl: 'https://substrate.office.com/todob2/api/v1/',
-        accessToken: 'token',
-        cid: 'cid123',
-      );
 
       final pushOutcome = (await pushEngine.pushOutbox(
-        ctx: ctx,
         currentState: nextState,
         outbox: outbox,
         nowUtc: DateTime.utc(2026, 11, 26),
@@ -279,7 +273,6 @@ void main() {
       expect(outbox.ops.first.kind, SyncOpKind.delete);
 
       await pushEngine.pushOutbox(
-        ctx: ctx,
         currentState: stateAfterDelete,
         outbox: outbox,
         nowUtc: DateTime.utc(2026, 11, 26),

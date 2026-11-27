@@ -10,7 +10,7 @@ import '../data/todo_provider.dart';
 import '../models/account.dart';
 import 'microsoft/microsoft_todo_api.dart';
 import 'microsoft/remote_change_reconciler.dart';
-import 'sync_log_format.dart';
+import 'sync_guard.dart';
 import 'sync_provider.dart';
 
 final _log = appLogFor('SyncRealtime');
@@ -102,22 +102,12 @@ class RealtimeSyncController {
   }
 
   Future<void> _connect(MicrosoftAccount account) async {
+    await Future<void>.microtask(() {});
     if (_disposed || _accountId != account.id) return;
     if (!ref.read(realtimeSyncEnabledProvider)) return;
 
-    final service = ref.read(cloudSyncServiceProvider);
-    final repository = ref.read(todoProvider.notifier).repository;
-    final ctxResult = await service.resolveContext(account, repository);
-
-    if (_disposed || _accountId != account.id) return;
-
-    final ctx = ctxResult.fold((ctx) => ctx, (_) => null);
-    if (ctx == null) {
-      _scheduleReconnect(account, reason: 'no_context');
-      return;
-    }
-
-    final stream = service.todoApi.connectRealtime(ctx);
+    final api = ref.read(microsoftTodoApiProvider);
+    final stream = api.connectRealtime();
     _sub = stream.listen(
       (event) {
         if (_disposed || _accountId != account.id) return;
@@ -132,7 +122,7 @@ class RealtimeSyncController {
           );
         }
         if (event.isKeepAlive) return;
-        if (service.todoApi.isOwnRequestId(event.requestId)) {
+        if (api.isOwnRequestId(event.requestId)) {
           _log.fine(
             'ignore own event type=${event.type} op=${event.operation} '
             'id=${shortSyncId(event.id)} req=${event.requestId}',

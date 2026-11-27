@@ -10,8 +10,9 @@ import 'package:yata/tasksview/tasks_view_presenter.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
-/// A local edit must cost one PATCH plus at most one task delta for the affected
-/// folder — never a settings/group/folder pull plus a pull for every list.
+/// A local edit must cost one PATCH and never a global settings/group/folder
+/// pull; only recurring task completion (or attachment upload) triggers one
+/// targeted task delta for the affected folder.
 ///
 ///   flutter test test/perf/sync_trigger_cost_test.dart --reporter expanded
 const _listCount = 12;
@@ -29,7 +30,7 @@ List<TodoList> _seedLists() => [
     ),
 ];
 
-List<TaskItem> _seedTasks() => [
+List<TaskItem> _seedTasks({Set<String> recurringTaskIds = const {}}) => [
   for (var i = 0; i < _listCount; i++)
     for (var j = 0; j < _taskCountPerList; j++)
       TaskItem(
@@ -37,6 +38,12 @@ List<TaskItem> _seedTasks() => [
         listId: 'list_$i',
         title: 'Task $i-$j',
         createdAt: _now.subtract(Duration(minutes: i * 100 + j)),
+        dueDate: recurringTaskIds.contains('task_${i}_$j')
+            ? DateTime(2026, 11, 22)
+            : null,
+        recurrence: recurringTaskIds.contains('task_${i}_$j')
+            ? RecurrenceType.daily
+            : RecurrenceType.none,
         remoteId: 'rt_${i}_$j',
         orderDateTime: _now.subtract(Duration(minutes: i * 100 + j)),
         changeKey: 'ck_${i}_$j',
@@ -74,12 +81,16 @@ FakeSubstrateApi _fakeApi() {
   return api;
 }
 
-Future<SyncTestHarness> _harness(String accountId, {FakeSubstrateApi? api}) {
+Future<SyncTestHarness> _harness(
+  String accountId, {
+  FakeSubstrateApi? api,
+  Set<String> recurringTaskIds = const {},
+}) {
   return createSyncTestHarness(
     accountId: accountId,
     api: api ?? _fakeApi(),
     lists: _seedLists(),
-    tasks: _seedTasks(),
+    tasks: _seedTasks(recurringTaskIds: recurringTaskIds),
     groupsDeltaLink: 'dl-groups',
     foldersDeltaLink: 'dl-folders',
     taskDeltaLinks: {
@@ -108,30 +119,25 @@ class _LatencyApi extends FakeSubstrateApi {
   }
 
   @override
-  AsyncAppResult<Map<String, String>> getSettings(
-    SubstrateRequestContext ctx,
-  ) => _rtt(() => super.getSettings(ctx));
+  AsyncAppResult<Map<String, String>> getSettings() =>
+      _rtt(() => super.getSettings());
 
   @override
-  AsyncAppResult<DeltaPageResult<RemoteFolderGroup>> fetchFolderGroupsDelta(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<DeltaPageResult<RemoteFolderGroup>> fetchFolderGroupsDelta({
     String? deltaLink,
-  }) => _rtt(() => super.fetchFolderGroupsDelta(ctx, deltaLink: deltaLink));
+  }) => _rtt(() => super.fetchFolderGroupsDelta(deltaLink: deltaLink));
 
   @override
-  AsyncAppResult<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta({
     String? deltaLink,
-  }) => _rtt(() => super.fetchFoldersDelta(ctx, deltaLink: deltaLink));
+  }) => _rtt(() => super.fetchFoldersDelta(deltaLink: deltaLink));
 
   @override
-  AsyncAppResult<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta({
     required String folderRemoteId,
     String? deltaLink,
   }) => _rtt(
     () => super.fetchTasksDelta(
-      ctx,
       folderRemoteId: folderRemoteId,
       deltaLink: deltaLink,
     ),
@@ -139,12 +145,11 @@ class _LatencyApi extends FakeSubstrateApi {
 
   @override
   AsyncAppResult<RemoteTodoTask> patchTask(
-    SubstrateRequestContext ctx,
     String taskRemoteId,
     Map<String, dynamic> patch, {
     String? changeKey,
   }) => _rtt(
-    () => super.patchTask(ctx, taskRemoteId, patch, changeKey: changeKey),
+    () => super.patchTask(taskRemoteId, patch, changeKey: changeKey),
   );
 }
 
@@ -154,10 +159,34 @@ void main() {
   });
 
   test(
-    'one completion toggle pushes once and pulls only that folder',
+    'one non-recurring completion toggle pushes once and pulls nothing',
     () async {
       final api = _fakeApi();
       final h = await _harness('acct_trigger_cost', api: api);
+      await h.container.read(syncProvider.notifier).syncNow(reason: 'warmup');
+      await pumpEventQueue();
+      api.callLog.clear();
+
+      h.container
+          .read(tasksViewPresenterProvider)
+          .toggleTaskCompleted('task_0_0');
+      await _waitForSync(h);
+
+      expect(api.callLog, ['PATCH tasks/rt_0_0(ifMatch=ck_0_0)']);
+      // ignore: avoid_print
+      print('=== one completion toggle === ${api.callLog}');
+    },
+  );
+
+  test(
+    'completing a recurring task pushes once and pulls only that folder',
+    () async {
+      final api = _fakeApi();
+      final h = await _harness(
+        'acct_trigger_recurring_cost',
+        api: api,
+        recurringTaskIds: const {'task_0_0'},
+      );
       await h.container.read(syncProvider.notifier).syncNow(reason: 'warmup');
       await pumpEventQueue();
       api.callLog.clear();
@@ -171,10 +200,8 @@ void main() {
         'PATCH tasks/rt_0_0(ifMatch=ck_0_0)',
         'GET tasks(rf-0,dl-tasks-rf-0)',
       ]);
-      // The follow-up ledger is consumed by the pull.
-      expect(h.repository.loadPendingTaskFolderPulls(), isEmpty);
       // ignore: avoid_print
-      print('=== one completion toggle === ${api.callLog}');
+      print('=== recurring completion toggle === ${api.callLog}');
     },
   );
 
@@ -217,10 +244,8 @@ void main() {
       3,
       reason: api.callLog.join(', '),
     );
-    expect(api.callLog.where((c) => c.startsWith('GET tasks(')).toList(), [
-      'GET tasks(rf-0,dl-tasks-rf-0)',
-    ]);
-    expect(api.callLog.length, 4, reason: api.callLog.join(', '));
+    expect(api.callLog.where((c) => c.startsWith('GET tasks(')), isEmpty);
+    expect(api.callLog.length, 3, reason: api.callLog.join(', '));
   });
 
   test('wall clock for one local toggle with 120ms RTT', () async {
@@ -243,13 +268,13 @@ void main() {
     while (sw.elapsed < const Duration(seconds: 10)) {
       await Future<void>.delayed(const Duration(milliseconds: 10));
       if (!h.container.read(syncProvider).isSyncing &&
-          api.callLog.length >= 2) {
+          api.callLog.isNotEmpty) {
         break;
       }
     }
     sw.stop();
 
-    expect(api.callLog.length, 2, reason: api.callLog.join(', '));
+    expect(api.callLog.length, 1, reason: api.callLog.join(', '));
     // ignore: avoid_print
     print('''
 === wall clock, 1 completion toggle, $_listCount lists, RTT=120ms ===

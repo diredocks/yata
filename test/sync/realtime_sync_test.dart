@@ -19,7 +19,7 @@ class _ReconnectFakeSubstrateApi extends FakeSubstrateApi {
   int connectCount = 0;
 
   @override
-  Stream<RealtimeEvent> connectRealtime(SubstrateRequestContext ctx) {
+  Stream<RealtimeEvent> connectRealtime() {
     callLog.add('GET realtime');
     connectCount += 1;
     if (connectCount == 1) {

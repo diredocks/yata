@@ -1,6 +1,6 @@
-import '../../models/account.dart';
-import '../sync_guard.dart';
-import 'cloud_sync_service.dart';
+import '../auth/microsoft_auth_service.dart';
+import '../models/account.dart';
+import '../sync/sync_guard.dart';
 
 typedef UpdateMicrosoftProfileCallback = Future<void> Function(
   String accountId, {
@@ -12,7 +12,8 @@ typedef UpdateMicrosoftProfileCallback = Future<void> Function(
 /// Backfills missing displayName, email, or avatar for a signed-in
 /// [MicrosoftAccount] after a successful sync pass.
 Future<void> refreshMicrosoftProfileIfIncomplete({
-  required CloudSyncService service,
+  required MicrosoftAuthClient authClient,
+  required AuthTokenStorage tokenStorage,
   required MicrosoftAccount account,
   required bool Function() isDisposed,
   required UpdateMicrosoftProfileCallback onProfileUpdated,
@@ -27,12 +28,12 @@ Future<void> refreshMicrosoftProfileIfIncomplete({
   if (!needsName && !needsEmail && !needsAvatar) return;
 
   await guardApiCall(() async {
-    final tokens = await service.tokenStorage.loadTokens(account.id);
+    final tokens = await tokenStorage.loadTokens(account.id);
     if (tokens == null || tokens.refreshToken.isEmpty) return;
     final cid = tokens.userId.isNotEmpty
         ? tokens.userId
         : account.microsoftUserId;
-    final profile = await service.authClient.fetchUserProfile(
+    final profile = await authClient.fetchUserProfile(
       cid: cid,
       refreshToken: tokens.refreshToken,
       fallbackEmail: account.email,

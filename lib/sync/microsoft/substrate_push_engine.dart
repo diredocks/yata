@@ -12,9 +12,7 @@ import '../../data/todo_settings_sync.dart';
 import '../../data/todo_state.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
-import '../sync_concurrency.dart';
 import '../sync_guard.dart';
-import '../sync_log_format.dart';
 import '../text_merge.dart';
 import 'microsoft_todo_api.dart';
 import 'substrate_sync_mappers.dart';
@@ -47,8 +45,8 @@ class OutboxPushOutcome {
   final Map<String, TaskItem> pushedTasks;
   final List<({SyncEntityType type, String localId})> clearedRemoteIdKeys;
 
-  /// Folders needing one targeted task pull: the server may have changed more
-  /// than the push response tells us (recurring spawn, move, conflict merge).
+  /// Folders needing one targeted task pull (recurring task completion or
+  /// attachment upload where the server creates extra entities/links).
   final Set<String> followUpPullFolderRemoteIds;
 
   bool get didWork =>
@@ -58,8 +56,7 @@ class OutboxPushOutcome {
       pushedTasks.isNotEmpty;
 }
 
-/// Whether [dirtyFields] describes nothing but an intra-list position change.
-bool isReorderOnlyTaskPatch(
+bool _isReorderOnlyTaskPatch(
   Set<TaskDirtyField>? dirtyFields, {
   required bool isCompleted,
 }) {
@@ -105,23 +102,29 @@ class SubstratePushEngine {
   /// settings -> step/task/folder deletions -> groups -> folders ->
   /// group deletions -> tasks/steps -> attachments.
   AsyncAppResult<OutboxPushOutcome> pushOutbox({
-    required SubstrateRequestContext ctx,
     required TodoState currentState,
     required SyncOutboxQueue outbox,
     required DateTime nowUtc,
     TodoState Function()? readLatestState,
     Future<void> Function(OutboxPushOutcome itemOutcome)? onItemCommitted,
     PushLaneFilter laneFilter = PushLaneFilter.all,
+    String reason = 'push',
   }) async {
     final batch = _filterBatch(outbox.beginBatch(), laneFilter);
     try {
       if (batch.isEmpty) {
         return const Success(OutboxPushOutcome.empty);
       }
+      final startState = readLatestState?.call() ?? currentState;
+      _log.info(
+        'push start reason=$reason '
+        'localLists=${startState.lists.length} '
+        'localTasks=${startState.tasks.length} '
+        'outboxOps=${batch.length}',
+      );
       final session = _PushSession(
         todoApi: todoApi,
-        ctx: ctx,
-        initialState: currentState,
+        initialState: startState,
         outbox: outbox,
         nowUtc: nowUtc,
         readLatestState: readLatestState,
@@ -148,7 +151,6 @@ class SubstratePushEngine {
 class _PushSession {
   _PushSession({
     required this.todoApi,
-    required this.ctx,
     required this.initialState,
     required this.outbox,
     required this.nowUtc,
@@ -157,7 +159,6 @@ class _PushSession {
   });
 
   final MicrosoftTodoApi todoApi;
-  final SubstrateRequestContext ctx;
   final TodoState initialState;
   final SyncOutboxQueue outbox;
   final DateTime nowUtc;
@@ -193,14 +194,30 @@ class _PushSession {
   AsyncAppResult<OutboxPushOutcome> execute(List<SyncOutboxOp> batch) async {
     final buckets = batch.groupListsBy(_stageForOp);
     final stages = <AsyncAppResult<Unit> Function()>[
-      () => _pushSettings(buckets[_PushStage.setting] ?? const []),
-      () => _pushDeletes(buckets[_PushStage.nonGroupDelete] ?? const []),
-      () => _pushGroupUpserts(buckets[_PushStage.groupUpsert] ?? const []),
-      () => _pushFolderUpserts(buckets[_PushStage.listUpsert] ?? const []),
-      () => _pushDeletes(buckets[_PushStage.groupDelete] ?? const []),
+      () => _runSequentially(
+        buckets[_PushStage.setting] ?? const [],
+        _pushSingleSetting,
+      ),
+      () => _runSequentially(
+        buckets[_PushStage.nonGroupDelete] ?? const [],
+        _pushSingleDeleteOp,
+      ),
+      () => _runSequentially(
+        buckets[_PushStage.groupUpsert] ?? const [],
+        _pushSingleGroupUpsert,
+      ),
+      () => _runSequentially(
+        buckets[_PushStage.listUpsert] ?? const [],
+        _pushSingleFolderUpsert,
+      ),
+      () => _runSequentially(
+        buckets[_PushStage.groupDelete] ?? const [],
+        _pushSingleDeleteOp,
+      ),
       () => _pushTaskUpserts(buckets[_PushStage.taskUpsert] ?? const []),
-      () => _pushAttachmentUpserts(
+      () => _runSequentially(
         buckets[_PushStage.attachmentUpsert] ?? const [],
+        _pushSingleAttachmentUpsert,
       ),
     ];
 
@@ -219,6 +236,17 @@ class _PushSession {
         followUpPullFolderRemoteIds: _followUpPullFolderRemoteIds,
       ),
     );
+  }
+
+  AsyncAppResult<Unit> _runSequentially(
+    List<SyncOutboxOp> ops,
+    AsyncAppResult<Unit> Function(SyncOutboxOp op) run,
+  ) async {
+    for (final op in ops) {
+      final result = await run(op);
+      if (result.isError()) return result;
+    }
+    return const Success(unit);
   }
 
   Future<void> _commitOp({
@@ -271,35 +299,78 @@ class _PushSession {
         selector(initialState).firstWhereOrNull((e) => idOf(e) == id);
   }
 
-  ListGroup? _findLiveGroup(String id) => _findLive(
-    id: id,
+  T? _resolveEntity<T>({
+    required SyncEntityType entityType,
+    required String localId,
+    required Map<String, T> pushed,
+    required List<T> Function(TodoState state) selector,
+    required String Function(T item) idOf,
+    required String? Function(T item) remoteIdOf,
+    required T Function(T item, String remoteId) withRemoteId,
+    required Set<String> deletedRemoteIds,
+  }) {
+    final raw = _findLive(
+      id: localId,
+      pushed: pushed,
+      selector: selector,
+      idOf: idOf,
+    );
+    if (raw == null) return null;
+    final rawRemoteId = remoteIdOf(raw);
+    final resolvedRemoteId =
+        rawRemoteId ?? outbox.resolveRemoteId(entityType, localId);
+    final resolved = rawRemoteId == null && resolvedRemoteId != null
+        ? withRemoteId(raw, resolvedRemoteId)
+        : raw;
+    final effectiveRemoteId = remoteIdOf(resolved);
+    if (effectiveRemoteId != null &&
+        deletedRemoteIds.contains(effectiveRemoteId)) {
+      return null;
+    }
+    return resolved;
+  }
+
+  ListGroup? _resolveGroup(String localId) => _resolveEntity(
+    entityType: SyncEntityType.group,
+    localId: localId,
     pushed: _pushedGroups,
     selector: (s) => s.groups,
     idOf: (g) => g.id,
+    remoteIdOf: (g) => g.remoteId,
+    withRemoteId: (g, remoteId) => g.copyWith(remoteId: remoteId),
+    deletedRemoteIds: _deletedGroupRemoteIds,
   );
 
-  TodoList? _findLiveList(String id) => _findLive(
-    id: id,
+  TodoList? _resolveList(String localId) => _resolveEntity(
+    entityType: SyncEntityType.list,
+    localId: localId,
     pushed: _pushedLists,
     selector: (s) => s.lists,
     idOf: (l) => l.id,
+    remoteIdOf: (l) => l.remoteId,
+    withRemoteId: (l, remoteId) => l.copyWith(remoteId: remoteId),
+    deletedRemoteIds: _deletedListRemoteIds,
   );
 
-  TaskItem? _findLiveTask(String id) => _findLive(
-    id: id,
+  TaskItem? _resolveTask(String localId) => _resolveEntity(
+    entityType: SyncEntityType.task,
+    localId: localId,
     pushed: _pushedTasks,
     selector: (s) => s.tasks,
     idOf: (t) => t.id,
+    remoteIdOf: (t) => t.remoteId,
+    withRemoteId: (t, remoteId) => t.copyWith(remoteId: remoteId),
+    deletedRemoteIds: _deletedTaskRemoteIds,
   );
 
   String? _resolveGroupRemoteId(String? groupId) {
     if (groupId == null) return null;
-    return _findLiveGroup(groupId)?.remoteId ??
+    return _resolveGroup(groupId)?.remoteId ??
         outbox.resolveRemoteId(SyncEntityType.group, groupId);
   }
 
   String? _resolveLiveListRemoteId(String listId) {
-    final liveList = _findLiveList(listId);
+    final liveList = _resolveList(listId);
     if (liveList == null) return null;
     return liveList.remoteId ??
         outbox.resolveRemoteId(SyncEntityType.list, listId);
@@ -337,32 +408,28 @@ class _PushSession {
     return create();
   });
 
-  AsyncAppResult<Unit> _pushSettings(List<SyncOutboxOp> ops) async {
-    for (final op in ops) {
-      final latestState = readLatestState?.call() ?? initialState;
-      final wireValue = extractSettingValueForKey(latestState, op.localId);
-      if (wireValue != null) {
-        final result = await todoApi.patchSetting(ctx, op.localId, wireValue);
-        if (result.isError()) return Failure(result.exceptionOrNull()!);
-      }
-      await _commitOp(seq: op.seq);
+  AsyncAppResult<Unit> _pushSingleSetting(SyncOutboxOp op) async {
+    final latestState = readLatestState?.call() ?? initialState;
+    final wireValue = extractSettingValueForKey(latestState, op.localId);
+    if (wireValue != null) {
+      final result = await todoApi.patchSetting(op.localId, wireValue);
+      if (result.isError()) return Failure(result.exceptionOrNull()!);
     }
+    await _commitOp(seq: op.seq);
     return const Success(unit);
   }
 
-  AsyncAppResult<Unit> _pushDeletes(List<SyncOutboxOp> ops) async {
-    for (final op in ops) {
-      final result = await _pushSingleDelete(op);
-      if (result.isError()) return result;
-      await _commitOp(
-        seq: op.seq,
-        clearedRemoteIdKey: (type: op.entityType, localId: op.localId),
-      );
-    }
+  AsyncAppResult<Unit> _pushSingleDeleteOp(SyncOutboxOp op) async {
+    final result = await _performDelete(op);
+    if (result.isError()) return result;
+    await _commitOp(
+      seq: op.seq,
+      clearedRemoteIdKey: (type: op.entityType, localId: op.localId),
+    );
     return const Success(unit);
   }
 
-  AsyncAppResult<Unit> _pushSingleDelete(SyncOutboxOp op) {
+  AsyncAppResult<Unit> _performDelete(SyncOutboxOp op) {
     final remoteId =
         op.remoteId ?? outbox.resolveRemoteId(op.entityType, op.localId);
     if (remoteId == null) return Future.value(const Success(unit));
@@ -372,60 +439,40 @@ class _PushSession {
         final taskRemoteId = _resolveParentTaskRemoteId(op);
         if (taskRemoteId == null) return Future.value(const Success(unit));
         return _deleteIgnoring(
-          () => todoApi.deleteStep(ctx, taskRemoteId, remoteId),
+          () => todoApi.deleteStep(taskRemoteId, remoteId),
         );
       case SyncEntityType.attachment:
         final taskRemoteId = _resolveParentTaskRemoteId(op);
         if (taskRemoteId == null) return Future.value(const Success(unit));
         return _deleteIgnoring(
-          () => todoApi.deleteLinkedEntity(ctx, taskRemoteId, remoteId),
+          () => todoApi.deleteLinkedEntity(taskRemoteId, remoteId),
         );
       case SyncEntityType.task:
         _deletedTaskRemoteIds.add(remoteId);
-        return _deleteIgnoring(() => todoApi.deleteTask(ctx, remoteId));
+        return _deleteIgnoring(() => todoApi.deleteTask(remoteId));
       case SyncEntityType.list:
         _deletedListRemoteIds.add(remoteId);
         return _deleteIgnoring(
-          () => todoApi.deleteFolder(ctx, remoteId),
+          () => todoApi.deleteFolder(remoteId),
           treatAsDeletedOn: (e) => e.isNotFound || e.isCantDeleteDefaultFolder,
         );
       case SyncEntityType.group:
         _deletedGroupRemoteIds.add(remoteId);
-        return _deleteIgnoring(() => todoApi.deleteFolderGroup(ctx, remoteId));
+        return _deleteIgnoring(() => todoApi.deleteFolderGroup(remoteId));
       case SyncEntityType.setting:
         return Future.value(const Success(unit));
     }
   }
 
-  AsyncAppResult<Unit> _pushGroupUpserts(List<SyncOutboxOp> ops) async {
-    for (final op in ops) {
-      final result = await _pushSingleGroupUpsert(op);
-      if (result.isError()) return result;
-    }
-    return const Success(unit);
-  }
-
   AsyncAppResult<Unit> _pushSingleGroupUpsert(SyncOutboxOp op) async {
-    final rawGroup = _findLiveGroup(op.localId);
-    if (rawGroup == null) {
-      await _commitOp(seq: op.seq);
-      return const Success(unit);
-    }
-    final resolvedRemoteId =
-        rawGroup.remoteId ??
-        outbox.resolveRemoteId(SyncEntityType.group, op.localId);
-    final group = rawGroup.remoteId == null && resolvedRemoteId != null
-        ? rawGroup.copyWith(remoteId: resolvedRemoteId)
-        : rawGroup;
-    if (group.remoteId != null &&
-        _deletedGroupRemoteIds.contains(group.remoteId)) {
+    final group = _resolveGroup(op.localId);
+    if (group == null) {
       await _commitOp(seq: op.seq);
       return const Success(unit);
     }
 
     AsyncAppResult<RemoteFolderGroup> createGroup() =>
         todoApi.createFolderGroup(
-          ctx,
           name: group.title,
           orderDateTime: group.orderDateTime ?? nowUtc,
         );
@@ -448,8 +495,7 @@ class _PushSession {
         'keys=${patchPayload.keys.toList()}',
       );
       remoteResult = await _patchOrRecreateOnNotFound(
-        patch: () =>
-            todoApi.patchFolderGroup(ctx, group.remoteId!, patchPayload),
+        patch: () => todoApi.patchFolderGroup(group.remoteId!, patchPayload),
         create: createGroup,
       );
     }
@@ -469,28 +515,9 @@ class _PushSession {
     return const Success(unit);
   }
 
-  AsyncAppResult<Unit> _pushFolderUpserts(List<SyncOutboxOp> ops) async {
-    for (final op in ops) {
-      final result = await _pushSingleFolderUpsert(op);
-      if (result.isError()) return result;
-    }
-    return const Success(unit);
-  }
-
   AsyncAppResult<Unit> _pushSingleFolderUpsert(SyncOutboxOp op) async {
-    final rawList = _findLiveList(op.localId);
-    if (rawList == null) {
-      await _commitOp(seq: op.seq);
-      return const Success(unit);
-    }
-    final resolvedRemoteId =
-        rawList.remoteId ??
-        outbox.resolveRemoteId(SyncEntityType.list, op.localId);
-    final list = rawList.remoteId == null && resolvedRemoteId != null
-        ? rawList.copyWith(remoteId: resolvedRemoteId)
-        : rawList;
-    if ((list.remoteId != null &&
-            _deletedListRemoteIds.contains(list.remoteId)) ||
+    final list = _resolveList(op.localId);
+    if (list == null ||
         (list.isSmartList && list.smartType != SmartListType.tasks)) {
       await _commitOp(seq: op.seq);
       return const Success(unit);
@@ -498,7 +525,6 @@ class _PushSession {
 
     final parentGroupRemoteId = _resolveGroupRemoteId(list.groupId);
     AsyncAppResult<RemoteTodoFolder> createFolder() => todoApi.createFolder(
-      ctx,
       buildFolderCreatePayload(
         list,
         parentGroupRemoteId: parentGroupRemoteId,
@@ -525,7 +551,7 @@ class _PushSession {
         'keys=${patchPayload.keys.toList()}',
       );
       remoteResult = await _patchOrRecreateOnNotFound(
-        patch: () => todoApi.patchFolder(ctx, list.remoteId!, patchPayload),
+        patch: () => todoApi.patchFolder(list.remoteId!, patchPayload),
         create: createFolder,
       );
     } else {
@@ -553,37 +579,20 @@ class _PushSession {
     return runResultsWithConcurrency(
       opsByLocalId.values.toList(),
       SubstratePushEngine._maxConcurrentTaskPushes,
-      (opsForTask) async {
-        for (final op in opsForTask) {
-          final result = await _pushSingleTaskOp(op);
-          if (result.isError()) return result;
-        }
-        return const Success(unit);
-      },
+      (opsForTask) => _runSequentially(opsForTask, _pushSingleTaskOp),
     );
   }
 
   AsyncAppResult<Unit> _pushSingleTaskOp(SyncOutboxOp op) async {
-    final rawTask = _findLiveTask(op.localId);
-    if (rawTask == null) {
-      await _commitOp(seq: op.seq);
-      return const Success(unit);
-    }
-    final resolvedTaskRemoteId =
-        rawTask.remoteId ??
-        outbox.resolveRemoteId(SyncEntityType.task, op.localId);
-    final task = rawTask.remoteId == null && resolvedTaskRemoteId != null
-        ? rawTask.copyWith(remoteId: resolvedTaskRemoteId)
-        : rawTask;
-    if (task.remoteId != null &&
-        _deletedTaskRemoteIds.contains(task.remoteId)) {
+    final task = _resolveTask(op.localId);
+    if (task == null) {
       await _commitOp(seq: op.seq);
       return const Success(unit);
     }
 
     final folderRemoteId = _resolveLiveListRemoteId(task.listId);
     if (folderRemoteId == null) {
-      if (_findLiveList(task.listId) == null) {
+      if (_resolveList(task.listId) == null) {
         // Parent list was deleted locally while push was in flight.
         await _commitOp(seq: op.seq);
       }
@@ -659,9 +668,13 @@ class _PushSession {
     );
     if (stepsResult.isError()) return Failure(stepsResult.exceptionOrNull()!);
 
+    final isRecurring =
+        task.recurrence != RecurrenceType.none ||
+        (task.rawRecurrence != null && task.rawRecurrence!.isNotEmpty);
+    final statusDirty =
+        dirtyFields == null || dirtyFields.contains(TaskDirtyField.status);
     final needsFollowUpPull =
-        isCreate ||
-        !isReorderOnlyTaskPatch(dirtyFields, isCompleted: task.isCompleted);
+        !isCreate && task.isCompleted && isRecurring && statusDirty;
     await _commitOp(
       seq: op.seq,
       task: task.copyWith(
@@ -693,17 +706,9 @@ class _PushSession {
     return const Success(unit);
   }
 
-  AsyncAppResult<Unit> _pushAttachmentUpserts(List<SyncOutboxOp> ops) async {
-    for (final op in ops) {
-      final result = await _pushSingleAttachmentUpsert(op);
-      if (result.isError()) return result;
-    }
-    return const Success(unit);
-  }
-
   AsyncAppResult<Unit> _pushSingleAttachmentUpsert(SyncOutboxOp op) async {
     final task = op.parentLocalId != null
-        ? _findLiveTask(op.parentLocalId!)
+        ? _resolveTask(op.parentLocalId!)
         : null;
     if (task == null) {
       await _commitOp(seq: op.seq);
@@ -740,7 +745,6 @@ class _PushSession {
     if (bytesResult.isError()) return Failure(bytesResult.exceptionOrNull()!);
 
     final uploadResult = await todoApi.uploadAttachment(
-      ctx,
       taskRemoteId,
       fileName: att.displayName,
       bytes: bytesResult.getOrNull()!,
@@ -764,7 +768,7 @@ class _PushSession {
         else
           item,
     ];
-    final folderRemoteId = _findLiveList(task.listId)?.remoteId;
+    final folderRemoteId = _resolveList(task.listId)?.remoteId;
     await _commitOp(
       seq: op.seq,
       task: task.copyWith(attachments: updatedAttachments, updatedAt: nowUtc),
@@ -785,7 +789,7 @@ class _PushSession {
     String folderRemoteId,
     Map<String, dynamic> payload,
   ) async {
-    final first = await todoApi.createTask(ctx, folderRemoteId, payload);
+    final first = await todoApi.createTask(folderRemoteId, payload);
     final firstErr = first.exceptionOrNull();
     if (firstErr == null ||
         !firstErr.isConflict ||
@@ -798,7 +802,7 @@ class _PushSession {
     );
     final retryPayload = Map<String, dynamic>.of(payload)
       ..remove('CreatedWithLocalId');
-    return todoApi.createTask(ctx, folderRemoteId, retryPayload);
+    return todoApi.createTask(folderRemoteId, retryPayload);
   }
 
   AsyncAppResult<_TaskPatchOutcome> _patchTaskWithConflictRetry({
@@ -811,7 +815,7 @@ class _PushSession {
     const maxConflictRetries = 3;
     String? mergedNote;
     var preservedRemoteStatus = false;
-    final isReorderOnlyPatch = isReorderOnlyTaskPatch(
+    final isReorderOnlyPatch = _isReorderOnlyTaskPatch(
       dirtyFields,
       isCompleted: task.isCompleted,
     );
@@ -823,7 +827,6 @@ class _PushSession {
         dirtyFields == null || dirtyFields.contains(TaskDirtyField.status);
 
     var result = await todoApi.patchTask(
-      ctx,
       task.remoteId!,
       currentPayload,
       changeKey: currentChangeKey,
@@ -833,7 +836,7 @@ class _PushSession {
       final err = result.exceptionOrNull();
       if (err == null || !err.isConflict) break;
 
-      final latestResult = await todoApi.getTask(ctx, task.remoteId!);
+      final latestResult = await todoApi.getTask(task.remoteId!);
       if (latestResult.isError()) {
         return Failure(latestResult.exceptionOrNull()!);
       }
@@ -867,7 +870,6 @@ class _PushSession {
       currentPayload = retryPayload;
       currentChangeKey = latest.changeKey;
       result = await todoApi.patchTask(
-        ctx,
         task.remoteId!,
         currentPayload,
         changeKey: currentChangeKey,
@@ -903,7 +905,6 @@ class _PushSession {
     required DateTime stepOrder,
   }) async {
     final createdResult = await todoApi.createStep(
-      ctx,
       taskRemoteId,
       subject: step.title,
       orderDateTime: stepOrder,
@@ -915,7 +916,6 @@ class _PushSession {
     outbox.recordRemoteId(SyncEntityType.step, step.id, created.id);
     if (step.isCompleted) {
       final completeResult = await todoApi.patchStep(
-        ctx,
         taskRemoteId,
         created.id,
         const {'IsCompleted': true},
@@ -969,35 +969,29 @@ class _PushSession {
         continue;
       }
 
-      final patchResult = await todoApi.patchStep(
-        ctx,
-        taskRemoteId,
-        step.remoteId!,
-        {
-          'Subject': step.title,
-          'IsCompleted': step.isCompleted,
-          if (step.orderDateTime != null)
-            'OrderDateTime': formatSubstrateUtcTimestamp(step.orderDateTime!),
-        },
-      );
-      final patchError = patchResult.exceptionOrNull();
-      if (patchError != null && patchError.isNotFound) {
-        final recreated = await _createAndSyncStep(
+      final stepResult = await _patchOrRecreateOnNotFound<TaskStep>(
+        patch: () => todoApi
+            .patchStep(taskRemoteId, step.remoteId!, {
+              'Subject': step.title,
+              'IsCompleted': step.isCompleted,
+              if (step.orderDateTime != null)
+                'OrderDateTime': formatSubstrateUtcTimestamp(
+                  step.orderDateTime!,
+                ),
+            })
+            .map(
+              (patched) => step.copyWith(
+                orderDateTime: patched.orderDateTime ?? step.orderDateTime,
+              ),
+            ),
+        create: () => _createAndSyncStep(
           taskRemoteId: taskRemoteId,
           step: step,
           stepOrder: stepOrder,
-        );
-        if (recreated.isError()) return Failure(recreated.exceptionOrNull()!);
-        syncedSteps.add(recreated.getOrNull()!);
-        continue;
-      }
-      if (patchResult.isError()) return Failure(patchResult.exceptionOrNull()!);
-      final patched = patchResult.getOrNull()!;
-      syncedSteps.add(
-        step.copyWith(
-          orderDateTime: patched.orderDateTime ?? step.orderDateTime,
         ),
       );
+      if (stepResult.isError()) return Failure(stepResult.exceptionOrNull()!);
+      syncedSteps.add(stepResult.getOrNull()!);
     }
 
     return Success(syncedSteps);

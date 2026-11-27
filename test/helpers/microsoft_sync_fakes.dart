@@ -245,7 +245,7 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
       requestId != null && ownRequestIds.contains(requestId);
 
   @override
-  AsyncAppResult<Map<String, String>> getSettings(SubstrateRequestContext ctx) {
+  AsyncAppResult<Map<String, String>> getSettings() {
     return guardApiCall(() async {
       callLog.add('GET settings');
       return Map<String, String>.from(remoteSettings);
@@ -253,11 +253,7 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
   }
 
   @override
-  AsyncAppResult<Unit> patchSetting(
-    SubstrateRequestContext ctx,
-    String key,
-    String value,
-  ) {
+  AsyncAppResult<Unit> patchSetting(String key, String value) {
     return guardApiCall(() async {
       callLog.add('PATCH settings/$key=$value');
       remoteSettings[key] = value;
@@ -266,8 +262,7 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
   }
 
   @override
-  AsyncAppResult<DeltaPageResult<RemoteFolderGroup>> fetchFolderGroupsDelta(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<DeltaPageResult<RemoteFolderGroup>> fetchFolderGroupsDelta({
     String? deltaLink,
   }) {
     return guardApiCall(() async {
@@ -278,8 +273,7 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
   }
 
   @override
-  AsyncAppResult<RemoteFolderGroup> createFolderGroup(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<RemoteFolderGroup> createFolderGroup({
     required String name,
     required DateTime orderDateTime,
   }) {
@@ -297,7 +291,6 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
 
   @override
   AsyncAppResult<RemoteFolderGroup> patchFolderGroup(
-    SubstrateRequestContext ctx,
     String remoteId,
     Map<String, dynamic> patch,
   ) {
@@ -313,10 +306,7 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
   }
 
   @override
-  AsyncAppResult<Unit> deleteFolderGroup(
-    SubstrateRequestContext ctx,
-    String remoteId,
-  ) {
+  AsyncAppResult<Unit> deleteFolderGroup(String remoteId) {
     return guardApiCall(() async {
       callLog.add('DELETE foldergroups/$remoteId');
       if (onDeleteGroup != null) await onDeleteGroup!(remoteId);
@@ -325,8 +315,7 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
   }
 
   @override
-  AsyncAppResult<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta({
     String? deltaLink,
   }) {
     return guardApiCall(() async {
@@ -346,10 +335,7 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
   }
 
   @override
-  AsyncAppResult<RemoteTodoFolder> createFolder(
-    SubstrateRequestContext ctx,
-    Map<String, dynamic> payload,
-  ) {
+  AsyncAppResult<RemoteTodoFolder> createFolder(Map<String, dynamic> payload) {
     return guardApiCall(() async {
       callLog.add('POST taskfolders ${payload['Name']}');
       if (onCreateFolder != null) return onCreateFolder!(payload);
@@ -363,7 +349,6 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
 
   @override
   AsyncAppResult<RemoteTodoFolder> patchFolder(
-    SubstrateRequestContext ctx,
     String remoteId,
     Map<String, dynamic> patch,
   ) {
@@ -379,10 +364,7 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
   }
 
   @override
-  AsyncAppResult<Unit> deleteFolder(
-    SubstrateRequestContext ctx,
-    String remoteId,
-  ) {
+  AsyncAppResult<Unit> deleteFolder(String remoteId) {
     return guardApiCall(() async {
       callLog.add('DELETE taskfolders/$remoteId');
       if (onDeleteFolder != null) await onDeleteFolder!(remoteId);
@@ -391,8 +373,7 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
   }
 
   @override
-  AsyncAppResult<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta({
     required String folderRemoteId,
     String? deltaLink,
   }) {
@@ -407,10 +388,7 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
   }
 
   @override
-  AsyncAppResult<RemoteTodoTask> getTask(
-    SubstrateRequestContext ctx,
-    String taskRemoteId,
-  ) {
+  AsyncAppResult<RemoteTodoTask> getTask(String taskRemoteId) {
     return guardApiCall(() async {
       callLog.add('GET tasks/$taskRemoteId');
       if (onGetTask != null) return onGetTask!(taskRemoteId);
@@ -424,7 +402,6 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
 
   @override
   AsyncAppResult<RemoteTodoTask> createTask(
-    SubstrateRequestContext ctx,
     String folderRemoteId,
     Map<String, dynamic> payload,
   ) {
@@ -445,7 +422,6 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
 
   @override
   AsyncAppResult<RemoteTodoTask> patchTask(
-    SubstrateRequestContext ctx,
     String taskRemoteId,
     Map<String, dynamic> patch, {
     String? changeKey,
@@ -464,10 +440,7 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
   }
 
   @override
-  AsyncAppResult<Unit> deleteTask(
-    SubstrateRequestContext ctx,
-    String taskRemoteId,
-  ) {
+  AsyncAppResult<Unit> deleteTask(String taskRemoteId) {
     return guardApiCall(() async {
       callLog.add('DELETE tasks/$taskRemoteId');
       if (onDeleteTask != null) await onDeleteTask!(taskRemoteId);
@@ -477,7 +450,6 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
 
   @override
   AsyncAppResult<RemoteTaskStep> createStep(
-    SubstrateRequestContext ctx,
     String taskRemoteId, {
     required String subject,
     required DateTime orderDateTime,
@@ -498,7 +470,6 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
 
   @override
   AsyncAppResult<RemoteTaskStep> patchStep(
-    SubstrateRequestContext ctx,
     String taskRemoteId,
     String stepRemoteId,
     Map<String, dynamic> patch,
@@ -513,11 +484,7 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
   }
 
   @override
-  AsyncAppResult<Unit> deleteStep(
-    SubstrateRequestContext ctx,
-    String taskRemoteId,
-    String stepRemoteId,
-  ) {
+  AsyncAppResult<Unit> deleteStep(String taskRemoteId, String stepRemoteId) {
     return guardApiCall(() async {
       callLog.add('DELETE tasks/$taskRemoteId/subtasks/$stepRemoteId');
       if (onDeleteStep != null) await onDeleteStep!(taskRemoteId, stepRemoteId);
@@ -527,7 +494,6 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
 
   @override
   AsyncAppResult<RemoteFileUpload> uploadAttachment(
-    SubstrateRequestContext ctx,
     String taskRemoteId, {
     required String fileName,
     required List<int> bytes,
@@ -548,10 +514,7 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
   }
 
   @override
-  AsyncAppResult<Uint8List> downloadAttachment(
-    SubstrateRequestContext ctx,
-    String webLink,
-  ) {
+  AsyncAppResult<Uint8List> downloadAttachment(String webLink) {
     return guardApiCall(() async {
       callLog.add('GET $webLink');
       if (onDownloadAttachment != null) {
@@ -563,7 +526,6 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
 
   @override
   AsyncAppResult<Unit> deleteLinkedEntity(
-    SubstrateRequestContext ctx,
     String taskRemoteId,
     String entityRemoteId,
   ) {
@@ -577,7 +539,7 @@ class FakeSubstrateApi implements MicrosoftTodoApi {
   }
 
   @override
-  Stream<RealtimeEvent> connectRealtime(SubstrateRequestContext ctx) {
+  Stream<RealtimeEvent> connectRealtime() {
     callLog.add('GET realtime');
     return realtimeController.stream;
   }
@@ -591,8 +553,7 @@ class BlockingFoldersApi extends FakeSubstrateApi {
   int folderFetchCount = 0;
 
   @override
-  AsyncAppResult<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta({
     String? deltaLink,
   }) async {
     folderFetchCount += 1;
@@ -600,7 +561,7 @@ class BlockingFoldersApi extends FakeSubstrateApi {
       started.complete();
       await release.future;
     }
-    return super.fetchFoldersDelta(ctx, deltaLink: deltaLink);
+    return super.fetchFoldersDelta(deltaLink: deltaLink);
   }
 }
 
@@ -611,8 +572,7 @@ class BlockingTasksDeltaApi extends FakeSubstrateApi {
   final Completer<void> release;
 
   @override
-  AsyncAppResult<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta({
     required String folderRemoteId,
     String? deltaLink,
   }) async {
@@ -621,7 +581,6 @@ class BlockingTasksDeltaApi extends FakeSubstrateApi {
       await release.future;
     }
     return super.fetchTasksDelta(
-      ctx,
       folderRemoteId: folderRemoteId,
       deltaLink: deltaLink,
     );

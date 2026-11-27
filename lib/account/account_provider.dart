@@ -1,11 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'package:result_dart/result_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'account_local_storage.dart';
 import '../auth/browser_launcher.dart';
 import '../auth/microsoft_auth_service.dart';
 import '../auth/msa_webview_launcher.dart';
+import '../core/error/app_error.dart';
 import '../data/todo_provider.dart';
 import '../data/todo_repository.dart';
 import '../detailview/attachments/attachment_service.dart';
@@ -41,7 +43,37 @@ final externalUrlLauncherProvider = Provider<Future<bool> Function(String url)>(
 );
 
 final microsoftTodoApiProvider = Provider<MicrosoftTodoApi>((ref) {
-  return HttpMicrosoftTodoApi();
+  final authClient = ref.watch(microsoftAuthClientProvider);
+  final tokenStorage = ref.watch(authTokenStorageProvider);
+  final repository = ref.watch(todoRepositoryProvider);
+  ref.watch(
+    accountProvider.select(
+      (s) => (
+        id: s.activeAccount?.id,
+        isMicrosoft: s.activeAccount is MicrosoftAccount,
+      ),
+    ),
+  );
+  final activeAccount = ref.read(accountProvider).activeAccount;
+  return HttpMicrosoftTodoApi(
+    contextResolver: ({bool forceRefreshToken = false}) async {
+      if (activeAccount is! MicrosoftAccount) {
+        return const Failure(
+          AppError.auth(
+            message: 'No active Microsoft account',
+            requiresReauth: true,
+          ),
+        );
+      }
+      return resolveSubstrateContext(
+        authClient: authClient,
+        tokenStorage: tokenStorage,
+        account: activeAccount,
+        repository: repository,
+        forceRefreshToken: forceRefreshToken,
+      );
+    },
+  );
 });
 
 @freezed

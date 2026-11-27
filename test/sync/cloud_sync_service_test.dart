@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:result_dart/result_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/account/account_provider.dart';
@@ -15,11 +18,12 @@ import 'package:yata/models/account.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/settings/settings_presenter.dart';
-import 'package:yata/sync/microsoft/cloud_sync_service.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
+import 'package:yata/sync/microsoft/substrate_pull_engine.dart';
+import 'package:yata/sync/microsoft/substrate_push_engine.dart';
 import 'package:yata/sync/microsoft/substrate_sync_mappers.dart';
-import 'package:yata/sync/sync_provider.dart';
 import 'package:yata/sync/microsoft/todo_wire_codecs.dart';
+import 'package:yata/sync/sync_provider.dart';
 import 'package:yata/tasksview/tasks_action_presenter.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 
@@ -518,38 +522,58 @@ void main() {
     );
 
     test('retries 401 with refreshed token and reports requiresRelogin when refresh fails', () async {
-      var attempts = 0;
-      final fakeApi = FakeSubstrateApi()
-        ..onFetchFoldersDelta = (dl) {
-          attempts += 1;
-          if (attempts == 1) {
-            throw const AppError.auth(
-              message: 'Unauthorized',
-              requiresReauth: true,
+      final h1 = await createSyncTestHarness();
+      var settingsAttempts = 0;
+      final mockClient = MockClient((request) async {
+        if (request.url.path.endsWith('/settings')) {
+          settingsAttempts += 1;
+          if (settingsAttempts == 1) {
+            expect(request.headers['Authorization'], 'Bearer tok-1');
+            return http.Response(
+              jsonEncode({
+                'error': {'message': 'Unauthorized'},
+              }),
+              401,
             );
           }
-          return const DeltaPageResult(items: []);
-        };
+          expect(request.headers['Authorization'], 'Bearer refreshed-access');
+          return http.Response(jsonEncode({'Value': const []}), 200);
+        }
+        expect(request.headers['Authorization'], 'Bearer refreshed-access');
+        final hasDelta = request.url.queryParameters.containsKey('deltatoken');
+        return http.Response(
+          jsonEncode({
+            'Value': const [],
+            'DeltaLink': '${request.url.path}?deltatoken=${hasDelta ? "final" : "p1"}',
+          }),
+          200,
+        );
+      });
 
-      final h1 = await createSyncTestHarness(api: fakeApi);
-      final service = CloudSyncService(
-        authClient: h1.authClient,
-        todoApi: fakeApi,
-        tokenStorage: AuthTokenStorage(h1.prefs),
+      final realApi = HttpMicrosoftTodoApi(
+        httpClient: mockClient,
+        delayFn: (_) async {},
+        contextResolver: ({bool forceRefreshToken = false}) =>
+            resolveSubstrateContext(
+              authClient: h1.authClient,
+              tokenStorage: AuthTokenStorage(h1.prefs),
+              account: h1.account,
+              repository: h1.repository,
+              forceRefreshToken: forceRefreshToken,
+            ),
       );
 
-      final outcome = await service
-          .pullAccount(
-            account: h1.account,
-            currentState: h1.container.read(todoProvider),
+      final outcome = await SubstratePullEngine(realApi)
+          .pull(
             repository: h1.repository,
+            currentState: h1.container.read(todoProvider),
             idGenerator: h1.container.read(todoProvider.notifier).nextId,
           )
           .fold(
             (outcome) => outcome,
             (error) => fail('unexpected sync failure: ${error.describe()}'),
           );
-      expect(attempts, 2);
+      expect(settingsAttempts, 2);
       expect(outcome.syncedAt, isNotNull);
 
       final failingAuth = FakeAuthClient(
@@ -559,9 +583,8 @@ void main() {
           requiresReauth: true,
         ),
       );
-      final h2 = await createSyncTestHarness(
-        authClient: failingAuth,
-        api: fakeApi,
+      final s2 = await seedMicrosoftSyncSession(
+        accountId: 'acct_reauth',
         tokens: MicrosoftAuthTokens(
           accessToken: 'old',
           refreshToken: 'bad-rt',
@@ -569,13 +592,20 @@ void main() {
           userId: 'cid1',
         ),
       );
-
-      await h2.container.read(syncProvider.notifier).syncNow();
-      expect(
-        h2.container.read(syncProvider).status,
-        SyncStatus.requiresRelogin,
+      final c2 = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(s2.prefs),
+          microsoftAuthClientProvider.overrideWithValue(failingAuth),
+          realtimeSyncEnabledProvider.overrideWithValue(false),
+          periodicSyncEnabledProvider.overrideWithValue(false),
+          startupSyncEnabledProvider.overrideWithValue(false),
+        ],
       );
-      expect(h2.container.read(syncProvider).requiresRelogin, isTrue);
+      addTearDown(c2.dispose);
+
+      await c2.read(syncProvider.notifier).syncNow();
+      expect(c2.read(syncProvider).status, SyncStatus.requiresRelogin);
+      expect(c2.read(syncProvider).requiresRelogin, isTrue);
     });
 
     test(
@@ -757,64 +787,88 @@ void main() {
     });
 
     test(
-      'pushOnly pass pushes the edit and pulls only the edited folder',
+      'follow-up folder pull triggers only on recurring completion (not normal edits) and pulls only that folder',
       () async {
         final h = await createSyncTestHarness(
           accountId: 'acct_push_only',
           defaultTasksFolderRemoteId: 'rf-default',
           tasks: [
             TaskItem(
-              id: 't_1',
+              id: 't_normal',
               listId: 'tasks',
-              title: 'One',
+              title: 'One-off',
               createdAt: DateTime.utc(2026, 11, 22, 8),
-              remoteId: 'rt-1',
+              remoteId: 'rt-normal',
               remoteParentFolderId: 'rf-default',
-              changeKey: 'ck-1',
+              changeKey: 'ck-normal',
             ),
             TaskItem(
-              id: 't_2',
+              id: 't_rec',
               listId: 'tasks',
-              title: 'Two',
+              title: 'Daily Standup',
               createdAt: DateTime.utc(2026, 11, 22, 7),
-              remoteId: 'rt-2',
+              dueDate: DateTime(2026, 11, 22),
+              recurrence: RecurrenceType.daily,
+              remoteId: 'rt-rec',
               remoteParentFolderId: 'rf-default',
-              changeKey: 'ck-2',
+              changeKey: 'ck-rec',
             ),
           ],
           foldersDeltaLink: 'dl-folders-1',
           taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
         );
 
+        final pushEngine = SubstratePushEngine(h.api);
+        final pullEngine = SubstratePullEngine(h.api);
+        final todoNotifier = h.container.read(todoProvider.notifier);
+
+        // 1) Non-recurring completion produces NO follow-up folder pull.
         h.container
             .read(tasksViewPresenterProvider)
-            .setTaskCompleted('t_1', completed: true);
-
-        final service = CloudSyncService(
-          authClient: h.authClient,
-          todoApi: h.api,
-          tokenStorage: AuthTokenStorage(h.prefs),
-        );
+            .setTaskCompleted('t_normal', completed: true);
         h.api.callLog.clear();
 
-        final pushOutcome = await service
-            .pushAccount(
-              account: h.account,
+        final normalPush = await pushEngine
+            .pushOutbox(
               currentState: h.container.read(todoProvider),
-              repository: h.repository,
+              outbox: h.repository.outbox,
+              nowUtc: DateTime.now().toUtc(),
+              onItemCommitted: todoNotifier.commitPushBatch,
             )
             .fold(
               (outcome) => outcome,
               (error) => fail('unexpected push failure: ${error.describe()}'),
             );
-        expect(pushOutcome.pushedTasks, contains('t_1'));
-        final outcome = await service
-            .pullAccount(
-              account: h.account,
+        expect(normalPush.pushedTasks, contains('t_normal'));
+        expect(normalPush.followUpPullFolderRemoteIds, isEmpty);
+        expect(h.api.callLog, ['PATCH tasks/rt-normal(ifMatch=ck-normal)']);
+
+        // 2) Recurring task completion flags its folder for a selective pull.
+        h.container
+            .read(tasksViewPresenterProvider)
+            .setTaskCompleted('t_rec', completed: true);
+        h.api.callLog.clear();
+
+        final recPush = await pushEngine
+            .pushOutbox(
               currentState: h.container.read(todoProvider),
+              outbox: h.repository.outbox,
+              nowUtc: DateTime.now().toUtc(),
+              onItemCommitted: todoNotifier.commitPushBatch,
+            )
+            .fold(
+              (outcome) => outcome,
+              (error) => fail('unexpected push failure: ${error.describe()}'),
+            );
+        expect(recPush.pushedTasks, contains('t_rec'));
+        expect(recPush.followUpPullFolderRemoteIds, {'rf-default'});
+
+        final pullOutcome = await pullEngine
+            .pull(
               repository: h.repository,
-              idGenerator: h.container.read(todoProvider.notifier).nextId,
-              kind: SyncKind.pushOnly,
+              currentState: h.container.read(todoProvider),
+              idGenerator: todoNotifier.nextId,
+              onlyFolderRemoteIds: recPush.followUpPullFolderRemoteIds,
             )
             .fold(
               (outcome) => outcome,
@@ -822,19 +876,19 @@ void main() {
             );
 
         expect(h.api.callLog, [
-          'PATCH tasks/rt-1(ifMatch=ck-1)',
+          'PATCH tasks/rt-rec(ifMatch=ck-rec)',
           'GET tasks(rf-default,dl-tasks-1)',
         ]);
-        expect(outcome.remoteSettings, isNull);
-        expect(h.repository.loadPendingTaskFolderPulls(), isEmpty);
+        expect(pullOutcome.isSelective, isTrue);
+        expect(pullOutcome.remoteSettings, isNull);
         expect(
-          outcome.tasks.firstWhere((t) => t.id == 't_1').isCompleted,
+          pullOutcome.tasks.firstWhere((t) => t.id == 't_rec').isCompleted,
           isTrue,
         );
       },
     );
 
-    test('pushOnly pass tolerates a folder that disappeared remotely', () async {
+    test('selective pull tolerates a folder that disappeared remotely', () async {
       final h = await createSyncTestHarness(
         accountId: 'acct_push_only_missing_folder',
         defaultTasksFolderRemoteId: 'rf-default',
@@ -844,6 +898,8 @@ void main() {
             listId: 'tasks',
             title: 'One',
             createdAt: DateTime.utc(2026, 11, 22, 8),
+            dueDate: DateTime(2026, 11, 22),
+            recurrence: RecurrenceType.daily,
             remoteId: 'rt-1',
             remoteParentFolderId: 'rf-default',
             changeKey: 'ck-1',
@@ -862,37 +918,32 @@ void main() {
           .read(tasksViewPresenterProvider)
           .setTaskCompleted('t_1', completed: true);
 
-      final service = CloudSyncService(
-        authClient: h.authClient,
-        todoApi: h.api,
-        tokenStorage: AuthTokenStorage(h.prefs),
-      );
-
-      await service
-          .pushAccount(
-            account: h.account,
+      final todoNotifier = h.container.read(todoProvider.notifier);
+      final pushOutcome = await SubstratePushEngine(h.api)
+          .pushOutbox(
             currentState: h.container.read(todoProvider),
-            repository: h.repository,
+            outbox: h.repository.outbox,
+            nowUtc: DateTime.now().toUtc(),
+            onItemCommitted: todoNotifier.commitPushBatch,
           )
           .fold(
             (outcome) => outcome,
             (error) => fail('unexpected push failure: ${error.describe()}'),
           );
-      await service
-          .pullAccount(
-            account: h.account,
-            currentState: h.container.read(todoProvider),
+      final pullOutcome = await SubstratePullEngine(h.api)
+          .pull(
             repository: h.repository,
-            idGenerator: h.container.read(todoProvider.notifier).nextId,
-            kind: SyncKind.pushOnly,
+            currentState: h.container.read(todoProvider),
+            idGenerator: todoNotifier.nextId,
+            onlyFolderRemoteIds: pushOutcome.followUpPullFolderRemoteIds,
           )
           .fold(
             (outcome) => outcome,
             (error) => fail('unexpected pull failure: ${error.describe()}'),
           );
 
-      // The stale follow-up entry is dropped instead of failing the whole pass.
-      expect(h.repository.loadPendingTaskFolderPulls(), isEmpty);
+      expect(pullOutcome.isSelective, isTrue);
+      expect(pullOutcome.tasks.single.id, 't_1');
     });
 
     test(
@@ -959,18 +1010,20 @@ void main() {
 
         h.container.read(tasksViewPresenterProvider).deleteList('list_copy_1');
 
-        final service = CloudSyncService(
-          authClient: h.authClient,
-          todoApi: h.api,
-          tokenStorage: AuthTokenStorage(h.prefs),
-        );
         h.api.callLog.clear();
 
-        await service
-            .pushAccount(
-              account: h.account,
+        await SubstratePushEngine(h.api)
+            .pushOutbox(
               currentState: h.container.read(todoProvider),
-              repository: h.repository,
+              outbox: h.repository.outbox,
+              nowUtc: DateTime.now().toUtc(),
+              onItemCommitted: (o) async {
+                h.repository.outbox.ackBatch(
+                  o.ackedSeqs,
+                  o.clearedRemoteIdKeys,
+                );
+                await h.repository.saveOutbox();
+              },
             )
             .fold(
               (outcome) => outcome,
@@ -1039,18 +1092,14 @@ void main() {
       };
 
       final todoNotifier = h.container.read(todoProvider.notifier);
-      final service = CloudSyncService(
-        authClient: h.authClient,
-        todoApi: h.api,
-        tokenStorage: AuthTokenStorage(h.prefs),
-      );
+      final pushEngine = SubstratePushEngine(h.api);
 
-      final firstResult = await service.pushAccount(
-        account: h.account,
+      final firstResult = await pushEngine.pushOutbox(
         currentState: h.container.read(todoProvider),
-        repository: h.repository,
+        outbox: h.repository.outbox,
+        nowUtc: DateTime.now().toUtc(),
         readLatestState: () => h.container.read(todoProvider),
-        onPushCommitted: todoNotifier.commitPushBatch,
+        onItemCommitted: todoNotifier.commitPushBatch,
       );
       expect(firstResult.isError(), isTrue);
 
@@ -1064,12 +1113,12 @@ void main() {
       expect(alpha.remoteId, isNotNull);
 
       h.api.callLog.clear();
-      final secondResult = await service.pushAccount(
-        account: h.account,
+      final secondResult = await pushEngine.pushOutbox(
         currentState: h.container.read(todoProvider),
-        repository: h.repository,
+        outbox: h.repository.outbox,
+        nowUtc: DateTime.now().toUtc(),
         readLatestState: () => h.container.read(todoProvider),
-        onPushCommitted: todoNotifier.commitPushBatch,
+        onItemCommitted: todoNotifier.commitPushBatch,
       );
       expect(secondResult.isSuccess(), isTrue);
 
@@ -1119,19 +1168,14 @@ void main() {
       };
 
       final todoNotifier = h.container.read(todoProvider.notifier);
-      final service = CloudSyncService(
-        authClient: h.authClient,
-        todoApi: h.api,
-        tokenStorage: AuthTokenStorage(h.prefs),
-      );
 
-      await service
-          .pushAccount(
-            account: h.account,
+      await SubstratePushEngine(h.api)
+          .pushOutbox(
             currentState: h.container.read(todoProvider),
-            repository: h.repository,
+            outbox: h.repository.outbox,
+            nowUtc: DateTime.now().toUtc(),
             readLatestState: () => h.container.read(todoProvider),
-            onPushCommitted: todoNotifier.commitPushBatch,
+            onItemCommitted: todoNotifier.commitPushBatch,
           )
           .fold(
             (outcome) => outcome,

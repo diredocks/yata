@@ -749,8 +749,7 @@ class _BlockingSecondFolderApi extends FakeSubstrateApi {
   final Completer<void> folder2Release;
 
   @override
-  AsyncAppResult<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta(
-    SubstrateRequestContext ctx, {
+  AsyncAppResult<DeltaPageResult<RemoteTodoTask>> fetchTasksDelta({
     required String folderRemoteId,
     String? deltaLink,
   }) async {
@@ -761,7 +760,6 @@ class _BlockingSecondFolderApi extends FakeSubstrateApi {
       );
     }
     final res = await super.fetchTasksDelta(
-      ctx,
       folderRemoteId: folderRemoteId,
       deltaLink: deltaLink,
     );

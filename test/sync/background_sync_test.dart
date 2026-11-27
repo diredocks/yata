@@ -4,18 +4,15 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/core/error/app_error.dart';
 import 'package:yata/data/sync_outbox.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/data/todo_repository.dart';
 import 'package:yata/data/todo_settings_store.dart';
-import 'package:yata/models/account.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/sync/background_sync_bridge.dart';
 import 'package:yata/sync/background_sync_entrypoint.dart';
-import 'package:yata/sync/microsoft/cloud_sync_service.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
 import 'package:yata/sync/microsoft/substrate_push_engine.dart';
 import 'package:yata/sync/sync_provider.dart';
@@ -139,33 +136,10 @@ void main() {
       final db = TodoDatabase(NativeDatabase.memory());
       addTearDown(db.close);
 
-      final account = MicrosoftAccount(
-        id: 'acct_lane',
-        displayName: 'Lane Tester',
-        email: 'lane@example.com',
-        microsoftUserId: 'cid_lane',
-        createdAt: DateTime.utc(2026, 11, 20),
-      );
-      final settings = TodoSettingsStore(prefs, accountId: account.id);
+      final settings = TodoSettingsStore(prefs, accountId: 'acct_lane');
       final repo = TodoRepository.forSession(db, settings);
 
       final api = FakeSubstrateApi();
-      final tokenStorage = AuthTokenStorage(prefs);
-      await tokenStorage.saveTokens(
-        account.id,
-        MicrosoftAuthTokens(
-          accessToken: 'tok',
-          refreshToken: 'ref',
-          expiresAt: DateTime.utc(2099, 1, 1),
-          userId: 'cid_lane',
-        ),
-      );
-      final auth = FakeAuthClient();
-      final cloudSync = CloudSyncService(
-        authClient: auth,
-        todoApi: api,
-        tokenStorage: tokenStorage,
-      );
 
       final tasksList = TodoList(
         id: 'tasks',
@@ -207,10 +181,9 @@ void main() {
 
       // Drain ONLY metadata lane: task is created, attachment NOT uploaded yet.
       final metaOutcome = await runBackgroundOutboxPass(
-        account: account,
         repository: repo,
         settings: settings,
-        cloudSync: cloudSync,
+        todoApi: api,
         lane: BackgroundSyncLane.metadata,
         reason: 'bg_meta',
         onDbChanged: events.add,
@@ -234,10 +207,9 @@ void main() {
 
       // Drain transfer lane: attachment uploads and clears isTransferring.
       final transferOutcome = await runBackgroundOutboxPass(
-        account: account,
         repository: repo,
         settings: settings,
-        cloudSync: cloudSync,
+        todoApi: api,
         lane: BackgroundSyncLane.transfer,
         reason: 'bg_transfer',
         onDbChanged: events.add,
@@ -264,35 +236,13 @@ void main() {
       final db = TodoDatabase(NativeDatabase.memory());
       addTearDown(db.close);
 
-      final account = MicrosoftAccount(
-        id: 'acct_retry',
-        displayName: 'Retry Tester',
-        email: 'retry@example.com',
-        microsoftUserId: 'cid_retry',
-        createdAt: DateTime.utc(2026, 11, 20),
-      );
-      final settings = TodoSettingsStore(prefs, accountId: account.id);
+      final settings = TodoSettingsStore(prefs, accountId: 'acct_retry');
       final repo = TodoRepository.forSession(db, settings);
 
       final api = FakeSubstrateApi()
         ..onUploadAttachment = (_, _, _, _) async {
           throw const AppError.network(message: 'Offline', isRetryable: true);
         };
-      final tokenStorage = AuthTokenStorage(prefs);
-      await tokenStorage.saveTokens(
-        account.id,
-        MicrosoftAuthTokens(
-          accessToken: 'tok',
-          refreshToken: 'ref',
-          expiresAt: DateTime.utc(2099, 1, 1),
-          userId: 'cid_retry',
-        ),
-      );
-      final cloudSync = CloudSyncService(
-        authClient: FakeAuthClient(),
-        todoApi: api,
-        tokenStorage: tokenStorage,
-      );
 
       final task = TaskItem(
         id: 't_r',
@@ -324,10 +274,9 @@ void main() {
       // Metadata lane should be a 0-API-call no-op and signal pending transfer.
       final events = <BackgroundDbChangedEvent>[];
       final metaOutcome = await runBackgroundOutboxPass(
-        account: account,
         repository: repo,
         settings: settings,
-        cloudSync: cloudSync,
+        todoApi: api,
         lane: BackgroundSyncLane.metadata,
         reason: 'bg_meta',
         onDbChanged: events.add,
@@ -340,10 +289,9 @@ void main() {
 
       // Transfer lane fails with retryable error -> shouldRetry=true.
       final transferOutcome = await runBackgroundOutboxPass(
-        account: account,
         repository: repo,
         settings: settings,
-        cloudSync: cloudSync,
+        todoApi: api,
         lane: BackgroundSyncLane.transfer,
         reason: 'bg_transfer',
         onDbChanged: events.add,
@@ -490,7 +438,7 @@ void main() {
       expect(repoA.outbox.ops.map((op) => op.localId).toList(), ['t_2']);
     });
 
-    test('SQLite sync metadata persists deltaLinks, pending folder pulls, and endpoint TTL across preload', () async {
+    test('SQLite sync metadata persists deltaLinks and endpoint TTL across preload', () async {
       final db = TodoDatabase(NativeDatabase.memory());
       addTearDown(db.close);
 
@@ -511,7 +459,6 @@ void main() {
         foldersDeltaLink: 'dl-folders',
         updateFoldersDeltaLink: true,
         taskDeltaLinks: const {'rf-1': 'dl-t1', 'rf-2': 'dl-t2'},
-        pendingTaskFolderPulls: const {'rf-1'},
       );
       await writer.saveCachedEndpointUrl('https://substrate.example/api/v1/');
       await writer.flushPendingWrites();
@@ -520,7 +467,6 @@ void main() {
       expect(reader.loadGroupsDeltaLink(), 'dl-groups');
       expect(reader.loadFoldersDeltaLink(), 'dl-folders');
       expect(reader.loadTaskDeltaLinks(), {'rf-1': 'dl-t1', 'rf-2': 'dl-t2'});
-      expect(reader.loadPendingTaskFolderPulls(), {'rf-1'});
       expect(
         reader.loadCachedEndpointUrl(),
         'https://substrate.example/api/v1/',
@@ -530,14 +476,12 @@ void main() {
       await reader.saveSyncMetaBatch(
         groupsDeltaLink: null,
         updateGroupsDeltaLink: true,
-        pendingTaskFolderPulls: const {},
       );
       await reader.flushPendingWrites();
 
       (await writer.preload()).getOrThrow();
       expect(writer.loadGroupsDeltaLink(), isNull);
       expect(writer.loadFoldersDeltaLink(), 'dl-folders');
-      expect(writer.loadPendingTaskFolderPulls(), isEmpty);
     });
 
     test('SyncStore.commitPushHeadless preserves concurrent foreground task edit and remoteId mapping', () async {

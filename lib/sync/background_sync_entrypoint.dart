@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../account/account_local_storage.dart';
+import '../account/account_provider.dart';
 import '../core/error/app_error.dart';
 import '../core/logging/app_logger.dart';
 import '../core/result/app_result.dart';
@@ -17,7 +18,7 @@ import '../models/account.dart';
 import '../models/default_lists.dart';
 import '../widget/home_widget_service.dart';
 import 'background_sync_bridge.dart';
-import 'microsoft/cloud_sync_service.dart';
+import 'microsoft/microsoft_todo_api.dart';
 import 'microsoft/substrate_push_engine.dart';
 import 'sync_provider.dart';
 import 'sync_store.dart';
@@ -64,10 +65,9 @@ Future<void> yataBackgroundSyncEntrypoint() async {
 /// Pushes pending outbox operations directly for the requested [lane] and
 /// persists committed results to SQLite without intermediate SyncJob records.
 Future<BackgroundPassOutcome> runBackgroundOutboxPass({
-  required MicrosoftAccount account,
   required TodoRepository repository,
   required TodoSettingsStore settings,
-  required CloudSyncService cloudSync,
+  required MicrosoftTodoApi todoApi,
   required BackgroundSyncLane? lane,
   required String reason,
   void Function(BackgroundDbChangedEvent event)? onDbChanged,
@@ -92,14 +92,14 @@ Future<BackgroundPassOutcome> runBackgroundOutboxPass({
 
   final store = SyncStore(repository: repository, settings: settings);
   final snapshot = _buildSnapshotState(repository, settings);
-  final result = await cloudSync.pushAccount(
-    account: account,
+  final result = await SubstratePushEngine(todoApi).pushOutbox(
     currentState: snapshot,
-    repository: repository,
+    outbox: repository.outbox,
+    nowUtc: DateTime.now().toUtc(),
     readLatestState: () => _buildSnapshotState(repository, settings),
-    onPushCommitted: store.commitPushHeadless,
-    reason: reason,
+    onItemCommitted: store.commitPushHeadless,
     laneFilter: laneFilter,
+    reason: reason,
   );
 
   return result.fold(
@@ -169,6 +169,7 @@ Future<({bool shouldRetry, bool hasPendingTransfers})> _runHeadlessSyncPass({
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
         todoDatabaseProvider.overrideWithValue(database),
+        todoRepositoryProvider.overrideWithValue(repo),
         realtimeSyncEnabledProvider.overrideWithValue(false),
         periodicSyncEnabledProvider.overrideWithValue(false),
         startupSyncEnabledProvider.overrideWithValue(false),
@@ -193,10 +194,9 @@ Future<({bool shouldRetry, bool hasPendingTransfers})> _runHeadlessSyncPass({
         (lane) => lane.name == laneName,
       );
       final outcome = await runBackgroundOutboxPass(
-        account: active,
         repository: repo,
         settings: settings,
-        cloudSync: container.read(cloudSyncServiceProvider),
+        todoApi: container.read(microsoftTodoApiProvider),
         lane: targetLane,
         reason: reason,
       );

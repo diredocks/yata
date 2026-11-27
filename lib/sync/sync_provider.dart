@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../account/account_profile_refresher.dart';
 import '../account/account_provider.dart';
 import '../core/error/app_error.dart';
 import '../core/logging/app_logger.dart';
@@ -9,8 +10,7 @@ import '../data/sync_outbox.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
 import 'background_sync_bridge.dart';
-import 'microsoft/account_profile_refresher.dart';
-import 'microsoft/cloud_sync_service.dart';
+import 'microsoft/substrate_pull_engine.dart';
 import 'microsoft/substrate_push_engine.dart';
 import 'realtime_sync_controller.dart';
 
@@ -24,14 +24,6 @@ final periodicSyncEnabledProvider = Provider<bool>((ref) => true);
 
 /// Allows tests to disable automatic cold-start sync on shell mount.
 final startupSyncEnabledProvider = Provider<bool>((ref) => true);
-
-final cloudSyncServiceProvider = Provider<CloudSyncService>((ref) {
-  return CloudSyncService(
-    authClient: ref.watch(microsoftAuthClientProvider),
-    todoApi: ref.watch(microsoftTodoApiProvider),
-    tokenStorage: ref.watch(authTokenStorageProvider),
-  );
-});
 
 enum SyncStatus { idle, syncing, success, error, requiresRelogin }
 
@@ -81,31 +73,22 @@ class SyncState {
       'SyncState(status: $status, lastSyncedAt: $lastSyncedAt, error: $error)';
 }
 
-enum SyncReason {
-  manual('manual'),
-  debounced('debounced'),
-  localMutation('local_mutation'),
-  startup('startup'),
-  accountChanged('account_changed'),
-  appResumed('app_resumed'),
-  periodic('periodic'),
-  realtimeReconnected('realtime_reconnected'),
-  realtimeOverflow('realtime_overflow'),
-  outboxPending('outbox_pending'),
-  queued('queued');
+enum _PullScope { selective, delta, full }
 
-  const SyncReason(this.label);
-  final String label;
-}
+class _PullCommand {
+  const _PullCommand(
+    this.scope,
+    this.reason, {
+    this.folderRemoteIds,
+    this.pruneProtectSinceSeq,
+  });
 
-class _SyncCommand {
-  const _SyncCommand(this.kind, this.reason, {this.pruneProtectSinceSeq});
-
-  final SyncKind kind;
+  final _PullScope scope;
   final String reason;
+  final Set<String>? folderRemoteIds;
   final int? pruneProtectSinceSeq;
 
-  _SyncCommand merge(_SyncCommand other) {
+  _PullCommand merge(_PullCommand other) {
     final earliestPruneSeq = switch ((
       pruneProtectSinceSeq,
       other.pruneProtectSinceSeq,
@@ -115,18 +98,24 @@ class _SyncCommand {
       (null, final b?) => b,
       (null, null) => null,
     };
-    final winner = other.kind.index > kind.index ? other : this;
-    return _SyncCommand(
-      winner.kind,
+    if (scope == _PullScope.selective && other.scope == _PullScope.selective) {
+      return _PullCommand(
+        _PullScope.selective,
+        other.reason,
+        folderRemoteIds: {...?folderRemoteIds, ...?other.folderRemoteIds},
+        pruneProtectSinceSeq: earliestPruneSeq,
+      );
+    }
+    final winner = other.scope.index > scope.index ? other : this;
+    return _PullCommand(
+      winner.scope,
       winner.reason,
+      folderRemoteIds: winner.scope == _PullScope.selective
+          ? winner.folderRemoteIds
+          : null,
       pruneProtectSinceSeq: earliestPruneSeq,
     );
   }
-}
-
-class _CancelFlag {
-  bool cancelled = false;
-  void cancel() => cancelled = true;
 }
 
 /// Coalescing timer with a bounded maximum postponement cap.
@@ -252,12 +241,12 @@ class SyncNotifier extends Notifier<SyncState> {
   String? _pendingPushReason;
 
   final _pullDebouncer = _CoalescingDebouncer(_maxCoalesceDelay);
-  _SyncCommand? _pendingPullCommand;
+  _PullCommand? _pendingPullCommand;
 
   final _pushRunner = _CoalescingRunner<String>(
     coalesce: (queued, _) => queued,
   );
-  final _pullRunner = _CoalescingRunner<_SyncCommand>(
+  final _pullRunner = _CoalescingRunner<_PullCommand>(
     coalesce: (queued, incoming) => queued.merge(incoming),
   );
 
@@ -267,7 +256,7 @@ class SyncNotifier extends Notifier<SyncState> {
 
   bool _disposed = false;
   bool _isForeground = true;
-  _CancelFlag? _activePullCancel;
+  int _pullGeneration = 0;
 
   bool get _hasActiveSync => _pushRunner.isRunning || _pullRunner.isRunning;
 
@@ -292,7 +281,7 @@ class SyncNotifier extends Notifier<SyncState> {
             );
           },
       onOverflowResync: (reason) {
-        _pullRunner.enqueue(_SyncCommand(SyncKind.full, reason));
+        _pullRunner.enqueue(_PullCommand(_PullScope.full, reason));
       },
       onCatchupDeltaSync: (reason) =>
           syncNow(forceFullSync: false, reason: reason),
@@ -334,7 +323,7 @@ class SyncNotifier extends Notifier<SyncState> {
       _cancelPullDebounce();
       _pushRunner.clearQueued();
       _pullRunner.clearQueued();
-      _activePullCancel?.cancel();
+      _pullGeneration += 1;
       return const SyncState();
     }
 
@@ -358,7 +347,7 @@ class SyncNotifier extends Notifier<SyncState> {
     _cancelPullDebounce();
     _pushRunner.clearQueued();
     _pullRunner.clearQueued();
-    _activePullCancel?.cancel();
+    _pullGeneration += 1;
     _stopPeriodicSync();
     _realtimeController?.dispose();
     _realtimeController = null;
@@ -380,7 +369,7 @@ class SyncNotifier extends Notifier<SyncState> {
     if (_disposed || !_isForeground || _periodicTimer != null) return;
     _periodicTimer = Timer.periodic(_periodicSyncInterval, (_) {
       if (!_disposed && _isForeground) {
-        unawaited(syncNow(reason: SyncReason.periodic.label));
+        unawaited(syncNow(reason: 'periodic'));
       }
     });
   }
@@ -401,7 +390,7 @@ class SyncNotifier extends Notifier<SyncState> {
 
     if (_pullRunner.isRunning) {
       _log.info('onAppPaused: cancelling in-flight pull to prioritize push');
-      _activePullCancel?.cancel();
+      _pullGeneration += 1;
       _pullRunner.clearQueued();
     }
     _cancelPullDebounce();
@@ -503,7 +492,7 @@ class SyncNotifier extends Notifier<SyncState> {
     scheduleDebouncedSync(
       delay: _foregroundDebounceDuration,
       forceFullSync: false,
-      reason: SyncReason.appResumed.label,
+      reason: 'app_resumed',
     );
   }
 
@@ -519,20 +508,18 @@ class SyncNotifier extends Notifier<SyncState> {
     if (account == null) return;
 
     if (accountChanged) {
-      unawaited(
-        syncNow(forceFullSync: true, reason: SyncReason.accountChanged.label),
-      );
+      unawaited(syncNow(forceFullSync: true, reason: 'account_changed'));
       return;
     }
 
     final needsFollowUpFull = account.lastSyncedAt != null;
     unawaited(() async {
-      await syncNow(forceFullSync: false, reason: SyncReason.startup.label);
+      await syncNow(forceFullSync: false, reason: 'startup');
       if (!_disposed &&
           _isForeground &&
           needsFollowUpFull &&
           state.status == SyncStatus.success) {
-        await syncNow(forceFullSync: true, reason: SyncReason.startup.label);
+        await syncNow(forceFullSync: true, reason: 'startup');
       }
     }());
   }
@@ -545,8 +532,8 @@ class SyncNotifier extends Notifier<SyncState> {
   }) {
     if (_disposed || _activeMicrosoftAccount == null) return;
 
-    final incoming = _SyncCommand(
-      forceFullSync ? SyncKind.full : SyncKind.delta,
+    final incoming = _PullCommand(
+      forceFullSync ? _PullScope.full : _PullScope.delta,
       reason,
     );
     final merged = _pendingPullCommand?.merge(incoming) ?? incoming;
@@ -555,18 +542,17 @@ class SyncNotifier extends Notifier<SyncState> {
     final fireIn = _pullDebouncer.schedule(delay, () {
       if (_disposed) return;
       final pending =
-          _pendingPullCommand ??
-          _SyncCommand(SyncKind.delta, SyncReason.debounced.label);
+          _pendingPullCommand ?? const _PullCommand(_PullScope.delta, 'debounced');
       _pendingPullCommand = null;
       unawaited(
         syncNow(
-          forceFullSync: pending.kind == SyncKind.full,
+          forceFullSync: pending.scope == _PullScope.full,
           reason: pending.reason,
         ),
       );
     });
     _log.info(
-      'scheduleDebouncedSync reason=${merged.reason} kind=${merged.kind.name} '
+      'scheduleDebouncedSync reason=${merged.reason} scope=${merged.scope.name} '
       'delay=${delay.inMilliseconds}ms fireIn=${fireIn.inMilliseconds}ms',
     );
   }
@@ -581,18 +567,17 @@ class SyncNotifier extends Notifier<SyncState> {
     _pendingPushReason ??= reason;
     final fireIn = _pushDebouncer.schedule(delay, () {
       if (_disposed) return;
-      final pendingReason =
-          _pendingPushReason ?? SyncReason.localMutation.label;
+      final pendingReason = _pendingPushReason ?? 'local_mutation';
       _pendingPushReason = null;
       unawaited(_pushNow(reason: pendingReason));
     });
     _log.info(
-      'schedulePushOnlySync reason=$reason kind=${SyncKind.pushOnly.name} '
+      'schedulePushOnlySync reason=$reason '
       'delay=${delay.inMilliseconds}ms fireIn=${fireIn.inMilliseconds}ms',
     );
   }
 
-  /// Runs a push (if any outbox ops are pending) followed by a pull of [kind],
+  /// Runs a push (if any outbox ops are pending) followed by a delta or full pull,
   /// or runs push concurrently if a pull is already in flight.
   Future<void> syncNow({
     bool forceFullSync = false,
@@ -600,7 +585,7 @@ class SyncNotifier extends Notifier<SyncState> {
   }) async {
     if (_disposed || _activeMicrosoftAccount == null) return;
 
-    final kind = forceFullSync ? SyncKind.full : SyncKind.delta;
+    final scope = forceFullSync ? _PullScope.full : _PullScope.delta;
     final outbox = ref.read(todoProvider.notifier).repository.outbox;
     int? pruneProtectSinceSeq;
 
@@ -613,9 +598,7 @@ class SyncNotifier extends Notifier<SyncState> {
     }
 
     await _pullNow(
-      kind,
-      reason: reason,
-      pruneProtectSinceSeq: pruneProtectSinceSeq,
+      _PullCommand(scope, reason, pruneProtectSinceSeq: pruneProtectSinceSeq),
     );
   }
 
@@ -665,7 +648,7 @@ class SyncNotifier extends Notifier<SyncState> {
                 .ops
                 .any((op) => op.kind == SyncOpKind.delete);
         if (hasPendingDeletes) {
-          _pushRunner.enqueue(SyncReason.outboxPending.label);
+          _pushRunner.enqueue('outbox_pending');
         }
       },
       onCycleComplete: () async {
@@ -676,7 +659,15 @@ class SyncNotifier extends Notifier<SyncState> {
         if (enqueueFollowUpPull &&
             followUpFolders.isNotEmpty &&
             _isForeground) {
-          unawaited(_pullNow(SyncKind.pushOnly, reason: reason));
+          unawaited(
+            _pullNow(
+              _PullCommand(
+                _PullScope.selective,
+                reason,
+                folderRemoteIds: Set<String>.of(followUpFolders),
+              ),
+            ),
+          );
         } else if (!_hasActiveSync) {
           await _drainRealtimeIfReady();
         }
@@ -684,20 +675,11 @@ class SyncNotifier extends Notifier<SyncState> {
     );
   }
 
-  Future<void> _pullNow(
-    SyncKind kind, {
-    String reason = 'manual',
-    int? pruneProtectSinceSeq,
-  }) {
+  Future<void> _pullNow(_PullCommand command) {
     if (_disposed || _activeMicrosoftAccount == null) {
       return Future<void>.value();
     }
 
-    final command = _SyncCommand(
-      kind,
-      reason,
-      pruneProtectSinceSeq: pruneProtectSinceSeq,
-    );
     if (!_pullRunner.isRunning) {
       state = state.copyWith(status: SyncStatus.syncing, error: null);
     }
@@ -706,20 +688,10 @@ class SyncNotifier extends Notifier<SyncState> {
       command,
       isCancelled: () => _disposed,
       onCoalesced: (merged) => _log.info(
-        'syncNow coalesced into in-flight sync: reason=$reason '
-        'kind=${kind.name} (queuedKind=${merged.kind.name})',
+        'syncNow coalesced into in-flight sync: reason=${command.reason} '
+        'scope=${command.scope.name} (queuedScope=${merged.scope.name})',
       ),
-      execute: (current) async {
-        try {
-          await _pullOnce(
-            kind: current.kind,
-            reason: current.reason,
-            pruneProtectSinceSeq: current.pruneProtectSinceSeq,
-          );
-        } finally {
-          _activePullCancel = null;
-        }
-      },
+      execute: _pullOnce,
       onCycleComplete: () async {
         if (!_hasActiveSync) {
           await _drainRealtimeIfReady();
@@ -734,27 +706,25 @@ class SyncNotifier extends Notifier<SyncState> {
 
     _log.info('push start account=${active.id} reason=$reason');
 
-    final service = ref.read(cloudSyncServiceProvider);
     final todoNotifier = ref.read(todoProvider.notifier);
-    final snapshotState = ref.read(todoProvider);
-
-    final result = await service.pushAccount(
-      account: active,
-      currentState: snapshotState,
-      repository: todoNotifier.repository,
-      readLatestState: () => ref.read(todoProvider),
-      onPushCommitted: (pushOutcome) async {
-        if (_disposed ||
-            ref.read(accountProvider).activeAccount?.id != active.id) {
-          return;
-        }
-        await todoNotifier.commitPushBatch(pushOutcome);
-      },
-      reason: reason,
-      laneFilter: _delegatesTransfersToBackground
-          ? PushLaneFilter.metadataOnly
-          : PushLaneFilter.all,
-    );
+    final result = await SubstratePushEngine(ref.read(microsoftTodoApiProvider))
+        .pushOutbox(
+          currentState: ref.read(todoProvider),
+          outbox: todoNotifier.repository.outbox,
+          nowUtc: DateTime.now().toUtc(),
+          readLatestState: () => ref.read(todoProvider),
+          onItemCommitted: (pushOutcome) async {
+            if (_disposed ||
+                ref.read(accountProvider).activeAccount?.id != active.id) {
+              return;
+            }
+            await todoNotifier.commitPushBatch(pushOutcome);
+          },
+          laneFilter: _delegatesTransfersToBackground
+              ? PushLaneFilter.metadataOnly
+              : PushLaneFilter.all,
+          reason: reason,
+        );
 
     if (_disposed) return null;
 
@@ -773,38 +743,31 @@ class SyncNotifier extends Notifier<SyncState> {
     );
   }
 
-  Future<bool> _pullOnce({
-    required SyncKind kind,
-    required String reason,
-    int? pruneProtectSinceSeq,
-  }) async {
+  Future<bool> _pullOnce(_PullCommand command) async {
     final active = _activeMicrosoftAccount;
     if (_disposed || active == null) return false;
 
-    final forceFullSync = kind == SyncKind.full;
-    final cancelFlag = _CancelFlag();
-    _activePullCancel = cancelFlag;
+    final gen = ++_pullGeneration;
+    final forceFullSync = command.scope == _PullScope.full;
 
     _log.info(
-      'sync start account=${active.id} reason=$reason '
-      'kind=${kind.name} forceFullSync=$forceFullSync',
+      'sync start account=${active.id} reason=${command.reason} '
+      'scope=${command.scope.name} forceFullSync=$forceFullSync',
     );
 
-    final service = ref.read(cloudSyncServiceProvider);
     final todoNotifier = ref.read(todoProvider.notifier);
-    final snapshotState = ref.read(todoProvider);
-
-    final result = await service.pullAccount(
-      account: active,
-      currentState: snapshotState,
-      repository: todoNotifier.repository,
-      idGenerator: todoNotifier.nextId,
-      readLatestState: () => ref.read(todoProvider),
-      kind: kind,
-      reason: reason,
-      isCancelled: () => _disposed || cancelFlag.cancelled,
-      pruneProtectSinceSeq: pruneProtectSinceSeq,
-    );
+    final result = await SubstratePullEngine(ref.read(microsoftTodoApiProvider))
+        .pull(
+          repository: todoNotifier.repository,
+          currentState: ref.read(todoProvider),
+          idGenerator: todoNotifier.nextId,
+          readLatestState: () => ref.read(todoProvider),
+          forceFullSync: forceFullSync,
+          onlyFolderRemoteIds: command.folderRemoteIds,
+          isCancelled: () => _disposed || _pullGeneration != gen,
+          pruneProtectSinceSeq: command.pruneProtectSinceSeq,
+          reason: command.reason,
+        );
 
     if (_disposed) return false;
 
@@ -812,7 +775,8 @@ class SyncNotifier extends Notifier<SyncState> {
       (outcome) async {
         if (outcome.cancelled) {
           _log.info(
-            'sync cancelled reason=$reason forceFullSync=$forceFullSync',
+            'sync cancelled reason=${command.reason} '
+            'forceFullSync=$forceFullSync',
           );
           if (!_disposed && !_pushRunner.isRunning) {
             state = state.copyWith(status: SyncStatus.idle);
@@ -820,13 +784,14 @@ class SyncNotifier extends Notifier<SyncState> {
           return false;
         }
         _log.info(
-          'sync success reason=$reason forceFullSync=$forceFullSync '
+          'sync success reason=${command.reason} '
+          'forceFullSync=$forceFullSync '
           'lists=${outcome.lists.length} tasks=${outcome.tasks.length}',
         );
         if (ref.read(accountProvider).activeAccount?.id == active.id) {
           await todoNotifier.applyRemoteState(
-            groups: kind == SyncKind.pushOnly ? null : outcome.groups,
-            lists: kind == SyncKind.pushOnly ? null : outcome.lists,
+            groups: outcome.isSelective ? null : outcome.groups,
+            lists: outcome.isSelective ? null : outcome.lists,
             tasks: outcome.tasks,
             remoteSettings: outcome.remoteSettings,
             protectPendingOutbox: true,
@@ -840,7 +805,8 @@ class SyncNotifier extends Notifier<SyncState> {
               clearSyncError: true,
             );
         await refreshMicrosoftProfileIfIncomplete(
-          service: service,
+          authClient: ref.read(microsoftAuthClientProvider),
+          tokenStorage: ref.read(authTokenStorageProvider),
           account: active,
           isDisposed: () => _disposed,
           onProfileUpdated: ref
@@ -859,7 +825,7 @@ class SyncNotifier extends Notifier<SyncState> {
         return true;
       },
       (error) async {
-        await _handleSyncError(active, reason, error);
+        await _handleSyncError(active, command.reason, error);
         return false;
       },
     );

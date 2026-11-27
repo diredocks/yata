@@ -25,7 +25,6 @@ class _AccountCache {
   String? groupsDeltaLink;
   String? foldersDeltaLink;
   Map<String, String> taskDeltaLinks = const {};
-  Set<String> pendingTaskFolderPulls = const {};
   String? cachedEndpointUrl;
   DateTime? cachedEndpointFetchedAt;
   Future<void> writeQueue = Future<void>.value();
@@ -67,7 +66,6 @@ class TodoRepository {
   static const _groupsDeltaLinkKey = 'groups_delta_link';
   static const _foldersDeltaLinkKey = 'folders_delta_link';
   static const _taskDeltaLinksKey = 'task_delta_links';
-  static const _pendingTaskFolderPullsKey = 'pending_task_folder_pulls';
   static const _cachedEndpointKey = 'cached_endpoint';
 
   /// Cache buckets are shared by every repository over the same database, so a
@@ -115,14 +113,6 @@ class TodoRepository {
   AsyncAppResult<Unit> saveTaskDeltaLinks(Map<String, String> links) =>
       saveSyncMetaBatch(taskDeltaLinks: links);
 
-  /// Folders awaiting one targeted task pull (Substrate's `sync_update_required`).
-  Set<String> loadPendingTaskFolderPulls() =>
-      Set<String>.unmodifiable(_cache.pendingTaskFolderPulls);
-
-  AsyncAppResult<Unit> savePendingTaskFolderPulls(
-    Set<String> folderRemoteIds,
-  ) => saveSyncMetaBatch(pendingTaskFolderPulls: folderRemoteIds);
-
   String? loadCachedEndpointUrl({
     Duration maxAge = const Duration(hours: 12),
   }) {
@@ -156,14 +146,13 @@ class TodoRepository {
     );
   }
 
-  /// Atomically persists sync cursors and pending folder pull flags in SQLite.
+  /// Atomically persists sync cursors in SQLite.
   AsyncAppResult<Unit> saveSyncMetaBatch({
     String? groupsDeltaLink,
     bool updateGroupsDeltaLink = false,
     String? foldersDeltaLink,
     bool updateFoldersDeltaLink = false,
     Map<String, String>? taskDeltaLinks,
-    Set<String>? pendingTaskFolderPulls,
   }) {
     final writes = <({String key, Map<String, dynamic>? payload})>[];
     if (updateGroupsDeltaLink) {
@@ -197,18 +186,6 @@ class TodoRepository {
       writes.add((
         key: _taskDeltaLinksKey,
         payload: normalized.isEmpty ? null : {'links': normalized},
-      ));
-    }
-    if (pendingTaskFolderPulls != null) {
-      final normalized = Set<String>.unmodifiable(
-        pendingTaskFolderPulls.where((id) => id.isNotEmpty),
-      );
-      _cache.pendingTaskFolderPulls = normalized;
-      writes.add((
-        key: _pendingTaskFolderPullsKey,
-        payload: normalized.isEmpty
-            ? null
-            : {'folders': normalized.toList(growable: false)},
       ));
     }
     if (writes.isEmpty) {
@@ -336,7 +313,6 @@ class TodoRepository {
     cache.groupsDeltaLink = null;
     cache.foldersDeltaLink = null;
     cache.taskDeltaLinks = const {};
-    cache.pendingTaskFolderPulls = const {};
     cache.cachedEndpointUrl = null;
     cache.cachedEndpointFetchedAt = null;
 
@@ -361,13 +337,6 @@ class TodoRepository {
                       (entry.value as String).isNotEmpty)
                     entry.key as String: entry.value as String,
               });
-            }
-          case _pendingTaskFolderPullsKey:
-            if (payload['folders'] case final List folders) {
-              cache.pendingTaskFolderPulls = Set<String>.unmodifiable([
-                for (final item in folders)
-                  if (item is String && item.isNotEmpty) item,
-              ]);
             }
           case _cachedEndpointKey:
             final url = payload['url'];
