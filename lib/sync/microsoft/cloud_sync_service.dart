@@ -6,16 +6,15 @@ import '../../core/logging/app_logger.dart';
 import '../../core/result/app_result.dart';
 import '../../data/sync_outbox.dart';
 import '../../data/todo_repository.dart';
-import '../../data/todo_settings_store.dart';
 import '../../data/todo_settings_sync.dart';
 import '../../data/todo_state.dart';
 import '../../models/account.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
+import '../sync_guard.dart';
 import 'microsoft_todo_api.dart';
 import 'substrate_pull_engine.dart';
 import 'substrate_push_engine.dart';
-import '../sync_guard.dart';
 
 final _log = appLogFor('SyncEngine');
 
@@ -69,7 +68,7 @@ class CloudSyncService {
   /// Resolves valid MSA bearer token, CID, and discovered Substrate base URL.
   AsyncAppResult<SubstrateRequestContext> resolveContext(
     MicrosoftAccount account,
-    TodoSettingsStore settings, {
+    TodoRepository repository, {
     bool forceRefreshToken = false,
   }) => _resolveTokens(account, forceRefreshToken: forceRefreshToken).flatMap((
     tokens,
@@ -77,7 +76,7 @@ class CloudSyncService {
     final cid = tokens.userId.isNotEmpty
         ? tokens.userId
         : account.microsoftUserId;
-    return _resolveBaseUrl(settings, cid).map(
+    return _resolveBaseUrl(repository, cid).map(
       (baseUrl) => SubstrateRequestContext(
         baseUrl: baseUrl,
         accessToken: tokens.accessToken,
@@ -120,30 +119,30 @@ class CloudSyncService {
   }
 
   AsyncAppResult<String> _resolveBaseUrl(
-    TodoSettingsStore settings,
+    TodoRepository repository,
     String cid,
   ) async {
-    final cached = settings.loadCachedEndpointUrl();
+    final cached = repository.loadCachedEndpointUrl();
     if (cached != null) return Success(cached);
     final discovered = await guardApiCall(
       () => authClient.discoverTodoEndpoint(cid),
       operation: 'discoverEndpoint',
     );
     if (discovered.isSuccess()) {
-      await settings.saveCachedEndpointUrl(discovered.getOrNull()!);
+      await repository.saveCachedEndpointUrl(discovered.getOrNull()!);
     }
     return discovered;
   }
 
   AsyncAppResult<T> _runWithAuthRetry<T extends Object>({
     required MicrosoftAccount account,
-    required TodoSettingsStore settings,
+    required TodoRepository repository,
     required AsyncAppResult<T> Function(SubstrateRequestContext ctx) run,
   }) async {
     AsyncAppResult<T> runAttempt({required bool forceRefreshToken}) =>
         resolveContext(
           account,
-          settings,
+          repository,
           forceRefreshToken: forceRefreshToken,
         ).flatMap(run);
 
@@ -169,19 +168,17 @@ class CloudSyncService {
     required MicrosoftAccount account,
     required TodoState currentState,
     required TodoRepository repository,
-    required TodoSettingsStore settings,
     TodoState Function()? readLatestState,
     Future<void> Function(OutboxPushOutcome pushOutcome)? onPushCommitted,
     String reason = 'push',
     PushLaneFilter laneFilter = PushLaneFilter.all,
   }) => _runWithAuthRetry<OutboxPushOutcome>(
     account: account,
-    settings: settings,
+    repository: repository,
     run: (ctx) => _executePush(
       ctx: ctx,
       currentState: readLatestState?.call() ?? currentState,
       repository: repository,
-      settings: settings,
       readLatestState: readLatestState,
       onPushCommitted: onPushCommitted,
       reason: reason,
@@ -195,7 +192,6 @@ class CloudSyncService {
     required MicrosoftAccount account,
     required TodoState currentState,
     required TodoRepository repository,
-    required TodoSettingsStore settings,
     required String Function(String prefix) idGenerator,
     TodoState Function()? readLatestState,
     SyncKind kind = SyncKind.delta,
@@ -204,13 +200,12 @@ class CloudSyncService {
     int? pruneProtectSinceSeq,
   }) => _runWithAuthRetry<SyncOutcome>(
     account: account,
-    settings: settings,
+    repository: repository,
     run: (ctx) => _executePull(
       ctx: ctx,
       fallbackState: currentState,
       readLatestState: readLatestState,
       repository: repository,
-      settings: settings,
       idGenerator: idGenerator,
       kind: kind,
       reason: reason,
@@ -223,7 +218,6 @@ class CloudSyncService {
     required SubstrateRequestContext ctx,
     required TodoState currentState,
     required TodoRepository repository,
-    required TodoSettingsStore settings,
     TodoState Function()? readLatestState,
     Future<void> Function(OutboxPushOutcome pushOutcome)? onPushCommitted,
     required String reason,
@@ -247,8 +241,8 @@ class CloudSyncService {
       laneFilter: laneFilter,
       onItemCommitted: (itemOutcome) async {
         if (itemOutcome.followUpPullFolderRemoteIds.isNotEmpty) {
-          await settings.savePendingTaskFolderPulls({
-            ...settings.loadPendingTaskFolderPulls(),
+          await repository.savePendingTaskFolderPulls({
+            ...repository.loadPendingTaskFolderPulls(),
             ...itemOutcome.followUpPullFolderRemoteIds,
           });
         }
@@ -270,7 +264,6 @@ class CloudSyncService {
     required TodoState fallbackState,
     required TodoState Function()? readLatestState,
     required TodoRepository repository,
-    required TodoSettingsStore settings,
     required String Function(String prefix) idGenerator,
     required SyncKind kind,
     required String reason,
@@ -295,7 +288,7 @@ class CloudSyncService {
     return _pullEngine
         .fetchPatch(
           ctx: ctx,
-          settings: settings,
+          repository: repository,
           knownFolderRemoteIds: knownFolderRemoteIds,
           forceFullSync: kind == SyncKind.full,
           isSelective: kind == SyncKind.pushOnly,
@@ -312,7 +305,7 @@ class CloudSyncService {
             final RemotePullPatch patch => _applyFetchedPatch(
               patch: patch,
               liveState: liveState,
-              settings: settings,
+              repository: repository,
               outbox: outbox,
               idGenerator: idGenerator,
               pullStartSeq: pullStartSeq,
@@ -340,7 +333,7 @@ class CloudSyncService {
   AsyncAppResult<SyncOutcome> _applyFetchedPatch({
     required RemotePullPatch patch,
     required TodoState liveState,
-    required TodoSettingsStore settings,
+    required TodoRepository repository,
     required SyncOutboxQueue outbox,
     required String Function(String prefix) idGenerator,
     required int pullStartSeq,
@@ -348,7 +341,7 @@ class CloudSyncService {
   }) => guardApiCall(() async {
     final applied = await _pullEngine.applyPatch(
       patch: patch,
-      settings: settings,
+      repository: repository,
       liveGroups: liveState.groups,
       liveLists: liveState.lists,
       liveTasks: liveState.tasks,

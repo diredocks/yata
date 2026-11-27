@@ -5,7 +5,7 @@ import '../../core/error/app_error.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/result/app_result.dart';
 import '../../data/sync_outbox.dart';
-import '../../data/todo_settings_store.dart';
+import '../../data/todo_repository.dart';
 import '../../data/todo_settings_sync.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
@@ -103,7 +103,7 @@ class SubstratePullEngine {
   /// local entity snapshots or advancing saved `deltaLink`s.
   AsyncAppResult<PullPatchFetch> fetchPatch({
     required SubstrateRequestContext ctx,
-    required TodoSettingsStore settings,
+    required TodoRepository repository,
     required Set<String> knownFolderRemoteIds,
     required bool forceFullSync,
     required bool isSelective,
@@ -115,7 +115,7 @@ class SubstratePullEngine {
     if (isSelective) {
       return _fetchSelectivePatch(
         ctx: ctx,
-        settings: settings,
+        repository: repository,
         knownFolderRemoteIds: knownFolderRemoteIds,
         isCancelled: cancelled,
       );
@@ -123,7 +123,7 @@ class SubstratePullEngine {
 
     return _fetchFullOrDeltaPatch(
       ctx: ctx,
-      settings: settings,
+      repository: repository,
       knownFolderRemoteIds: knownFolderRemoteIds,
       forceFullSync: forceFullSync,
       isCancelled: cancelled,
@@ -132,11 +132,11 @@ class SubstratePullEngine {
 
   AsyncAppResult<PullPatchFetch> _fetchSelectivePatch({
     required SubstrateRequestContext ctx,
-    required TodoSettingsStore settings,
+    required TodoRepository repository,
     required Set<String> knownFolderRemoteIds,
     required bool Function() isCancelled,
   }) async {
-    final pendingPulls = settings.loadPendingTaskFolderPulls();
+    final pendingPulls = repository.loadPendingTaskFolderPulls();
     final targetFolderRemoteIds = knownFolderRemoteIds
         .where(pendingPulls.contains)
         .toSet();
@@ -157,7 +157,7 @@ class SubstratePullEngine {
 
     return _fetchTaskDeltas(
       ctx: ctx,
-      settings: settings,
+      repository: repository,
       targetFolderRemoteIds: targetFolderRemoteIds,
       forceFullSync: false,
       isSelective: true,
@@ -167,7 +167,7 @@ class SubstratePullEngine {
 
   AsyncAppResult<PullPatchFetch> _fetchFullOrDeltaPatch({
     required SubstrateRequestContext ctx,
-    required TodoSettingsStore settings,
+    required TodoRepository repository,
     required Set<String> knownFolderRemoteIds,
     required bool forceFullSync,
     required bool Function() isCancelled,
@@ -179,9 +179,9 @@ class SubstratePullEngine {
     if (isCancelled()) return const Success(PullPatchCancelled());
 
     final groupsResult = await _fetchDeltaWithMode(
-      savedDeltaLink: settings.loadGroupsDeltaLink(),
+      savedDeltaLink: repository.loadGroupsDeltaLink(),
       forceFullSync: forceFullSync,
-      clearDeltaLink: () => settings.saveGroupsDeltaLink(null),
+      clearDeltaLink: () => repository.saveGroupsDeltaLink(null),
       fetch: (dl) => todoApi.fetchFolderGroupsDelta(ctx, deltaLink: dl),
     );
     if (groupsResult.isError()) return Failure(groupsResult.exceptionOrNull()!);
@@ -195,9 +195,9 @@ class SubstratePullEngine {
     );
 
     final foldersResult = await _fetchDeltaWithMode(
-      savedDeltaLink: settings.loadFoldersDeltaLink(),
+      savedDeltaLink: repository.loadFoldersDeltaLink(),
       forceFullSync: forceFullSync,
-      clearDeltaLink: () => settings.saveFoldersDeltaLink(null),
+      clearDeltaLink: () => repository.saveFoldersDeltaLink(null),
       fetch: (dl) => todoApi.fetchFoldersDelta(ctx, deltaLink: dl),
     );
     if (foldersResult.isError()) {
@@ -221,7 +221,7 @@ class SubstratePullEngine {
 
     return _fetchTaskDeltas(
       ctx: ctx,
-      settings: settings,
+      repository: repository,
       targetFolderRemoteIds: targetFolderRemoteIds,
       forceFullSync: forceFullSync,
       isSelective: false,
@@ -258,7 +258,7 @@ class SubstratePullEngine {
 
   AsyncAppResult<PullPatchFetch> _fetchTaskDeltas({
     required SubstrateRequestContext ctx,
-    required TodoSettingsStore settings,
+    required TodoRepository repository,
     required Set<String> targetFolderRemoteIds,
     required bool forceFullSync,
     required bool isSelective,
@@ -267,7 +267,7 @@ class SubstratePullEngine {
     DeltaFetchResult<RemoteFolderGroup>? groupsFetch,
     DeltaFetchResult<RemoteTodoFolder>? foldersFetch,
   }) async {
-    final savedTaskDeltaLinks = settings.loadTaskDeltaLinks();
+    final savedTaskDeltaLinks = repository.loadTaskDeltaLinks();
     final folderList = targetFolderRemoteIds.toList(growable: false);
 
     final fetchesResult = await mapResultsWithConcurrency(
@@ -275,7 +275,7 @@ class SubstratePullEngine {
       _maxConcurrentFolderFetches,
       (folderRemoteId) => _fetchSingleFolderTasks(
         ctx: ctx,
-        settings: settings,
+        repository: repository,
         folderRemoteId: folderRemoteId,
         savedDeltaLink: savedTaskDeltaLinks[folderRemoteId],
         forceFullSync: forceFullSync,
@@ -306,7 +306,7 @@ class SubstratePullEngine {
 
   AsyncAppResult<DeltaFetchResult<RemoteTodoTask>> _fetchSingleFolderTasks({
     required SubstrateRequestContext ctx,
-    required TodoSettingsStore settings,
+    required TodoRepository repository,
     required String folderRemoteId,
     required String? savedDeltaLink,
     required bool forceFullSync,
@@ -316,9 +316,9 @@ class SubstratePullEngine {
       savedDeltaLink: savedDeltaLink,
       forceFullSync: forceFullSync,
       clearDeltaLink: () async {
-        final next = Map<String, String>.from(settings.loadTaskDeltaLinks())
+        final next = Map<String, String>.from(repository.loadTaskDeltaLinks())
           ..remove(folderRemoteId);
-        await settings.saveTaskDeltaLinks(next);
+        await repository.saveTaskDeltaLinks(next);
       },
       fetch: (dl) => todoApi.fetchTasksDelta(
         ctx,
@@ -344,10 +344,10 @@ class SubstratePullEngine {
   }
 
   /// Applies [patch] atomically against the latest live local state and
-  /// commits the resulting `deltaLink`s to [settings].
+  /// commits the resulting `deltaLink`s to [repository].
   Future<FullPullResult> applyPatch({
     required RemotePullPatch patch,
-    required TodoSettingsStore settings,
+    required TodoRepository repository,
     required List<ListGroup> liveGroups,
     required List<TodoList> liveLists,
     required List<TaskItem> liveTasks,
@@ -392,7 +392,7 @@ class SubstratePullEngine {
         if (l.remoteId != null) l.remoteId!: l.id,
     };
     final taskDeltaLinks = Map<String, String>.from(
-      settings.loadTaskDeltaLinks(),
+      repository.loadTaskDeltaLinks(),
     )..removeWhere((id, _) => !localListIdByFolderRemoteId.containsKey(id));
 
     final validListIds = {for (final l in nextLists) l.id};
@@ -412,7 +412,7 @@ class SubstratePullEngine {
 
     await _commitDeltaLinks(
       patch: patch,
-      settings: settings,
+      repository: repository,
       localListIdByFolderRemoteId: localListIdByFolderRemoteId,
       taskDeltaLinks: taskDeltaLinks,
     );
@@ -581,34 +581,36 @@ class SubstratePullEngine {
 
   Future<void> _commitDeltaLinks({
     required RemotePullPatch patch,
-    required TodoSettingsStore settings,
+    required TodoRepository repository,
     required Map<String, String> localListIdByFolderRemoteId,
     required Map<String, String> taskDeltaLinks,
   }) async {
     final groupsDeltaLink = patch.groupsFetch?.page.deltaLink;
-    if (groupsDeltaLink != null) {
-      await settings.saveGroupsDeltaLink(groupsDeltaLink);
-    }
     final foldersDeltaLink = patch.foldersFetch?.page.deltaLink;
-    if (foldersDeltaLink != null) {
-      await settings.saveFoldersDeltaLink(foldersDeltaLink);
-    }
-    final pendingFolderPulls = settings.loadPendingTaskFolderPulls();
+    final pendingFolderPulls = repository.loadPendingTaskFolderPulls();
     final livePendingFolderPulls = pendingFolderPulls
         .where(localListIdByFolderRemoteId.containsKey)
         .toSet();
     final remainingPendingPulls = patch.isSelective
         ? livePendingFolderPulls.difference(patch.pulledFolderRemoteIds)
         : <String>{};
-    if (!const SetEquality<String>().equals(
+    final pendingPullsChanged = !const SetEquality<String>().equals(
       pendingFolderPulls,
       remainingPendingPulls,
-    )) {
-      await settings.savePendingTaskFolderPulls(remainingPendingPulls);
-    }
-    if (patch.taskFetchesByFolderRemoteId.isNotEmpty || !patch.isSelective) {
-      await settings.saveTaskDeltaLinks(taskDeltaLinks);
-    }
+    );
+    final updateTaskDeltaLinks =
+        patch.taskFetchesByFolderRemoteId.isNotEmpty || !patch.isSelective;
+
+    await repository.saveSyncMetaBatch(
+      groupsDeltaLink: groupsDeltaLink,
+      updateGroupsDeltaLink: groupsDeltaLink != null,
+      foldersDeltaLink: foldersDeltaLink,
+      updateFoldersDeltaLink: foldersDeltaLink != null,
+      taskDeltaLinks: updateTaskDeltaLinks ? taskDeltaLinks : null,
+      pendingTaskFolderPulls: pendingPullsChanged
+          ? remainingPendingPulls
+          : null,
+    );
   }
 
   AsyncAppResult<DeltaFetchResult<T>> _fetchDeltaWithMode<T>({

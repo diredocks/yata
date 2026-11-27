@@ -12,7 +12,7 @@ import '../../account/account_provider.dart';
 import '../../core/error/app_error.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/result/app_result.dart';
-import '../../data/todo_settings_store.dart';
+import '../../data/todo_provider.dart';
 import '../../models/account.dart';
 import '../../models/task_item.dart';
 import '../../sync/sync_provider.dart';
@@ -248,11 +248,13 @@ class AttachmentService {
         ),
       );
     }
-    final prefs = _ref.read(sharedPreferencesProvider);
-    final settings = TodoSettingsStore(prefs, accountId: activeAccount.id);
+    final repository = _ref.read(todoRepositoryProvider);
     final syncService = _ref.read(cloudSyncServiceProvider);
 
-    final ctxResult = await syncService.resolveContext(activeAccount, settings);
+    final ctxResult = await syncService.resolveContext(
+      activeAccount,
+      repository,
+    );
     if (ctxResult.isError()) {
       return Failure(ctxResult.exceptionOrNull()!);
     }

@@ -8,7 +8,6 @@ import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/data/sync_outbox.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/data/todo_repository.dart';
-import 'package:yata/data/todo_settings_store.dart';
 import 'package:yata/models/account.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
@@ -45,10 +44,11 @@ void main() {
     // Start applyPulledState (which updates state synchronously before awaiting
     // persistence) and immediately mutate the task locally while its
     // persistence futures are still in flight.
-    final applyFuture = notifier.applyPulledState(
+    final applyFuture = notifier.applyRemoteState(
       lists: snapshot.lists,
       tasks: [initialTask],
       settingsPatch: const SyncedSettingsPatch(playCompletionSound: false),
+      protectPendingOutbox: true,
     );
 
     final current = container.read(todoProvider);
@@ -92,7 +92,6 @@ void main() {
   test('CloudSyncService preserves local completedAt precision when remote returns same-day midnight CompletedDateTime', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
-    final settings = TodoSettingsStore(prefs, accountId: 'acct');
     final repo = TodoRepository.forAccount(prefs, accountId: 'acct');
 
     final t1 = TaskItem(
@@ -212,7 +211,6 @@ void main() {
       account: account,
       currentState: state,
       repository: repo,
-      settings: settings,
     )).getOrThrow();
     final postPushState = state.copyWith(
       tasks: [for (final t in state.tasks) pushOutcome.pushedTasks[t.id] ?? t],
@@ -221,7 +219,6 @@ void main() {
       account: account,
       currentState: postPushState,
       repository: repo,
-      settings: settings,
       idGenerator: (p) => '${p}_gen',
     )).getOrThrow();
     final split = splitTasksForDisplay(outcome.tasks, tasksList);

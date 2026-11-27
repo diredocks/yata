@@ -742,20 +742,13 @@ class SyncNotifier extends Notifier<SyncState> {
       account: active,
       currentState: snapshotState,
       repository: todoNotifier.repository,
-      settings: todoNotifier.settings,
       readLatestState: () => ref.read(todoProvider),
       onPushCommitted: (pushOutcome) async {
         if (_disposed ||
             ref.read(accountProvider).activeAccount?.id != active.id) {
           return;
         }
-        await todoNotifier.commitPushBatch(
-          ackedSeqs: pushOutcome.ackedSeqs,
-          pushedGroups: pushOutcome.pushedGroups,
-          pushedLists: pushOutcome.pushedLists,
-          pushedTasks: pushOutcome.pushedTasks,
-          clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
-        );
+        await todoNotifier.commitPushBatch(pushOutcome);
       },
       reason: reason,
       laneFilter: _delegatesTransfersToBackground
@@ -805,7 +798,6 @@ class SyncNotifier extends Notifier<SyncState> {
       account: active,
       currentState: snapshotState,
       repository: todoNotifier.repository,
-      settings: todoNotifier.settings,
       idGenerator: todoNotifier.nextId,
       readLatestState: () => ref.read(todoProvider),
       kind: kind,
@@ -832,11 +824,12 @@ class SyncNotifier extends Notifier<SyncState> {
           'lists=${outcome.lists.length} tasks=${outcome.tasks.length}',
         );
         if (ref.read(accountProvider).activeAccount?.id == active.id) {
-          await todoNotifier.applyPulledState(
+          await todoNotifier.applyRemoteState(
             groups: kind == SyncKind.pushOnly ? null : outcome.groups,
             lists: kind == SyncKind.pushOnly ? null : outcome.lists,
             tasks: outcome.tasks,
             settingsPatch: outcome.settingsPatch,
+            protectPendingOutbox: true,
           );
         }
         await ref

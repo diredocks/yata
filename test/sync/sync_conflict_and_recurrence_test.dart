@@ -238,7 +238,7 @@ void main() {
       expect(moved.listId, 'list_b');
       expect(moved.orderDateTime, t15);
 
-      expect(h.settings.loadTaskDeltaLinks(), {
+      expect(h.repository.loadTaskDeltaLinks(), {
         'rf-default': 'dl-def-new',
         'rf-b': 'dl-b-new',
       });

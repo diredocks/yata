@@ -172,7 +172,7 @@ void main() {
         'GET tasks(rf-0,dl-tasks-rf-0)',
       ]);
       // The follow-up ledger is consumed by the pull.
-      expect(h.settings.loadPendingTaskFolderPulls(), isEmpty);
+      expect(h.repository.loadPendingTaskFolderPulls(), isEmpty);
       // ignore: avoid_print
       print('=== one completion toggle === ${api.callLog}');
     },

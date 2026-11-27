@@ -224,7 +224,7 @@ void main() {
       expect(h.api.callLog, contains('GET tasks(rf-default,null)'));
 
       h.api.callLog.clear();
-      await h.settings.saveTaskDeltaLinks({'rf-default': 'dl-tasks-2'});
+      await h.repository.saveTaskDeltaLinks({'rf-default': 'dl-tasks-2'});
 
       // Manual refresh() bypasses saved deltaLinks.
       await notifier.refresh();
@@ -733,9 +733,9 @@ void main() {
       await deltaFuture;
       await pumpEventQueue();
 
-      expect(h.settings.loadGroupsDeltaLink(), 'dl-groups-orig');
-      expect(h.settings.loadFoldersDeltaLink(), 'dl-folders-orig');
-      expect(h.settings.loadTaskDeltaLinks(), const {
+      expect(h.repository.loadGroupsDeltaLink(), 'dl-groups-orig');
+      expect(h.repository.loadFoldersDeltaLink(), 'dl-folders-orig');
+      expect(h.repository.loadTaskDeltaLinks(), const {
         'rf-default': 'dl-tasks-orig',
       });
     });

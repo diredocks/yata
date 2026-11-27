@@ -201,7 +201,7 @@ void main() {
       expect(milk.steps.single.isCompleted, isTrue);
 
       // Sync #2: Delta folder deletion removes 'rf-shop' using saved DeltaLink
-      expect(h.settings.loadFoldersDeltaLink(), 'dl-folders-v1');
+      expect(h.repository.loadFoldersDeltaLink(), 'dl-folders-v1');
       await h.container.read(syncProvider.notifier).syncNow();
       expect(h.api.callLog, contains('GET taskfolders(dl-folders-v1)'));
       state = h.container.read(todoProvider);
@@ -362,7 +362,7 @@ void main() {
       expect(patchAttempts, 2);
       expect(h.api.callLog, contains('GET tasks/rt-1'));
       expect(h.api.callLog, contains('GET tasks(rf-a,null)'));
-      expect(h.settings.loadTaskDeltaLinks()['rf-a'], 'dl-a-fresh');
+      expect(h.repository.loadTaskDeltaLinks()['rf-a'], 'dl-a-fresh');
 
       final tasks = h.container.read(todoProvider).tasks;
       expect(tasks.length, 1);
@@ -543,7 +543,6 @@ void main() {
             account: h1.account,
             currentState: h1.container.read(todoProvider),
             repository: h1.repository,
-            settings: h1.settings,
             idGenerator: h1.container.read(todoProvider.notifier).nextId,
           )
           .fold(
@@ -803,7 +802,6 @@ void main() {
               account: h.account,
               currentState: h.container.read(todoProvider),
               repository: h.repository,
-              settings: h.settings,
             )
             .fold(
               (outcome) => outcome,
@@ -815,7 +813,6 @@ void main() {
               account: h.account,
               currentState: h.container.read(todoProvider),
               repository: h.repository,
-              settings: h.settings,
               idGenerator: h.container.read(todoProvider.notifier).nextId,
               kind: SyncKind.pushOnly,
             )
@@ -829,7 +826,7 @@ void main() {
           'GET tasks(rf-default,dl-tasks-1)',
         ]);
         expect(outcome.settingsPatch, isNull);
-        expect(h.settings.loadPendingTaskFolderPulls(), isEmpty);
+        expect(h.repository.loadPendingTaskFolderPulls(), isEmpty);
         expect(
           outcome.tasks.firstWhere((t) => t.id == 't_1').isCompleted,
           isTrue,
@@ -876,7 +873,6 @@ void main() {
             account: h.account,
             currentState: h.container.read(todoProvider),
             repository: h.repository,
-            settings: h.settings,
           )
           .fold(
             (outcome) => outcome,
@@ -887,7 +883,6 @@ void main() {
             account: h.account,
             currentState: h.container.read(todoProvider),
             repository: h.repository,
-            settings: h.settings,
             idGenerator: h.container.read(todoProvider.notifier).nextId,
             kind: SyncKind.pushOnly,
           )
@@ -897,7 +892,7 @@ void main() {
           );
 
       // The stale follow-up entry is dropped instead of failing the whole pass.
-      expect(h.settings.loadPendingTaskFolderPulls(), isEmpty);
+      expect(h.repository.loadPendingTaskFolderPulls(), isEmpty);
     });
 
     test(
@@ -976,7 +971,6 @@ void main() {
               account: h.account,
               currentState: h.container.read(todoProvider),
               repository: h.repository,
-              settings: h.settings,
             )
             .fold(
               (outcome) => outcome,
@@ -1055,15 +1049,8 @@ void main() {
         account: h.account,
         currentState: h.container.read(todoProvider),
         repository: h.repository,
-        settings: h.settings,
         readLatestState: () => h.container.read(todoProvider),
-        onPushCommitted: (pushOutcome) => todoNotifier.commitPushBatch(
-          ackedSeqs: pushOutcome.ackedSeqs,
-          pushedGroups: pushOutcome.pushedGroups,
-          pushedLists: pushOutcome.pushedLists,
-          pushedTasks: pushOutcome.pushedTasks,
-          clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
-        ),
+        onPushCommitted: todoNotifier.commitPushBatch,
       );
       expect(firstResult.isError(), isTrue);
 
@@ -1081,15 +1068,8 @@ void main() {
         account: h.account,
         currentState: h.container.read(todoProvider),
         repository: h.repository,
-        settings: h.settings,
         readLatestState: () => h.container.read(todoProvider),
-        onPushCommitted: (pushOutcome) => todoNotifier.commitPushBatch(
-          ackedSeqs: pushOutcome.ackedSeqs,
-          pushedGroups: pushOutcome.pushedGroups,
-          pushedLists: pushOutcome.pushedLists,
-          pushedTasks: pushOutcome.pushedTasks,
-          clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
-        ),
+        onPushCommitted: todoNotifier.commitPushBatch,
       );
       expect(secondResult.isSuccess(), isTrue);
 
@@ -1150,15 +1130,8 @@ void main() {
             account: h.account,
             currentState: h.container.read(todoProvider),
             repository: h.repository,
-            settings: h.settings,
             readLatestState: () => h.container.read(todoProvider),
-            onPushCommitted: (pushOutcome) => todoNotifier.commitPushBatch(
-              ackedSeqs: pushOutcome.ackedSeqs,
-              pushedGroups: pushOutcome.pushedGroups,
-              pushedLists: pushOutcome.pushedLists,
-              pushedTasks: pushOutcome.pushedTasks,
-              clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
-            ),
+            onPushCommitted: todoNotifier.commitPushBatch,
           )
           .fold(
             (outcome) => outcome,

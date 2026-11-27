@@ -80,7 +80,8 @@ class TodoSettings {
   final String? lastMyDayResetDate;
 }
 
-/// Owns every `SharedPreferences` key: user settings and sync bookkeeping.
+/// Owns per-account user preferences in `SharedPreferences` (sync bookkeeping
+/// lives in SQLite via `TodoRepository`).
 ///
 /// It also derives the repository cache scope, so one prefs session cannot read
 /// data cached by another.
@@ -148,12 +149,6 @@ class TodoSettingsStore {
   String get _lastMyDayResetKey => _k('last_my_day_reset');
   String get _plannedDueDateFilterKey => _k('planned_due_date_filter');
   String get _plannedGroupOptionKey => _k('planned_group_option');
-  String get _groupsDeltaLinkKey => _k('groups_delta_link');
-  String get _foldersDeltaLinkKey => _k('folders_delta_link');
-  String get _taskDeltaLinksKey => _k('task_delta_links');
-  String get _pendingTaskFolderPullsKey => _k('pending_task_folder_pulls');
-  String get _cachedEndpointUrlKey => _k('cached_endpoint_url');
-  String get _cachedEndpointFetchedAtKey => _k('cached_endpoint_fetched_at');
 
   T _loadEnum<T extends Enum>(String key, List<T> values, T fallback) {
     final name = _prefs.getString(key);
@@ -386,71 +381,4 @@ class TodoSettingsStore {
 
   Future<void> savePlannedGroupOption(PlannedGroupOption option) =>
       _prefs.setString(_plannedGroupOptionKey, option.name);
-
-  String? loadGroupsDeltaLink() => _prefs.getString(_groupsDeltaLinkKey);
-
-  Future<void> saveGroupsDeltaLink(String? deltaLink) =>
-      _setOrRemoveString(_groupsDeltaLinkKey, deltaLink);
-
-  String? loadFoldersDeltaLink() => _prefs.getString(_foldersDeltaLinkKey);
-
-  Future<void> saveFoldersDeltaLink(String? deltaLink) =>
-      _setOrRemoveString(_foldersDeltaLinkKey, deltaLink);
-
-  Map<String, String> loadTaskDeltaLinks() {
-    final raw = _prefs.getString(_taskDeltaLinksKey);
-    if (raw == null || raw.isEmpty) return const {};
-    try {
-      final decoded = jsonDecode(raw) as Map<String, dynamic>;
-      return {
-        for (final entry in decoded.entries)
-          if (entry.value is String && (entry.value as String).isNotEmpty)
-            entry.key: entry.value as String,
-      };
-    } catch (error) {
-      _log.warning('discarding unreadable $_taskDeltaLinksKey', error);
-      return const {};
-    }
-  }
-
-  Future<void> saveTaskDeltaLinks(Map<String, String> links) =>
-      _setOrRemoveString(
-        _taskDeltaLinksKey,
-        links.isEmpty ? null : jsonEncode(links),
-      );
-
-  /// Folders awaiting one targeted task pull (Substrate's `sync_update_required`).
-  Set<String> loadPendingTaskFolderPulls() =>
-      (_prefs.getStringList(_pendingTaskFolderPullsKey) ?? const []).toSet();
-
-  Future<void> savePendingTaskFolderPulls(Set<String> folderRemoteIds) async {
-    if (folderRemoteIds.isEmpty) {
-      await _prefs.remove(_pendingTaskFolderPullsKey);
-    } else {
-      await _prefs.setStringList(
-        _pendingTaskFolderPullsKey,
-        folderRemoteIds.toList(),
-      );
-    }
-  }
-
-  String? loadCachedEndpointUrl({Duration maxAge = const Duration(hours: 12)}) {
-    final url = _prefs.getString(_cachedEndpointUrlKey);
-    final fetchedRaw = _prefs.getString(_cachedEndpointFetchedAtKey);
-    if (url == null || url.isEmpty || fetchedRaw == null) return null;
-    final fetchedAt = DateTime.tryParse(fetchedRaw);
-    if (fetchedAt == null) return null;
-    if (DateTime.now().toUtc().difference(fetchedAt.toUtc()) > maxAge) {
-      return null;
-    }
-    return url;
-  }
-
-  Future<void> saveCachedEndpointUrl(String url) async {
-    await _prefs.setString(_cachedEndpointUrlKey, url);
-    await _prefs.setString(
-      _cachedEndpointFetchedAtKey,
-      DateTime.now().toUtc().toIso8601String(),
-    );
-  }
 }

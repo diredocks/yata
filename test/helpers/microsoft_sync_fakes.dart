@@ -742,13 +742,13 @@ Future<SeededSyncSession> seedMicrosoftSyncSession({
     await repository.saveTasks(tasks);
   }
   if (groupsDeltaLink != null) {
-    await settings.saveGroupsDeltaLink(groupsDeltaLink);
+    await repository.saveGroupsDeltaLink(groupsDeltaLink);
   }
   if (foldersDeltaLink != null) {
-    await settings.saveFoldersDeltaLink(foldersDeltaLink);
+    await repository.saveFoldersDeltaLink(foldersDeltaLink);
   }
   if (taskDeltaLinks != null) {
-    await settings.saveTaskDeltaLinks(taskDeltaLinks);
+    await repository.saveTaskDeltaLinks(taskDeltaLinks);
   }
   if (dirtyListIds != null) {
     for (final id in dirtyListIds) {

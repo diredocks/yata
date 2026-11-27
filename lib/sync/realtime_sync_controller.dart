@@ -106,8 +106,8 @@ class RealtimeSyncController {
     if (!ref.read(realtimeSyncEnabledProvider)) return;
 
     final service = ref.read(cloudSyncServiceProvider);
-    final settings = ref.read(todoProvider.notifier).settings;
-    final ctxResult = await service.resolveContext(account, settings);
+    final repository = ref.read(todoProvider.notifier).repository;
+    final ctxResult = await service.resolveContext(account, repository);
 
     if (_disposed || _accountId != account.id) return;
 
@@ -283,7 +283,7 @@ class RealtimeSyncController {
           ),
           prefix: prefix,
           fallbackForceFull: !fromQueue,
-          apply: todoNotifier.applyRemoteTasksSnapshot,
+          apply: (tasks) => todoNotifier.applyRemoteState(tasks: tasks),
         );
 
       case RealtimeEventEntityType.taskFolder:
@@ -301,9 +301,9 @@ class RealtimeSyncController {
           ),
           prefix: prefix,
           fallbackForceFull: !fromQueue,
-          apply: (update) => todoNotifier.applyRemoteListsSnapshot(
-            nextLists: update.lists,
-            nextTasks: update.tasks,
+          apply: (update) => todoNotifier.applyRemoteState(
+            lists: update.lists,
+            tasks: update.tasks,
           ),
         );
 
@@ -320,7 +320,7 @@ class RealtimeSyncController {
           ),
           prefix: prefix,
           fallbackForceFull: !fromQueue,
-          apply: todoNotifier.applyRemoteGroupsSnapshot,
+          apply: (groups) => todoNotifier.applyRemoteState(groups: groups),
         );
 
       case RealtimeEventEntityType.setting:
@@ -331,7 +331,8 @@ class RealtimeSyncController {
           ),
           prefix: prefix,
           fallbackForceFull: false,
-          apply: todoNotifier.applyRemoteSettingsPatch,
+          apply: (patch) =>
+              todoNotifier.applyRemoteState(settingsPatch: patch),
         );
 
       case RealtimeEventEntityType.keepAlive:

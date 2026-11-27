@@ -6,13 +6,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../account/account_provider.dart';
-import '../homeview/home_view_ordering.dart';
 import '../models/account.dart';
 import '../models/default_lists.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
+import '../sync/microsoft/substrate_push_engine.dart';
+import '../sync/sync_store.dart';
 import '../theme/custom_background_service.dart';
-import 'sync_outbox.dart';
 import 'todo_database.dart';
 import 'todo_repository.dart';
 import 'todo_settings_store.dart';
@@ -257,406 +257,39 @@ class TodoNotifier extends Notifier<TodoState> {
     );
   }
 
+  SyncStore get _syncStore =>
+      SyncStore(repository: repository, settings: settings);
+
   /// Commits server-assigned IDs/metadata and acknowledges pushed Outbox ops
   /// immediately after a Push pass, without waiting for Pull.
-  Future<void> commitPushBatch({
-    required List<int> ackedSeqs,
-    required Map<String, ListGroup> pushedGroups,
-    required Map<String, TodoList> pushedLists,
-    required Map<String, TaskItem> pushedTasks,
-    List<({SyncEntityType type, String localId})> clearedRemoteIdKeys =
-        const [],
-  }) async {
-    final outbox = repository.outbox;
-    for (final seq in ackedSeqs) {
-      outbox.ackOp(seq);
-    }
-    for (final entry in clearedRemoteIdKeys) {
-      outbox.clearRemoteId(entry.type, entry.localId);
-    }
-
-    final nextGroups = [
-      for (final current in state.groups)
-        if (pushedGroups[current.id] case final pushed?)
-          outbox.hasPending(SyncEntityType.group, current.id)
-              ? current.copyWith(remoteId: pushed.remoteId ?? current.remoteId)
-              : pushed.copyWith(isExpanded: current.isExpanded)
-        else
-          current,
-    ];
-
-    final nextLists = [
-      for (final current in state.lists)
-        if (pushedLists[current.id] case final pushed?)
-          outbox.hasPending(SyncEntityType.list, current.id)
-              ? current.copyWith(remoteId: pushed.remoteId ?? current.remoteId)
-              : pushed.copyWith(icon: current.icon)
-        else
-          current,
-    ];
-
-    final nextTasks = [
-      for (final current in state.tasks)
-        if (pushedTasks[current.id] case final pushed?)
-          outbox.hasPending(SyncEntityType.task, current.id)
-              ? () {
-                  final stepRemoteById = {
-                    for (final s in pushed.steps)
-                      if (s.remoteId != null) s.id: s.remoteId!,
-                  };
-                  final pushedAttById = {
-                    for (final a in pushed.attachments) a.id: a,
-                  };
-                  return current.copyWith(
-                    remoteId: pushed.remoteId ?? current.remoteId,
-                    remoteParentFolderId:
-                        pushed.remoteParentFolderId ??
-                        current.remoteParentFolderId,
-                    changeKey: pushed.changeKey ?? current.changeKey,
-                    steps: [
-                      for (final step in current.steps)
-                        step.copyWith(
-                          remoteId: step.remoteId ?? stepRemoteById[step.id],
-                        ),
-                    ],
-                    attachments: [
-                      for (final att in current.attachments)
-                        if (pushedAttById[att.id] case final pAtt?)
-                          att.copyWith(
-                            remoteId: att.remoteId ?? pAtt.remoteId,
-                            size: pAtt.size > 0 ? pAtt.size : att.size,
-                            contentType: pAtt.contentType ?? att.contentType,
-                            lastModifiedDateTime:
-                                pAtt.lastModifiedDateTime ??
-                                att.lastModifiedDateTime,
-                            isTransferring: pAtt.remoteId != null
-                                ? false
-                                : att.isTransferring,
-                          )
-                        else
-                          att,
-                    ],
-                  );
-                }()
-              : pushed
-        else
-          current,
-    ];
-
-    final validGroupIds = {for (final g in nextGroups) g.id};
-    final validListIds = {for (final l in nextLists) l.id};
-    final validTaskIds = {for (final t in nextTasks) t.id};
-    outbox.pruneOrphanedEntities(
-      validGroupIds: validGroupIds,
-      validListIds: validListIds,
-      validTaskIds: validTaskIds,
+  Future<void> commitPushBatch(OutboxPushOutcome outcome) async {
+    final result = _syncStore.commitPushToState(
+      currentState: state,
+      outcome: outcome,
     );
-
-    final persistFutures = <Future<Object?>>[
-      if (pushedGroups.isNotEmpty) repository.saveGroups(nextGroups),
-      if (pushedLists.isNotEmpty) repository.saveLists(nextLists),
-      if (pushedTasks.isNotEmpty) repository.saveTasks(nextTasks),
-      repository.saveOutbox(),
-    ];
-
-    state = state.copyWith(
-      groups: nextGroups,
-      lists: nextLists,
-      tasks: nextTasks,
-    );
-    await Future.wait(persistFutures);
+    state = result.nextState;
+    await result.persisted;
   }
 
-  /// Applies pulled remote state while preserving any entity that currently
-  /// has pending operations in the Outbox.
-  Future<void> applyPulledState({
+  /// Applies pulled or realtime remote snapshots/patches without bumping
+  /// [TodoState.mutationVersion] or enqueuing to Outbox.
+  Future<void> applyRemoteState({
     List<ListGroup>? groups,
     List<TodoList>? lists,
     List<TaskItem>? tasks,
     SyncedSettingsPatch? settingsPatch,
+    bool protectPendingOutbox = false,
   }) async {
-    final outbox = repository.outbox;
-
-    List<T> mergePulled<T>({
-      required List<T> currentItems,
-      required List<T>? pulledItems,
-      required SyncEntityType type,
-      required String Function(T) idOf,
-      required T Function(T current, T pulled) mergeLocalPending,
-      required T Function(T current, T pulled) mergeClean,
-    }) {
-      if (pulledItems == null) return currentItems;
-      final pulledById = {for (final item in pulledItems) idOf(item): item};
-      final currentIds = {for (final item in currentItems) idOf(item)};
-      final result = <T>[];
-      for (final current in currentItems) {
-        final id = idOf(current);
-        final pulled = pulledById[id];
-        if (pulled == null) {
-          if (outbox.hasPending(type, id)) {
-            result.add(current);
-          }
-          continue;
-        }
-        result.add(
-          outbox.hasPending(type, id)
-              ? mergeLocalPending(current, pulled)
-              : mergeClean(current, pulled),
-        );
-      }
-      for (final pulled in pulledItems) {
-        final id = idOf(pulled);
-        if (!currentIds.contains(id) && !outbox.hasPending(type, id)) {
-          result.add(pulled);
-        }
-      }
-      return result;
-    }
-
-    final reconciledGroups = mergePulled<ListGroup>(
-      currentItems: state.groups,
-      pulledItems: groups,
-      type: SyncEntityType.group,
-      idOf: (g) => g.id,
-      mergeLocalPending: (current, pulled) =>
-          current.copyWith(remoteId: pulled.remoteId ?? current.remoteId),
-      mergeClean: (current, pulled) =>
-          pulled.copyWith(isExpanded: current.isExpanded),
-    );
-
-    var reconciledLists = mergePulled<TodoList>(
-      currentItems: state.lists,
-      pulledItems: lists,
-      type: SyncEntityType.list,
-      idOf: (l) => l.id,
-      mergeLocalPending: (current, pulled) =>
-          current.copyWith(remoteId: pulled.remoteId ?? current.remoteId),
-      mergeClean: (current, pulled) => isSyncableFolderList(current)
-          ? pulled.copyWith(icon: current.icon)
-          : current,
-    );
-
-    final validGroupIds = {for (final g in reconciledGroups) g.id};
-    reconciledLists = [
-      for (final list in reconciledLists)
-        if (list.groupId != null && !validGroupIds.contains(list.groupId))
-          list.copyWith(groupId: null)
-        else
-          list,
-    ];
-
-    final validListIds = {for (final l in reconciledLists) l.id};
-    final reconciledTasks = mergePulled<TaskItem>(
-      currentItems: state.tasks,
-      pulledItems: tasks,
-      type: SyncEntityType.task,
-      idOf: (t) => t.id,
-      mergeLocalPending: (current, pulled) =>
-          current.copyWith(changeKey: pulled.changeKey ?? current.changeKey),
-      mergeClean: (current, pulled) => pulled,
-    ).where((t) => validListIds.contains(t.listId)).toList();
-
-    final pendingSettings = outbox.pendingLocalIds(SyncEntityType.setting);
-    var nextState = state;
-    final settingsPersistFutures = <Future<void>>[];
-    if (settingsPatch != null) {
-      final applied = applySyncedSettingsPatch(
-        settings: settings,
-        current: state,
-        snapshot: null,
-        patch: settingsPatch,
-        lists: reconciledLists,
-        dirtySettings: pendingSettings,
-      );
-      nextState = applied.state;
-      reconciledLists = applied.lists;
-      settingsPersistFutures.addAll(applied.persistFutures);
-    }
-
-    final sortedGroups = sortGroupsByOrder(reconciledGroups);
-    final sortedLists = sortListsPreservingSmartLists(reconciledLists);
-
-    final expandedOutcome = recomputeCompletedExpandedByList(
-      currentExpanded: nextState.completedExpandedByList,
-      lists: sortedLists,
-      dirtyListIds: outbox.pendingLocalIds(SyncEntityType.list),
-      dirtySettingKeys: pendingSettings,
+    final result = _syncStore.applyRemoteState(
+      currentState: state,
+      groups: groups,
+      lists: lists,
+      tasks: tasks,
       settingsPatch: settingsPatch,
+      protectPendingOutbox: protectPendingOutbox,
     );
-
-    final syncedTasks = syncTasksMyDayFlags(
-      reconciledTasks,
-      now: DateTime.now(),
-      showDueTodayInMyDay: nextState.showDueTodayInMyDay,
-    ).tasks;
-
-    final validSelectedListId =
-        sortedLists.any((l) => l.id == nextState.selectedListId)
-        ? nextState.selectedListId
-        : 'my_day';
-    final validSelectedTaskId =
-        nextState.selectedTaskId != null &&
-            syncedTasks.any((t) => t.id == nextState.selectedTaskId)
-        ? nextState.selectedTaskId
-        : null;
-
-    final persistFutures = <Future<Object?>>[
-      ...settingsPersistFutures,
-      if (groups != null) repository.saveGroups(sortedGroups),
-      if (lists != null || settingsPatch != null)
-        repository.saveLists(sortedLists),
-      if (tasks != null) repository.saveTasks(syncedTasks),
-      if (expandedOutcome.changed)
-        settings.saveCompletedExpandedByList(expandedOutcome.expanded),
-    ];
-
-    state = nextState.copyWith(
-      groups: sortedGroups,
-      lists: sortedLists,
-      tasks: syncedTasks,
-      selectedListId: validSelectedListId,
-      selectedTaskId: validSelectedTaskId,
-      completedExpandedByList: expandedOutcome.expanded,
-    );
-    await Future.wait(persistFutures);
-  }
-
-  /// Applies a remote task snapshot update (e.g. from realtime events) without
-  /// bumping [TodoState.mutationVersion] or enqueuing to Outbox.
-  Future<void> applyRemoteTasksSnapshot(List<TaskItem> nextTasks) async {
-    final syncedTasks = syncTasksMyDayFlags(
-      nextTasks,
-      now: DateTime.now(),
-      showDueTodayInMyDay: state.showDueTodayInMyDay,
-    ).tasks;
-    final validSelectedTaskId =
-        state.selectedTaskId != null &&
-            syncedTasks.any((t) => t.id == state.selectedTaskId)
-        ? state.selectedTaskId
-        : null;
-
-    final saveFuture = repository.saveTasks(syncedTasks);
-    state = state.copyWith(
-      tasks: syncedTasks,
-      selectedTaskId: validSelectedTaskId,
-    );
-    await saveFuture;
-  }
-
-  /// Applies a remote folder-group snapshot (e.g. from realtime events) without
-  /// bumping [TodoState.mutationVersion] or enqueuing to Outbox.
-  Future<void> applyRemoteGroupsSnapshot(List<ListGroup> nextGroups) async {
-    final sortedGroups = sortGroupsByOrder(nextGroups);
-    final validGroupIds = {for (final g in sortedGroups) g.id};
-    var listsChanged = false;
-    final updatedLists = [
-      for (final list in state.lists)
-        if (list.groupId != null && !validGroupIds.contains(list.groupId))
-          () {
-            listsChanged = true;
-            return list.copyWith(groupId: null);
-          }()
-        else
-          list,
-    ];
-    final persistFutures = <Future<Object?>>[
-      repository.saveGroups(sortedGroups),
-      if (listsChanged) repository.saveLists(updatedLists),
-    ];
-    state = state.copyWith(
-      groups: sortedGroups,
-      lists: listsChanged ? updatedLists : state.lists,
-    );
-    await Future.wait(persistFutures);
-  }
-
-  /// Applies a remote folder/list snapshot (e.g. from realtime events) without
-  /// bumping [TodoState.mutationVersion] or enqueuing to Outbox.
-  Future<void> applyRemoteListsSnapshot({
-    required List<TodoList> nextLists,
-    List<TaskItem>? nextTasks,
-  }) async {
-    final sortedLists = sortListsPreservingSmartLists(nextLists);
-    final expandedOutcome = recomputeCompletedExpandedByList(
-      currentExpanded: state.completedExpandedByList,
-      lists: sortedLists,
-      dirtyListIds: repository.outbox.pendingLocalIds(SyncEntityType.list),
-    );
-    final validSelectedListId =
-        sortedLists.any((l) => l.id == state.selectedListId)
-        ? state.selectedListId
-        : 'my_day';
-    final effectiveTasks = nextTasks ?? state.tasks;
-    final validSelectedTaskId =
-        state.selectedTaskId != null &&
-            effectiveTasks.any((t) => t.id == state.selectedTaskId)
-        ? state.selectedTaskId
-        : null;
-
-    final persistFutures = <Future<Object?>>[
-      repository.saveLists(sortedLists),
-      if (nextTasks != null) repository.saveTasks(effectiveTasks),
-      if (expandedOutcome.changed)
-        settings.saveCompletedExpandedByList(expandedOutcome.expanded),
-    ];
-    state = state.copyWith(
-      lists: sortedLists,
-      tasks: effectiveTasks,
-      selectedListId: validSelectedListId,
-      selectedTaskId: validSelectedTaskId,
-      completedExpandedByList: expandedOutcome.expanded,
-    );
-    await Future.wait(persistFutures);
-  }
-
-  /// Applies a remote setting patch (e.g. from realtime `Setting` events)
-  /// without bumping [TodoState.mutationVersion] or enqueuing to Outbox.
-  Future<void> applyRemoteSettingsPatch(SyncedSettingsPatch patch) async {
-    final pendingSettings = repository.outbox.pendingLocalIds(
-      SyncEntityType.setting,
-    );
-    final applied = applySyncedSettingsPatch(
-      settings: settings,
-      current: state,
-      snapshot: null,
-      patch: patch,
-      lists: state.lists,
-      dirtySettings: pendingSettings,
-    );
-    final nextState = applied.state;
-    final nextLists = applied.lists;
-
-    final expandedOutcome = recomputeCompletedExpandedByList(
-      currentExpanded: nextState.completedExpandedByList,
-      lists: nextLists,
-      dirtySettingKeys: pendingSettings,
-      settingsPatch: patch,
-      includeSyncableFolders: false,
-    );
-
-    final synced = syncTasksMyDayFlags(
-      nextState.tasks,
-      now: DateTime.now(),
-      showDueTodayInMyDay: nextState.showDueTodayInMyDay,
-    );
-
-    final listsChanged = !identical(nextLists, state.lists);
-    final persistFutures = <Future<Object?>>[
-      ...applied.persistFutures,
-      if (listsChanged) repository.saveLists(nextLists),
-      if (synced.changed) repository.saveTasks(synced.tasks),
-      if (expandedOutcome.changed)
-        settings.saveCompletedExpandedByList(expandedOutcome.expanded),
-    ];
-
-    state = nextState.copyWith(
-      lists: nextLists,
-      tasks: synced.tasks,
-      completedExpandedByList: expandedOutcome.expanded,
-    );
-    if (persistFutures.isNotEmpty) {
-      await Future.wait(persistFutures);
-    }
+    state = result.nextState;
+    await result.persisted;
   }
 
   void selectList(String listId) {

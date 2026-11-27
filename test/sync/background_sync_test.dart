@@ -17,7 +17,9 @@ import 'package:yata/sync/background_sync_bridge.dart';
 import 'package:yata/sync/background_sync_entrypoint.dart';
 import 'package:yata/sync/microsoft/cloud_sync_service.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
+import 'package:yata/sync/microsoft/substrate_push_engine.dart';
 import 'package:yata/sync/sync_provider.dart';
+import 'package:yata/sync/sync_store.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
@@ -448,6 +450,188 @@ void main() {
         scheduler.enqueued.where((e) => e.lane == BackgroundSyncLane.transfer),
         isNotEmpty,
       );
+    });
+  });
+
+  group('Row-level outbox, SQLite sync metadata & SyncStore', () {
+    test('row-level outbox saves and acks preserve concurrent ops from another repository scope', () async {
+      final db = TodoDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+
+      final repoA = TodoRepository(
+        db,
+        accountKey: 'acct_iso',
+        scopeKey: 'scope_a',
+      );
+      final repoB = TodoRepository(
+        db,
+        accountKey: 'acct_iso',
+        scopeKey: 'scope_b',
+      );
+
+      repoA.outbox.enqueueUpsert(entityType: SyncEntityType.task, localId: 't_1');
+      await repoA.saveOutbox();
+      await repoA.flushPendingWrites();
+      final seq1 = repoA.outbox.ops.single.seq;
+
+      // Another isolate/scope loads outbox, appends op2 (with seq > seq1), and saves.
+      (await repoB.preload()).getOrThrow();
+      repoB.outbox.enqueueUpsert(entityType: SyncEntityType.task, localId: 't_2');
+      await repoB.saveOutbox();
+      await repoB.flushPendingWrites();
+      expect(repoB.outbox.ops.map((op) => op.localId).toList(), ['t_1', 't_2']);
+
+      // Scope A acks only seq1 and writes row-level delta -> seq2 stays intact in SQLite.
+      repoA.outbox.ackOp(seq1);
+      await repoA.saveOutbox();
+      await repoA.flushPendingWrites();
+
+      (await repoA.preload()).getOrThrow();
+      expect(repoA.outbox.ops.map((op) => op.localId).toList(), ['t_2']);
+    });
+
+    test('SQLite sync metadata persists deltaLinks, pending folder pulls, and endpoint TTL across preload', () async {
+      final db = TodoDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+
+      final writer = TodoRepository(
+        db,
+        accountKey: 'acct_meta',
+        scopeKey: 'meta_writer',
+      );
+      final reader = TodoRepository(
+        db,
+        accountKey: 'acct_meta',
+        scopeKey: 'meta_reader',
+      );
+
+      await writer.saveSyncMetaBatch(
+        groupsDeltaLink: 'dl-groups',
+        updateGroupsDeltaLink: true,
+        foldersDeltaLink: 'dl-folders',
+        updateFoldersDeltaLink: true,
+        taskDeltaLinks: const {'rf-1': 'dl-t1', 'rf-2': 'dl-t2'},
+        pendingTaskFolderPulls: const {'rf-1'},
+      );
+      await writer.saveCachedEndpointUrl('https://substrate.example/api/v1/');
+      await writer.flushPendingWrites();
+
+      (await reader.preload()).getOrThrow();
+      expect(reader.loadGroupsDeltaLink(), 'dl-groups');
+      expect(reader.loadFoldersDeltaLink(), 'dl-folders');
+      expect(reader.loadTaskDeltaLinks(), {'rf-1': 'dl-t1', 'rf-2': 'dl-t2'});
+      expect(reader.loadPendingTaskFolderPulls(), {'rf-1'});
+      expect(
+        reader.loadCachedEndpointUrl(),
+        'https://substrate.example/api/v1/',
+      );
+      expect(reader.loadCachedEndpointUrl(maxAge: Duration.zero), isNull);
+
+      await reader.saveSyncMetaBatch(
+        groupsDeltaLink: null,
+        updateGroupsDeltaLink: true,
+        pendingTaskFolderPulls: const {},
+      );
+      await reader.flushPendingWrites();
+
+      (await writer.preload()).getOrThrow();
+      expect(writer.loadGroupsDeltaLink(), isNull);
+      expect(writer.loadFoldersDeltaLink(), 'dl-folders');
+      expect(writer.loadPendingTaskFolderPulls(), isEmpty);
+    });
+
+    test('SyncStore.commitPushHeadless preserves concurrent foreground task edit and remoteId mapping', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final db = TodoDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+
+      final fgRepo = TodoRepository(
+        db,
+        accountKey: 'acct_headless',
+        scopeKey: 'fg',
+      );
+      final bgRepo = TodoRepository(
+        db,
+        accountKey: 'acct_headless',
+        scopeKey: 'bg',
+      );
+      final settings = TodoSettingsStore(prefs, accountId: 'acct_headless');
+
+      final initialTask = TaskItem(
+        id: 't_1',
+        listId: 'tasks',
+        title: 'Initial Title',
+        remoteId: 'rt_1',
+        remoteParentFolderId: 'rf-default',
+        createdAt: DateTime.utc(2026, 11, 27),
+        attachments: const [
+          TaskAttachment(
+            id: 'att_1',
+            displayName: 'photo.jpg',
+            localPath: '/tmp/photo.jpg',
+            size: 10,
+            isTransferring: true,
+          ),
+        ],
+      );
+      await fgRepo.saveTasks([initialTask]);
+      fgRepo.outbox.enqueueUpsert(
+        entityType: SyncEntityType.attachment,
+        localId: 'att_1',
+        parentLocalId: 't_1',
+        parentRemoteId: 'rt_1',
+      );
+      await fgRepo.saveOutbox();
+      await fgRepo.flushPendingWrites();
+
+      // Background scope loads snapshot, starts upload, and records server attachment remoteId.
+      (await bgRepo.preload()).getOrThrow();
+      final uploadSeq = bgRepo.outbox.ops.single.seq;
+      bgRepo.outbox.recordRemoteId(
+        SyncEntityType.attachment,
+        'att_1',
+        'remote_att_1',
+      );
+
+      // Foreground concurrently edits task title and writes it to SQLite.
+      await fgRepo.upsertTask(initialTask.copyWith(title: 'Foreground Edit'));
+      await fgRepo.flushPendingWrites();
+
+      final pushedTask = initialTask.copyWith(
+        changeKey: 'ck_after_upload',
+        attachments: const [
+          TaskAttachment(
+            id: 'att_1',
+            displayName: 'photo.jpg',
+            remoteId: 'remote_att_1',
+            size: 10,
+            isTransferring: false,
+          ),
+        ],
+      );
+      await SyncStore(repository: bgRepo, settings: settings).commitPushHeadless(
+        OutboxPushOutcome(
+          ackedSeqs: [uploadSeq],
+          pushedGroups: const {},
+          pushedLists: const {},
+          pushedTasks: {'t_1': pushedTask},
+          clearedRemoteIdKeys: const [],
+          followUpPullFolderRemoteIds: const {'rf-default'},
+        ),
+      );
+
+      (await fgRepo.preload()).getOrThrow();
+      final merged = fgRepo.readCachedTasks().single;
+      expect(merged.title, 'Foreground Edit');
+      expect(merged.changeKey, 'ck_after_upload');
+      expect(merged.attachments.single.remoteId, 'remote_att_1');
+      expect(merged.attachments.single.isTransferring, isFalse);
+      expect(
+        fgRepo.outbox.resolveRemoteId(SyncEntityType.attachment, 'att_1'),
+        'remote_att_1',
+      );
+      expect(fgRepo.outbox.ops, isEmpty);
     });
   });
 }

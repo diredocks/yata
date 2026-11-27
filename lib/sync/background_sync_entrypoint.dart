@@ -15,13 +15,12 @@ import '../data/todo_repository.dart';
 import '../data/todo_settings_store.dart';
 import '../models/account.dart';
 import '../models/default_lists.dart';
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
 import '../widget/home_widget_service.dart';
 import 'background_sync_bridge.dart';
 import 'microsoft/cloud_sync_service.dart';
 import 'microsoft/substrate_push_engine.dart';
 import 'sync_provider.dart';
+import 'sync_store.dart';
 
 final _log = appLogFor('BackgroundEntrypoint');
 
@@ -91,14 +90,14 @@ Future<BackgroundPassOutcome> runBackgroundOutboxPass({
     );
   }
 
+  final store = SyncStore(repository: repository, settings: settings);
   final snapshot = _buildSnapshotState(repository, settings);
   final result = await cloudSync.pushAccount(
     account: account,
     currentState: snapshot,
     repository: repository,
-    settings: settings,
     readLatestState: () => _buildSnapshotState(repository, settings),
-    onPushCommitted: (outcome) => _commitPushHeadless(repository, outcome),
+    onPushCommitted: store.commitPushHeadless,
     reason: reason,
     laneFilter: laneFilter,
   );
@@ -210,73 +209,6 @@ Future<({bool shouldRetry, bool hasPendingTransfers})> _runHeadlessSyncPass({
     await database.close();
   }
   return (shouldRetry: shouldRetry, hasPendingTransfers: hasPendingTransfers);
-}
-
-Future<void> _commitPushHeadless(
-  TodoRepository repository,
-  OutboxPushOutcome outcome,
-) async {
-  // Reload latest SQLite state before committing so concurrent foreground
-  // edits made while a slow upload was in flight are preserved.
-  await repository.preload();
-  repository.outbox.ackBatch(outcome.ackedSeqs, outcome.clearedRemoteIdKeys);
-  final freshTasksById = {
-    for (final t in repository.readCachedTasks()) t.id: t,
-  };
-  for (final pushedTask in outcome.pushedTasks.values) {
-    final fresh = freshTasksById[pushedTask.id];
-    final mergedTask = fresh == null
-        ? pushedTask
-        : _mergePushedTaskIntoFresh(fresh, pushedTask);
-    await repository.upsertTask(mergedTask);
-  }
-  if (outcome.pushedGroups.isNotEmpty) {
-    final groups = repository
-        .readCachedGroups()
-        .map((g) => outcome.pushedGroups[g.id] ?? g)
-        .toList(growable: false);
-    await repository.saveGroups(groups);
-  }
-  if (outcome.pushedLists.isNotEmpty) {
-    final lists = (repository.readCachedLists() ?? const <TodoList>[])
-        .map((l) => outcome.pushedLists[l.id] ?? l)
-        .toList(growable: false);
-    await repository.saveLists(lists);
-  }
-  await repository.saveOutbox();
-  await repository.flushPendingWrites();
-}
-
-TaskItem _mergePushedTaskIntoFresh(TaskItem fresh, TaskItem pushed) {
-  final stepRemoteById = {
-    for (final s in pushed.steps)
-      if (s.remoteId != null) s.id: s.remoteId!,
-  };
-  final pushedAttById = {for (final a in pushed.attachments) a.id: a};
-  return fresh.copyWith(
-    remoteId: fresh.remoteId ?? pushed.remoteId,
-    remoteParentFolderId:
-        fresh.remoteParentFolderId ?? pushed.remoteParentFolderId,
-    changeKey: pushed.changeKey ?? fresh.changeKey,
-    steps: [
-      for (final step in fresh.steps)
-        step.copyWith(remoteId: step.remoteId ?? stepRemoteById[step.id]),
-    ],
-    attachments: [
-      for (final att in fresh.attachments)
-        if (pushedAttById[att.id] case final pAtt?)
-          att.copyWith(
-            remoteId: att.remoteId ?? pAtt.remoteId,
-            size: pAtt.size > 0 ? pAtt.size : att.size,
-            contentType: pAtt.contentType ?? att.contentType,
-            lastModifiedDateTime:
-                pAtt.lastModifiedDateTime ?? att.lastModifiedDateTime,
-            isTransferring: pAtt.remoteId != null ? false : att.isTransferring,
-          )
-        else
-          att,
-    ],
-  );
 }
 
 TodoState _buildSnapshotState(

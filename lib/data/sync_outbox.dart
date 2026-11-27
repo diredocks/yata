@@ -90,6 +90,30 @@ class SyncOutboxOp {
   }
 }
 
+/// Row-level diff describing pending persistence work for [SyncOutboxQueue].
+class OutboxPersistenceDelta {
+  const OutboxPersistenceDelta({
+    this.fullReplace = false,
+    this.upsertOps = const [],
+    this.deleteSeqs = const [],
+    this.upsertRemoteIds = const {},
+    this.deleteRemoteIdKeys = const [],
+  });
+
+  final bool fullReplace;
+  final List<SyncOutboxOp> upsertOps;
+  final List<int> deleteSeqs;
+  final Map<String, String> upsertRemoteIds;
+  final List<String> deleteRemoteIdKeys;
+
+  bool get isEmpty =>
+      !fullReplace &&
+      upsertOps.isEmpty &&
+      deleteSeqs.isEmpty &&
+      upsertRemoteIds.isEmpty &&
+      deleteRemoteIdKeys.isEmpty;
+}
+
 /// In-memory ordered outbox with coalescing for non-in-flight ops.
 class SyncOutboxQueue {
   SyncOutboxQueue([
@@ -108,6 +132,10 @@ class SyncOutboxQueue {
   final Map<String, String> _remoteIdByKey = {};
   final Map<String, int> _ackedEntitySeq = {};
   final Map<String, int> _deletedRemoteSeq = {};
+  final Set<int> _dirtyUpsertSeqs = <int>{};
+  final Set<int> _dirtyDeleteSeqs = <int>{};
+  final Map<String, String?> _dirtyRemoteIds = <String, String?>{};
+  bool _needsFullReplace = false;
   int _lastSeq = 0;
   int _inFlightUpToSeq = 0;
 
@@ -121,15 +149,67 @@ class SyncOutboxQueue {
   static String remoteKey(SyncEntityType type, String localId) =>
       '${type.name}::$localId';
 
+  void _markUpsert(int seq) {
+    _dirtyUpsertSeqs.add(seq);
+    _dirtyDeleteSeqs.remove(seq);
+  }
+
+  void _markDelete(int seq) {
+    _dirtyDeleteSeqs.add(seq);
+    _dirtyUpsertSeqs.remove(seq);
+  }
+
+  OutboxPersistenceDelta takePendingPersistenceDelta() {
+    if (_needsFullReplace) {
+      _needsFullReplace = false;
+      _dirtyUpsertSeqs.clear();
+      _dirtyDeleteSeqs.clear();
+      _dirtyRemoteIds.clear();
+      return const OutboxPersistenceDelta(fullReplace: true);
+    }
+    if (_dirtyUpsertSeqs.isEmpty &&
+        _dirtyDeleteSeqs.isEmpty &&
+        _dirtyRemoteIds.isEmpty) {
+      return const OutboxPersistenceDelta();
+    }
+    final upsertOps = [
+      for (final op in _ops)
+        if (_dirtyUpsertSeqs.contains(op.seq)) op,
+    ];
+    final deleteSeqs = _dirtyDeleteSeqs.toList(growable: false);
+    final upsertRemoteIds = <String, String>{};
+    final deleteRemoteIdKeys = <String>[];
+    for (final entry in _dirtyRemoteIds.entries) {
+      if (entry.value != null) {
+        upsertRemoteIds[entry.key] = entry.value!;
+      } else {
+        deleteRemoteIdKeys.add(entry.key);
+      }
+    }
+    _dirtyUpsertSeqs.clear();
+    _dirtyDeleteSeqs.clear();
+    _dirtyRemoteIds.clear();
+    return OutboxPersistenceDelta(
+      upsertOps: upsertOps,
+      deleteSeqs: deleteSeqs,
+      upsertRemoteIds: upsertRemoteIds,
+      deleteRemoteIdKeys: deleteRemoteIdKeys,
+    );
+  }
+
   void recordRemoteId(SyncEntityType type, String localId, String remoteId) {
-    _remoteIdByKey[remoteKey(type, localId)] = remoteId;
+    final key = remoteKey(type, localId);
+    _remoteIdByKey[key] = remoteId;
+    _dirtyRemoteIds[key] = remoteId;
   }
 
   String? resolveRemoteId(SyncEntityType type, String localId) =>
       _remoteIdByKey[remoteKey(type, localId)];
 
   void clearRemoteId(SyncEntityType type, String localId) {
-    _remoteIdByKey.remove(remoteKey(type, localId));
+    final key = remoteKey(type, localId);
+    _remoteIdByKey.remove(key);
+    _dirtyRemoteIds[key] = null;
   }
 
   int _nextSeq() => ++_lastSeq;
@@ -167,6 +247,7 @@ class SyncOutboxQueue {
     final idx = _ops.indexWhere((op) => op.seq == seq);
     if (idx < 0) return;
     final op = _ops.removeAt(idx);
+    _markDelete(seq);
     final commitSeq = _nextSeq();
     _ackedEntitySeq[op.key] = commitSeq;
     if (op.kind == SyncOpKind.delete) {
@@ -204,34 +285,37 @@ class SyncOutboxQueue {
         stepIds: {...existing.stepIds, ...stepIds},
         baseNote: existing.baseNote ?? baseNote,
       );
+      _markUpsert(existing.seq);
       return;
     }
-    _ops.add(
-      SyncOutboxOp(
-        seq: _nextSeq(),
-        entityType: entityType,
-        kind: SyncOpKind.upsert,
-        localId: localId,
-        parentLocalId: parentLocalId,
-        parentRemoteId: parentRemoteId,
-        fields: Set<String>.from(fields),
-        stepIds: Set<String>.from(stepIds),
-        baseNote: baseNote,
-      ),
+    final newOp = SyncOutboxOp(
+      seq: _nextSeq(),
+      entityType: entityType,
+      kind: SyncOpKind.upsert,
+      localId: localId,
+      parentLocalId: parentLocalId,
+      parentRemoteId: parentRemoteId,
+      fields: Set<String>.from(fields),
+      stepIds: Set<String>.from(stepIds),
+      baseNote: baseNote,
     );
+    _ops.add(newOp);
+    _markUpsert(newOp.seq);
   }
 
   /// Cancels any non-in-flight pending upsert ops for [entityType]/[localId].
   /// Returns true if at least one op was removed.
   bool cancelPendingUpserts(SyncEntityType entityType, String localId) {
     final before = _ops.length;
-    _ops.removeWhere(
-      (op) =>
+    _ops.removeWhere((op) {
+      final match =
           op.seq > _inFlightUpToSeq &&
           op.entityType == entityType &&
           op.localId == localId &&
-          op.kind == SyncOpKind.upsert,
-    );
+          op.kind == SyncOpKind.upsert;
+      if (match) _markDelete(op.seq);
+      return match;
+    });
     return _ops.length != before;
   }
 
@@ -255,6 +339,7 @@ class SyncOutboxQueue {
         if (effectiveRemoteId == null) {
           cancelledUncreatedUpsert = true;
         }
+        _markDelete(op.seq);
         return true;
       }
       return false;
@@ -277,17 +362,17 @@ class SyncOutboxQueue {
           op.kind == SyncOpKind.delete,
     );
     if (alreadyQueued) return;
-    _ops.add(
-      SyncOutboxOp(
-        seq: _nextSeq(),
-        entityType: entityType,
-        kind: SyncOpKind.delete,
-        localId: localId,
-        remoteId: effectiveRemoteId,
-        parentLocalId: parentLocalId,
-        parentRemoteId: parentRemoteId,
-      ),
+    final newOp = SyncOutboxOp(
+      seq: _nextSeq(),
+      entityType: entityType,
+      kind: SyncOpKind.delete,
+      localId: localId,
+      remoteId: effectiveRemoteId,
+      parentLocalId: parentLocalId,
+      parentRemoteId: parentRemoteId,
     );
+    _ops.add(newOp);
+    _markUpsert(newOp.seq);
   }
 
   void enqueueSetting(String key) {
@@ -298,14 +383,14 @@ class SyncOutboxQueue {
           op.localId == key,
     );
     if (exists) return;
-    _ops.add(
-      SyncOutboxOp(
-        seq: _nextSeq(),
-        entityType: SyncEntityType.setting,
-        kind: SyncOpKind.upsert,
-        localId: key,
-      ),
+    final newOp = SyncOutboxOp(
+      seq: _nextSeq(),
+      entityType: SyncEntityType.setting,
+      kind: SyncOpKind.upsert,
+      localId: key,
     );
+    _ops.add(newOp);
+    _markUpsert(newOp.seq);
   }
 
   bool hasPending(SyncEntityType type, String localId) =>
@@ -354,7 +439,7 @@ class SyncOutboxQueue {
   }) {
     _ops.removeWhere((op) {
       if (op.kind == SyncOpKind.delete) return false;
-      return switch (op.entityType) {
+      final orphaned = switch (op.entityType) {
         SyncEntityType.group => !validGroupIds.contains(op.localId),
         SyncEntityType.list => !validListIds.contains(op.localId),
         SyncEntityType.task => !validTaskIds.contains(op.localId),
@@ -362,6 +447,8 @@ class SyncOutboxQueue {
           op.parentLocalId != null && !validTaskIds.contains(op.parentLocalId!),
         SyncEntityType.step || SyncEntityType.setting => false,
       };
+      if (orphaned) _markDelete(op.seq);
+      return orphaned;
     });
   }
 
@@ -407,6 +494,10 @@ class SyncOutboxQueue {
     _remoteIdByKey.clear();
     _ackedEntitySeq.clear();
     _deletedRemoteSeq.clear();
+    _dirtyUpsertSeqs.clear();
+    _dirtyDeleteSeqs.clear();
+    _dirtyRemoteIds.clear();
+    _needsFullReplace = true;
     _lastSeq = 0;
     _inFlightUpToSeq = 0;
   }
