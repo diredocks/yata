@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:collection/collection.dart';
@@ -8,7 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart' as p;
+import 'package:result_dart/result_dart.dart';
 
+import '../core/error/app_error.dart';
+import '../core/result/app_result.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
@@ -139,76 +141,123 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
     notifier.deleteStep(task.id, stepId);
   }
 
-  Future<void> _addAttachment(TaskItem task) async {
-    final l10n = AppLocalizations.of(context);
-    final choice = await showAttachmentSourceSheet(context);
-    if (choice == null || !mounted) return;
-
-    String? sourcePath;
-    String? fileName;
-
+  Future<({String sourcePath, String fileName})?> _pickAttachmentSource(
+    AttachmentSourceChoice choice,
+  ) async {
     if (choice == AttachmentSourceChoice.camera) {
       final photo = await ImagePicker().pickImage(source: ImageSource.camera);
-      if (photo == null) return;
-      sourcePath = photo.path;
-      fileName = photo.name.isNotEmpty
+      if (photo == null || photo.path.isEmpty) return null;
+      final name = photo.name.isNotEmpty
           ? photo.name
           : 'JPG_${DateTime.now().millisecondsSinceEpoch}.jpg';
-    } else {
-      final files = await FilePicker.pickFiles();
-      if (files.isEmpty) return;
-      final picked = files.first;
-      sourcePath = picked.path;
-      fileName = picked.name;
+      return (sourcePath: photo.path, fileName: name);
     }
 
-    if (sourcePath == null || sourcePath.isEmpty) return;
-    try {
-      if (!mounted) return;
-      final resolvedName = AttachmentService.sanitizeFileName(
-        fileName.isNotEmpty ? fileName : p.basename(sourcePath),
+    final files = await FilePicker.pickFiles();
+    if (files.isEmpty) return null;
+    final picked = files.first;
+    final path = picked.path;
+    if (path == null || path.isEmpty) return null;
+    return (sourcePath: path, fileName: picked.name);
+  }
+
+  AsyncAppResult<
+    ({String attachmentId, String fileName, String localPath, int size})
+  >
+  _stagePickedAttachment({
+    required TaskItem task,
+    required String sourcePath,
+    required String fileName,
+  }) async {
+    final resolvedName = AttachmentService.sanitizeFileName(
+      fileName.isNotEmpty ? fileName : p.basename(sourcePath),
+    );
+    final sourceFile = File(sourcePath);
+    if (!await sourceFile.exists()) {
+      return const Failure(AppError.notFound(entity: 'attachmentSource'));
+    }
+
+    final fileSizeResult = await guardAsync(
+      sourceFile.length,
+      operation: 'readAttachmentSize',
+    );
+    if (fileSizeResult.isError()) {
+      return Failure(fileSizeResult.exceptionOrNull()!);
+    }
+
+    final service = ref.read(attachmentServiceProvider);
+    if (service.exceedsTaskSizeLimit(task, fileSizeResult.getOrThrow())) {
+      return const Failure(
+        AppError.validation(message: 'Attachment total exceeds 25 MB limit'),
       );
-      final sourceFile = File(sourcePath);
-      if (!await sourceFile.exists() || !mounted) return;
-      final fileSize = await sourceFile.length();
-      if (!mounted) return;
+    }
 
-      final service = ref.read(attachmentServiceProvider);
-      if (service.exceedsTaskSizeLimit(task, fileSize)) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(l10n.attachmentTotalTooLarge)));
-        return;
-      }
-
-      final notifier = ref.read(detailViewPresenterProvider);
-      final attachmentId = notifier.nextAttachmentId();
+    final attachmentId = ref
+        .read(detailViewPresenterProvider)
+        .nextAttachmentId();
+    return guardAsync(() async {
       final staged = await service.stageLocalFile(
         attachmentId: attachmentId,
         sourcePath: sourcePath,
         fileName: resolvedName,
       );
-      if (!mounted) return;
-
-      notifier.addAttachment(
-        task.id,
-        TaskAttachment(
-          id: attachmentId,
-          displayName: resolvedName,
-          entityType: 'file',
-          contentType: AttachmentService.guessContentType(resolvedName),
-          size: staged.size,
-          lastModifiedDateTime: DateTime.now().toUtc(),
-          localPath: staged.localPath,
-          isTransferring: task.remoteId != null,
-        ),
+      return (
+        attachmentId: attachmentId,
+        fileName: resolvedName,
+        localPath: staged.localPath,
+        size: staged.size,
       );
-    } finally {
-      if (choice == AttachmentSourceChoice.file &&
-          (Platform.isAndroid || Platform.isIOS)) {
-        unawaited(FilePicker.clearTemporaryFiles());
-      }
+    }, operation: 'stageLocalAttachment');
+  }
+
+  Future<void> _addAttachment(TaskItem task) async {
+    final l10n = AppLocalizations.of(context);
+    final choice = await showAttachmentSourceSheet(context);
+    if (choice == null || !mounted) return;
+
+    final picked = await _pickAttachmentSource(choice);
+    if (picked == null) return;
+
+    final stageResult = await _stagePickedAttachment(
+      task: task,
+      sourcePath: picked.sourcePath,
+      fileName: picked.fileName,
+    );
+
+    if (choice == AttachmentSourceChoice.file &&
+        (Platform.isAndroid || Platform.isIOS)) {
+      await guardAsyncUnit(
+        FilePicker.clearTemporaryFiles,
+        operation: 'clearFilePickerTempFiles',
+      );
     }
+
+    if (!mounted) return;
+    if (stageResult.isError()) {
+      if (stageResult.exceptionOrNull() is ValidationError) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n.attachmentTotalTooLarge)));
+      }
+      return;
+    }
+
+    final staged = stageResult.getOrThrow();
+    ref
+        .read(detailViewPresenterProvider)
+        .addAttachment(
+          task.id,
+          TaskAttachment(
+            id: staged.attachmentId,
+            displayName: staged.fileName,
+            entityType: 'file',
+            contentType: AttachmentService.guessContentType(staged.fileName),
+            size: staged.size,
+            lastModifiedDateTime: DateTime.now().toUtc(),
+            localPath: staged.localPath,
+            isTransferring: task.remoteId != null,
+          ),
+        );
   }
 
   Future<void> _tapAttachment(TaskItem task, TaskAttachment attachment) async {
