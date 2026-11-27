@@ -19,12 +19,11 @@ import java.util.concurrent.TimeoutException
 private typealias KotlinResult<T> = kotlin.Result<T>
 
 /**
- * Process-scoped, reference-counted host for Yata's single headless background
- * [FlutterEngine].
+ * Process-scoped host for Yata's single headless background [FlutterEngine].
  *
- * Uses [FlutterEngineGroup] so concurrent or chained WorkManager runs share
- * one Dart isolate/engine instead of spawning competing engines that race on
- * SQLite, and tears the engine down automatically once all leases finish.
+ * Uses [FlutterEngineGroup] so sequential WorkManager runs share one
+ * serialized engine lifecycle without racing on SQLite, and tears the engine
+ * down automatically after each pass completes.
  */
 object YataBackgroundEngineHost {
     private const val TAG = "YataBgEngineHost"
@@ -36,7 +35,6 @@ object YataBackgroundEngineHost {
     private var engineGroup: FlutterEngineGroup? = null
     private var sharedEngine: FlutterEngine? = null
     private var sharedChannel: MethodChannel? = null
-    private var activeLeases: Int = 0
     private var pendingCompletion: CompletableDeferred<BackgroundRunOutcome>? = null
 
     data class BackgroundRunOutcome(
@@ -71,7 +69,6 @@ object YataBackgroundEngineHost {
             )
         }
 
-        activeLeases += 1
         return try {
             val channel = ensureEngineReady(context, handle).getOrElse { error ->
                 return KotlinResult.failure(error)
@@ -93,10 +90,7 @@ object YataBackgroundEngineHost {
             KotlinResult.success(outcome)
         } finally {
             pendingCompletion = null
-            activeLeases = (activeLeases - 1).coerceAtLeast(0)
-            if (activeLeases == 0) {
-                destroyEngineLocked()
-            }
+            destroyEngineLocked()
         }
     }
 

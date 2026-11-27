@@ -71,45 +71,6 @@ abstract final class TodoSettingKeys {
   static const smartListCompletedSortType = 'SmartListCompleted_SortType';
   static const smartListCompletedSortAscending =
       'SmartListCompleted_SortAscending';
-
-  static const List<String> allSyncableKeys = [
-    confirmOnDelete,
-    soundOnCompletion,
-    myDayShowDueTasks,
-    addTasksToTop,
-    moveStarredTasksToTop,
-    startWeekFrom,
-    reminderNotifications,
-    dueDateNotifications,
-    dueDateNotificationTime,
-    pinReminders,
-    setAlarmClockReminderAndroid,
-    routineNotification,
-    routineNotificationConfiguration,
-    smartListStarredEnabled,
-    smartListPlannedEnabled,
-    smartListAllEnabled,
-    smartListCompletedEnabled,
-    smartListsAutoHide,
-    myDayShowCompletedTasks,
-    myDayThemeColor,
-    myDaySortType,
-    myDaySortAscending,
-    plannedShowCompletedTasks,
-    plannedThemeColor,
-    smartListPlannedDueDateFilter,
-    smartListPlannedGroupType,
-    smartListStarredShowCompletedTasks,
-    smartListStarredThemeColor,
-    smartListStarredSortType,
-    smartListStarredSortAscending,
-    smartListAllThemeColor,
-    smartListAllSortType,
-    smartListAllSortAscending,
-    smartListCompletedThemeColor,
-    smartListCompletedSortType,
-    smartListCompletedSortAscending,
-  ];
 }
 
 /// Decoded folder/smart-list theme pair from Substrate `ThemeColor`.

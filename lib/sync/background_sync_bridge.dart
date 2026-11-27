@@ -3,17 +3,68 @@ import 'dart:io';
 import 'dart:isolate';
 import 'dart:ui' show IsolateNameServer, PluginUtilities;
 
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/logging/app_logger.dart';
-import '../data/sync_job.dart';
 
 final _log = appLogFor('BackgroundSync');
 
 const String kBackgroundSyncChannelName = 'top.clickfling.yata/background_sync';
 const String kBackgroundUiEventPortName = 'top.clickfling.yata.ui_events';
+
+/// Execution lane for background sync work so slow binary transfers never
+/// block fast metadata mutations.
+enum BackgroundSyncLane { metadata, transfer }
+
+/// Lightweight notification emitted by the background worker over
+/// `IsolateNameServer` or an in-process stream when SQLite state changes.
+class BackgroundDbChangedEvent {
+  const BackgroundDbChangedEvent({
+    required this.accountKey,
+    this.lane,
+    this.reason,
+  });
+
+  final String accountKey;
+  final BackgroundSyncLane? lane;
+  final String? reason;
+
+  Map<String, Object?> toWireMap() => <String, Object?>{
+    'accountKey': accountKey,
+    if (lane != null) 'lane': lane!.name,
+    if (reason != null) 'reason': reason,
+  };
+
+  static BackgroundDbChangedEvent? fromWireMap(Object? raw) {
+    if (raw is! Map) return null;
+    final accountKey = raw['accountKey'];
+    if (accountKey is! String || accountKey.isEmpty) return null;
+    final laneName = raw['lane'];
+    final lane = laneName is String
+        ? BackgroundSyncLane.values.firstWhereOrNull((l) => l.name == laneName)
+        : null;
+    final reason = raw['reason'];
+    return BackgroundDbChangedEvent(
+      accountKey: accountKey,
+      lane: lane,
+      reason: reason is String ? reason : null,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BackgroundDbChangedEvent &&
+          accountKey == other.accountKey &&
+          lane == other.lane &&
+          reason == other.reason);
+
+  @override
+  int get hashCode => Object.hash(accountKey, lane, reason);
+}
 
 /// Schedules durable background execution on the current platform's OS host
 /// (Android `WorkManager` / `YataSyncWorker`, or in-process/isolate on desktop).
@@ -26,7 +77,7 @@ abstract class BackgroundSyncScheduler {
   Future<void> registerBackgroundEntrypoint(Function entrypoint);
 
   Future<void> enqueueSync({
-    required SyncJobLane lane,
+    required BackgroundSyncLane lane,
     required String reason,
     bool requiresNetwork = true,
     bool expedited = false,
@@ -81,7 +132,7 @@ class PlatformBackgroundSyncScheduler implements BackgroundSyncScheduler {
 
   @override
   Future<void> enqueueSync({
-    required SyncJobLane lane,
+    required BackgroundSyncLane lane,
     required String reason,
     bool requiresNetwork = true,
     bool expedited = false,
@@ -111,14 +162,15 @@ class PlatformBackgroundSyncScheduler implements BackgroundSyncScheduler {
 class BackgroundWorkerEventBus {
   BackgroundWorkerEventBus._();
 
-  static final StreamController<BackgroundWorkerEvent> _localController =
-      StreamController<BackgroundWorkerEvent>.broadcast();
+  static final StreamController<BackgroundDbChangedEvent> _localController =
+      StreamController<BackgroundDbChangedEvent>.broadcast();
   static ReceivePort? _uiReceivePort;
 
-  static Stream<BackgroundWorkerEvent> get events => _localController.stream;
+  static Stream<BackgroundDbChangedEvent> get events =>
+      _localController.stream;
 
   /// Registers the UI isolate's `ReceivePort` so background worker isolates
-  /// can push real-time progress and DB-change signals without polling.
+  /// can push DB-change signals without polling.
   static void attachUiListener() {
     if (_uiReceivePort != null) return;
     final port = ReceivePort();
@@ -129,7 +181,7 @@ class BackgroundWorkerEventBus {
       kBackgroundUiEventPortName,
     );
     port.listen((raw) {
-      final event = BackgroundWorkerEvent.fromWireMap(raw);
+      final event = BackgroundDbChangedEvent.fromWireMap(raw);
       if (event != null && !_localController.isClosed) {
         _localController.add(event);
       }
@@ -145,7 +197,7 @@ class BackgroundWorkerEventBus {
   }
 
   /// Sends [event] to the attached UI isolate (if any) and local listeners.
-  static void emit(BackgroundWorkerEvent event) {
+  static void emit(BackgroundDbChangedEvent event) {
     final remotePort = IsolateNameServer.lookupPortByName(
       kBackgroundUiEventPortName,
     );
@@ -163,10 +215,4 @@ final backgroundSyncSchedulerProvider = Provider<BackgroundSyncScheduler>((
   ref,
 ) {
   return const PlatformBackgroundSyncScheduler();
-});
-
-final backgroundWorkerEventsProvider = StreamProvider<BackgroundWorkerEvent>((
-  ref,
-) {
-  return BackgroundWorkerEventBus.events;
 });

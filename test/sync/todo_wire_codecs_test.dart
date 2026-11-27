@@ -210,10 +210,6 @@ void main() {
       );
       expect(weekdayRoutine, endsWith(';Monday,Wednesday,Friday'));
       expect(decodeRoutineConfigDays(weekdayRoutine), [1, 3, 5]);
-      expect(
-        TodoSettingKeys.allSyncableKeys,
-        contains(TodoSettingKeys.setAlarmClockReminderAndroid),
-      );
     });
   });
 

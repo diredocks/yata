@@ -148,7 +148,6 @@ class TodoSettingsStore {
   String get _lastMyDayResetKey => _k('last_my_day_reset');
   String get _plannedDueDateFilterKey => _k('planned_due_date_filter');
   String get _plannedGroupOptionKey => _k('planned_group_option');
-  String get _dirtySettingKeysKey => _k('dirty_setting_keys');
   String get _groupsDeltaLinkKey => _k('groups_delta_link');
   String get _foldersDeltaLinkKey => _k('folders_delta_link');
   String get _taskDeltaLinksKey => _k('task_delta_links');
@@ -387,17 +386,6 @@ class TodoSettingsStore {
 
   Future<void> savePlannedGroupOption(PlannedGroupOption option) =>
       _prefs.setString(_plannedGroupOptionKey, option.name);
-
-  Set<String> loadDirtySettingKeys() =>
-      (_prefs.getStringList(_dirtySettingKeysKey) ?? const []).toSet();
-
-  Future<void> saveDirtySettingKeys(Set<String> keys) async {
-    if (keys.isEmpty) {
-      await _prefs.remove(_dirtySettingKeysKey);
-    } else {
-      await _prefs.setStringList(_dirtySettingKeysKey, keys.toList());
-    }
-  }
 
   String? loadGroupsDeltaLink() => _prefs.getString(_groupsDeltaLinkKey);
 

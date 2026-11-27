@@ -3,11 +3,9 @@ import 'dart:io';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
-import 'package:result_dart/result_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/core/error/app_error.dart';
-import 'package:yata/data/sync_job.dart';
 import 'package:yata/data/sync_outbox.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/data/todo_repository.dart';
@@ -16,10 +14,10 @@ import 'package:yata/models/account.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/sync/background_sync_bridge.dart';
+import 'package:yata/sync/background_sync_entrypoint.dart';
 import 'package:yata/sync/microsoft/cloud_sync_service.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
 import 'package:yata/sync/sync_provider.dart';
-import 'package:yata/sync/sync_worker_engine.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
@@ -30,7 +28,12 @@ class _RecordingBackgroundScheduler implements BackgroundSyncScheduler {
   final bool handlesTransfersInBackground;
 
   final List<
-    ({SyncJobLane lane, String reason, bool requiresNetwork, bool expedited})
+    ({
+      BackgroundSyncLane lane,
+      String reason,
+      bool requiresNetwork,
+      bool expedited,
+    })
   >
   enqueued = [];
 
@@ -39,7 +42,7 @@ class _RecordingBackgroundScheduler implements BackgroundSyncScheduler {
 
   @override
   Future<void> enqueueSync({
-    required SyncJobLane lane,
+    required BackgroundSyncLane lane,
     required String reason,
     bool requiresNetwork = true,
     bool expedited = false,
@@ -61,8 +64,8 @@ class _RecordingBackgroundScheduler implements BackgroundSyncScheduler {
 }
 
 void main() {
-  group('Row-level Drift persistence & SyncJobRecords', () {
-    test('upsertTask and deleteTask modify individual rows and emit watchTasks updates', () async {
+  group('Row-level Drift persistence & BackgroundDbChangedEvent', () {
+    test('upsertTask and deleteTask modify individual rows in SQLite', () async {
       SharedPreferences.setMockInitialValues({});
       final db = TodoDatabase(NativeDatabase.memory());
       addTearDown(db.close);
@@ -86,89 +89,44 @@ void main() {
 
       await repo.upsertTask(t1.copyWith(title: 'First Updated'));
       await repo.flushPendingWrites();
+      await repo.preload();
 
-      final afterUpsert = await repo.watchTasks().first;
-      expect(afterUpsert.map((t) => '${t.id}:${t.title}').toList(), [
-        't1:First Updated',
-        't2:Second',
-      ]);
+      expect(
+        repo.readCachedTasks().map((t) => '${t.id}:${t.title}').toList(),
+        ['t1:First Updated', 't2:Second'],
+      );
 
       await repo.deleteTask('t1');
       await repo.flushPendingWrites();
+      await repo.preload();
 
-      final afterDelete = await repo.watchTasks().first;
-      expect(afterDelete.map((t) => t.id).toList(), ['t2']);
+      expect(repo.readCachedTasks().map((t) => t.id).toList(), ['t2']);
     });
 
-    test('SyncJobRecords persists lanes, backoff readiness, and clears completed rows', () async {
-      SharedPreferences.setMockInitialValues({});
-      final db = TodoDatabase(NativeDatabase.memory());
-      addTearDown(db.close);
-      final repo = TodoRepository(db, accountKey: 'acct_jobs');
-      final now = DateTime.utc(2026, 11, 27, 8);
-
-      final metaJob = SyncJob(
-        jobId: 'job_meta',
-        accountKey: 'acct_jobs',
-        lane: SyncJobLane.metadata,
-        jobType: SyncJobType.pushMetadata,
-        createdAt: now,
-        updatedAt: now,
+    test('BackgroundDbChangedEvent round-trips over wire maps and rejects invalid payloads', () {
+      const event = BackgroundDbChangedEvent(
+        accountKey: 'acct_1',
+        lane: BackgroundSyncLane.transfer,
+        reason: 'upload',
       );
-      final delayedTransfer = SyncJob(
-        jobId: 'job_transfer',
-        accountKey: 'acct_jobs',
-        lane: SyncJobLane.transfer,
-        jobType: SyncJobType.uploadAttachment,
-        status: SyncJobStatus.failed,
-        attemptCount: 2,
-        nextRetryAt: now.add(const Duration(seconds: 30)),
-        createdAt: now,
-        updatedAt: now,
+      final decoded = BackgroundDbChangedEvent.fromWireMap(event.toWireMap());
+      expect(decoded, event);
+
+      expect(BackgroundDbChangedEvent.fromWireMap('not a map'), isNull);
+      expect(BackgroundDbChangedEvent.fromWireMap(<String, Object?>{}), isNull);
+      expect(
+        BackgroundDbChangedEvent.fromWireMap({'accountKey': ''}),
+        isNull,
       );
-      final completedJob = SyncJob(
-        jobId: 'job_done',
-        accountKey: 'acct_jobs',
-        lane: SyncJobLane.metadata,
-        jobType: SyncJobType.pullDelta,
-        status: SyncJobStatus.completed,
-        progress: 100,
-        createdAt: now,
-        updatedAt: now,
+      expect(
+        BackgroundDbChangedEvent.fromWireMap({'accountKey': 'acct_1'}),
+        const BackgroundDbChangedEvent(accountKey: 'acct_1'),
       );
-
-      await repo.upsertSyncJob(metaJob);
-      await repo.upsertSyncJob(delayedTransfer);
-      await repo.upsertSyncJob(completedJob);
-      await repo.flushPendingWrites();
-
-      final runnableNow = (await repo.loadSyncJobs(
-        onlyRunnable: true,
-        nowUtc: now,
-      )).getOrThrow();
-      expect(runnableNow.map((j) => j.jobId).toList(), ['job_meta']);
-
-      final runnableLater = (await repo.loadSyncJobs(
-        onlyRunnable: true,
-        nowUtc: now.add(const Duration(seconds: 31)),
-      )).getOrThrow();
-      expect(runnableLater.map((j) => j.jobId).toList(), [
-        'job_meta',
-        'job_transfer',
-      ]);
-
-      await repo.clearCompletedSyncJobs();
-      await repo.flushPendingWrites();
-      final remaining = (await repo.loadSyncJobs()).getOrThrow();
-      expect(remaining.map((j) => j.jobId).toList(), [
-        'job_meta',
-        'job_transfer',
-      ]);
     });
   });
 
-  group('SyncWorkerEngine fast/slow lanes & headless execution', () {
-    test('isolates metadata lane from attachment upload lane and drains transfers independently', () async {
+  group('runBackgroundOutboxPass fast/slow lanes & headless execution', () {
+    test('isolates metadata lane from attachment upload lane and commits directly to SQLite', () async {
       final tmpDir = await Directory.systemTemp.createTemp('yata_worker_');
       addTearDown(() => tmpDir.delete(recursive: true));
       final stagedFile = File(p.join(tmpDir.path, 'spec.pdf'));
@@ -243,32 +201,21 @@ void main() {
       await repo.saveOutbox();
       await repo.flushPendingWrites();
 
-      final events = <BackgroundWorkerEvent>[];
-      final engine = SyncWorkerEngine(
+      final events = <BackgroundDbChangedEvent>[];
+
+      // Drain ONLY metadata lane: task is created, attachment NOT uploaded yet.
+      final metaOutcome = await runBackgroundOutboxPass(
         account: account,
         repository: repo,
         settings: settings,
         cloudSync: cloudSync,
-        idGenerator: (prefix) => '${prefix}_gen',
-        onEvent: events.add,
+        lane: BackgroundSyncLane.metadata,
+        reason: 'bg_meta',
+        onDbChanged: events.add,
       );
-
-      await engine.enqueueJob(
-        jobId: 'j_meta',
-        lane: SyncJobLane.metadata,
-        jobType: SyncJobType.pushMetadata,
-      );
-      await engine.enqueueJob(
-        jobId: 'j_upload',
-        lane: SyncJobLane.transfer,
-        jobType: SyncJobType.uploadAttachment,
-      );
-
-      // Drain ONLY metadata lane: task is created, attachment NOT uploaded yet.
-      final metaDrain = (await engine.drain(lane: SyncJobLane.metadata))
-          .getOrThrow();
-      expect(metaDrain.processedCount, 1);
-      expect(metaDrain.hasPendingTransfers, isTrue);
+      expect(metaOutcome.didMutateDb, isTrue);
+      expect(metaOutcome.hasPendingTransfers, isTrue);
+      expect(metaOutcome.shouldRetry, isFalse);
       expect(
         api.callLog.any((c) => c.contains('POST') && c.contains('task')),
         isTrue,
@@ -281,106 +228,127 @@ void main() {
         repo.outbox.hasPending(SyncEntityType.attachment, attachment.id),
         isTrue,
       );
+      expect(events.last.lane, BackgroundSyncLane.metadata);
 
-      // Now drain transfer lane: attachment uploads and clears isTransferring.
-      final transferDrain = (await engine.drain(lane: SyncJobLane.transfer))
-          .getOrThrow();
-      expect(transferDrain.processedCount, 1);
-      expect(transferDrain.hasPendingTransfers, isFalse);
+      // Drain transfer lane: attachment uploads and clears isTransferring.
+      final transferOutcome = await runBackgroundOutboxPass(
+        account: account,
+        repository: repo,
+        settings: settings,
+        cloudSync: cloudSync,
+        lane: BackgroundSyncLane.transfer,
+        reason: 'bg_transfer',
+        onDbChanged: events.add,
+      );
+      expect(transferOutcome.didMutateDb, isTrue);
+      expect(transferOutcome.hasPendingTransfers, isFalse);
+      expect(transferOutcome.shouldRetry, isFalse);
 
+      await repo.preload();
       final updatedTask = repo.readCachedTasks().single;
       expect(updatedTask.attachments.single.remoteId, isNotNull);
       expect(updatedTask.attachments.single.isTransferring, isFalse);
-      expect(events.whereType<BackgroundDbChangedEvent>(), isNotEmpty);
+      expect(events.last.lane, BackgroundSyncLane.transfer);
     });
 
-    test('executes downloadAttachment headless and applies exponential backoff on retryable errors', () async {
+    test('returns shouldRetry on retryable failure and no-ops without API calls when lane has no ops', () async {
+      final tmpDir = await Directory.systemTemp.createTemp('yata_retry_');
+      addTearDown(() => tmpDir.delete(recursive: true));
+      final stagedFile = File(p.join(tmpDir.path, 'doc.txt'));
+      await stagedFile.writeAsBytes([1, 2, 3]);
+
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       final db = TodoDatabase(NativeDatabase.memory());
       addTearDown(db.close);
 
       final account = MicrosoftAccount(
-        id: 'acct_dl',
-        displayName: 'DL Tester',
-        email: 'dl@example.com',
-        microsoftUserId: 'cid_dl',
+        id: 'acct_retry',
+        displayName: 'Retry Tester',
+        email: 'retry@example.com',
+        microsoftUserId: 'cid_retry',
         createdAt: DateTime.utc(2026, 11, 20),
       );
       final settings = TodoSettingsStore(prefs, accountId: account.id);
       final repo = TodoRepository.forSession(db, settings);
 
+      final api = FakeSubstrateApi()
+        ..onUploadAttachment = (_, _, _, _) async {
+          throw const AppError.network(message: 'Offline', isRetryable: true);
+        };
+      final tokenStorage = AuthTokenStorage(prefs);
+      await tokenStorage.saveTokens(
+        account.id,
+        MicrosoftAuthTokens(
+          accessToken: 'tok',
+          refreshToken: 'ref',
+          expiresAt: DateTime.utc(2099, 1, 1),
+          userId: 'cid_retry',
+        ),
+      );
+      final cloudSync = CloudSyncService(
+        authClient: FakeAuthClient(),
+        todoApi: api,
+        tokenStorage: tokenStorage,
+      );
+
       final task = TaskItem(
-        id: 't_dl',
+        id: 't_r',
         listId: 'tasks',
-        title: 'Has Remote File',
+        title: 'Has File',
+        remoteId: 'rt_r',
+        remoteParentFolderId: 'rf-default',
         createdAt: DateTime.utc(2026, 11, 27),
         attachments: [
-          const TaskAttachment(
-            id: 'att_dl',
-            remoteId: 'remote_att_1',
-            displayName: 'report.pdf',
-            webLink: 'https://example.com/report.pdf',
+          TaskAttachment(
+            id: 'att_r',
+            displayName: 'doc.txt',
+            localPath: stagedFile.path,
+            size: 3,
             isTransferring: true,
           ),
         ],
       );
       await repo.saveTasks([task]);
+      repo.outbox.enqueueUpsert(
+        entityType: SyncEntityType.attachment,
+        localId: 'att_r',
+        parentLocalId: 't_r',
+        parentRemoteId: 'rt_r',
+      );
+      await repo.saveOutbox();
       await repo.flushPendingWrites();
 
-      var clock = DateTime.utc(2026, 11, 27, 10, 0, 0);
-      var attempts = 0;
-      final engine = SyncWorkerEngine(
+      // Metadata lane should be a 0-API-call no-op and signal pending transfer.
+      final events = <BackgroundDbChangedEvent>[];
+      final metaOutcome = await runBackgroundOutboxPass(
         account: account,
         repository: repo,
         settings: settings,
-        cloudSync: CloudSyncService(
-          authClient: FakeAuthClient(),
-          todoApi: FakeSubstrateApi(),
-          tokenStorage: AuthTokenStorage(prefs),
-        ),
-        idGenerator: (prefix) => '${prefix}_gen',
-        nowUtc: () => clock,
-        downloadAttachment: (_) async {
-          attempts++;
-          if (attempts == 1) {
-            return const Failure(
-              AppError.network(message: 'Offline', isRetryable: true),
-            );
-          }
-          return const Success('/tmp/report.pdf');
-        },
+        cloudSync: cloudSync,
+        lane: BackgroundSyncLane.metadata,
+        reason: 'bg_meta',
+        onDbChanged: events.add,
       );
+      expect(metaOutcome.didMutateDb, isFalse);
+      expect(metaOutcome.shouldRetry, isFalse);
+      expect(metaOutcome.hasPendingTransfers, isTrue);
+      expect(api.callLog, isEmpty);
+      expect(events, isEmpty);
 
-      await engine.enqueueJob(
-        jobId: 'j_dl',
-        lane: SyncJobLane.transfer,
-        jobType: SyncJobType.downloadAttachment,
-        payload: {'taskId': 't_dl', 'attachmentId': 'att_dl'},
+      // Transfer lane fails with retryable error -> shouldRetry=true.
+      final transferOutcome = await runBackgroundOutboxPass(
+        account: account,
+        repository: repo,
+        settings: settings,
+        cloudSync: cloudSync,
+        lane: BackgroundSyncLane.transfer,
+        reason: 'bg_transfer',
+        onDbChanged: events.add,
       );
-
-      // First attempt fails with retryable error and schedules backoff.
-      final first = (await engine.drain(lane: SyncJobLane.transfer))
-          .getOrThrow();
-      expect(first.failedCount, 1);
-      expect(first.hasRetryableFailures, isTrue);
-
-      // Immediately draining again skips the job while in backoff window.
-      final duringBackoff = (await engine.drain(lane: SyncJobLane.transfer))
-          .getOrThrow();
-      expect(duringBackoff.processedCount, 0);
-      expect(attempts, 1);
-
-      // Advance clock past 2s backoff -> retry succeeds and persists localPath.
-      clock = clock.add(const Duration(seconds: 5));
-      final second = (await engine.drain(lane: SyncJobLane.transfer))
-          .getOrThrow();
-      expect(second.processedCount, 1);
-      expect(second.failedCount, 0);
-
-      final storedTask = repo.readCachedTasks().single;
-      expect(storedTask.attachments.single.localPath, '/tmp/report.pdf');
-      expect(storedTask.attachments.single.isTransferring, isFalse);
+      expect(transferOutcome.didMutateDb, isFalse);
+      expect(transferOutcome.shouldRetry, isTrue);
+      expect(events, isEmpty);
     });
 
     test('SyncNotifier.onAppPaused enqueues durable background sync on transfer lane when attachments are pending', () async {
@@ -404,7 +372,7 @@ void main() {
       await pumpEventQueue();
 
       expect(scheduler.enqueued, hasLength(1));
-      expect(scheduler.enqueued.single.lane, SyncJobLane.transfer);
+      expect(scheduler.enqueued.single.lane, BackgroundSyncLane.transfer);
       expect(scheduler.enqueued.single.requiresNetwork, isTrue);
     });
 
@@ -477,7 +445,7 @@ void main() {
 
       expect(uploadCalls, 0);
       expect(
-        scheduler.enqueued.where((e) => e.lane == SyncJobLane.transfer),
+        scheduler.enqueued.where((e) => e.lane == BackgroundSyncLane.transfer),
         isNotEmpty,
       );
     });

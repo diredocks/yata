@@ -42,8 +42,7 @@ class TaskItemRecords extends Table {
   Set<Column<Object>> get primaryKey => {accountKey, id};
 }
 
-/// Drift table storing sync outbox ops, remote-ID mappings, and durable
-/// background sync jobs (`kind = 'sync_job'`).
+/// Drift table storing sync outbox ops and remote-ID mappings.
 class SyncMutationRecords extends Table {
   TextColumn get accountKey => text()();
   TextColumn get kind => text()();
@@ -128,9 +127,6 @@ class TodoDatabase extends _$TodoDatabase {
   Future<List<TodoListRecord>> selectTodoListRecords(String accountKey) =>
       _todoListQuery(accountKey).get();
 
-  Stream<List<TodoListRecord>> watchTodoListRecords(String accountKey) =>
-      _todoListQuery(accountKey).watch();
-
   Future<void> replaceTodoListRecords(
     String accountKey,
     List<TodoListRecordsCompanion> rows,
@@ -152,9 +148,6 @@ class TodoDatabase extends _$TodoDatabase {
 
   Future<List<ListGroupRecord>> selectListGroupRecords(String accountKey) =>
       _listGroupQuery(accountKey).get();
-
-  Stream<List<ListGroupRecord>> watchListGroupRecords(String accountKey) =>
-      _listGroupQuery(accountKey).watch();
 
   Future<void> replaceListGroupRecords(
     String accountKey,
@@ -178,9 +171,6 @@ class TodoDatabase extends _$TodoDatabase {
 
   Future<List<TaskItemRecord>> selectTaskItemRecords(String accountKey) =>
       _taskItemQuery(accountKey).get();
-
-  Stream<List<TaskItemRecord>> watchTaskItemRecords(String accountKey) =>
-      _taskItemQuery(accountKey).watch();
 
   Future<void> upsertTaskItemRecord(TaskItemRecordsCompanion row) =>
       into(taskItemRecords).insertOnConflictUpdate(row);
@@ -218,11 +208,6 @@ class TodoDatabase extends _$TodoDatabase {
     String accountKey, {
     String? kind,
   }) => _syncMutationQuery(accountKey, kind: kind).get();
-
-  Stream<List<SyncMutationRecord>> watchSyncMutationRecords(
-    String accountKey, {
-    String? kind,
-  }) => _syncMutationQuery(accountKey, kind: kind).watch();
 
   Future<void> upsertSyncMutationRecord(SyncMutationRecordsCompanion row) =>
       into(syncMutationRecords).insertOnConflictUpdate(row);

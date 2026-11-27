@@ -1,22 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:freezed_annotation/freezed_annotation.dart';
 
 import '../account/account_provider.dart';
 import '../core/error/app_error.dart';
 import '../core/logging/app_logger.dart';
-import '../data/sync_job.dart';
 import '../data/sync_outbox.dart';
-import 'background_sync_bridge.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
+import 'background_sync_bridge.dart';
 import 'microsoft/account_profile_refresher.dart';
 import 'microsoft/cloud_sync_service.dart';
 import 'microsoft/substrate_push_engine.dart';
 import 'realtime_sync_controller.dart';
-
-part 'sync_provider.freezed.dart';
 
 final _log = appLogFor('Sync');
 
@@ -39,18 +35,50 @@ final cloudSyncServiceProvider = Provider<CloudSyncService>((ref) {
 
 enum SyncStatus { idle, syncing, success, error, requiresRelogin }
 
-@freezed
-abstract class SyncState with _$SyncState {
-  const SyncState._();
+const _unset = Object();
 
-  const factory SyncState({
-    @Default(SyncStatus.idle) SyncStatus status,
-    DateTime? lastSyncedAt,
-    String? error,
-  }) = _SyncState;
+class SyncState {
+  const SyncState({
+    this.status = SyncStatus.idle,
+    this.lastSyncedAt,
+    this.error,
+  });
+
+  final SyncStatus status;
+  final DateTime? lastSyncedAt;
+  final String? error;
 
   bool get isSyncing => status == SyncStatus.syncing;
   bool get requiresRelogin => status == SyncStatus.requiresRelogin;
+
+  SyncState copyWith({
+    SyncStatus? status,
+    Object? lastSyncedAt = _unset,
+    Object? error = _unset,
+  }) {
+    return SyncState(
+      status: status ?? this.status,
+      lastSyncedAt: identical(lastSyncedAt, _unset)
+          ? this.lastSyncedAt
+          : lastSyncedAt as DateTime?,
+      error: identical(error, _unset) ? this.error : error as String?,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncState &&
+          status == other.status &&
+          lastSyncedAt == other.lastSyncedAt &&
+          error == other.error);
+
+  @override
+  int get hashCode => Object.hash(status, lastSyncedAt, error);
+
+  @override
+  String toString() =>
+      'SyncState(status: $status, lastSyncedAt: $lastSyncedAt, error: $error)';
 }
 
 enum SyncReason {
@@ -235,7 +263,7 @@ class SyncNotifier extends Notifier<SyncState> {
 
   Timer? _periodicTimer;
   RealtimeSyncController? _realtimeController;
-  StreamSubscription<BackgroundWorkerEvent>? _workerEventSub;
+  StreamSubscription<BackgroundDbChangedEvent>? _workerEventSub;
 
   bool _disposed = false;
   bool _isForeground = true;
@@ -408,7 +436,7 @@ class SyncNotifier extends Notifier<SyncState> {
       if (_disposed) return;
       if (hasMetadata) {
         await scheduler.enqueueSync(
-          lane: SyncJobLane.metadata,
+          lane: BackgroundSyncLane.metadata,
           reason: reason,
           requiresNetwork: true,
           expedited: true,
@@ -416,7 +444,7 @@ class SyncNotifier extends Notifier<SyncState> {
       }
       if (hasAttachments) {
         await scheduler.enqueueSync(
-          lane: SyncJobLane.transfer,
+          lane: BackgroundSyncLane.transfer,
           reason: reason,
           requiresNetwork: true,
           expedited: false,
@@ -434,15 +462,15 @@ class SyncNotifier extends Notifier<SyncState> {
     await ref
         .read(backgroundSyncSchedulerProvider)
         .enqueueSync(
-          lane: SyncJobLane.transfer,
+          lane: BackgroundSyncLane.transfer,
           reason: reason,
           requiresNetwork: true,
           expedited: false,
         );
   }
 
-  void _handleBackgroundWorkerEvent(BackgroundWorkerEvent event) {
-    if (_disposed || event is! BackgroundDbChangedEvent) return;
+  void _handleBackgroundWorkerEvent(BackgroundDbChangedEvent event) {
+    if (_disposed) return;
     final active = _activeMicrosoftAccount;
     if (active == null) return;
     final repo = ref.read(todoProvider.notifier).repository;

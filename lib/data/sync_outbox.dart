@@ -1,5 +1,3 @@
-import 'sync_dirty_fields.dart';
-
 enum SyncEntityType { group, list, task, step, attachment, setting }
 
 enum SyncOpKind { upsert, delete }
@@ -313,11 +311,6 @@ class SyncOutboxQueue {
   bool hasPending(SyncEntityType type, String localId) =>
       _ops.any((op) => op.entityType == type && op.localId == localId);
 
-  bool hasPendingAfter(SyncEntityType type, String localId, int seq) =>
-      _ops.any(
-        (op) => op.entityType == type && op.localId == localId && op.seq > seq,
-      );
-
   Set<String> pendingLocalIds(SyncEntityType type) => {
     for (final op in _ops)
       if (op.entityType == type) op.localId,
@@ -351,54 +344,6 @@ class SyncOutboxQueue {
         if (entry.value > sinceSeq && entry.key.startsWith(prefix))
           entry.key.substring(prefix.length),
     };
-  }
-
-  Set<GroupDirtyField>? pendingGroupFields(String localId) {
-    final fields = <GroupDirtyField>{};
-    for (final op in _ops) {
-      if (op.entityType == SyncEntityType.group &&
-          op.localId == localId &&
-          op.kind == SyncOpKind.upsert) {
-        if (op.fields.isEmpty) return null;
-        for (final name in op.fields) {
-          final f = GroupDirtyField.values.where((e) => e.name == name);
-          fields.addAll(f);
-        }
-      }
-    }
-    return fields.isEmpty ? null : fields;
-  }
-
-  Set<ListDirtyField>? pendingListFields(String localId) {
-    final fields = <ListDirtyField>{};
-    for (final op in _ops) {
-      if (op.entityType == SyncEntityType.list &&
-          op.localId == localId &&
-          op.kind == SyncOpKind.upsert) {
-        if (op.fields.isEmpty) return null;
-        for (final name in op.fields) {
-          final f = ListDirtyField.values.where((e) => e.name == name);
-          fields.addAll(f);
-        }
-      }
-    }
-    return fields.isEmpty ? null : fields;
-  }
-
-  Set<TaskDirtyField>? pendingTaskFields(String localId) {
-    final fields = <TaskDirtyField>{};
-    for (final op in _ops) {
-      if (op.entityType == SyncEntityType.task &&
-          op.localId == localId &&
-          op.kind == SyncOpKind.upsert) {
-        if (op.fields.isEmpty) return null;
-        for (final name in op.fields) {
-          final f = TaskDirtyField.values.where((e) => e.name == name);
-          fields.addAll(f);
-        }
-      }
-    }
-    return fields.isEmpty ? null : fields;
   }
 
   /// Drops any pending non-delete ops for items whose parent list no longer exists.
