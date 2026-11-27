@@ -583,32 +583,6 @@ class TodoNotifier extends Notifier<TodoState> {
     );
   }
 
-  /// Full-state diff commit retained for test harnesses that construct raw
-  /// [TodoState] snapshots directly; production presenters use the explicit
-  /// O(1) atomic mutation methods above.
-  @visibleForTesting
-  void commit(TodoState nextState) {
-    final tracked = enqueueLocalCommitToOutbox(
-      prevState: state,
-      nextState: nextState,
-      nowUtc: DateTime.now().toUtc(),
-      outbox: repository.outbox,
-    );
-
-    if (tracked.syncNeeded) {
-      repository.saveOutbox();
-    }
-
-    state = nextState.copyWith(
-      groups: tracked.groups,
-      lists: tracked.lists,
-      tasks: tracked.tasks,
-      mutationVersion: tracked.syncNeeded
-          ? state.mutationVersion + 1
-          : state.mutationVersion,
-    );
-  }
-
   SyncStore get _syncStore =>
       SyncStore(repository: repository, settings: settings);
 
