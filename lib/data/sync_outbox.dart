@@ -276,6 +276,22 @@ class SyncOutboxQueue {
     return _ops.length != before;
   }
 
+  /// Cancels any non-in-flight pending delete ops for [entityType]/[localId].
+  /// Returns true if at least one op was removed.
+  bool cancelPendingDeletes(SyncEntityType entityType, String localId) {
+    final before = _ops.length;
+    _ops.removeWhere((op) {
+      final match =
+          op.seq > _inFlightUpToSeq &&
+          op.entityType == entityType &&
+          op.localId == localId &&
+          op.kind == SyncOpKind.delete;
+      if (match) _markDelete(op.seq);
+      return match;
+    });
+    return _ops.length != before;
+  }
+
   /// Enqueues a deletion. If an un-pushed (non-in-flight) upsert exists for a
   /// never-synced item (`remoteId == null`), both cancel out.
   void enqueueDelete({
