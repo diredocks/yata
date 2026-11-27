@@ -50,13 +50,6 @@ class TodoColors {
         : secondaryBackgroundLight;
   }
 
-  /// Matches `@color/search_background` (#FFFFFF in light, #080808 in dark).
-  static Color searchBackground(Brightness brightness) {
-    return brightness == Brightness.dark
-        ? primaryBackgroundDark
-        : primaryBackgroundLight;
-  }
-
   /// Matches `res/drawable/default_shadow_horizontal.xml` (3dp top-to-bottom fade).
   static const BoxDecoration horizontalShadowDecoration = BoxDecoration(
     gradient: LinearGradient(
@@ -87,18 +80,6 @@ class TodoColors {
       return primaryBackgroundDark;
     }
     return swatchColorFor(themeColor);
-  }
-
-  static LinearGradient gradientFor(
-    ListThemeColor themeColor, {
-    Brightness brightness = Brightness.light,
-  }) {
-    final color = backgroundColorFor(themeColor, brightness: brightness);
-    return LinearGradient(
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      colors: [color, color],
-    );
   }
 
   static Color headerForegroundFor(
