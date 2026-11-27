@@ -30,6 +30,8 @@ class _AccountCache {
   String? cachedEndpointUrl;
   DateTime? cachedEndpointFetchedAt;
   Future<void> writeQueue = Future<void>.value();
+  final Set<String> pendingOrphanedAttachments = <String>{};
+  Future<void>? attachmentCleanup;
 }
 
 /// Drift <-> freezed mapping, in-memory cache and guarded DB access.
@@ -199,14 +201,20 @@ class TodoRepository {
     );
   }
 
-  /// Waits for all previously enqueued SQLite writes for this account to finish.
-  Future<void> flushPendingWrites() => _cache.writeQueue;
+  /// Waits for all previously enqueued SQLite writes and pending attachment
+  /// cleanups for this account to finish.
+  Future<void> flushPendingWrites() async {
+    await _cache.writeQueue;
+    await _cache.attachmentCleanup;
+  }
 
-  Future<({List<TodoList> lists, List<ListGroup> groups, List<TaskItem> tasks})>
-  _loadEntityTables() async {
-    final listRows = await _db.selectTodoListRecords(accountKey);
-    final groupRows = await _db.selectListGroupRecords(accountKey);
-    final taskRows = await _db.selectTaskItemRecords(accountKey);
+  static Future<
+    ({List<TodoList> lists, List<ListGroup> groups, List<TaskItem> tasks})
+  >
+  _loadEntityTables(TodoDatabase db, String accountKey) async {
+    final listRows = await db.selectTodoListRecords(accountKey);
+    final groupRows = await db.selectListGroupRecords(accountKey);
+    final taskRows = await db.selectTaskItemRecords(accountKey);
     return (
       lists: _decodeRows(listRows, (r) => r.payloadJson, TodoList.fromJson),
       groups: _decodeRows(groupRows, (r) => r.payloadJson, ListGroup.fromJson),
@@ -221,7 +229,7 @@ class TodoRepository {
     }
     return guardDbCall(() async {
       await _cache.writeQueue;
-      final entities = await _loadEntityTables();
+      final entities = await _loadEntityTables(_db, accountKey);
       final allMutations = await _db.selectSyncMutationRecords(accountKey);
 
       final groupedMutations = allMutations.groupListsBy((row) => row.kind);
@@ -249,7 +257,7 @@ class TodoRepository {
     }
     return guardDbCall(() async {
       await _cache.writeQueue;
-      final entities = await _loadEntityTables();
+      final entities = await _loadEntityTables(_db, accountKey);
 
       final cache = _cache;
       cache.lists = entities.lists.isEmpty ? null : entities.lists;
@@ -284,11 +292,10 @@ class TodoRepository {
           case _taskDeltaLinksKey:
             if (payload['links'] case final Map links) {
               cache.taskDeltaLinks = Map<String, String>.unmodifiable({
-                for (final entry in links.entries)
-                  if (entry.key is String &&
-                      entry.value is String &&
-                      (entry.value as String).isNotEmpty)
-                    entry.key as String: entry.value as String,
+                for (final e in links.entries)
+                  if ((e.key, e.value) case (final String k, final String v)
+                      when v.isNotEmpty)
+                    k: v,
               });
             }
           case _cachedEndpointKey:
@@ -365,6 +372,53 @@ class TodoRepository {
     }
   }
 
+  void _scheduleAttachmentCleanup(List<String> orphanedPaths) {
+    if (orphanedPaths.isEmpty) return;
+    final cache = _cache;
+    cache.pendingOrphanedAttachments.addAll(orphanedPaths);
+    if (cache.attachmentCleanup != null) return;
+    late final Future<void> job;
+    job =
+        Future<void>.delayed(Duration.zero, () async {
+          while (cache.pendingOrphanedAttachments.isNotEmpty) {
+            final batch = cache.pendingOrphanedAttachments.toList(
+              growable: false,
+            );
+            cache.pendingOrphanedAttachments.clear();
+            final stillReferenced = _attachmentLocalPaths(cache.tasks).toSet();
+            final toDelete = [
+              for (final path in batch)
+                if (!stillReferenced.contains(path)) path,
+            ];
+            if (toDelete.isNotEmpty) {
+              await _deleteAttachmentFiles(toDelete);
+            }
+          }
+        }).whenComplete(() {
+          if (identical(cache.attachmentCleanup, job)) {
+            cache.attachmentCleanup = null;
+          }
+        });
+    cache.attachmentCleanup = job;
+    unawaited(job);
+  }
+
+  TodoListRecordsCompanion _listCompanion(TodoList list, int position) =>
+      TodoListRecordsCompanion.insert(
+        accountKey: accountKey,
+        id: list.id,
+        position: position,
+        payloadJson: jsonEncode(list.toJson()),
+      );
+
+  ListGroupRecordsCompanion _groupCompanion(ListGroup group, int position) =>
+      ListGroupRecordsCompanion.insert(
+        accountKey: accountKey,
+        id: group.id,
+        position: position,
+        payloadJson: jsonEncode(group.toJson()),
+      );
+
   TaskItemRecordsCompanion _taskCompanion(TaskItem task, int position) =>
       TaskItemRecordsCompanion.insert(
         accountKey: accountKey,
@@ -374,6 +428,88 @@ class TodoRepository {
         payloadJson: jsonEncode(task.toJson()),
       );
 
+  ({
+    List<TaskItem> snapshot,
+    List<TaskItemRecordsCompanion> upserts,
+    List<String> deleteIds,
+  })
+  _diffTasks(List<TaskItem> previous, List<TaskItem> next) {
+    final snapshot = List<TaskItem>.unmodifiable(next);
+    final prevById = <String, ({TaskItem task, int position})>{
+      for (final (i, item) in previous.indexed)
+        item.id: (task: item, position: i),
+    };
+    final nextIds = <String>{};
+    final upserts = <TaskItemRecordsCompanion>[];
+    for (final (i, item) in snapshot.indexed) {
+      nextIds.add(item.id);
+      final prev = prevById[item.id];
+      if (prev == null || prev.position != i || prev.task != item) {
+        upserts.add(_taskCompanion(item, i));
+      }
+    }
+    final deleteIds = [
+      for (final item in previous)
+        if (!nextIds.contains(item.id)) item.id,
+    ];
+    return (snapshot: snapshot, upserts: upserts, deleteIds: deleteIds);
+  }
+
+  ({List<TaskItem> nextTasks, List<TaskItemRecordsCompanion> upserts})
+  _mergeTasks(
+    List<TaskItem> previous,
+    Iterable<TaskItem> upsertTasks, {
+    Set<String> deleteIds = const {},
+  }) {
+    final uniqueById = {
+      for (final t in upsertTasks)
+        if (!deleteIds.contains(t.id)) t.id: t,
+    };
+    final pendingById = Map<String, TaskItem>.of(uniqueById);
+    final built = <TaskItem>[];
+    final positions = <String, int>{};
+    for (final existing in previous) {
+      if (deleteIds.contains(existing.id)) continue;
+      final replacement = pendingById.remove(existing.id);
+      if (replacement != null) {
+        positions[replacement.id] = built.length;
+        built.add(replacement);
+      } else {
+        built.add(existing);
+      }
+    }
+    for (final added in pendingById.values) {
+      positions[added.id] = built.length;
+      built.add(added);
+    }
+    final upserts = [
+      for (final task in uniqueById.values)
+        _taskCompanion(task, positions[task.id]!),
+    ];
+    return (nextTasks: List<TaskItem>.unmodifiable(built), upserts: upserts);
+  }
+
+  Future<void> _applyOutboxDelta(OutboxPersistenceDelta delta) async {
+    if (delta.deleteSeqs.isNotEmpty) {
+      await _db.deleteSyncMutationRecords(
+        accountKey,
+        kind: _outboxKind,
+        itemKeys: [for (final s in delta.deleteSeqs) s.toString()],
+      );
+    }
+    for (final op in delta.upsertOps) {
+      await _db.upsertSyncMutationRecord(
+        SyncMutationRecordsCompanion.insert(
+          accountKey: accountKey,
+          kind: _outboxKind,
+          itemKey: op.seq.toString(),
+          position: op.seq,
+          payloadJson: jsonEncode(op.toJson()),
+        ),
+      );
+    }
+  }
+
   AsyncAppResult<Unit> _persistTasksChange(
     String operation,
     List<TaskItem> previousTasks,
@@ -382,22 +518,10 @@ class TodoRepository {
   ) {
     final snapshot = List<TaskItem>.unmodifiable(nextTasks);
     _cache.tasks = snapshot;
-    final orphanedPaths = _unreferencedAttachmentPaths(previousTasks, snapshot);
-    if (!_db.persistToSqlite) {
-      if (orphanedPaths.isNotEmpty) {
-        unawaited(_enqueueWrite(() => _deleteAttachmentFiles(orphanedPaths)));
-      }
-      return Future.value(const Success(unit));
-    }
-    return guardDbCall(() async {
-      await _enqueueWrite(() async {
-        await write();
-        if (orphanedPaths.isNotEmpty) {
-          await _deleteAttachmentFiles(orphanedPaths);
-        }
-      });
-      return unit;
-    }, operation: operation);
+    _scheduleAttachmentCleanup(
+      _unreferencedAttachmentPaths(previousTasks, snapshot),
+    );
+    return _persistWrite(operation, write);
   }
 
   /// Row-level upsert of a single task without rewriting unrelated rows.
@@ -426,33 +550,14 @@ class TodoRepository {
       return Future.value(const Success(unit));
     }
     final current = _cache.tasks;
-    final uniqueById = {for (final t in taskList) t.id: t};
-    final pendingById = Map<String, TaskItem>.of(uniqueById);
-    final nextTasks = <TaskItem>[];
-    final positions = <String, int>{};
-    for (final existing in current) {
-      final replacement = pendingById.remove(existing.id);
-      if (replacement != null) {
-        positions[replacement.id] = nextTasks.length;
-        nextTasks.add(replacement);
-      } else {
-        nextTasks.add(existing);
-      }
-    }
-    for (final added in pendingById.values) {
-      positions[added.id] = nextTasks.length;
-      nextTasks.add(added);
-    }
-    final toPersist = uniqueById.values.toList(growable: false);
+    final merged = _mergeTasks(current, taskList);
     return _persistTasksChange(
       'upsertTasks',
       current,
-      nextTasks,
+      merged.nextTasks,
       () => _db.transaction(() async {
-        for (final task in toPersist) {
-          await _db.upsertTaskItemRecord(
-            _taskCompanion(task, positions[task.id]!),
-          );
+        for (final companion in merged.upserts) {
+          await _db.upsertTaskItemRecord(companion);
         }
       }),
     );
@@ -480,14 +585,7 @@ class TodoRepository {
       () => _db.replaceTodoListRecords(
         accountKey,
         snapshot
-            .mapIndexed(
-              (i, item) => TodoListRecordsCompanion.insert(
-                accountKey: accountKey,
-                id: item.id,
-                position: i,
-                payloadJson: jsonEncode(item.toJson()),
-              ),
-            )
+            .mapIndexed((i, item) => _listCompanion(item, i))
             .toList(growable: false),
       ),
     );
@@ -501,14 +599,7 @@ class TodoRepository {
       () => _db.replaceListGroupRecords(
         accountKey,
         snapshot
-            .mapIndexed(
-              (i, item) => ListGroupRecordsCompanion.insert(
-                accountKey: accountKey,
-                id: item.id,
-                position: i,
-                payloadJson: jsonEncode(item.toJson()),
-              ),
-            )
+            .mapIndexed((i, item) => _groupCompanion(item, i))
             .toList(growable: false),
       ),
     );
@@ -519,39 +610,23 @@ class TodoRepository {
   /// removed rows.
   AsyncAppResult<Unit> saveTasks(List<TaskItem> tasks) {
     final current = _cache.tasks;
-    final snapshot = List<TaskItem>.unmodifiable(tasks);
-    final prevById = <String, ({TaskItem task, int position})>{
-      for (final (i, item) in current.indexed)
-        item.id: (task: item, position: i),
-    };
-    final nextIds = <String>{};
-    final upserts = <TaskItemRecordsCompanion>[];
-    for (final (i, item) in snapshot.indexed) {
-      nextIds.add(item.id);
-      final prev = prevById[item.id];
-      if (prev == null || prev.position != i || prev.task != item) {
-        upserts.add(_taskCompanion(item, i));
-      }
-    }
-    final deleteIds = [
-      for (final item in current)
-        if (!nextIds.contains(item.id)) item.id,
-    ];
+    final diff = _diffTasks(current, tasks);
     return _persistTasksChange(
       'saveTasks',
       current,
-      snapshot,
+      diff.snapshot,
       () => _db.applyTaskItemDiff(
         accountKey,
-        upserts: upserts,
-        deleteIds: deleteIds,
+        upserts: diff.upserts,
+        deleteIds: diff.deleteIds,
       ),
     );
   }
 
   /// Atomically persists touched entity tables (groups, lists, row-level task
   /// upserts/deletes or full task diff) together with pending outbox deltas in
-  /// a single SQLite transaction, then cleans up orphaned local attachments.
+  /// a single SQLite transaction, while scheduling orphaned local attachment
+  /// cleanup asynchronously outside the write queue.
   AsyncAppResult<Unit> persistSyncBatch({
     List<ListGroup>? groups,
     List<TodoList>? lists,
@@ -575,53 +650,18 @@ class TodoRepository {
     List<TaskItem>? nextTasks;
 
     if (fullTasks != null) {
-      final snapshot = List<TaskItem>.unmodifiable(fullTasks);
-      final prevById = <String, ({TaskItem task, int position})>{
-        for (final (i, item) in prevTasks.indexed)
-          item.id: (task: item, position: i),
-      };
-      final nextIds = <String>{};
-      for (final (i, item) in snapshot.indexed) {
-        nextIds.add(item.id);
-        final prev = prevById[item.id];
-        if (prev == null || prev.position != i || prev.task != item) {
-          taskUpserts.add(_taskCompanion(item, i));
-        }
-      }
-      for (final item in prevTasks) {
-        if (!nextIds.contains(item.id)) taskDeleteIds.add(item.id);
-      }
-      nextTasks = snapshot;
+      final diff = _diffTasks(prevTasks, fullTasks);
+      taskUpserts.addAll(diff.upserts);
+      taskDeleteIds.addAll(diff.deleteIds);
+      nextTasks = diff.snapshot;
     } else {
       final upsertList = upsertTasks.toList(growable: false);
       final deleteSet = deleteTaskIds.toSet();
       if (upsertList.isNotEmpty || deleteSet.isNotEmpty) {
-        final uniqueById = {
-          for (final t in upsertList)
-            if (!deleteSet.contains(t.id)) t.id: t,
-        };
-        final pendingById = Map<String, TaskItem>.of(uniqueById);
-        final built = <TaskItem>[];
-        final positions = <String, int>{};
-        for (final existing in prevTasks) {
-          if (deleteSet.contains(existing.id)) continue;
-          final replacement = pendingById.remove(existing.id);
-          if (replacement != null) {
-            positions[replacement.id] = built.length;
-            built.add(replacement);
-          } else {
-            built.add(existing);
-          }
-        }
-        for (final added in pendingById.values) {
-          positions[added.id] = built.length;
-          built.add(added);
-        }
-        for (final task in uniqueById.values) {
-          taskUpserts.add(_taskCompanion(task, positions[task.id]!));
-        }
+        final merged = _mergeTasks(prevTasks, upsertList, deleteIds: deleteSet);
+        taskUpserts.addAll(merged.upserts);
         taskDeleteIds.addAll(deleteSet);
-        nextTasks = List<TaskItem>.unmodifiable(built);
+        nextTasks = merged.nextTasks;
       }
     }
 
@@ -635,6 +675,7 @@ class TodoRepository {
     if (nextTasks != null) {
       _cache.tasks = nextTasks;
     }
+    _scheduleAttachmentCleanup(orphanedPaths);
 
     final hasDbWork =
         groupSnapshot != null ||
@@ -643,85 +684,41 @@ class TodoRepository {
         taskDeleteIds.isNotEmpty ||
         !outboxDelta.isEmpty;
 
-    if (!_db.persistToSqlite) {
-      if (orphanedPaths.isNotEmpty) {
-        unawaited(_enqueueWrite(() => _deleteAttachmentFiles(orphanedPaths)));
-      }
-      return Future.value(const Success(unit));
-    }
-    if (!hasDbWork && orphanedPaths.isEmpty) {
+    if (!_db.persistToSqlite || !hasDbWork) {
       return Future.value(const Success(unit));
     }
 
-    return guardDbCall(() async {
-      await _enqueueWrite(() async {
-        if (hasDbWork) {
-          await _db.transaction(() async {
-            if (groupSnapshot != null) {
-              await _db.replaceListGroupRecords(
-                accountKey,
-                groupSnapshot
-                    .mapIndexed(
-                      (i, item) => ListGroupRecordsCompanion.insert(
-                        accountKey: accountKey,
-                        id: item.id,
-                        position: i,
-                        payloadJson: jsonEncode(item.toJson()),
-                      ),
-                    )
-                    .toList(growable: false),
-              );
-            }
-            if (listSnapshot != null) {
-              await _db.replaceTodoListRecords(
-                accountKey,
-                listSnapshot
-                    .mapIndexed(
-                      (i, item) => TodoListRecordsCompanion.insert(
-                        accountKey: accountKey,
-                        id: item.id,
-                        position: i,
-                        payloadJson: jsonEncode(item.toJson()),
-                      ),
-                    )
-                    .toList(growable: false),
-              );
-            }
-            if (taskUpserts.isNotEmpty || taskDeleteIds.isNotEmpty) {
-              await _db.applyTaskItemDiff(
-                accountKey,
-                upserts: taskUpserts,
-                deleteIds: taskDeleteIds,
-              );
-            }
-            if (outboxDelta.deleteSeqs.isNotEmpty) {
-              await _db.deleteSyncMutationRecords(
-                accountKey,
-                kind: _outboxKind,
-                itemKeys: [
-                  for (final s in outboxDelta.deleteSeqs) s.toString(),
-                ],
-              );
-            }
-            for (final op in outboxDelta.upsertOps) {
-              await _db.upsertSyncMutationRecord(
-                SyncMutationRecordsCompanion.insert(
-                  accountKey: accountKey,
-                  kind: _outboxKind,
-                  itemKey: op.seq.toString(),
-                  position: op.seq,
-                  payloadJson: jsonEncode(op.toJson()),
-                ),
-              );
-            }
-          });
+    return _persistWrite(
+      'persistSyncBatch',
+      () => _db.transaction(() async {
+        if (groupSnapshot != null) {
+          await _db.replaceListGroupRecords(
+            accountKey,
+            groupSnapshot
+                .mapIndexed((i, item) => _groupCompanion(item, i))
+                .toList(growable: false),
+          );
         }
-        if (orphanedPaths.isNotEmpty) {
-          await _deleteAttachmentFiles(orphanedPaths);
+        if (listSnapshot != null) {
+          await _db.replaceTodoListRecords(
+            accountKey,
+            listSnapshot
+                .mapIndexed((i, item) => _listCompanion(item, i))
+                .toList(growable: false),
+          );
         }
-      });
-      return unit;
-    }, operation: 'persistSyncBatch');
+        if (taskUpserts.isNotEmpty || taskDeleteIds.isNotEmpty) {
+          await _db.applyTaskItemDiff(
+            accountKey,
+            upserts: taskUpserts,
+            deleteIds: taskDeleteIds,
+          );
+        }
+        if (!outboxDelta.isEmpty) {
+          await _applyOutboxDelta(outboxDelta);
+        }
+      }),
+    );
   }
 
   AsyncAppResult<Unit> saveOutbox() {
@@ -732,30 +729,11 @@ class TodoRepository {
 
     return _persistWrite(
       'saveOutbox',
-      () => _db.transaction(() async {
-        if (delta.deleteSeqs.isNotEmpty) {
-          await _db.deleteSyncMutationRecords(
-            accountKey,
-            kind: _outboxKind,
-            itemKeys: [for (final s in delta.deleteSeqs) s.toString()],
-          );
-        }
-        for (final op in delta.upsertOps) {
-          await _db.upsertSyncMutationRecord(
-            SyncMutationRecordsCompanion.insert(
-              accountKey: accountKey,
-              kind: _outboxKind,
-              itemKey: op.seq.toString(),
-              position: op.seq,
-              payloadJson: jsonEncode(op.toJson()),
-            ),
-          );
-        }
-      }),
+      () => _db.transaction(() => _applyOutboxDelta(delta)),
     );
   }
 
-  List<T> _decodeRows<R, T>(
+  static List<T> _decodeRows<R, T>(
     Iterable<R> rows,
     String Function(R row) payloadOf,
     T Function(Map<String, dynamic> json) fromJson,
@@ -765,6 +743,7 @@ class TodoRepository {
 
   AsyncAppResult<Unit> deleteAccountRecords() {
     final cache = _caches[_db]?.remove(scopeKey);
+    cache?.pendingOrphanedAttachments.clear();
     if (!_db.persistToSqlite) {
       return Future.value(const Success(unit));
     }
@@ -778,7 +757,7 @@ class TodoRepository {
     }, operation: 'deleteAccountRecords');
   }
 
-  Map<String, dynamic> _decodePayload(String payloadJson) {
+  static Map<String, dynamic> _decodePayload(String payloadJson) {
     final decoded = jsonDecode(payloadJson);
     if (decoded is Map<String, dynamic>) return decoded;
     if (decoded is Map) return Map<String, dynamic>.from(decoded);
