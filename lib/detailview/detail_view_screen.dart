@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:collection/collection.dart';
@@ -161,44 +162,53 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
       fileName = picked.name;
     }
 
-    if (sourcePath == null || sourcePath.isEmpty || !mounted) return;
-    final resolvedName = AttachmentService.sanitizeFileName(
-      fileName.isNotEmpty ? fileName : p.basename(sourcePath),
-    );
-    final sourceFile = File(sourcePath);
-    if (!await sourceFile.exists() || !mounted) return;
-    final fileSize = await sourceFile.length();
-    if (!mounted) return;
+    if (sourcePath == null || sourcePath.isEmpty) return;
+    try {
+      if (!mounted) return;
+      final resolvedName = AttachmentService.sanitizeFileName(
+        fileName.isNotEmpty ? fileName : p.basename(sourcePath),
+      );
+      final sourceFile = File(sourcePath);
+      if (!await sourceFile.exists() || !mounted) return;
+      final fileSize = await sourceFile.length();
+      if (!mounted) return;
 
-    final service = ref.read(attachmentServiceProvider);
-    if (service.exceedsTaskSizeLimit(task, fileSize)) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(l10n.attachmentTotalTooLarge)));
-      return;
+      final service = ref.read(attachmentServiceProvider);
+      if (service.exceedsTaskSizeLimit(task, fileSize)) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(l10n.attachmentTotalTooLarge)));
+        return;
+      }
+
+      final notifier = ref.read(detailViewPresenterProvider);
+      final attachmentId = notifier.nextAttachmentId();
+      final staged = await service.stageLocalFile(
+        attachmentId: attachmentId,
+        sourcePath: sourcePath,
+        fileName: resolvedName,
+      );
+      if (!mounted) return;
+
+      notifier.addAttachment(
+        task.id,
+        TaskAttachment(
+          id: attachmentId,
+          displayName: resolvedName,
+          entityType: 'file',
+          contentType: AttachmentService.guessContentType(resolvedName),
+          size: staged.size,
+          lastModifiedDateTime: DateTime.now().toUtc(),
+          localPath: staged.localPath,
+          isTransferring: task.remoteId != null,
+        ),
+      );
+    } finally {
+      if (choice == AttachmentSourceChoice.file &&
+          (Platform.isAndroid || Platform.isIOS)) {
+        unawaited(FilePicker.clearTemporaryFiles());
+      }
     }
-
-    final notifier = ref.read(detailViewPresenterProvider);
-    final attachmentId = notifier.nextAttachmentId();
-    final staged = await service.stageLocalFile(
-      attachmentId: attachmentId,
-      sourcePath: sourcePath,
-      fileName: resolvedName,
-    );
-    if (!mounted) return;
-
-    notifier.addAttachment(
-      task.id,
-      TaskAttachment(
-        id: attachmentId,
-        displayName: resolvedName,
-        entityType: 'file',
-        contentType: AttachmentService.guessContentType(resolvedName),
-        size: staged.size,
-        lastModifiedDateTime: DateTime.now().toUtc(),
-        localPath: staged.localPath,
-        isTransferring: task.remoteId != null,
-      ),
-    );
   }
 
   Future<void> _tapAttachment(TaskItem task, TaskAttachment attachment) async {
@@ -416,12 +426,8 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                             onDeleteStep: (stepId) =>
                                 _confirmDeleteStep(task, stepId),
                             onAddStep: (val) => notifier.addStep(task.id, val),
-                            onReorderSteps: (oldIndex, newIndex) =>
-                                notifier.reorderSteps(
-                                  task.id,
-                                  oldIndex,
-                                  newIndex,
-                                ),
+                            onReorderSteps: (oldIndex, newIndex) => notifier
+                                .reorderSteps(task.id, oldIndex, newIndex),
                           ),
                           Container(
                             height: 3,
