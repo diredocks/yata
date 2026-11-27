@@ -13,9 +13,11 @@ import '../models/todo_list.dart';
 import '../sync/microsoft/substrate_push_engine.dart';
 import '../sync/sync_store.dart';
 import '../theme/custom_background_service.dart';
+import 'sync_outbox.dart';
 import 'todo_database.dart';
 import 'todo_repository.dart';
 import 'todo_settings_store.dart';
+import 'todo_settings_sync.dart';
 import 'todo_state.dart';
 import 'todo_sync_reconciler.dart';
 
@@ -234,6 +236,357 @@ class TodoNotifier extends Notifier<TodoState> {
     );
   }
 
+  Map<String, String> _listRemoteById() => {
+    for (final l in state.lists)
+      if (l.remoteId != null) l.id: l.remoteId!,
+  };
+
+  /// Updates one or more settings in O(1) without diffing entity collections,
+  /// optionally persisting derived task updates (such as My Day flags) without
+  /// enqueuing task outbox ops.
+  void mutateSetting(
+    TodoState nextState, {
+    List<TaskItem>? derivedTasks,
+    Future<void> Function()? persistLocal,
+  }) {
+    final changedKeys = detectGlobalSettingChanges(state, nextState);
+    final outbox = repository.outbox;
+    for (final key in changedKeys) {
+      outbox.enqueueSetting(key);
+    }
+    final syncNeeded = changedKeys.isNotEmpty;
+    state = nextState.copyWith(
+      tasks: derivedTasks ?? nextState.tasks,
+      mutationVersion: syncNeeded
+          ? state.mutationVersion + 1
+          : state.mutationVersion,
+    );
+    if (syncNeeded || derivedTasks != null) {
+      unawaited(
+        repository.persistSyncBatch(
+          fullTasks: derivedTasks,
+          saveOutbox: syncNeeded,
+        ),
+      );
+    }
+    if (persistLocal != null) {
+      unawaited(persistLocal());
+    }
+  }
+
+  /// Updates a single task by [taskId] in O(1) and persists the touched row
+  /// and outbox delta in one atomic SQLite transaction.
+  void mutateTask(
+    String taskId,
+    TaskItem Function(TaskItem current) transform, {
+    bool clearSelectedTaskId = false,
+  }) {
+    final index = state.tasks.indexWhere((t) => t.id == taskId);
+    if (index < 0) return;
+    final prev = state.tasks[index];
+    final next = transform(prev);
+    if (identical(prev, next) || prev == next) {
+      if (clearSelectedTaskId && state.selectedTaskId != null) {
+        state = state.copyWith(selectedTaskId: null);
+      }
+      return;
+    }
+
+    final tracked = enqueueTaskUpsertToOutbox(
+      prev: prev,
+      next: next,
+      nowUtc: DateTime.now().toUtc(),
+      outbox: repository.outbox,
+      prevListRemoteById: _listRemoteById(),
+    );
+    final nextTasks = List<TaskItem>.of(state.tasks);
+    nextTasks[index] = tracked.task;
+
+    state = state.copyWith(
+      tasks: nextTasks,
+      selectedTaskId: clearSelectedTaskId ? null : state.selectedTaskId,
+      mutationVersion: tracked.syncNeeded
+          ? state.mutationVersion + 1
+          : state.mutationVersion,
+    );
+    unawaited(
+      repository.persistSyncBatch(
+        upsertTasks: [tracked.task],
+        saveOutbox: tracked.syncNeeded,
+      ),
+    );
+  }
+
+  /// Inserts a single new or restored task and persists it with its outbox op
+  /// in one atomic SQLite transaction.
+  void addTask(TaskItem task, {bool addToTop = false, int? insertAt}) {
+    if (state.tasks.any((t) => t.id == task.id)) return;
+    final tracked = enqueueTaskUpsertToOutbox(
+      prev: null,
+      next: task,
+      nowUtc: DateTime.now().toUtc(),
+      outbox: repository.outbox,
+      prevListRemoteById: _listRemoteById(),
+    );
+    final nextTasks = List<TaskItem>.of(state.tasks);
+    if (insertAt != null && insertAt >= 0 && insertAt <= nextTasks.length) {
+      nextTasks.insert(insertAt, tracked.task);
+    } else if (addToTop) {
+      nextTasks.insert(0, tracked.task);
+    } else {
+      nextTasks.add(tracked.task);
+    }
+    state = state.copyWith(
+      tasks: nextTasks,
+      mutationVersion: tracked.syncNeeded
+          ? state.mutationVersion + 1
+          : state.mutationVersion,
+    );
+    unawaited(
+      repository.persistSyncBatch(
+        fullTasks: (addToTop || insertAt != null) ? nextTasks : null,
+        upsertTasks: (addToTop || insertAt != null) ? const [] : [tracked.task],
+        saveOutbox: tracked.syncNeeded,
+      ),
+    );
+  }
+
+  /// Deletes one or more tasks by [taskIds] and persists the deletions and
+  /// outbox ops in one atomic SQLite transaction.
+  void deleteTasks(Set<String> taskIds) {
+    if (taskIds.isEmpty) return;
+    final outbox = repository.outbox;
+    final removedIds = <String>[];
+    final remaining = <TaskItem>[];
+    for (final task in state.tasks) {
+      if (taskIds.contains(task.id)) {
+        removedIds.add(task.id);
+        outbox.enqueueDelete(
+          entityType: SyncEntityType.task,
+          localId: task.id,
+          remoteId: task.remoteId,
+        );
+      } else {
+        remaining.add(task);
+      }
+    }
+    if (removedIds.isEmpty) return;
+
+    final clearSelected =
+        state.selectedTaskId != null && taskIds.contains(state.selectedTaskId);
+    state = state.copyWith(
+      tasks: remaining,
+      selectedTaskId: clearSelected ? null : state.selectedTaskId,
+      mutationVersion: state.mutationVersion + 1,
+    );
+    unawaited(
+      repository.persistSyncBatch(deleteTaskIds: removedIds, saveOutbox: true),
+    );
+  }
+
+  /// Updates a single list by [listId] in O(1) and persists lists + outbox in
+  /// one atomic SQLite transaction.
+  void mutateList(
+    String listId,
+    TodoList Function(TodoList current) transform, {
+    Map<String, bool>? completedExpandedByList,
+  }) {
+    final index = state.lists.indexWhere((l) => l.id == listId);
+    if (index < 0) return;
+    final prev = state.lists[index];
+    final next = transform(prev);
+    final tracked = enqueueListUpsertToOutbox(
+      prev: prev,
+      next: next,
+      nowUtc: DateTime.now().toUtc(),
+      outbox: repository.outbox,
+    );
+    final nextLists = List<TodoList>.of(state.lists);
+    nextLists[index] = tracked.list;
+
+    state = state.copyWith(
+      lists: nextLists,
+      completedExpandedByList:
+          completedExpandedByList ?? state.completedExpandedByList,
+      mutationVersion: tracked.syncNeeded
+          ? state.mutationVersion + 1
+          : state.mutationVersion,
+    );
+    unawaited(
+      repository.persistSyncBatch(
+        lists: nextLists,
+        saveOutbox: tracked.syncNeeded,
+      ),
+    );
+  }
+
+  /// Explicit multi-entity atomic mutation primitive for batch actions,
+  /// reorders, group/list management, and list duplication/deletion.
+  ///
+  /// Only entities named in [touchedGroupIds], [deletedGroupIds],
+  /// [touchedListIds], [deletedListIds], [touchedTaskIds], or [deletedTaskIds]
+  /// are inspected for outbox enqueuing; untouched rows are never diffed.
+  void mutateEntities({
+    List<ListGroup>? groups,
+    List<TodoList>? lists,
+    List<TaskItem>? tasks,
+    Set<String> touchedGroupIds = const {},
+    Set<String> deletedGroupIds = const {},
+    Set<String> touchedListIds = const {},
+    Set<String> deletedListIds = const {},
+    Set<String> touchedTaskIds = const {},
+    Set<String> deletedTaskIds = const {},
+    String? selectedListId,
+    bool clearSelectedTaskId = false,
+  }) {
+    final nowUtc = DateTime.now().toUtc();
+    final outbox = repository.outbox;
+    var syncNeeded = false;
+
+    var nextGroups = groups ?? state.groups;
+    if (groups != null &&
+        (touchedGroupIds.isNotEmpty || deletedGroupIds.isNotEmpty)) {
+      final prevGroupById = {for (final g in state.groups) g.id: g};
+      for (final id in deletedGroupIds) {
+        final prev = prevGroupById[id];
+        if (prev != null) {
+          syncNeeded = true;
+          outbox.enqueueDelete(
+            entityType: SyncEntityType.group,
+            localId: prev.id,
+            remoteId: prev.remoteId,
+          );
+        }
+      }
+      if (touchedGroupIds.isNotEmpty) {
+        nextGroups = [
+          for (final g in groups)
+            if (touchedGroupIds.contains(g.id))
+              () {
+                final res = enqueueGroupUpsertToOutbox(
+                  prev: prevGroupById[g.id],
+                  next: g,
+                  nowUtc: nowUtc,
+                  outbox: outbox,
+                );
+                if (res.syncNeeded) syncNeeded = true;
+                return res.group;
+              }()
+            else
+              g,
+        ];
+      }
+    }
+
+    final prevListRemoteById = _listRemoteById();
+    var nextLists = lists ?? state.lists;
+    if (lists != null &&
+        (touchedListIds.isNotEmpty || deletedListIds.isNotEmpty)) {
+      final prevListById = {for (final l in state.lists) l.id: l};
+      for (final id in deletedListIds) {
+        final prev = prevListById[id];
+        if (prev != null && !prev.isSmartList) {
+          syncNeeded = true;
+          outbox.enqueueDelete(
+            entityType: SyncEntityType.list,
+            localId: prev.id,
+            remoteId: prev.remoteId,
+          );
+        }
+      }
+      if (touchedListIds.isNotEmpty) {
+        nextLists = [
+          for (final l in lists)
+            if (touchedListIds.contains(l.id))
+              () {
+                final res = enqueueListUpsertToOutbox(
+                  prev: prevListById[l.id],
+                  next: l,
+                  nowUtc: nowUtc,
+                  outbox: outbox,
+                );
+                if (res.syncNeeded) syncNeeded = true;
+                return res.list;
+              }()
+            else
+              l,
+        ];
+      }
+    }
+
+    var nextTasks = tasks ?? state.tasks;
+    if (tasks != null &&
+        (touchedTaskIds.isNotEmpty ||
+            deletedTaskIds.isNotEmpty ||
+            deletedListIds.isNotEmpty)) {
+      final prevTaskById = {for (final t in state.tasks) t.id: t};
+      if (deletedListIds.isNotEmpty) {
+        final nextTaskIdSet = {for (final t in tasks) t.id};
+        for (final prev in state.tasks) {
+          if (!nextTaskIdSet.contains(prev.id) &&
+              deletedListIds.contains(prev.listId)) {
+            if (outbox.cancelPendingUpserts(SyncEntityType.task, prev.id)) {
+              syncNeeded = true;
+            }
+          }
+        }
+      }
+      for (final id in deletedTaskIds) {
+        final prev = prevTaskById[id];
+        if (prev != null && !deletedListIds.contains(prev.listId)) {
+          syncNeeded = true;
+          outbox.enqueueDelete(
+            entityType: SyncEntityType.task,
+            localId: prev.id,
+            remoteId: prev.remoteId,
+          );
+        }
+      }
+      if (touchedTaskIds.isNotEmpty) {
+        nextTasks = [
+          for (final t in tasks)
+            if (touchedTaskIds.contains(t.id))
+              () {
+                final res = enqueueTaskUpsertToOutbox(
+                  prev: prevTaskById[t.id],
+                  next: t,
+                  nowUtc: nowUtc,
+                  outbox: outbox,
+                  prevListRemoteById: prevListRemoteById,
+                );
+                if (res.syncNeeded) syncNeeded = true;
+                return res.task;
+              }()
+            else
+              t,
+        ];
+      }
+    }
+
+    state = state.copyWith(
+      groups: nextGroups,
+      lists: nextLists,
+      tasks: nextTasks,
+      selectedListId: selectedListId ?? state.selectedListId,
+      selectedTaskId: clearSelectedTaskId ? null : state.selectedTaskId,
+      mutationVersion: syncNeeded
+          ? state.mutationVersion + 1
+          : state.mutationVersion,
+    );
+    unawaited(
+      repository.persistSyncBatch(
+        groups: groups != null ? nextGroups : null,
+        lists: lists != null ? nextLists : null,
+        fullTasks: tasks != null ? nextTasks : null,
+        saveOutbox: syncNeeded,
+      ),
+    );
+  }
+
+  /// Full-state diff commit retained for test harnesses that construct raw
+  /// [TodoState] snapshots directly; production presenters use the explicit
+  /// O(1) atomic mutation methods above.
+  @visibleForTesting
   void commit(TodoState nextState) {
     final tracked = enqueueLocalCommitToOutbox(
       prevState: state,
@@ -308,20 +661,11 @@ class TodoNotifier extends Notifier<TodoState> {
         target.smartType != SmartListType.completed &&
         target.showCompleted != expanded;
     if (shouldSyncListShowCompleted) {
-      final updatedLists = [
-        for (final list in state.lists)
-          if (list.id == listId)
-            list.copyWith(showCompleted: expanded)
-          else
-            list,
-      ];
-      commit(
-        state.copyWith(
-          lists: updatedLists,
-          completedExpandedByList: nextExpanded,
-        ),
+      mutateList(
+        listId,
+        (list) => list.copyWith(showCompleted: expanded),
+        completedExpandedByList: nextExpanded,
       );
-      repository.saveLists(state.lists);
     } else {
       state = state.copyWith(completedExpandedByList: nextExpanded);
     }
