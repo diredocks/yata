@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:ui' show Locale, PlatformDispatcher;
@@ -124,16 +125,14 @@ final homeWidgetServiceProvider = Provider<HomeWidgetService>((ref) {
 
 class _PendingCommit {
   _PendingCommit({
-    required this.canonicalJson,
-    required this.wireJson,
+    required this.payloadJson,
     required this.ackedOpId,
     required this.clearRefreshing,
     required this.force,
     required this.notifyWidget,
   });
 
-  String canonicalJson;
-  String wireJson;
+  String payloadJson;
   int ackedOpId;
   bool clearRefreshing;
   bool force;
@@ -141,15 +140,13 @@ class _PendingCommit {
   final Completer<void> done = Completer<void>();
 
   void coalesce({
-    required String canonicalJson,
-    required String wireJson,
+    required String payloadJson,
     required int ackedOpId,
     required bool clearRefreshing,
     required bool force,
     required bool notifyWidget,
   }) {
-    this.canonicalJson = canonicalJson;
-    this.wireJson = wireJson;
+    this.payloadJson = payloadJson;
     this.ackedOpId = max(this.ackedOpId, ackedOpId);
     this.clearRefreshing = this.clearRefreshing || clearRefreshing;
     this.force = this.force || force;
@@ -162,7 +159,7 @@ class HomeWidgetService {
 
   final HomeWidgetTransport _transport;
 
-  String? _lastCommittedCanonicalJson;
+  String? _lastCommittedPayloadJson;
   String? _lastConsumedInitialUri;
 
   Future<void>? _flushTask;
@@ -211,16 +208,12 @@ class HomeWidgetService {
       strings: strings,
       now: now,
     );
-    final encoded = HomeWidgetSnapshotSerializer.encodePayload(
-      canonicalPayload,
-      now: now,
-    );
+    final payloadJson = jsonEncode(canonicalPayload);
 
     final pending = _pendingCommit;
     if (pending != null) {
       pending.coalesce(
-        canonicalJson: encoded.canonicalJson,
-        wireJson: encoded.wireJson,
+        payloadJson: payloadJson,
         ackedOpId: ackedOpId,
         clearRefreshing: clearRefreshing,
         force: force,
@@ -230,8 +223,7 @@ class HomeWidgetService {
     }
 
     final created = _PendingCommit(
-      canonicalJson: encoded.canonicalJson,
-      wireJson: encoded.wireJson,
+      payloadJson: payloadJson,
       ackedOpId: ackedOpId,
       clearRefreshing: clearRefreshing,
       force: force,
@@ -282,13 +274,13 @@ class HomeWidgetService {
     if (!req.force &&
         req.ackedOpId == 0 &&
         !req.clearRefreshing &&
-        req.canonicalJson == _lastCommittedCanonicalJson) {
+        req.payloadJson == _lastCommittedPayloadJson) {
       req.done.complete();
       return;
     }
 
     final result = await guardAsyncUnit(() async {
-      await _transport.saveData(kWidgetSnapshotKey, req.wireJson);
+      await _transport.saveData(kWidgetSnapshotKey, req.payloadJson);
       if (req.ackedOpId > 0) {
         await _transport.saveData(kWidgetAckedOpIdKey, req.ackedOpId);
       }
@@ -302,13 +294,13 @@ class HomeWidgetService {
     }, operation: 'syncWidgetSnapshot');
 
     if (result.isSuccess()) {
-      _lastCommittedCanonicalJson = req.canonicalJson;
+      _lastCommittedPayloadJson = req.payloadJson;
     }
     req.done.complete();
   }
 
   Future<void> _executeClear(Completer<void> clear) async {
-    _lastCommittedCanonicalJson = null;
+    _lastCommittedPayloadJson = null;
     await guardAsyncUnit(() async {
       for (final key in [
         kWidgetSnapshotKey,

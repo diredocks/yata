@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -300,18 +298,6 @@ class HomeWidgetSnapshotSerializer {
       // Locale symbols may be uninitialized in headless or pure Dart tests.
     }
     return null;
-  }
-
-  static ({String canonicalJson, String wireJson}) encodePayload(
-    Map<String, dynamic> canonicalPayload, {
-    DateTime? now,
-  }) {
-    final canonicalJson = jsonEncode(canonicalPayload);
-    final wirePayload = {
-      ...canonicalPayload,
-      'generatedAtMs': (now ?? DateTime.now()).millisecondsSinceEpoch,
-    };
-    return (canonicalJson: canonicalJson, wireJson: jsonEncode(wirePayload));
   }
 
   static Map<String, dynamic> _serializeTask(
