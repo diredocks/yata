@@ -190,7 +190,7 @@ void main() {
       outbox: repo.outbox,
       nowUtc: DateTime.now().toUtc(),
       onItemCommitted: (o) async {
-        repo.outbox.ackBatch(o.ackedSeqs, o.clearedRemoteIdKeys);
+        repo.outbox.ackBatch(o.ackedSeqs);
         await repo.saveOutbox();
       },
     )).getOrThrow();
