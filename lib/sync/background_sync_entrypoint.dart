@@ -7,12 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../account/account_local_storage.dart';
-import '../auth/microsoft_auth_service.dart';
 import '../core/error/app_error.dart';
 import '../core/logging/app_logger.dart';
 import '../core/result/app_result.dart';
 import '../data/sync_job.dart';
-import '../data/sync_outbox.dart';
 import '../data/todo_provider.dart';
 import '../data/todo_repository.dart';
 import '../data/todo_settings_store.dart';
@@ -20,8 +18,6 @@ import '../detailview/attachments/attachment_service.dart';
 import '../models/account.dart';
 import '../widget/home_widget_service.dart';
 import 'background_sync_bridge.dart';
-import 'microsoft/cloud_sync_service.dart';
-import 'microsoft/microsoft_todo_api.dart';
 import 'sync_provider.dart';
 import 'sync_worker_engine.dart';
 
@@ -29,10 +25,6 @@ final _log = appLogFor('BackgroundEntrypoint');
 
 /// Unified headless Dart entrypoint invoked by Android's `YataBackgroundEngineHost`
 /// (shared across WorkManager sync jobs, attachment transfers, and home widget ops).
-///
-/// The host sends `runBackgroundSync` calls over `kBackgroundSyncChannelName`
-/// and waits for `backgroundRunCompleted` so a single engine instance can serve
-/// multiple sequential runs without tearing down and rebooting Dart each time.
 @pragma('vm:entry-point')
 Future<void> yataBackgroundSyncEntrypoint() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -80,35 +72,36 @@ Future<({bool shouldRetry, bool hasPendingTransfers})> _runHeadlessSyncPass({
       return (shouldRetry: false, hasPendingTransfers: false);
     }
 
-    if (laneName == 'widget') {
-      await _runWidgetPass(prefs: prefs, database: database, reason: reason);
-    }
-
-    if (active is! MicrosoftAccount) {
-      return (shouldRetry: false, hasPendingTransfers: false);
-    }
-
     final settings = TodoSettingsStore(prefs, accountId: active.id);
     final repo = TodoRepository.forSession(database, settings);
     await repo.preload();
 
-    final authClient = HttpMicrosoftAuthClient();
-    final todoApi = HttpMicrosoftTodoApi();
-    final tokenStorage = AuthTokenStorage(prefs);
-    final cloudSync = CloudSyncService(
-      authClient: authClient,
-      todoApi: todoApi,
-      tokenStorage: tokenStorage,
-    );
-    var idSeq = 0;
     final container = ProviderContainer(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
         todoDatabaseProvider.overrideWithValue(database),
+        realtimeSyncEnabledProvider.overrideWithValue(false),
+        periodicSyncEnabledProvider.overrideWithValue(false),
+        startupSyncEnabledProvider.overrideWithValue(false),
       ],
     );
     try {
+      if (laneName == 'widget') {
+        await _runWidgetPass(
+          container: container,
+          prefs: prefs,
+          accountId: active.id,
+          reason: reason,
+        );
+      }
+
+      if (active is! MicrosoftAccount) {
+        return (shouldRetry: false, hasPendingTransfers: false);
+      }
+
+      final cloudSync = container.read(cloudSyncServiceProvider);
       final attachmentService = container.read(attachmentServiceProvider);
+      var idSeq = 0;
       final engine = SyncWorkerEngine(
         account: active,
         repository: repo,
@@ -127,37 +120,13 @@ Future<({bool shouldRetry, bool hasPendingTransfers})> _runHeadlessSyncPass({
       final targetLane = SyncJobLane.values.firstWhereOrNull(
         (lane) => lane.name == laneName,
       );
-
-      // If outbox has pending items but no explicit job row was enqueued yet,
-      // ensure a push job is present so offline mutations always drain.
-      if (repo.outbox.isNotEmpty) {
-        final hasAttachmentOps = repo.outbox.ops.any(
-          (op) =>
-              op.entityType == SyncEntityType.attachment &&
-              op.kind == SyncOpKind.upsert,
-        );
-        final hasMetadataOps = repo.outbox.ops.any(
-          (op) =>
-              !(op.entityType == SyncEntityType.attachment &&
-                  op.kind == SyncOpKind.upsert),
-        );
-        if (hasMetadataOps && targetLane != SyncJobLane.transfer) {
-          await engine.enqueueJob(
-            jobId: 'outbox_metadata_${active.id}',
-            lane: SyncJobLane.metadata,
-            jobType: SyncJobType.pushMetadata,
-            payload: {'reason': reason},
-          );
-        }
-        if (hasAttachmentOps && targetLane != SyncJobLane.metadata) {
-          await engine.enqueueJob(
-            jobId: 'outbox_transfer_${active.id}',
-            lane: SyncJobLane.transfer,
-            jobType: SyncJobType.uploadAttachment,
-            payload: {'reason': reason},
-          );
-        }
-      }
+      await _enqueuePendingOutboxJobs(
+        engine: engine,
+        repo: repo,
+        accountId: active.id,
+        targetLane: targetLane,
+        reason: reason,
+      );
 
       final drainResult = await engine.drain(lane: targetLane);
       drainResult.fold(
@@ -184,50 +153,58 @@ Future<({bool shouldRetry, bool hasPendingTransfers})> _runHeadlessSyncPass({
   return (shouldRetry: shouldRetry, hasPendingTransfers: hasPendingTransfers);
 }
 
+Future<void> _enqueuePendingOutboxJobs({
+  required SyncWorkerEngine engine,
+  required TodoRepository repo,
+  required String accountId,
+  required SyncJobLane? targetLane,
+  required String reason,
+}) async {
+  if (repo.outbox.isEmpty) return;
+  final hasAttachmentOps = repo.outbox.ops.any((op) => op.isAttachmentUpload);
+  final hasMetadataOps = repo.outbox.ops.any((op) => !op.isAttachmentUpload);
+  if (hasMetadataOps && targetLane != SyncJobLane.transfer) {
+    await engine.enqueueJob(
+      jobId: 'outbox_metadata_$accountId',
+      lane: SyncJobLane.metadata,
+      jobType: SyncJobType.pushMetadata,
+      payload: {'reason': reason},
+    );
+  }
+  if (hasAttachmentOps && targetLane != SyncJobLane.metadata) {
+    await engine.enqueueJob(
+      jobId: 'outbox_transfer_$accountId',
+      lane: SyncJobLane.transfer,
+      jobType: SyncJobType.uploadAttachment,
+      payload: {'reason': reason},
+    );
+  }
+}
+
 Future<void> _runWidgetPass({
+  required ProviderContainer container,
   required SharedPreferences prefs,
-  required TodoDatabase database,
+  required String accountId,
   required String reason,
 }) async {
   final strings = await HomeWidgetService.resolveSystemStrings();
-  final activeId = AccountLocalStorage(prefs).load().activeAccountId;
-  if (activeId != null) {
-    await TodoRepository.forAccount(
-      prefs,
-      accountId: activeId,
-      database: database,
-    ).preload();
-  }
-  final container = ProviderContainer(
-    overrides: [
-      sharedPreferencesProvider.overrideWithValue(prefs),
-      todoDatabaseProvider.overrideWithValue(database),
-      realtimeSyncEnabledProvider.overrideWithValue(false),
-      periodicSyncEnabledProvider.overrideWithValue(false),
-    ],
+  final result = await WidgetEventProcessor(
+    widgetService: HomeWidgetService(const FlutterHomeWidgetTransport()),
+    read: container.read,
+    strings: strings,
+    isBackground: true,
+    isAppForeground: false,
+  ).process(reason: reason);
+  if (!result.didMutate && !result.didSync) return;
+  await prefs.setInt(
+    kWidgetLastMutationMsKey,
+    DateTime.now().millisecondsSinceEpoch,
   );
-  try {
-    final result = await WidgetEventProcessor(
-      widgetService: HomeWidgetService(const FlutterHomeWidgetTransport()),
-      read: container.read,
-      strings: strings,
-      isBackground: true,
-      isAppForeground: false,
-    ).process(reason: reason);
-    if (result.didMutate || result.didSync) {
-      await prefs.setInt(
-        kWidgetLastMutationMsKey,
-        DateTime.now().millisecondsSinceEpoch,
-      );
-      BackgroundWorkerEventBus.emit(
-        BackgroundWorkerEvent.dbChanged(
-          accountKey: activeId ?? 'default',
-          lane: SyncJobLane.metadata,
-          reason: 'widget_$reason',
-        ),
-      );
-    }
-  } finally {
-    container.dispose();
-  }
+  BackgroundWorkerEventBus.emit(
+    BackgroundWorkerEvent.dbChanged(
+      accountKey: accountId,
+      lane: SyncJobLane.metadata,
+      reason: 'widget_$reason',
+    ),
+  );
 }

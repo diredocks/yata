@@ -138,15 +138,10 @@ class SubstratePushEngine {
     PushLaneFilter filter,
   ) {
     if (filter == PushLaneFilter.all) return batch;
-    return [
-      for (final op in batch)
-        if (filter == PushLaneFilter.attachmentsOnly
-            ? (op.entityType == SyncEntityType.attachment &&
-                  op.kind == SyncOpKind.upsert)
-            : !(op.entityType == SyncEntityType.attachment &&
-                  op.kind == SyncOpKind.upsert))
-          op,
-    ];
+    final wantAttachments = filter == PushLaneFilter.attachmentsOnly;
+    return batch
+        .where((op) => op.isAttachmentUpload == wantAttachments)
+        .toList(growable: false);
   }
 }
 

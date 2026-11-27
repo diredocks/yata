@@ -392,11 +392,7 @@ class SyncNotifier extends Notifier<SyncState> {
     final outbox = ref.read(todoProvider.notifier).repository.outbox;
     if (outbox.isEmpty) return;
 
-    final hasAttachments = outbox.ops.any(
-      (op) =>
-          op.entityType == SyncEntityType.attachment &&
-          op.kind == SyncOpKind.upsert,
-    );
+    final hasAttachments = outbox.ops.any((op) => op.isAttachmentUpload);
     final scheduler = ref.read(backgroundSyncSchedulerProvider);
     unawaited(
       scheduler.enqueueSync(

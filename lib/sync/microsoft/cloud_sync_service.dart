@@ -255,12 +255,10 @@ class CloudSyncService {
         if (onPushCommitted != null) {
           await onPushCommitted(itemOutcome);
         } else {
-          for (final seq in itemOutcome.ackedSeqs) {
-            outbox.ackOp(seq);
-          }
-          for (final entry in itemOutcome.clearedRemoteIdKeys) {
-            outbox.clearRemoteId(entry.type, entry.localId);
-          }
+          outbox.ackBatch(
+            itemOutcome.ackedSeqs,
+            itemOutcome.clearedRemoteIdKeys,
+          );
           await repository.saveOutbox();
         }
       },

@@ -21,9 +21,6 @@ import 'microsoft/substrate_push_engine.dart';
 
 final _log = appLogFor('SyncWorkerEngine');
 
-/// Callback that executes a widget sync job inside the worker context.
-typedef WidgetSyncJobRunner = Future<AppResult<Unit>> Function(String reason);
-
 /// Callback that downloads a remote attachment and returns its local file path.
 typedef AttachmentDownloadRunner = AsyncAppResult<String> Function(
   TaskAttachment attachment,
@@ -43,7 +40,6 @@ class SyncWorkerEngine {
     required this.cloudSync,
     required this.idGenerator,
     this.downloadAttachment,
-    this.runWidgetSync,
     this.onPushCommitted,
     this.onPullApplied,
     void Function(BackgroundWorkerEvent event)? onEvent,
@@ -57,7 +53,6 @@ class SyncWorkerEngine {
   final CloudSyncService cloudSync;
   final String Function(String prefix) idGenerator;
   final AttachmentDownloadRunner? downloadAttachment;
-  final WidgetSyncJobRunner? runWidgetSync;
   final Future<void> Function(OutboxPushOutcome outcome)? onPushCommitted;
   final Future<void> Function(SyncOutcome outcome, SyncKind kind)?
   onPullApplied;
@@ -98,12 +93,11 @@ class SyncWorkerEngine {
     );
     if (loaded.isError()) return Failure(loaded.exceptionOrNull()!);
 
-    final jobs = loaded.getOrThrow();
     var processed = 0;
     var failed = 0;
     var hasRetryable = false;
 
-    for (final job in jobs) {
+    for (final job in loaded.getOrThrow()) {
       final outcome = await _executeSingleJob(job);
       if (outcome.isSuccess()) {
         processed++;
@@ -163,7 +157,7 @@ class SyncWorkerEngine {
         updatedAt: _nowUtc(),
       );
       await repository.upsertSyncJob(done);
-      _emitJobProgress(done);
+      _emitJobProgress(done, localPath: result.getOrNull());
       return const Success(unit);
     }
 
@@ -187,7 +181,8 @@ class SyncWorkerEngine {
     return Failure(error);
   }
 
-  AsyncAppResult<Unit> _dispatchJob(SyncJob job) {
+  /// Dispatches [job] and optionally returns a downloaded attachment's localPath.
+  AsyncAppResult<String> _dispatchJob(SyncJob job) {
     final reason = job.payload['reason'] as String? ?? job.jobType.name;
     return switch (job.jobType) {
       SyncJobType.pushMetadata => _runPush(
@@ -201,11 +196,10 @@ class SyncWorkerEngine {
       SyncJobType.pullDelta => _runPull(SyncKind.delta, reason: reason),
       SyncJobType.pullFull => _runPull(SyncKind.full, reason: reason),
       SyncJobType.downloadAttachment => _runDownloadAttachment(job),
-      SyncJobType.widgetSync => _runWidgetSync(reason),
     };
   }
 
-  AsyncAppResult<Unit> _runPush({
+  AsyncAppResult<String> _runPush({
     required PushLaneFilter laneFilter,
     required String reason,
   }) async {
@@ -220,10 +214,13 @@ class SyncWorkerEngine {
       reason: reason,
       laneFilter: laneFilter,
     );
-    return result.map((_) => unit);
+    return result.map((_) => '');
   }
 
-  AsyncAppResult<Unit> _runPull(SyncKind kind, {required String reason}) async {
+  AsyncAppResult<String> _runPull(
+    SyncKind kind, {
+    required String reason,
+  }) async {
     final snapshot = _buildSnapshotState();
     final result = await cloudSync.pullAccount(
       account: account,
@@ -237,17 +234,17 @@ class SyncWorkerEngine {
     );
     if (result.isError()) return Failure(result.exceptionOrNull()!);
     final outcome = result.getOrThrow();
-    if (outcome.cancelled) return const Success(unit);
+    if (outcome.cancelled) return const Success('');
 
     if (onPullApplied != null) {
       await onPullApplied!(outcome, kind);
     } else {
       await _applyPullHeadless(outcome, kind);
     }
-    return const Success(unit);
+    return const Success('');
   }
 
-  AsyncAppResult<Unit> _runDownloadAttachment(SyncJob job) async {
+  AsyncAppResult<String> _runDownloadAttachment(SyncJob job) async {
     final taskId = job.payload['taskId'] as String?;
     final attachmentId = job.payload['attachmentId'] as String?;
     if (taskId == null || attachmentId == null) {
@@ -262,7 +259,7 @@ class SyncWorkerEngine {
       (a) => a.id == attachmentId,
     );
     if (task == null || attachment == null) {
-      return const Success(unit);
+      return const Success('');
     }
 
     final runner = downloadAttachment;
@@ -286,25 +283,7 @@ class SyncWorkerEngine {
       task,
       attachment.copyWith(localPath: localPath, isTransferring: false),
     );
-    _onEvent(
-      BackgroundWorkerEvent.progress(
-        accountKey: repository.accountKey,
-        jobId: job.jobId,
-        lane: SyncJobLane.transfer,
-        status: SyncJobStatus.completed,
-        progress: 100,
-        taskId: taskId,
-        attachmentId: attachmentId,
-        localPath: localPath,
-      ),
-    );
-    return const Success(unit);
-  }
-
-  AsyncAppResult<Unit> _runWidgetSync(String reason) {
-    final runner = runWidgetSync;
-    if (runner == null) return Future.value(const Success(unit));
-    return runner(reason);
+    return Success(localPath);
   }
 
   Future<void> _updateTaskAttachmentRow(
@@ -322,13 +301,7 @@ class SyncWorkerEngine {
   }
 
   Future<void> _commitPushHeadless(OutboxPushOutcome outcome) async {
-    final outbox = repository.outbox;
-    for (final seq in outcome.ackedSeqs) {
-      outbox.ackOp(seq);
-    }
-    for (final entry in outcome.clearedRemoteIdKeys) {
-      outbox.clearRemoteId(entry.type, entry.localId);
-    }
+    repository.outbox.ackBatch(outcome.ackedSeqs, outcome.clearedRemoteIdKeys);
     for (final pushedTask in outcome.pushedTasks.values) {
       await repository.upsertTask(pushedTask);
     }
@@ -374,7 +347,7 @@ class SyncWorkerEngine {
     );
   }
 
-  void _emitJobProgress(SyncJob job) {
+  void _emitJobProgress(SyncJob job, {String? localPath}) {
     _onEvent(
       BackgroundWorkerEvent.progress(
         accountKey: repository.accountKey,
@@ -384,6 +357,9 @@ class SyncWorkerEngine {
         progress: job.progress,
         taskId: job.payload['taskId'] as String?,
         attachmentId: job.payload['attachmentId'] as String?,
+        localPath: (localPath != null && localPath.isNotEmpty)
+            ? localPath
+            : null,
         errorMessage: job.errorMessage,
       ),
     );
