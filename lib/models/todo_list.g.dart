@@ -29,9 +29,6 @@ _TodoList _$TodoListFromJson(Map<String, dynamic> json) => _TodoList(
     unknownValue: JsonKey.nullForUndefinedEnumValue,
   ),
   customBackgroundPath: json['customBackgroundPath'] as String?,
-  icon: _readSmartTypeForIcon(json, 'icon') == null
-      ? Icons.format_list_bulleted
-      : _iconFromJson(_readSmartTypeForIcon(json, 'icon')),
   sortOption:
       $enumDecodeNullable(
         _$TaskSortOptionEnumMap,

@@ -13,7 +13,6 @@ void main() {
     return TodoList(
       id: 'list-1',
       title: 'Test List',
-      icon: Icons.format_list_bulleted,
       themeColor: themeColor,
       themePhoto: themePhoto,
       sortOption: TaskSortOption.dueDate,

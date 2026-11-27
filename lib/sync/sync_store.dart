@@ -281,7 +281,7 @@ class SyncStore {
         if (pushedLists[current.id] case final pushed?)
           outbox.hasPending(SyncEntityType.list, current.id)
               ? current.copyWith(remoteId: pushed.remoteId ?? current.remoteId)
-              : pushed.copyWith(icon: current.icon)
+              : pushed
         else
           current,
     ];

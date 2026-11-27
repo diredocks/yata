@@ -1,4 +1,3 @@
-import 'package:collection/collection.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -91,17 +90,6 @@ enum PlannedDueDateFilter { overdue, today, tomorrow, thisWeek, later, all }
 
 enum PlannedGroupOption { ungroup, byDueDate, byList }
 
-IconData _iconFromJson(Object? raw) {
-  if (raw is String) {
-    final type = SmartListType.values.firstWhereOrNull((e) => e.name == raw);
-    return TodoList.iconForSmartType(type);
-  }
-  return Icons.format_list_bulleted;
-}
-
-Object? _readSmartTypeForIcon(Map<dynamic, dynamic> json, String _) =>
-    json['smartType'];
-
 @freezed
 abstract class TodoList with _$TodoList {
   const TodoList._();
@@ -119,13 +107,6 @@ abstract class TodoList with _$TodoList {
     @JsonKey(unknownEnumValue: JsonKey.nullForUndefinedEnumValue)
     ListThemePhoto? themePhoto,
     String? customBackgroundPath,
-    @Default(Icons.format_list_bulleted)
-    @JsonKey(
-      includeToJson: false,
-      readValue: _readSmartTypeForIcon,
-      fromJson: _iconFromJson,
-    )
-    IconData icon,
     @Default(TaskSortOption.defaultOrder)
     @JsonKey(unknownEnumValue: TaskSortOption.defaultOrder)
     TaskSortOption sortOption,
@@ -148,6 +129,9 @@ abstract class TodoList with _$TodoList {
       _$TodoListFromJson(json);
 
   bool get isSmartList => smartType != null;
+
+  /// Icon derived from [smartType]; plain lists fall back to a generic icon.
+  IconData get icon => iconForSmartType(smartType);
 
   static IconData iconForSmartType(SmartListType? type) {
     return switch (type) {

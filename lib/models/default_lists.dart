@@ -1,5 +1,3 @@
-import 'package:material_ui/material_ui.dart';
-
 import 'todo_list.dart';
 
 /// Built-in smart lists shown for every account.
@@ -10,14 +8,12 @@ List<TodoList> defaultSmartLists() {
       title: 'My Day',
       smartType: SmartListType.myDay,
       themeColor: ListThemeColor.blue,
-      icon: Icons.wb_sunny_outlined,
     ),
     TodoList(
       id: 'important',
       title: 'Important',
       smartType: SmartListType.important,
       themeColor: ListThemeColor.rose,
-      icon: Icons.star_outline,
       showCompleted: false,
     ),
     TodoList(
@@ -25,14 +21,12 @@ List<TodoList> defaultSmartLists() {
       title: 'Planned',
       smartType: SmartListType.planned,
       themeColor: ListThemeColor.teal,
-      icon: Icons.calendar_today_outlined,
     ),
     TodoList(
       id: 'all',
       title: 'All',
       smartType: SmartListType.all,
       themeColor: ListThemeColor.green,
-      icon: Icons.all_inclusive,
       showCompleted: false,
     ),
     TodoList(
@@ -40,14 +34,12 @@ List<TodoList> defaultSmartLists() {
       title: 'Completed',
       smartType: SmartListType.completed,
       themeColor: ListThemeColor.grey,
-      icon: Icons.check_circle_outline,
     ),
     TodoList(
       id: 'tasks',
       title: 'Tasks',
       smartType: SmartListType.tasks,
       themeColor: ListThemeColor.blue,
-      icon: Icons.home_outlined,
     ),
   ];
 }

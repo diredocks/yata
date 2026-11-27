@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:material_ui/material_ui.dart';
 
 import '../data/order_date_time.dart';
 import '../data/todo_provider.dart';
@@ -45,7 +44,6 @@ class HomeViewPresenter {
       themeColor: themeColor,
       themePhoto: themePhoto,
       customBackgroundPath: customBackgroundPath,
-      icon: Icons.format_list_bulleted,
       sortAscending: false,
       orderDateTime: computeNewOrderDateTime(
         existingOrders: existingOrders,

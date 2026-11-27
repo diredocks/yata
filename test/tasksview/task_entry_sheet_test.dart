@@ -23,7 +23,6 @@ void main() {
       id: 'custom_1',
       title: 'Groceries',
       themeColor: ListThemeColor.green,
-      icon: Icons.list,
     ),
   ];
 
