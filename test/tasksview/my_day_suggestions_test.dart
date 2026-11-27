@@ -43,7 +43,10 @@ Future<ProviderContainer> _pumpTasksView(
   if (tasks.isNotEmpty) {
     container
         .read(todoProvider.notifier)
-        .commit(container.read(todoProvider).copyWith(tasks: tasks));
+        .mutateEntities(
+          tasks: tasks,
+          touchedTaskIds: {for (final t in tasks) t.id},
+        );
     await tester.pumpAndSettle();
   }
   return container;

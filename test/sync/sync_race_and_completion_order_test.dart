@@ -51,12 +51,7 @@ void main() {
       remoteSettings: const {TodoSettingKeys.soundOnCompletion: 'false'},
     );
 
-    final current = container.read(todoProvider);
-    notifier.commit(
-      current.copyWith(
-        tasks: [initialTask.copyWith(title: 'Edited During Apply')],
-      ),
-    );
+    notifier.mutateTask('t1', (t) => t.copyWith(title: 'Edited During Apply'));
 
     await applyFuture;
 
@@ -266,9 +261,7 @@ void main() {
       title: '5',
       createdAt: DateTime.utc(2026, 11, 25, 8),
     );
-    todoNotifier.commit(
-      h.container.read(todoProvider).copyWith(tasks: [task5]),
-    );
+    todoNotifier.addTask(task5);
 
     final syncFuture = h.container
         .read(syncProvider.notifier)
@@ -276,9 +269,7 @@ void main() {
     await createStarted.future;
 
     // User deletes task 5 locally while its createTask request is in flight!
-    todoNotifier.commit(
-      h.container.read(todoProvider).copyWith(tasks: const []),
-    );
+    todoNotifier.deleteTasks(const {'t_5'});
     releaseCreate.complete();
     await syncFuture;
 
@@ -326,11 +317,7 @@ void main() {
 
     // User deletes the step locally while its createStep request is in flight!
     final todoNotifier = h.container.read(todoProvider.notifier);
-    todoNotifier.commit(
-      h.container
-          .read(todoProvider)
-          .copyWith(tasks: [task.copyWith(steps: const [])]),
-    );
+    todoNotifier.mutateTask('t_parent', (t) => t.copyWith(steps: const []));
     releaseStep.complete();
     await syncFuture;
 
