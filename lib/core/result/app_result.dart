@@ -24,12 +24,6 @@ AppResult<T> guardSync<T extends Object>(
   }
 }
 
-AppResult<Unit> guardSyncUnit(void Function() call, {String? operation}) =>
-    guardSync(() {
-      call();
-      return unit;
-    }, operation: operation);
-
 Future<AppResult<T>> guardAsync<T extends Object>(
   FutureOr<T> Function() call, {
   String? operation,
@@ -86,14 +80,6 @@ Future<AppResult<T>> guardDbCall<T extends Object>(
     };
   },
 );
-
-Future<AppResult<Unit>> guardDbUnit(
-  FutureOr<void> Function() call, {
-  String? operation,
-}) => guardDbCall(() async {
-  await call();
-  return unit;
-}, operation: operation);
 
 /// Single logging point for every guard.
 AppResult<T> _report<T extends Object>(AppError error, String? operation) {

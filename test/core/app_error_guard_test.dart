@@ -82,11 +82,6 @@ void main() {
       expect(result.exceptionOrNull(), isA<UnknownError>());
     });
 
-    test('guardDbUnit returns Unit on success', () async {
-      final result = await guardDbUnit(() async {});
-      expect(result.getOrThrow(), unit);
-    });
-
     test('logs the failure once at the guard boundary', () async {
       final messages = _captureLogs();
       await guardDbCall<int>(
