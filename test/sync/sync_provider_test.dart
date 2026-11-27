@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
+import 'package:yata/sync/sync_dispatcher.dart';
 import 'package:yata/sync/sync_provider.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
@@ -175,7 +176,7 @@ void main() {
           .scheduleDebouncedSync(
             delay: const Duration(milliseconds: 200),
             forceFullSync: true,
-            reason: 'manual',
+            reason: SyncReason.manual,
           );
       // Sticky coalescing: a shorter normal debounced sync must keep forceFullSync=true.
       h.container
@@ -183,7 +184,7 @@ void main() {
           .scheduleDebouncedSync(
             delay: const Duration(milliseconds: 50),
             forceFullSync: false,
-            reason: 'local_mutation',
+            reason: SyncReason.localMutation,
           );
 
       await Future<void>.delayed(const Duration(milliseconds: 150));
@@ -332,7 +333,7 @@ void main() {
         );
 
         final notifier = h.container.read(syncProvider.notifier);
-        final inFlight = notifier.syncNow(reason: 'manual');
+        final inFlight = notifier.syncNow(reason: SyncReason.manual);
         await started.future;
 
         // Edit while the delta sync is blocked on its folder pull.
@@ -506,7 +507,7 @@ void main() {
       );
 
       final notifier = h.container.read(syncProvider.notifier);
-      final fullSyncFuture = notifier.refresh(reason: 'startup');
+      final fullSyncFuture = notifier.refresh(reason: SyncReason.startup);
       await pullStarted.future;
 
       // Delete task while full pull is still blocked, then exit immediately.
@@ -595,7 +596,7 @@ void main() {
       );
 
       final notifier = h.container.read(syncProvider.notifier);
-      final fullSyncFuture = notifier.refresh(reason: 'manual');
+      final fullSyncFuture = notifier.refresh(reason: SyncReason.manual);
 
       // Wait until rf-default (containing rt-1 & rt-2) is fetched, while rf-second is still blocked.
       await folder1Pulled.future;
@@ -674,7 +675,7 @@ void main() {
       // Start an incremental delta pull; it snapshots workingTasks = [t_1, t_2].
       final deltaFuture = notifier.syncNow(
         forceFullSync: false,
-        reason: 'manual',
+        reason: SyncReason.manual,
       );
       await pullStarted.future;
 
@@ -726,7 +727,7 @@ void main() {
       final notifier = h.container.read(syncProvider.notifier);
       final deltaFuture = notifier.syncNow(
         forceFullSync: false,
-        reason: 'manual',
+        reason: SyncReason.manual,
       );
       await pullStarted.future;
 

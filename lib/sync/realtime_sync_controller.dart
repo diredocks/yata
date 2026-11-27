@@ -10,6 +10,7 @@ import '../data/todo_provider.dart';
 import '../models/account.dart';
 import 'microsoft/microsoft_todo_api.dart';
 import 'microsoft/remote_change_reconciler.dart';
+import 'sync_dispatcher.dart';
 import 'sync_guard.dart';
 import 'sync_provider.dart';
 
@@ -36,11 +37,11 @@ class RealtimeSyncController {
   final void Function({
     required Duration delay,
     required bool forceFullSync,
-    required String reason,
+    required SyncReason reason,
   })
   onScheduleFallbackSync;
-  final void Function(String reason) onOverflowResync;
-  final Future<void> Function(String reason) onCatchupDeltaSync;
+  final void Function(SyncReason reason) onOverflowResync;
+  final Future<void> Function(SyncReason reason) onCatchupDeltaSync;
 
   Timer? _reconnectTimer;
   StreamSubscription<RealtimeEvent>? _sub;
@@ -118,7 +119,7 @@ class RealtimeSyncController {
           onScheduleFallbackSync(
             delay: _reconnectDebounceDuration,
             forceFullSync: false,
-            reason: 'realtime_reconnected',
+            reason: SyncReason.realtimeReconnected,
           );
         }
         if (event.isKeepAlive) return;
@@ -158,7 +159,7 @@ class RealtimeSyncController {
     if (isSyncInFlight()) {
       if (_pendingEvents.length >= _maxPendingEvents) {
         _pendingEvents.clear();
-        onOverflowResync('realtime_overflow');
+        onOverflowResync(SyncReason.realtimeOverflow);
         _log.info(
           'deferred queue overflow ($_maxPendingEvents); '
           'scheduling full resync',
@@ -179,8 +180,7 @@ class RealtimeSyncController {
       onScheduleFallbackSync(
         delay: const Duration(milliseconds: 200),
         forceFullSync: _shouldForceFullSyncForEvent(unhandled),
-        reason:
-            'realtime_${unhandled.type}_${unhandled.operation ?? 'unknown'}',
+        reason: SyncReason.realtimeEvent,
       );
     }
   }
@@ -203,9 +203,7 @@ class RealtimeSyncController {
       fromQueue: true,
     );
     if (unhandled != null && !_disposed) {
-      await onCatchupDeltaSync(
-        'realtime_${unhandled.type}_${unhandled.operation ?? 'unknown'}',
-      );
+      await onCatchupDeltaSync(SyncReason.realtimeEvent);
     }
   }
 

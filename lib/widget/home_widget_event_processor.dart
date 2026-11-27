@@ -10,6 +10,7 @@ import '../account/account_provider.dart';
 import '../core/result/app_result.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
+import '../sync/sync_dispatcher.dart';
 import '../sync/sync_provider.dart';
 import '../tasksview/tasks_view_presenter.dart';
 import 'home_widget_service.dart';
@@ -185,7 +186,8 @@ class WidgetEventProcessor {
   Future<bool> _runBoundedSync(Duration timeout, String operation) async {
     final syncCall =
         _runCloudSync ??
-        () => _read(syncProvider.notifier).syncNow(reason: 'home_widget');
+        () =>
+            _read(syncProvider.notifier).syncNow(reason: SyncReason.homeWidget);
     var timedOut = false;
     final result = await guardAsyncUnit(
       () => syncCall().timeout(

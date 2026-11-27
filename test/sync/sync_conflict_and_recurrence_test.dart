@@ -6,6 +6,7 @@ import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
+import 'package:yata/sync/sync_dispatcher.dart';
 import 'package:yata/sync/sync_provider.dart';
 import 'package:yata/sync/text_merge.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
@@ -216,7 +217,7 @@ void main() {
 
       await h.container
           .read(syncProvider.notifier)
-          .syncNow(forceFullSync: true, reason: 'test_force');
+          .syncNow(forceFullSync: true, reason: SyncReason.manual);
 
       expect(h.api.callLog, contains('GET tasks(rf-default,null)'));
       expect(h.api.callLog, contains('GET tasks(rf-b,null)'));
@@ -322,7 +323,7 @@ void main() {
 
       await h.container
           .read(syncProvider.notifier)
-          .syncNow(forceFullSync: true, reason: 'test_null_delta_link');
+          .syncNow(forceFullSync: true, reason: SyncReason.manual);
 
       final state = h.container.read(todoProvider);
       expect(state.tasks.any((t) => t.id == 't_1'), isTrue);
@@ -346,7 +347,7 @@ void main() {
 
       await h.container
           .read(syncProvider.notifier)
-          .syncNow(forceFullSync: true, reason: 'test_empty_folders');
+          .syncNow(forceFullSync: true, reason: SyncReason.manual);
 
       final lists = h.container.read(todoProvider).lists;
       expect(lists.any((l) => l.id == 'list_keep'), isTrue);

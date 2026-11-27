@@ -13,6 +13,7 @@ import 'package:yata/sync/microsoft/microsoft_todo_models.dart';
 import 'package:yata/sync/microsoft/substrate_pull_engine.dart';
 import 'package:yata/sync/microsoft/substrate_push_engine.dart';
 import 'package:yata/sync/microsoft/todo_wire_codecs.dart';
+import 'package:yata/sync/sync_dispatcher.dart';
 import 'package:yata/sync/sync_provider.dart';
 import 'package:yata/tasksview/tasks_view_grouping.dart';
 
@@ -271,7 +272,7 @@ void main() {
 
     final syncFuture = h.container
         .read(syncProvider.notifier)
-        .syncNow(reason: 'local_mutation');
+        .syncNow(reason: SyncReason.localMutation);
     await createStarted.future;
 
     // User deletes task 5 locally while its createTask request is in flight!
@@ -320,7 +321,7 @@ void main() {
 
     final syncFuture = h.container
         .read(syncProvider.notifier)
-        .syncNow(reason: 'local_mutation');
+        .syncNow(reason: SyncReason.localMutation);
     await stepStarted.future;
 
     // User deletes the step locally while its createStep request is in flight!

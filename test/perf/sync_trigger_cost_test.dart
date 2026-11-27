@@ -5,6 +5,7 @@ import 'package:yata/data/todo_provider.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
+import 'package:yata/sync/sync_dispatcher.dart';
 import 'package:yata/sync/sync_provider.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 
@@ -161,7 +162,9 @@ void main() {
     () async {
       final api = _fakeApi();
       final h = await _harness('acct_trigger_cost', api: api);
-      await h.container.read(syncProvider.notifier).syncNow(reason: 'warmup');
+      await h.container
+          .read(syncProvider.notifier)
+          .syncNow(reason: SyncReason.manual);
       await pumpEventQueue();
       api.callLog.clear();
 
@@ -185,7 +188,9 @@ void main() {
         api: api,
         recurringTaskIds: const {'task_0_0'},
       );
-      await h.container.read(syncProvider.notifier).syncNow(reason: 'warmup');
+      await h.container
+          .read(syncProvider.notifier)
+          .syncNow(reason: SyncReason.manual);
       await pumpEventQueue();
       api.callLog.clear();
 
@@ -206,7 +211,9 @@ void main() {
   test('a reorder-only edit pushes once and pulls nothing', () async {
     final api = _fakeApi();
     final h = await _harness('acct_trigger_reorder', api: api);
-    await h.container.read(syncProvider.notifier).syncNow(reason: 'warmup');
+    await h.container
+        .read(syncProvider.notifier)
+        .syncNow(reason: SyncReason.manual);
     await pumpEventQueue();
     api.callLog.clear();
 
@@ -227,7 +234,9 @@ void main() {
   test('three quick toggles coalesce into a single pass', () async {
     final api = _fakeApi();
     final h = await _harness('acct_trigger_burst', api: api);
-    await h.container.read(syncProvider.notifier).syncNow(reason: 'warmup');
+    await h.container
+        .read(syncProvider.notifier)
+        .syncNow(reason: SyncReason.manual);
     await pumpEventQueue();
     api.callLog.clear();
 
@@ -255,7 +264,9 @@ void main() {
     api.onPatchTask = base.onPatchTask;
 
     final h = await _harness('acct_trigger_latency', api: api);
-    await h.container.read(syncProvider.notifier).syncNow(reason: 'warmup');
+    await h.container
+        .read(syncProvider.notifier)
+        .syncNow(reason: SyncReason.manual);
     await pumpEventQueue();
     api.callLog.clear();
 
