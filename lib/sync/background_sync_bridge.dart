@@ -187,14 +187,6 @@ class BackgroundWorkerEventBus {
     });
   }
 
-  static void detachUiListener() {
-    final port = _uiReceivePort;
-    if (port == null) return;
-    _uiReceivePort = null;
-    IsolateNameServer.removePortNameMapping(kBackgroundUiEventPortName);
-    port.close();
-  }
-
   /// Sends [event] to the attached UI isolate (if any) and local listeners.
   static void emit(BackgroundDbChangedEvent event) {
     final remotePort = IsolateNameServer.lookupPortByName(
