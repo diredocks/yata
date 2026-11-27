@@ -236,8 +236,6 @@ class SyncLane<C extends SyncCommand> {
     _pending = null;
   }
 
-  void clearQueued() => _runner.clearQueued();
-
   void reset() {
     cancelPending();
     _runner.clearQueued();

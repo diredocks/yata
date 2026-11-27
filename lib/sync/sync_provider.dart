@@ -158,11 +158,7 @@ class SyncNotifier extends Notifier<SyncState> {
     if (!accountIdentity.isMicrosoft || activeAccount is! MicrosoftAccount) {
       realtime.stop(clearPending: true);
       _stopPeriodicSync();
-      _cancelPushDebounce();
-      _cancelPullDebounce();
-      _pushLane.clearQueued();
-      _pullLane.clearQueued();
-      _pullGeneration += 1;
+      _resetChannels();
       return const SyncState();
     }
 
@@ -182,11 +178,7 @@ class SyncNotifier extends Notifier<SyncState> {
 
   void _disposeResources() {
     _disposed = true;
-    _cancelPushDebounce();
-    _cancelPullDebounce();
-    _pushLane.clearQueued();
-    _pullLane.clearQueued();
-    _pullGeneration += 1;
+    _resetChannels();
     _stopPeriodicSync();
     _realtimeController?.dispose();
     _realtimeController = null;
@@ -194,9 +186,12 @@ class SyncNotifier extends Notifier<SyncState> {
     _workerEventSub = null;
   }
 
-  void _cancelPushDebounce() => _pushLane.cancelPending();
-
-  void _cancelPullDebounce() => _pullLane.cancelPending();
+  /// Drops every pending and queued command and invalidates in-flight pulls.
+  void _resetChannels() {
+    _pushLane.reset();
+    _pullLane.reset();
+    _pullGeneration += 1;
+  }
 
   void _startPeriodicSync() {
     if (_disposed || !_isForeground || _periodicTimer != null) return;
@@ -223,14 +218,13 @@ class SyncNotifier extends Notifier<SyncState> {
 
     if (_pullLane.isRunning) {
       _log.info('onAppPaused: cancelling in-flight pull to prioritize push');
-      _pullGeneration += 1;
-      _pullLane.clearQueued();
     }
-    _cancelPullDebounce();
+    _pullLane.reset();
+    _pullGeneration += 1;
 
     final pendingPush = _pushLane.pending;
     if (pendingPush != null && _pushLane.isDebouncing) {
-      _cancelPushDebounce();
+      _pushLane.cancelPending();
       if (!_delegatesTransfersToBackground) {
         _log.info(
           'onAppPaused: flushing pending push reason=${pendingPush.reason.label}',
