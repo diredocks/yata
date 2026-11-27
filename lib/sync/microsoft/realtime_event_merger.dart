@@ -1,13 +1,12 @@
 import 'package:collection/collection.dart';
 
 import '../../data/todo_settings_sync.dart';
-import '../../homeview/home_view_ordering.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
+import '../sync_log_format.dart';
 import 'microsoft_todo_models.dart';
 import 'remote_change_reconciler.dart';
 import 'substrate_sync_mappers.dart';
-import '../sync_log_format.dart';
 
 /// Outcome of merging a single [RealtimeEvent] directly into local state.
 class RealtimeMergeResult<T> {
@@ -44,6 +43,12 @@ class RealtimeMergeResult<T> {
 
 typedef RealtimeFolderUpdate = ({List<TodoList> lists, List<TaskItem>? tasks});
 
+typedef _ParsedRealtimeEntity<T> = ({
+  T? entity,
+  Map<String, dynamic>? payload,
+  String? unhandledSummary,
+});
+
 String _resolveDeleteRemoteId(RealtimeEvent event) {
   final eventId = event.id?.trim();
   if (eventId != null && eventId.isNotEmpty) return eventId;
@@ -62,6 +67,65 @@ Map<String, dynamic> _normalizeEntityPayload(RealtimeEvent event) {
   return payloadMap;
 }
 
+_ParsedRealtimeEntity<T> _parseRealtimeEntity<T>({
+  required RealtimeEvent event,
+  required RealtimeEventEntityType expectedType,
+  required String label,
+  required T Function(String remoteId) buildDeleted,
+  required T Function(Map<String, dynamic> json) fromJson,
+  required String Function(T entity) idOf,
+}) {
+  if (event.entityType != expectedType) {
+    return (
+      entity: null,
+      payload: null,
+      unhandledSummary:
+          'non-${label.toLowerCase()} event type=${event.type} op=${event.operation}',
+    );
+  }
+  final op = event.op;
+  if (op == RealtimeEventOperation.unsupported) {
+    return (
+      entity: null,
+      payload: null,
+      unhandledSummary: '$label/${event.operation} unsupported op',
+    );
+  }
+  if (op == RealtimeEventOperation.deleted) {
+    final remoteId = _resolveDeleteRemoteId(event);
+    if (remoteId.isEmpty) {
+      return (
+        entity: null,
+        payload: null,
+        unhandledSummary: '$label/Deleted missing Id',
+      );
+    }
+    return (
+      entity: buildDeleted(remoteId),
+      payload: null,
+      unhandledSummary: null,
+    );
+  }
+  if (event.payload == null) {
+    return (
+      entity: null,
+      payload: null,
+      unhandledSummary:
+          '$label/${event.operation} id=${shortSyncId(event.id)} missing payload',
+    );
+  }
+  final payloadMap = _normalizeEntityPayload(event);
+  final parsed = fromJson(payloadMap);
+  if (idOf(parsed).isEmpty) {
+    return (
+      entity: null,
+      payload: null,
+      unhandledSummary: '$label/${event.operation} missing Id',
+    );
+  }
+  return (entity: parsed, payload: payloadMap, unhandledSummary: null);
+}
+
 /// Merges a `Task` [RealtimeEvent] (including position-only updates that
 /// Substrate omits from incremental delta) directly into [currentTasks].
 RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
@@ -72,46 +136,19 @@ RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
   required Set<String> pendingDeletedTaskRemoteIds,
   required String Function(String prefix) idGenerator,
 }) {
-  if (event.entityType != RealtimeEventEntityType.task) {
-    return RealtimeMergeResult.unhandled(
-      'non-task event type=${event.type} op=${event.operation}',
-    );
+  final parsed = _parseRealtimeEntity<RemoteTodoTask>(
+    event: event,
+    expectedType: RealtimeEventEntityType.task,
+    label: 'Task',
+    buildDeleted: (id) => RemoteTodoTask(id: id, subject: '', isDeleted: true),
+    fromJson: RemoteTodoTask.fromJson,
+    idOf: (t) => t.id,
+  );
+  if (parsed.unhandledSummary != null) {
+    return RealtimeMergeResult.unhandled(parsed.unhandledSummary!);
   }
-
-  final op = event.op;
-  if (op == RealtimeEventOperation.unsupported) {
-    return RealtimeMergeResult.unhandled(
-      'Task/${event.operation} unsupported op',
-    );
-  }
-
-  final RemoteTodoTask remote;
-  final bool preserveStepsWhenMissing;
-  final bool preserveAttachmentsWhenMissing;
-  if (op == RealtimeEventOperation.deleted) {
-    final remoteId = _resolveDeleteRemoteId(event);
-    if (remoteId.isEmpty) {
-      return RealtimeMergeResult.unhandled('Task/Deleted missing Id');
-    }
-    remote = RemoteTodoTask(id: remoteId, subject: '', isDeleted: true);
-    preserveStepsWhenMissing = false;
-    preserveAttachmentsWhenMissing = false;
-  } else {
-    if (event.payload == null) {
-      return RealtimeMergeResult.unhandled(
-        'Task/${event.operation} id=${shortSyncId(event.id)} missing payload',
-      );
-    }
-    final payloadMap = _normalizeEntityPayload(event);
-    remote = RemoteTodoTask.fromJson(payloadMap);
-    if (remote.id.isEmpty) {
-      return RealtimeMergeResult.unhandled(
-        'Task/${event.operation} missing Id',
-      );
-    }
-    preserveStepsWhenMissing = !payloadMap.containsKey('Subtasks');
-    preserveAttachmentsWhenMissing = !payloadMap.containsKey('LinkedEntities');
-  }
+  final remote = parsed.entity!;
+  final payloadMap = parsed.payload;
 
   if (pendingDeletedTaskRemoteIds.contains(remote.id)) {
     return RealtimeMergeResult.noOp(
@@ -138,8 +175,10 @@ RealtimeMergeResult<List<TaskItem>> mergeRealtimeTaskEvent({
       (
         remote: remote,
         fallbackLocalListId: null,
-        preserveStepsWhenMissing: preserveStepsWhenMissing,
-        preserveAttachmentsWhenMissing: preserveAttachmentsWhenMissing,
+        preserveStepsWhenMissing:
+            payloadMap != null && !payloadMap.containsKey('Subtasks'),
+        preserveAttachmentsWhenMissing:
+            payloadMap != null && !payloadMap.containsKey('LinkedEntities'),
       ),
     ],
     dirtyTaskIds: dirtyTaskIds,
@@ -220,63 +259,20 @@ RealtimeMergeResult<List<ListGroup>> mergeRealtimeFolderGroupEvent({
   required Set<String> pendingDeletedGroupRemoteIds,
   required String Function(String prefix) idGenerator,
 }) {
-  if (event.entityType != RealtimeEventEntityType.folderGroup) {
-    return RealtimeMergeResult.unhandled(
-      'non-group event type=${event.type} op=${event.operation}',
-    );
+  final parsed = _parseRealtimeEntity<RemoteFolderGroup>(
+    event: event,
+    expectedType: RealtimeEventEntityType.folderGroup,
+    label: 'FolderGroup',
+    buildDeleted: (id) => RemoteFolderGroup(id: id, name: '', isDeleted: true),
+    fromJson: RemoteFolderGroup.fromJson,
+    idOf: (g) => g.id,
+  );
+  if (parsed.unhandledSummary != null) {
+    return RealtimeMergeResult.unhandled(parsed.unhandledSummary!);
   }
+  final remote = parsed.entity!;
 
-  RealtimeMergeResult<List<ListGroup>> applyDelete(
-    String remoteId,
-    String label,
-  ) {
-    if (remoteId.isEmpty) {
-      return RealtimeMergeResult.unhandled('$label missing Id');
-    }
-    final existingIdx = currentGroups.indexWhere((g) => g.remoteId == remoteId);
-    if (existingIdx < 0) {
-      return RealtimeMergeResult.noOp(
-        '$label id=${shortSyncId(remoteId)} already absent',
-      );
-    }
-    final existing = currentGroups[existingIdx];
-    if (dirtyGroupIds.contains(existing.id)) {
-      return RealtimeMergeResult.noOp(
-        '$label id=${shortSyncId(remoteId)} skipped (local dirty local=${existing.id})',
-      );
-    }
-    final nextGroups = [...currentGroups]..removeAt(existingIdx);
-    return RealtimeMergeResult.updated(
-      sortGroupsByOrder(nextGroups),
-      '$label id=${shortSyncId(remoteId)} removed local=${existing.id} title="${existing.title}"',
-    );
-  }
-
-  final op = event.op;
-  if (op == RealtimeEventOperation.deleted) {
-    return applyDelete(_resolveDeleteRemoteId(event), 'FolderGroup/Deleted');
-  }
-  if (op == RealtimeEventOperation.unsupported) {
-    return RealtimeMergeResult.unhandled(
-      'FolderGroup/${event.operation} unsupported op',
-    );
-  }
-  if (event.payload == null) {
-    return RealtimeMergeResult.unhandled(
-      'FolderGroup/${event.operation} id=${shortSyncId(event.id)} missing payload',
-    );
-  }
-
-  final remote = RemoteFolderGroup.fromJson(_normalizeEntityPayload(event));
-  if (remote.id.isEmpty) {
-    return RealtimeMergeResult.unhandled(
-      'FolderGroup/${event.operation} missing Id',
-    );
-  }
-  if (remote.isDeleted) {
-    return applyDelete(remote.id, 'FolderGroup/${event.operation}(deleted)');
-  }
-  if (pendingDeletedGroupRemoteIds.contains(remote.id)) {
+  if (!remote.isDeleted && pendingDeletedGroupRemoteIds.contains(remote.id)) {
     return RealtimeMergeResult.noOp(
       'FolderGroup/${event.operation} id=${shortSyncId(remote.id)} skipped (pending local delete)',
     );
@@ -285,6 +281,11 @@ RealtimeMergeResult<List<ListGroup>> mergeRealtimeFolderGroupEvent({
   final existing = currentGroups.firstWhereOrNull(
     (g) => g.remoteId == remote.id,
   );
+  if (remote.isDeleted && existing == null) {
+    return RealtimeMergeResult.noOp(
+      'FolderGroup/${event.operation} id=${shortSyncId(remote.id)} already absent',
+    );
+  }
   if (existing != null && dirtyGroupIds.contains(existing.id)) {
     return RealtimeMergeResult.noOp(
       'FolderGroup/${event.operation} id=${shortSyncId(remote.id)} local=${existing.id} skipped (local dirty)',
@@ -297,6 +298,13 @@ RealtimeMergeResult<List<ListGroup>> mergeRealtimeFolderGroupEvent({
     dirtyGroupIds: dirtyGroupIds,
     idGenerator: idGenerator,
   );
+
+  if (remote.isDeleted) {
+    return RealtimeMergeResult.updated(
+      merged,
+      'FolderGroup/${event.operation} id=${shortSyncId(remote.id)} removed local=${existing!.id} title="${existing.title}"',
+    );
+  }
   return RealtimeMergeResult.updated(
     merged,
     'FolderGroup/${event.operation} id=${shortSyncId(remote.id)} '
@@ -314,79 +322,25 @@ RealtimeMergeResult<RealtimeFolderUpdate> mergeRealtimeFolderEvent({
   required Set<String> pendingDeletedListRemoteIds,
   required String Function(String prefix) idGenerator,
 }) {
-  if (event.entityType != RealtimeEventEntityType.taskFolder) {
-    return RealtimeMergeResult.unhandled(
-      'non-folder event type=${event.type} op=${event.operation}',
-    );
+  final parsed = _parseRealtimeEntity<RemoteTodoFolder>(
+    event: event,
+    expectedType: RealtimeEventEntityType.taskFolder,
+    label: 'TaskFolder',
+    buildDeleted: (id) => RemoteTodoFolder(id: id, name: '', isDeleted: true),
+    fromJson: RemoteTodoFolder.fromJson,
+    idOf: (f) => f.id,
+  );
+  if (parsed.unhandledSummary != null) {
+    return RealtimeMergeResult.unhandled(parsed.unhandledSummary!);
   }
+  final remote = parsed.entity!;
 
-  RealtimeMergeResult<RealtimeFolderUpdate> applyDelete(
-    String remoteId,
-    String label,
-  ) {
-    if (remoteId.isEmpty) {
-      return RealtimeMergeResult.unhandled('$label missing Id');
-    }
-    final existingIdx = currentLists.indexWhere(
-      (l) => !l.isSmartList && l.remoteId == remoteId,
-    );
-    if (existingIdx < 0) {
-      return RealtimeMergeResult.noOp(
-        '$label id=${shortSyncId(remoteId)} already absent',
-      );
-    }
-    final existing = currentLists[existingIdx];
-    if (dirtyListIds.contains(existing.id)) {
-      return RealtimeMergeResult.noOp(
-        '$label id=${shortSyncId(remoteId)} skipped (local dirty local=${existing.id})',
-      );
-    }
-    final nextLists = [...currentLists]..removeAt(existingIdx);
-    final validListIds = {for (final l in nextLists) l.id};
-    final filteredTasks = currentTasks
-        .where((t) => validListIds.contains(t.listId))
-        .toList();
-    return RealtimeMergeResult.updated(
-      (
-        lists: sortListsPreservingSmartLists(nextLists),
-        tasks: filteredTasks.length == currentTasks.length
-            ? null
-            : filteredTasks,
-      ),
-      '$label id=${shortSyncId(remoteId)} removed local=${existing.id} title="${existing.title}"',
-    );
-  }
-
-  final op = event.op;
-  if (op == RealtimeEventOperation.deleted) {
-    return applyDelete(_resolveDeleteRemoteId(event), 'TaskFolder/Deleted');
-  }
-  if (op == RealtimeEventOperation.unsupported) {
-    return RealtimeMergeResult.unhandled(
-      'TaskFolder/${event.operation} unsupported op',
-    );
-  }
-  if (event.payload == null) {
-    return RealtimeMergeResult.unhandled(
-      'TaskFolder/${event.operation} id=${shortSyncId(event.id)} missing payload',
-    );
-  }
-
-  final remote = RemoteTodoFolder.fromJson(_normalizeEntityPayload(event));
-  if (remote.id.isEmpty) {
-    return RealtimeMergeResult.unhandled(
-      'TaskFolder/${event.operation} missing Id',
-    );
-  }
   if (remote.isIgnoredSpecialFolder) {
     return RealtimeMergeResult.noOp(
       'TaskFolder/${event.operation} id=${shortSyncId(remote.id)} ignored special folder',
     );
   }
-  if (remote.isDeleted) {
-    return applyDelete(remote.id, 'TaskFolder/${event.operation}(deleted)');
-  }
-  if (pendingDeletedListRemoteIds.contains(remote.id)) {
+  if (!remote.isDeleted && pendingDeletedListRemoteIds.contains(remote.id)) {
     return RealtimeMergeResult.noOp(
       'TaskFolder/${event.operation} id=${shortSyncId(remote.id)} skipped (pending local delete)',
     );
@@ -396,7 +350,8 @@ RealtimeMergeResult<RealtimeFolderUpdate> mergeRealtimeFolderEvent({
     for (final g in groups)
       if (g.remoteId != null) g.remoteId!: g.id,
   };
-  if (remote.parentFolderGroupId != null &&
+  if (!remote.isDeleted &&
+      remote.parentFolderGroupId != null &&
       remote.parentFolderGroupId!.isNotEmpty &&
       !groupLocalIdByRemoteId.containsKey(remote.parentFolderGroupId!)) {
     return RealtimeMergeResult.unhandled(
@@ -406,9 +361,16 @@ RealtimeMergeResult<RealtimeFolderUpdate> mergeRealtimeFolderEvent({
 
   final existing = currentLists.firstWhereOrNull(
     (l) =>
-        (remote.isDefaultFolder && l.smartType == SmartListType.tasks) ||
+        (!remote.isDeleted &&
+            remote.isDefaultFolder &&
+            l.smartType == SmartListType.tasks) ||
         (!l.isSmartList && l.remoteId == remote.id),
   );
+  if (remote.isDeleted && existing == null) {
+    return RealtimeMergeResult.noOp(
+      'TaskFolder/${event.operation} id=${shortSyncId(remote.id)} already absent',
+    );
+  }
   if (existing != null && dirtyListIds.contains(existing.id)) {
     return RealtimeMergeResult.noOp(
       'TaskFolder/${event.operation} id=${shortSyncId(remote.id)} local=${existing.id} skipped (local dirty)',
@@ -422,6 +384,23 @@ RealtimeMergeResult<RealtimeFolderUpdate> mergeRealtimeFolderEvent({
     groupLocalIdByRemoteId: groupLocalIdByRemoteId,
     idGenerator: idGenerator,
   );
+
+  if (remote.isDeleted) {
+    final validListIds = {for (final l in merged) l.id};
+    final filteredTasks = currentTasks
+        .where((t) => validListIds.contains(t.listId))
+        .toList();
+    return RealtimeMergeResult.updated(
+      (
+        lists: merged,
+        tasks: filteredTasks.length == currentTasks.length
+            ? null
+            : filteredTasks,
+      ),
+      'TaskFolder/${event.operation} id=${shortSyncId(remote.id)} removed local=${existing!.id} title="${existing.title}"',
+    );
+  }
+
   return RealtimeMergeResult.updated(
     (lists: merged, tasks: null),
     'TaskFolder/${event.operation} id=${shortSyncId(remote.id)} '
