@@ -701,14 +701,6 @@ void main() {
         isEmpty,
       );
       expect(h.repository.outbox.pendingLocalIds(SyncEntityType.task), isEmpty);
-      expect(
-        h.repository.outbox.resolveRemoteId(SyncEntityType.task, 't-missing'),
-        isNull,
-      );
-      expect(
-        h.repository.outbox.resolveRemoteId(SyncEntityType.step, 's1'),
-        isNull,
-      );
 
       expect(
         h.api.callLog.any((c) => c.contains('PATCH tasks/rt-ghost')),
@@ -1022,10 +1014,7 @@ void main() {
               outbox: h.repository.outbox,
               nowUtc: DateTime.now().toUtc(),
               onItemCommitted: (o) async {
-                h.repository.outbox.ackBatch(
-                  o.ackedSeqs,
-                  o.clearedRemoteIdKeys,
-                );
+                h.repository.outbox.ackBatch(o.ackedSeqs);
                 await h.repository.saveOutbox();
               },
             )
