@@ -20,7 +20,6 @@ void main() {
         id: 'acct_ms',
         displayName: 'MS User',
         email: 'ms@example.com',
-        createdAt: DateTime.utc(2026, 1, 1),
         microsoftUserId: 'cid1',
       );
       SharedPreferences.setMockInitialValues({
@@ -121,7 +120,6 @@ void main() {
         id: 'acct_ms',
         displayName: 'MS User',
         email: 'ms@example.com',
-        createdAt: DateTime.utc(2026, 1, 1),
         microsoftUserId: 'cid1',
       );
       SharedPreferences.setMockInitialValues({

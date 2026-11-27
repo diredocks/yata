@@ -654,7 +654,6 @@ Future<SeededSyncSession> seedMicrosoftSyncSession({
     id: accountId,
     displayName: displayName,
     email: email,
-    createdAt: DateTime(2026, 11, 22),
     lastSyncedAt: lastSyncedAt,
     microsoftUserId: microsoftUserId,
   );

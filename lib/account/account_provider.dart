@@ -128,7 +128,6 @@ class AccountNotifier extends Notifier<AccountState> {
       id: _nextAccountId(),
       displayName: parsed.displayName,
       email: parsed.email,
-      createdAt: DateTime.now().toUtc(),
     );
 
     final nextAccounts = [...state.accounts, account];
@@ -162,7 +161,6 @@ class AccountNotifier extends Notifier<AccountState> {
         id: _nextAccountId(),
         displayName: result.profile.displayName,
         email: result.profile.email,
-        createdAt: DateTime.now().toUtc(),
         microsoftUserId: result.profile.id,
         avatarBase64: result.profile.avatarBase64,
       );

@@ -14,13 +14,11 @@ void main() {
       id: 'acct_a',
       displayName: 'Alice',
       email: 'alice@example.com',
-      createdAt: DateTime.utc(2026, 11, 24),
     );
     final msAccount = MicrosoftAccount(
       id: 'acct_ms',
       displayName: 'Bob',
       email: 'bob@outlook.com',
-      createdAt: DateTime.utc(2026, 11, 24),
       microsoftUserId: 'ms_cid_1',
     );
 

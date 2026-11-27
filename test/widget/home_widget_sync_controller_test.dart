@@ -77,7 +77,6 @@ void main() {
         id: 'acct_a',
         displayName: 'Alice',
         email: 'alice@example.com',
-        createdAt: DateTime.utc(2026, 11, 24),
       );
       final task = TaskItem(
         id: 't1',
@@ -120,7 +119,6 @@ void main() {
         id: 'acct_a',
         displayName: 'Alice',
         email: 'alice@example.com',
-        createdAt: DateTime.utc(2026, 11, 24),
       );
       final task = TaskItem(
         id: 't1',
@@ -176,7 +174,6 @@ void main() {
         id: 'acct_a',
         displayName: 'Alice',
         email: 'alice@example.com',
-        createdAt: DateTime.utc(2026, 11, 24),
       );
       final initialTask = TaskItem(
         id: 't1',

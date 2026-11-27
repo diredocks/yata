@@ -506,19 +506,14 @@ void main() {
       final msAccount = MicrosoftAccount(
         id: 'acct_ms',
         displayName: 'Alice',
-        createdAt: localInstant,
         lastSyncedAt: localInstant,
       );
       final accountJson = msAccount.toJson();
-      expect((accountJson['createdAt'] as String), endsWith('Z'));
       expect((accountJson['lastSyncedAt'] as String), endsWith('Z'));
       final decodedAccount = Account.fromJson(
         Map<String, dynamic>.from(accountJson)
-          ..['createdAt'] = localInstant.toIso8601String()
           ..['lastSyncedAt'] = localInstant.toIso8601String(),
       ) as MicrosoftAccount;
-      expect(decodedAccount.createdAt.isUtc, isTrue);
-      expect(decodedAccount.createdAt, localInstant.toUtc());
       expect(decodedAccount.lastSyncedAt!.isUtc, isTrue);
       expect(decodedAccount.lastSyncedAt, localInstant.toUtc());
     });
