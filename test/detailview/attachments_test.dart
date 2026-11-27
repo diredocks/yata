@@ -5,11 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:open_file/open_file.dart';
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:yata/account/account_provider.dart';
 import 'package:yata/data/sync_outbox.dart';
-import 'package:yata/data/todo_database.dart';
+import 'package:yata/data/todo_provider.dart';
 import 'package:yata/data/todo_repository.dart';
-import 'package:yata/data/todo_state.dart';
 import 'package:yata/data/todo_sync_reconciler.dart';
 import 'package:yata/detailview/attachments/attachment_service.dart';
 import 'package:yata/detailview/attachments/attachments_card_view.dart';
@@ -20,6 +21,8 @@ import 'package:yata/sync/microsoft/microsoft_todo_models.dart';
 import 'package:yata/sync/microsoft/substrate_push_engine.dart';
 import 'package:yata/sync/microsoft/substrate_sync_mappers.dart';
 import 'package:yata/tasksview/recyclerview/task_list_tile.dart';
+import 'package:yata/tasksview/tasks_action_presenter.dart';
+import 'package:yata/tasksview/tasks_view_presenter.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
@@ -87,6 +90,8 @@ void main() {
     test(
       'enforces 25 MB cumulative per-task limit and stages/opens files',
       () async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
         final tempDir = await Directory.systemTemp.createTemp('yata_att_test_');
         addTearDown(() => tempDir.delete(recursive: true));
 
@@ -95,13 +100,12 @@ void main() {
 
         String? openedPath;
         String? openedType;
-        final container = ProviderContainer();
-        addTearDown(container.dispose);
 
         // Build service directly with test overrides.
         late AttachmentService service;
         final overrideContainer = ProviderContainer(
           overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
             attachmentServiceProvider.overrideWith((ref) {
               service = AttachmentService(
                 ref,
@@ -117,6 +121,13 @@ void main() {
           ],
         );
         addTearDown(overrideContainer.dispose);
+        final account = await overrideContainer
+            .read(accountProvider.notifier)
+            .signInLocal(
+              'Local',
+              fallbackName: 'Local',
+              fallbackEmail: 'local@local',
+            );
         service = overrideContainer.read(attachmentServiceProvider);
 
         const existingAtt = TaskAttachment(
@@ -146,6 +157,10 @@ void main() {
           fileName: 'notes.txt',
         );
         expect(staged.size, 5);
+        expect(
+          staged.localPath,
+          p.join(tempDir.path, 'attachments', account.id, 'att-2', 'notes.txt'),
+        );
         expect(await File(staged.localPath).exists(), isTrue);
 
         final openRes = await service.openAttachment(
@@ -373,6 +388,167 @@ void main() {
       );
 
       expect(find.byIcon(Icons.attach_file), findsOneWidget);
+    });
+  });
+
+  group('Per-account attachment storage & cleanup', () {
+    test('isolates attachments by accountId and cleans up on batchDeleteTasks, deleteList, and signOut', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final tempDir = await Directory.systemTemp.createTemp(
+        'yata_att_cleanup_',
+      );
+      addTearDown(() => tempDir.delete(recursive: true));
+
+      final db = TodoDatabase();
+      addTearDown(db.close);
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          todoDatabaseProvider.overrideWithValue(db),
+          attachmentServiceProvider.overrideWith(
+            (ref) => AttachmentService(
+              ref,
+              storageRootProvider: () async => tempDir,
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final accountNotifier = container.read(accountProvider.notifier);
+      final attService = container.read(attachmentServiceProvider);
+      final srcFile = File(p.join(tempDir.path, 'sample.txt'));
+      await srcFile.writeAsString('payload');
+
+      final acctB = await accountNotifier.signInLocal(
+        'Account B',
+        fallbackName: 'Account B',
+        fallbackEmail: 'b@local',
+      );
+      final stagedB1 = await attService.stageLocalFile(
+        attachmentId: 'att-b1',
+        sourcePath: srcFile.path,
+        fileName: 'b1.txt',
+      );
+
+      final acctA = await accountNotifier.signInLocal(
+        'Account A',
+        fallbackName: 'Account A',
+        fallbackEmail: 'a@local',
+      );
+      final stagedA1 = await attService.stageLocalFile(
+        attachmentId: 'att-a1',
+        sourcePath: srcFile.path,
+        fileName: 'a1.txt',
+      );
+      final stagedA2 = await attService.stageLocalFile(
+        attachmentId: 'att-a2',
+        sourcePath: srcFile.path,
+        fileName: 'a2.txt',
+      );
+      final stagedA3 = await attService.stageLocalFile(
+        attachmentId: 'att-a3',
+        sourcePath: srcFile.path,
+        fileName: 'a3.txt',
+      );
+
+      expect(
+        stagedA1.localPath,
+        p.join(tempDir.path, 'attachments', acctA.id, 'att-a1', 'a1.txt'),
+      );
+      expect(
+        stagedB1.localPath,
+        p.join(tempDir.path, 'attachments', acctB.id, 'att-b1', 'b1.txt'),
+      );
+
+      final list1 = const TodoList(id: 'l-1', title: 'List 1');
+      final list2 = const TodoList(id: 'l-2', title: 'List 2');
+      final task1 = TaskItem(
+        id: 't-1',
+        listId: 'l-1',
+        title: 'Task 1',
+        createdAt: DateTime.utc(2026, 11, 26),
+        attachments: [
+          TaskAttachment(
+            id: 'att-a1',
+            displayName: 'a1.txt',
+            localPath: stagedA1.localPath,
+          ),
+        ],
+      );
+      final task2 = TaskItem(
+        id: 't-2',
+        listId: 'l-1',
+        title: 'Task 2 (shared)',
+        createdAt: DateTime.utc(2026, 11, 26),
+        attachments: [
+          TaskAttachment(
+            id: 'att-a2',
+            displayName: 'a2.txt',
+            localPath: stagedA2.localPath,
+          ),
+        ],
+      );
+      final task2Copy = TaskItem(
+        id: 't-2-copy',
+        listId: 'l-1',
+        title: 'Task 2 Copy',
+        createdAt: DateTime.utc(2026, 11, 26),
+        attachments: [
+          TaskAttachment(
+            id: 'att-a2',
+            displayName: 'a2.txt',
+            localPath: stagedA2.localPath,
+          ),
+        ],
+      );
+      final task3 = TaskItem(
+        id: 't-3',
+        listId: 'l-2',
+        title: 'Task 3 in List 2',
+        createdAt: DateTime.utc(2026, 11, 26),
+        attachments: [
+          TaskAttachment(
+            id: 'att-a3',
+            displayName: 'a3.txt',
+            localPath: stagedA3.localPath,
+          ),
+        ],
+      );
+
+      final todoNotifier = container.read(todoProvider.notifier);
+      todoNotifier.commit(
+        TodoState(
+          groups: const [],
+          lists: [list1, list2],
+          tasks: [task1, task2, task2Copy, task3],
+          selectedListId: 'l-1',
+        ),
+      );
+
+      // 1. batchDeleteTasks deletes unreferenced t-1 file, keeps shared t-2 file.
+      container.read(tasksActionPresenterProvider).batchDeleteTasks({
+        't-1',
+        't-2',
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(await File(stagedA1.localPath).exists(), isFalse);
+      expect(await File(stagedA2.localPath).exists(), isTrue);
+
+      // 2. deleteList removes t-3's attachment file.
+      container.read(tasksViewPresenterProvider).deleteList('l-2');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(await File(stagedA3.localPath).exists(), isFalse);
+
+      // 3. signOut deletes acctA's entire attachment directory without touching acctB.
+      await accountNotifier.signOut(acctA.id);
+      expect(
+        await Directory(p.join(tempDir.path, 'attachments', acctA.id)).exists(),
+        isFalse,
+      );
+      expect(await File(stagedB1.localPath).exists(), isTrue);
     });
   });
 }

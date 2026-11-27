@@ -108,22 +108,31 @@ class AttachmentService {
     return existingTotal + newFileBytes > kMaxTaskAttachmentTotalBytes;
   }
 
+  static String _sanitizeSegment(String raw, String fallback) {
+    final cleaned = raw.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    return cleaned.isEmpty ? fallback : cleaned;
+  }
+
   Future<String> _resolveTargetPath({
     required String attachmentId,
     required String fileName,
   }) async {
     final root = await _storageRootProvider();
-    final safeId = attachmentId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    final accountId = _ref.read(accountProvider).activeAccountId ?? 'default';
+    final safeAccountId = _sanitizeSegment(accountId, 'default');
+    final safeId = _sanitizeSegment(attachmentId, 'att');
     final safeName = sanitizeFileName(fileName);
-    final dir = Directory(p.join(root.path, 'attachments', safeId));
+    final dir = Directory(
+      p.join(root.path, 'attachments', safeAccountId, safeId),
+    );
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
     return p.join(dir.path, safeName);
   }
 
-  /// Copies [sourcePath] into app-private attachment storage and returns
-  /// the stored path and byte size.
+  /// Copies [sourcePath] into app-private per-account attachment storage and
+  /// returns the stored path and byte size.
   Future<({String localPath, int size})> stageLocalFile({
     required String attachmentId,
     required String sourcePath,
@@ -139,7 +148,8 @@ class AttachmentService {
     return (localPath: targetPath, size: size);
   }
 
-  /// Writes [bytes] into app-private attachment storage and returns the path.
+  /// Writes [bytes] into app-private per-account attachment storage and returns
+  /// the path.
   Future<String> saveAttachmentBytes({
     required String attachmentId,
     required String fileName,
@@ -167,6 +177,57 @@ class AttachmentService {
       }
     } catch (e) {
       _log.warning('Failed to delete local attachment cache: $e');
+    }
+  }
+
+  /// Deletes local cache files for [removedAttachments] that are not still
+  /// referenced by any task in [remainingTasks].
+  Future<void> deleteUnreferencedCaches(
+    Iterable<TaskAttachment> removedAttachments, {
+    required Iterable<TaskItem> remainingTasks,
+  }) async {
+    final removedPaths = <String>{
+      for (final att in removedAttachments)
+        if (att.localPath case final path? when path.isNotEmpty) path,
+    };
+    if (removedPaths.isEmpty) return;
+
+    final referencedPaths = <String>{
+      for (final att in remainingTasks.expand((t) => t.attachments))
+        if (att.localPath case final path? when path.isNotEmpty) path,
+    };
+    for (final path in removedPaths) {
+      if (!referencedPaths.contains(path)) {
+        await deleteLocalCache(path);
+      }
+    }
+  }
+
+  /// Deletes local cache files for [removedTasks] that are not still referenced
+  /// by any task in [remainingTasks].
+  Future<void> deleteUnreferencedTaskCaches(
+    Iterable<TaskItem> removedTasks, {
+    required Iterable<TaskItem> remainingTasks,
+  }) {
+    return deleteUnreferencedCaches(
+      removedTasks.expand((t) => t.attachments),
+      remainingTasks: remainingTasks,
+    );
+  }
+
+  /// Deletes the entire local attachment directory for [accountId].
+  Future<void> deleteAccountAttachments(String accountId) async {
+    try {
+      final root = await _storageRootProvider();
+      final safeAccountId = _sanitizeSegment(accountId, 'default');
+      final accountDir = Directory(
+        p.join(root.path, 'attachments', safeAccountId),
+      );
+      if (accountDir.existsSync()) {
+        accountDir.deleteSync(recursive: true);
+      }
+    } catch (e) {
+      _log.warning('Failed to delete account attachments: $e');
     }
   }
 

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
@@ -5,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/main.dart';
 import 'package:yata/account/account_provider.dart';
 import 'package:yata/data/todo_provider.dart';
+import 'package:yata/detailview/attachments/attachment_service.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 
 void main() {
@@ -13,6 +16,8 @@ void main() {
     (WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
+      final tempDir = Directory.systemTemp.createTempSync('yata_ma_att_');
+      addTearDown(() => tempDir.deleteSync(recursive: true));
 
       tester.view.physicalSize = const Size(400, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -20,7 +25,15 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            attachmentServiceProvider.overrideWith(
+              (ref) => AttachmentService(
+                ref,
+                storageRootProvider: () async => tempDir,
+              ),
+            ),
+          ],
           child: const YataApp(),
         ),
       );
@@ -115,6 +128,8 @@ void main() {
     (WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
+      final tempDir = Directory.systemTemp.createTempSync('yata_ma_att_');
+      addTearDown(() => tempDir.deleteSync(recursive: true));
 
       tester.view.physicalSize = const Size(400, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -122,7 +137,15 @@ void main() {
 
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            attachmentServiceProvider.overrideWith(
+              (ref) => AttachmentService(
+                ref,
+                storageRootProvider: () async => tempDir,
+              ),
+            ),
+          ],
           child: const YataApp(),
         ),
       );

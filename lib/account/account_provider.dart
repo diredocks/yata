@@ -8,6 +8,7 @@ import '../auth/microsoft_auth_service.dart';
 import '../auth/msa_webview_launcher.dart';
 import '../data/todo_provider.dart';
 import '../data/todo_repository.dart';
+import '../detailview/attachments/attachment_service.dart';
 import '../models/account.dart';
 import '../sync/microsoft/microsoft_todo_api.dart';
 
@@ -211,6 +212,9 @@ class AccountNotifier extends Notifier<AccountState> {
     state = AccountState(accounts: remaining, activeAccountId: nextActiveId);
     await _storage.saveAccounts(remaining);
     await _storage.saveActiveAccountId(nextActiveId);
+    await ref
+        .read(attachmentServiceProvider)
+        .deleteAccountAttachments(accountId);
   }
 }
 
