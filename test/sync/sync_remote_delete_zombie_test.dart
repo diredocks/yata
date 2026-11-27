@@ -1056,22 +1056,16 @@ void main() {
       returnRemoteTombstone = false;
       h.container
           .read(todoProvider.notifier)
-          .commit(
-            h.container
-                .read(todoProvider)
-                .copyWith(
-                  tasks: [
-                    TaskItem(
-                      id: 't_live_2',
-                      listId: 'tasks',
-                      title: 'Live 2',
-                      createdAt: now,
-                      remoteId: 'rt-live-2',
-                      remoteParentFolderId: 'rf-default',
-                      changeKey: 'ck-2',
-                    ),
-                  ],
-                ),
+          .addTask(
+            TaskItem(
+              id: 't_live_2',
+              listId: 'tasks',
+              title: 'Live 2',
+              createdAt: now,
+              remoteId: 'rt-live-2',
+              remoteParentFolderId: 'rf-default',
+              changeKey: 'ck-2',
+            ),
           );
       await h.container.read(syncProvider.notifier).syncNow();
       expect(h.container.read(syncProvider).status, SyncStatus.error);
