@@ -87,52 +87,28 @@ class TodoRepository {
   Future<void> flushPendingWrites() => _cache.writeQueue;
 
   /// Reactive task stream backed by Drift when SQLite persistence is active.
-  Stream<List<TaskItem>> watchTasks() {
-    if (!_db.persistToSqlite) {
-      return Stream<List<TaskItem>>.value(_cache.tasks);
-    }
-    return _db
-        .watchTaskItemRecords(accountKey)
-        .map(
-          (rows) => List<TaskItem>.unmodifiable(
-            rows.map(
-              (row) => TaskItem.fromJson(_decodePayload(row.payloadJson)),
-            ),
-          ),
-        );
-  }
+  Stream<List<TaskItem>> watchTasks() => _watchDecoded(
+    fallback: () => _cache.tasks,
+    watchRows: () => _db.watchTaskItemRecords(accountKey),
+    payloadOf: (row) => row.payloadJson,
+    fromJson: TaskItem.fromJson,
+  );
 
   /// Reactive list stream backed by Drift when SQLite persistence is active.
-  Stream<List<TodoList>> watchLists() {
-    if (!_db.persistToSqlite) {
-      return Stream<List<TodoList>>.value(_cache.lists ?? const []);
-    }
-    return _db
-        .watchTodoListRecords(accountKey)
-        .map(
-          (rows) => List<TodoList>.unmodifiable(
-            rows.map(
-              (row) => TodoList.fromJson(_decodePayload(row.payloadJson)),
-            ),
-          ),
-        );
-  }
+  Stream<List<TodoList>> watchLists() => _watchDecoded(
+    fallback: () => _cache.lists ?? const [],
+    watchRows: () => _db.watchTodoListRecords(accountKey),
+    payloadOf: (row) => row.payloadJson,
+    fromJson: TodoList.fromJson,
+  );
 
   /// Reactive group stream backed by Drift when SQLite persistence is active.
-  Stream<List<ListGroup>> watchGroups() {
-    if (!_db.persistToSqlite) {
-      return Stream<List<ListGroup>>.value(_cache.groups);
-    }
-    return _db
-        .watchListGroupRecords(accountKey)
-        .map(
-          (rows) => List<ListGroup>.unmodifiable(
-            rows.map(
-              (row) => ListGroup.fromJson(_decodePayload(row.payloadJson)),
-            ),
-          ),
-        );
-  }
+  Stream<List<ListGroup>> watchGroups() => _watchDecoded(
+    fallback: () => _cache.groups,
+    watchRows: () => _db.watchListGroupRecords(accountKey),
+    payloadOf: (row) => row.payloadJson,
+    fromJson: ListGroup.fromJson,
+  );
 
   /// Loads this account's rows from SQLite into the in-memory cache.
   AsyncAppResult<Unit> preload() {
@@ -147,32 +123,42 @@ class TodoRepository {
       final allMutations = await _db.selectSyncMutationRecords(accountKey);
 
       // Decode first: a corrupt payload must not clobber the cache.
-      final lists = listRows
-          .map((row) => TodoList.fromJson(_decodePayload(row.payloadJson)))
-          .toList(growable: false);
-      final groups = groupRows
-          .map((row) => ListGroup.fromJson(_decodePayload(row.payloadJson)))
-          .toList(growable: false);
-      final tasks = taskRows
-          .map((row) => TaskItem.fromJson(_decodePayload(row.payloadJson)))
-          .toList(growable: false);
+      final lists = _decodeRows(
+        listRows,
+        (r) => r.payloadJson,
+        TodoList.fromJson,
+      );
+      final groups = _decodeRows(
+        groupRows,
+        (r) => r.payloadJson,
+        ListGroup.fromJson,
+      );
+      final tasks = _decodeRows(
+        taskRows,
+        (r) => r.payloadJson,
+        TaskItem.fromJson,
+      );
       final groupedMutations = allMutations.groupListsBy((row) => row.kind);
-      final outboxOps = (groupedMutations[_outboxKind] ?? const [])
-          .map((row) => SyncOutboxOp.fromJson(_decodePayload(row.payloadJson)))
-          .toList(growable: false);
+      final outboxOps = _decodeRows(
+        groupedMutations[_outboxKind] ?? const [],
+        (r) => r.payloadJson,
+        SyncOutboxOp.fromJson,
+      );
       final remoteIdMap = <String, String>{
         for (final row in groupedMutations[_remoteIdMapKind] ?? const [])
           if (_decodePayload(row.payloadJson)['remoteId'] case final String id)
             row.itemKey: id,
       };
-      final jobs = (groupedMutations[_syncJobKind] ?? const [])
-          .map((row) => SyncJob.fromJson(_decodePayload(row.payloadJson)))
-          .toList(growable: false);
+      final jobs = _decodeRows(
+        groupedMutations[_syncJobKind] ?? const [],
+        (r) => r.payloadJson,
+        SyncJob.fromJson,
+      );
 
       final cache = _cache;
-      cache.lists = lists.isEmpty ? null : List<TodoList>.unmodifiable(lists);
-      cache.groups = List<ListGroup>.unmodifiable(groups);
-      cache.tasks = List<TaskItem>.unmodifiable(tasks);
+      cache.lists = lists.isEmpty ? null : lists;
+      cache.groups = groups;
+      cache.tasks = tasks;
       cache.outbox = SyncOutboxQueue(outboxOps, remoteIdMap);
       cache.jobs
         ..clear()
@@ -385,13 +371,11 @@ class TodoRepository {
         accountKey,
         kind: _syncJobKind,
       );
-      final completedKeys = rows
-          .where(
-            (row) =>
-                SyncJob.fromJson(_decodePayload(row.payloadJson)).isTerminal,
-          )
-          .map((row) => row.itemKey)
-          .toList(growable: false);
+      final completedKeys =
+          _decodeRows(rows, (r) => r.payloadJson, SyncJob.fromJson)
+              .where((job) => job.isTerminal)
+              .map((job) => job.jobId)
+              .toList(growable: false);
       await _db.deleteSyncMutationRecords(
         accountKey,
         kind: _syncJobKind,
@@ -426,7 +410,7 @@ class TodoRepository {
         kind: _syncJobKind,
       );
       return _filterJobs(
-        rows.map((row) => SyncJob.fromJson(_decodePayload(row.payloadJson))),
+        _decodeRows(rows, (r) => r.payloadJson, SyncJob.fromJson),
         lane: lane,
         onlyRunnable: onlyRunnable,
         nowUtc: effectiveNow,
@@ -445,13 +429,31 @@ class TodoRepository {
         .watchSyncMutationRecords(accountKey, kind: _syncJobKind)
         .map(
           (rows) => _filterJobs(
-            rows.map(
-              (row) => SyncJob.fromJson(_decodePayload(row.payloadJson)),
-            ),
+            _decodeRows(rows, (r) => r.payloadJson, SyncJob.fromJson),
             lane: lane,
           ),
         );
   }
+
+  Stream<List<T>> _watchDecoded<R, T>({
+    required List<T> Function() fallback,
+    required Stream<List<R>> Function() watchRows,
+    required String Function(R row) payloadOf,
+    required T Function(Map<String, dynamic> json) fromJson,
+  }) {
+    if (!_db.persistToSqlite) {
+      return Stream<List<T>>.value(fallback());
+    }
+    return watchRows().map((rows) => _decodeRows(rows, payloadOf, fromJson));
+  }
+
+  List<T> _decodeRows<R, T>(
+    Iterable<R> rows,
+    String Function(R row) payloadOf,
+    T Function(Map<String, dynamic> json) fromJson,
+  ) => List<T>.unmodifiable(
+    rows.map((row) => fromJson(_decodePayload(payloadOf(row)))),
+  );
 
   List<SyncJob> _filterJobs(
     Iterable<SyncJob> jobs, {

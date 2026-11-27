@@ -50,7 +50,6 @@ const _$SyncJobTypeEnumMap = {
   SyncJobType.pullFull: 'pullFull',
   SyncJobType.uploadAttachment: 'uploadAttachment',
   SyncJobType.downloadAttachment: 'downloadAttachment',
-  SyncJobType.widgetSync: 'widgetSync',
 };
 
 const _$SyncJobStatusEnumMap = {

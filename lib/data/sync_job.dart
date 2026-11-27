@@ -18,7 +18,6 @@ enum SyncJobType {
   pullFull,
   uploadAttachment,
   downloadAttachment,
-  widgetSync,
 }
 
 /// Lifecycle state of a persisted background job.

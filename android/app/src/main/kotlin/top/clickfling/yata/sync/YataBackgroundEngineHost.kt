@@ -56,6 +56,8 @@ object YataBackgroundEngineHost {
             .getLong(KEY_CALLBACK_HANDLE, 0L)
     }
 
+    fun isRegistered(context: Context): Boolean = getCallbackHandle(context) != 0L
+
     suspend fun runPass(
         context: Context,
         lane: String,

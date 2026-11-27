@@ -105,12 +105,12 @@ class TodoWidgetProvider : HomeWidgetProvider() {
 
     private fun canDispatchSync(context: Context): Boolean {
         return WidgetSyncChannel.canDispatch() ||
-            YataBackgroundEngineHost.getCallbackHandle(context) != 0L
+            YataBackgroundEngineHost.isRegistered(context)
     }
 
     private fun dispatchSync(context: Context, reason: String) {
         if (WidgetSyncChannel.dispatchIfAttached(reason)) return
-        if (YataBackgroundEngineHost.getCallbackHandle(context) == 0L) return
+        if (!YataBackgroundEngineHost.isRegistered(context)) return
         YataSyncWorker.enqueue(
             context = context,
             lane = YataSyncWorker.LANE_WIDGET,

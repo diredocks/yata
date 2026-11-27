@@ -32,6 +32,9 @@ class SyncOutboxOp {
 
   String get key => '${entityType.name}::$localId';
 
+  bool get isAttachmentUpload =>
+      entityType == SyncEntityType.attachment && kind == SyncOpKind.upsert;
+
   SyncOutboxOp copyWith({
     int? seq,
     String? remoteId,
@@ -150,6 +153,18 @@ class SyncOutboxQueue {
 
   /// Acknowledges a single completed operation [seq], recording a monotonic
   /// commit sequence for concurrent pull reconciliation and delete tombstones.
+  void ackBatch(
+    Iterable<int> ackedSeqs,
+    Iterable<({SyncEntityType type, String localId})> clearedRemoteIdKeys,
+  ) {
+    for (final seq in ackedSeqs) {
+      ackOp(seq);
+    }
+    for (final entry in clearedRemoteIdKeys) {
+      clearRemoteId(entry.type, entry.localId);
+    }
+  }
+
   void ackOp(int seq) {
     final idx = _ops.indexWhere((op) => op.seq == seq);
     if (idx < 0) return;
