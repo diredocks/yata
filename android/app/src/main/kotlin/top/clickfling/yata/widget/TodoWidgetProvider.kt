@@ -12,10 +12,11 @@ import android.os.Build
 import android.view.View
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetLaunchIntent
-import es.antonborri.home_widget.HomeWidgetPlugin
 import es.antonborri.home_widget.HomeWidgetProvider
 import top.clickfling.yata.MainActivity
 import top.clickfling.yata.R
+import top.clickfling.yata.sync.YataBackgroundEngineHost
+import top.clickfling.yata.sync.YataSyncWorker
 
 class TodoWidgetProvider : HomeWidgetProvider() {
 
@@ -104,13 +105,19 @@ class TodoWidgetProvider : HomeWidgetProvider() {
 
     private fun canDispatchSync(context: Context): Boolean {
         return WidgetSyncChannel.canDispatch() ||
-            HomeWidgetPlugin.getDispatcherHandle(context) != 0L
+            YataBackgroundEngineHost.getCallbackHandle(context) != 0L
     }
 
     private fun dispatchSync(context: Context, reason: String) {
         if (WidgetSyncChannel.dispatchIfAttached(reason)) return
-        if (HomeWidgetPlugin.getDispatcherHandle(context) == 0L) return
-        WidgetSyncWorker.enqueue(context, reason)
+        if (YataBackgroundEngineHost.getCallbackHandle(context) == 0L) return
+        YataSyncWorker.enqueue(
+            context = context,
+            lane = YataSyncWorker.LANE_WIDGET,
+            reason = reason,
+            requiresNetwork = reason == "refresh",
+            expedited = reason == "refresh",
+        )
     }
 
     private fun startActivityForWidget(context: Context, intent: Intent) {

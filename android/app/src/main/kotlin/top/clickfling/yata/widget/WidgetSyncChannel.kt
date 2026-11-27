@@ -10,7 +10,6 @@ class WidgetSyncChannel {
     companion object {
         const val CHANNEL_NAME = "top.clickfling.yata/widget_sync"
         const val METHOD_SYNC_WIDGET = "syncWidget"
-        const val METHOD_BACKGROUND_SYNC_COMPLETED = "backgroundSyncCompleted"
 
         @Volatile
         private var active: WidgetSyncChannel? = null
