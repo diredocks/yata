@@ -64,6 +64,18 @@ class DetailViewScreen extends ConsumerStatefulWidget {
 }
 
 class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
+  void _close() {
+    final onClose = widget.onClose;
+    if (onClose != null) {
+      onClose();
+      return;
+    }
+    final route = ModalRoute.of(context);
+    if (route == null || !route.isActive) return;
+    Navigator.of(context).popUntil((candidate) => candidate == route);
+    Navigator.of(context).pop();
+  }
+
   Future<void> _pickDueDate(TaskItem task, WeekStart startOfWeek) async {
     final result = await showDueDatePickerSheet(
       context,
@@ -372,15 +384,18 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
     }
 
     notifier.deleteTask(task.id);
-    if (widget.onClose != null) {
-      widget.onClose!();
-    } else if (mounted) {
-      Navigator.of(context).pop();
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<bool>(
+      todoProvider.select(
+        (state) => state.tasks.any((task) => task.id == widget.taskId),
+      ),
+      (_, exists) {
+        if (!exists) _close();
+      },
+    );
     final state = ref.watch(todoProvider);
     final notifier = ref.read(detailViewPresenterProvider);
     final l10n = AppLocalizations.of(context);
