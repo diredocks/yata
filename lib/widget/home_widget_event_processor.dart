@@ -4,15 +4,11 @@ import 'dart:math';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show ProviderListenable;
-import 'package:shared_preferences/shared_preferences.dart';
 
-import '../account/account_local_storage.dart';
 import '../account/account_provider.dart';
 import '../core/result/app_result.dart';
 import '../data/todo_provider.dart';
-import '../data/todo_repository.dart';
 import '../models/account.dart';
 import '../sync/sync_provider.dart';
 import '../tasksview/tasks_view_presenter.dart';
@@ -130,8 +126,9 @@ class WidgetEventProcessor {
   }
 
   void _applySingleOp(WidgetPendingOp op) {
-    final target = _read(todoProvider).tasks
-        .firstWhereOrNull((t) => t.id == op.taskId);
+    final target = _read(
+      todoProvider,
+    ).tasks.firstWhereOrNull((t) => t.id == op.taskId);
     if (target == null) return;
 
     final presenter = _read(tasksViewPresenterProvider);
@@ -208,8 +205,9 @@ class WidgetEventProcessor {
       _scheduleBackgroundedAppCloudSync();
       return;
     }
-    _read(syncProvider.notifier)
-        .scheduleDebouncedSync(delay: const Duration(milliseconds: 400));
+    _read(
+      syncProvider.notifier,
+    ).scheduleDebouncedSync(delay: const Duration(milliseconds: 400));
   }
 
   Future<void> _flushAndPushSnapshot({bool clearRefreshing = false}) async {
@@ -236,54 +234,5 @@ class WidgetEventProcessor {
       clearRefreshing: clearRefreshing,
       force: force,
     );
-  }
-}
-
-/// Background entry point invoked by `home_widget` when `MainActivity` is not alive.
-@pragma('vm:entry-point')
-Future<void> homeWidgetBackgroundCallback(Uri? uri) async {
-  final reason = uri?.queryParameters['reason'] ?? '';
-  WidgetsFlutterBinding.ensureInitialized();
-  final database = TodoDatabase();
-  ProviderContainer? container;
-  try {
-    await guardAsyncUnit(() async {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.reload();
-      final strings = await HomeWidgetService.resolveSystemStrings();
-      final activeId = AccountLocalStorage(prefs).load().activeAccountId;
-      if (activeId != null) {
-        await TodoRepository.forAccount(
-          prefs,
-          accountId: activeId,
-          database: database,
-        ).preload();
-      }
-      container = ProviderContainer(
-        overrides: [
-          sharedPreferencesProvider.overrideWithValue(prefs),
-          todoDatabaseProvider.overrideWithValue(database),
-          realtimeSyncEnabledProvider.overrideWithValue(false),
-          periodicSyncEnabledProvider.overrideWithValue(false),
-        ],
-      );
-      final result = await WidgetEventProcessor(
-        widgetService: HomeWidgetService(const FlutterHomeWidgetTransport()),
-        read: container!.read,
-        strings: strings,
-        isBackground: true,
-        isAppForeground: false,
-      ).process(reason: reason);
-      if (result.didMutate || result.didSync) {
-        await prefs.setInt(
-          kWidgetLastMutationMsKey,
-          DateTime.now().millisecondsSinceEpoch,
-        );
-      }
-    }, operation: 'widgetBackgroundCallback($reason)');
-  } finally {
-    container?.dispose();
-    await database.close();
-    await FlutterHomeWidgetTransport.notifyBackgroundSyncCompleted(reason);
   }
 }

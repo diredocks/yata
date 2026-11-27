@@ -12,7 +12,6 @@ import 'package:intl/date_symbol_data_local.dart';
 import '../core/logging/app_logger.dart';
 import '../core/result/app_result.dart';
 import '../data/todo_state.dart';
-import 'home_widget_event_processor.dart';
 import 'home_widget_models.dart';
 
 export 'home_widget_event_processor.dart';
@@ -53,17 +52,6 @@ class FlutterHomeWidgetTransport implements HomeWidgetTransport {
     if (kIsWeb) return false;
     if (Platform.environment.containsKey('FLUTTER_TEST')) return false;
     return Platform.isAndroid;
-  }
-
-  static Future<void> notifyBackgroundSyncCompleted(String reason) async {
-    if (!isSupportedPlatform) return;
-    try {
-      await _channel.invokeMethod<void>('backgroundSyncCompleted', reason);
-    } on MissingPluginException catch (e) {
-      _log.warning('backgroundSyncCompleted plugin unavailable: $e');
-    } on PlatformException catch (e) {
-      _log.warning('backgroundSyncCompleted platform error: $e');
-    }
   }
 
   static void _ensureSyncHandlerInstalled() {
@@ -334,13 +322,6 @@ class HomeWidgetService {
       await _transport.updateWidget();
     }, operation: 'clearWidgetData');
     clear.complete();
-  }
-
-  static Future<void> registerBackgroundCallback() async {
-    if (!FlutterHomeWidgetTransport.isSupportedPlatform) return;
-    await HomeWidget.registerInteractivityCallback(
-      homeWidgetBackgroundCallback,
-    );
   }
 
   static Future<HomeWidgetStrings> resolveSystemStrings({

@@ -6,7 +6,9 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import '../account/account_provider.dart';
 import '../core/error/app_error.dart';
 import '../core/logging/app_logger.dart';
+import '../data/sync_job.dart';
 import '../data/sync_outbox.dart';
+import 'background_sync_bridge.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
 import 'microsoft/account_profile_refresher.dart';
@@ -233,12 +235,16 @@ class SyncNotifier extends Notifier<SyncState> {
 
   Timer? _periodicTimer;
   RealtimeSyncController? _realtimeController;
+  StreamSubscription<BackgroundWorkerEvent>? _workerEventSub;
 
   bool _disposed = false;
   bool _isForeground = true;
   _CancelFlag? _activePullCancel;
 
   bool get _hasActiveSync => _pushRunner.isRunning || _pullRunner.isRunning;
+
+  bool get _delegatesTransfersToBackground =>
+      ref.read(backgroundSyncSchedulerProvider).handlesTransfersInBackground;
 
   MicrosoftAccount? get _activeMicrosoftAccount {
     final active = ref.read(accountProvider).activeAccount;
@@ -269,6 +275,9 @@ class SyncNotifier extends Notifier<SyncState> {
   SyncState build() {
     _disposed = false;
     ref.onDispose(_disposeResources);
+    _workerEventSub ??= BackgroundWorkerEventBus.events.listen(
+      _handleBackgroundWorkerEvent,
+    );
     final realtime = _ensureRealtimeController();
 
     final accountIdentity = ref.watch(
@@ -325,6 +334,8 @@ class SyncNotifier extends Notifier<SyncState> {
     _stopPeriodicSync();
     _realtimeController?.dispose();
     _realtimeController = null;
+    unawaited(_workerEventSub?.cancel());
+    _workerEventSub = null;
   }
 
   void _cancelPushDebounce() {
@@ -370,9 +381,80 @@ class SyncNotifier extends Notifier<SyncState> {
     final pendingPushReason = _pendingPushReason;
     if (pendingPushReason != null && _pushDebouncer.isActive) {
       _cancelPushDebounce();
-      _log.info('onAppPaused: flushing pending push reason=$pendingPushReason');
-      unawaited(_pushNow(reason: pendingPushReason));
+      if (!_delegatesTransfersToBackground) {
+        _log.info(
+          'onAppPaused: flushing pending push reason=$pendingPushReason',
+        );
+        unawaited(_pushNow(reason: pendingPushReason));
+      }
     }
+    _scheduleDurableBackgroundHandoff(
+      reason: pendingPushReason ?? 'app_paused',
+    );
+  }
+
+  void _scheduleDurableBackgroundHandoff({required String reason}) {
+    final active = _activeMicrosoftAccount;
+    if (_disposed || active == null) return;
+    final repo = ref.read(todoProvider.notifier).repository;
+    final outbox = repo.outbox;
+    if (outbox.isEmpty) return;
+
+    final hasMetadata = outbox.ops.any((op) => !op.isAttachmentUpload);
+    final hasAttachments = outbox.ops.any((op) => op.isAttachmentUpload);
+    final scheduler = ref.read(backgroundSyncSchedulerProvider);
+    unawaited(() async {
+      await repo.flushPendingWrites();
+      if (_disposed) return;
+      if (hasMetadata) {
+        await scheduler.enqueueSync(
+          lane: SyncJobLane.metadata,
+          reason: reason,
+          requiresNetwork: true,
+          expedited: true,
+        );
+      }
+      if (hasAttachments) {
+        await scheduler.enqueueSync(
+          lane: SyncJobLane.transfer,
+          reason: reason,
+          requiresNetwork: true,
+          expedited: false,
+        );
+      }
+    }());
+  }
+
+  Future<void> _enqueueBackgroundTransferIfPending(String reason) async {
+    if (_disposed || !_delegatesTransfersToBackground) return;
+    final repo = ref.read(todoProvider.notifier).repository;
+    if (!repo.outbox.ops.any((op) => op.isAttachmentUpload)) return;
+    await repo.flushPendingWrites();
+    if (_disposed) return;
+    await ref
+        .read(backgroundSyncSchedulerProvider)
+        .enqueueSync(
+          lane: SyncJobLane.transfer,
+          reason: reason,
+          requiresNetwork: true,
+          expedited: false,
+        );
+  }
+
+  void _handleBackgroundWorkerEvent(BackgroundWorkerEvent event) {
+    if (_disposed || event is! BackgroundDbChangedEvent) return;
+    final active = _activeMicrosoftAccount;
+    if (active == null) return;
+    final repo = ref.read(todoProvider.notifier).repository;
+    if (event.accountKey != repo.accountKey && event.accountKey != active.id) {
+      return;
+    }
+    unawaited(() async {
+      await repo.preload();
+      if (!_disposed) {
+        ref.invalidate(todoProvider);
+      }
+    }());
   }
 
   /// Resumes foreground sync channels and triggers a debounced sync when the
@@ -517,6 +599,14 @@ class SyncNotifier extends Notifier<SyncState> {
       return Future<void>.value();
     }
 
+    if (_delegatesTransfersToBackground) {
+      final ops = ref.read(todoProvider.notifier).repository.outbox.ops;
+      final hasMetadata = ops.any((op) => !op.isAttachmentUpload);
+      if (!hasMetadata) {
+        return _enqueueBackgroundTransferIfPending(reason);
+      }
+    }
+
     final followUpFolders = <String>{};
     var lastSucceeded = false;
 
@@ -554,6 +644,7 @@ class SyncNotifier extends Notifier<SyncState> {
         if (lastSucceeded && !_hasActiveSync) {
           state = state.copyWith(status: SyncStatus.success, error: null);
         }
+        await _enqueueBackgroundTransferIfPending(reason);
         if (enqueueFollowUpPull &&
             followUpFolders.isNotEmpty &&
             _isForeground) {
@@ -639,6 +730,9 @@ class SyncNotifier extends Notifier<SyncState> {
         );
       },
       reason: reason,
+      laneFilter: _delegatesTransfersToBackground
+          ? PushLaneFilter.metadataOnly
+          : PushLaneFilter.all,
     );
 
     if (_disposed) return null;

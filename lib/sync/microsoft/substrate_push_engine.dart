@@ -73,6 +73,10 @@ bool isReorderOnlyTaskPatch(
   return !(dirtyFields.contains(TaskDirtyField.status) && isCompleted);
 }
 
+/// Filters which Outbox operations a push pass drains so slow attachment
+/// uploads can run on a dedicated transfer lane without blocking metadata sync.
+enum PushLaneFilter { all, metadataOnly, attachmentsOnly }
+
 enum _PushStage {
   setting,
   nonGroupDelete,
@@ -107,8 +111,9 @@ class SubstratePushEngine {
     required DateTime nowUtc,
     TodoState Function()? readLatestState,
     Future<void> Function(OutboxPushOutcome itemOutcome)? onItemCommitted,
+    PushLaneFilter laneFilter = PushLaneFilter.all,
   }) async {
-    final batch = outbox.beginBatch();
+    final batch = _filterBatch(outbox.beginBatch(), laneFilter);
     try {
       if (batch.isEmpty) {
         return const Success(OutboxPushOutcome.empty);
@@ -126,6 +131,17 @@ class SubstratePushEngine {
     } finally {
       outbox.endBatch();
     }
+  }
+
+  static List<SyncOutboxOp> _filterBatch(
+    List<SyncOutboxOp> batch,
+    PushLaneFilter filter,
+  ) {
+    if (filter == PushLaneFilter.all) return batch;
+    final wantAttachments = filter == PushLaneFilter.attachmentsOnly;
+    return batch
+        .where((op) => op.isAttachmentUpload == wantAttachments)
+        .toList(growable: false);
   }
 }
 
