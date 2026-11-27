@@ -544,7 +544,8 @@ void main() {
         return http.Response(
           jsonEncode({
             'Value': const [],
-            'DeltaLink': '${request.url.path}?deltatoken=${hasDelta ? "final" : "p1"}',
+            'DeltaLink':
+                '${request.url.path}?deltatoken=${hasDelta ? "final" : "p1"}',
           }),
           200,
         );
@@ -786,140 +787,47 @@ void main() {
       expect(afterPhoto.themePhoto, ListThemePhoto.beach);
     });
 
-    test(
-      'follow-up folder pull triggers only on recurring completion (not normal edits) and pulls only that folder',
-      () async {
-        final h = await createSyncTestHarness(
-          accountId: 'acct_push_only',
-          defaultTasksFolderRemoteId: 'rf-default',
-          tasks: [
-            TaskItem(
-              id: 't_normal',
-              listId: 'tasks',
-              title: 'One-off',
-              createdAt: DateTime.utc(2026, 11, 22, 8),
-              remoteId: 'rt-normal',
-              remoteParentFolderId: 'rf-default',
-              changeKey: 'ck-normal',
-            ),
-            TaskItem(
-              id: 't_rec',
-              listId: 'tasks',
-              title: 'Daily Standup',
-              createdAt: DateTime.utc(2026, 11, 22, 7),
-              dueDate: DateTime(2026, 11, 22),
-              recurrence: RecurrenceType.daily,
-              remoteId: 'rt-rec',
-              remoteParentFolderId: 'rf-default',
-              changeKey: 'ck-rec',
-            ),
-          ],
-          foldersDeltaLink: 'dl-folders-1',
-          taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
-        );
-
-        final pushEngine = SubstratePushEngine(h.api);
-        final pullEngine = SubstratePullEngine(h.api);
-        final todoNotifier = h.container.read(todoProvider.notifier);
-
-        // 1) Non-recurring completion produces NO follow-up folder pull.
-        h.container
-            .read(tasksViewPresenterProvider)
-            .setTaskCompleted('t_normal', completed: true);
-        h.api.callLog.clear();
-
-        final normalPush = await pushEngine
-            .pushOutbox(
-              readState: () => h.container.read(todoProvider),
-              outbox: h.repository.outbox,
-              nowUtc: DateTime.now().toUtc(),
-              onItemCommitted: todoNotifier.commitPushBatch,
-            )
-            .fold(
-              (outcome) => outcome,
-              (error) => fail('unexpected push failure: ${error.describe()}'),
-            );
-        expect(normalPush.pushedTasks, contains('t_normal'));
-        expect(normalPush.followUpPullFolderRemoteIds, isEmpty);
-        expect(h.api.callLog, ['PATCH tasks/rt-normal(ifMatch=ck-normal)']);
-
-        // 2) Recurring task completion flags its folder for a selective pull.
-        h.container
-            .read(tasksViewPresenterProvider)
-            .setTaskCompleted('t_rec', completed: true);
-        h.api.callLog.clear();
-
-        final recPush = await pushEngine
-            .pushOutbox(
-              readState: () => h.container.read(todoProvider),
-              outbox: h.repository.outbox,
-              nowUtc: DateTime.now().toUtc(),
-              onItemCommitted: todoNotifier.commitPushBatch,
-            )
-            .fold(
-              (outcome) => outcome,
-              (error) => fail('unexpected push failure: ${error.describe()}'),
-            );
-        expect(recPush.pushedTasks, contains('t_rec'));
-        expect(recPush.followUpPullFolderRemoteIds, {'rf-default'});
-
-        final pullOutcome = await pullEngine
-            .pull(
-              repository: h.repository,
-              readState: () => h.container.read(todoProvider),
-              idGenerator: todoNotifier.nextId,
-              onlyFolderRemoteIds: recPush.followUpPullFolderRemoteIds,
-            )
-            .fold(
-              (outcome) => outcome,
-              (error) => fail('unexpected pull failure: ${error.describe()}'),
-            );
-
-        expect(h.api.callLog, [
-          'PATCH tasks/rt-rec(ifMatch=ck-rec)',
-          'GET tasks(rf-default,dl-tasks-1)',
-        ]);
-        expect(pullOutcome.isSelective, isTrue);
-        expect(pullOutcome.remoteSettings, isNull);
-        expect(
-          pullOutcome.tasks.firstWhere((t) => t.id == 't_rec').isCompleted,
-          isTrue,
-        );
-      },
-    );
-
-    test('selective pull tolerates a folder that disappeared remotely', () async {
+    test('follow-up folder pull triggers only on recurring completion (not normal edits) and pulls only that folder', () async {
       final h = await createSyncTestHarness(
-        accountId: 'acct_push_only_missing_folder',
+        accountId: 'acct_push_only',
         defaultTasksFolderRemoteId: 'rf-default',
         tasks: [
           TaskItem(
-            id: 't_1',
+            id: 't_normal',
             listId: 'tasks',
-            title: 'One',
+            title: 'One-off',
             createdAt: DateTime.utc(2026, 11, 22, 8),
+            remoteId: 'rt-normal',
+            remoteParentFolderId: 'rf-default',
+            changeKey: 'ck-normal',
+          ),
+          TaskItem(
+            id: 't_rec',
+            listId: 'tasks',
+            title: 'Daily Standup',
+            createdAt: DateTime.utc(2026, 11, 22, 7),
             dueDate: DateTime(2026, 11, 22),
             recurrence: RecurrenceType.daily,
-            remoteId: 'rt-1',
+            remoteId: 'rt-rec',
             remoteParentFolderId: 'rf-default',
-            changeKey: 'ck-1',
+            changeKey: 'ck-rec',
           ),
         ],
         foldersDeltaLink: 'dl-folders-1',
         taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
       );
-      h.api.onFetchTasksDelta = (folderRemoteId, deltaLink) =>
-          throw const AppError.notFound(
-            message: 'Folder is gone',
-            id: 'folder_gone',
-          );
 
+      final pushEngine = SubstratePushEngine(h.api);
+      final pullEngine = SubstratePullEngine(h.api);
+      final todoNotifier = h.container.read(todoProvider.notifier);
+
+      // 1) Non-recurring completion produces NO follow-up folder pull.
       h.container
           .read(tasksViewPresenterProvider)
-          .setTaskCompleted('t_1', completed: true);
+          .setTaskCompleted('t_normal', completed: true);
+      h.api.callLog.clear();
 
-      final todoNotifier = h.container.read(todoProvider.notifier);
-      final pushOutcome = await SubstratePushEngine(h.api)
+      final normalPush = await pushEngine
           .pushOutbox(
             readState: () => h.container.read(todoProvider),
             outbox: h.repository.outbox,
@@ -930,21 +838,114 @@ void main() {
             (outcome) => outcome,
             (error) => fail('unexpected push failure: ${error.describe()}'),
           );
-      final pullOutcome = await SubstratePullEngine(h.api)
+      expect(normalPush.pushedTasks, contains('t_normal'));
+      expect(normalPush.followUpPullFolderRemoteIds, isEmpty);
+      expect(h.api.callLog, ['PATCH tasks/rt-normal(ifMatch=ck-normal)']);
+
+      // 2) Recurring task completion flags its folder for a selective pull.
+      h.container
+          .read(tasksViewPresenterProvider)
+          .setTaskCompleted('t_rec', completed: true);
+      h.api.callLog.clear();
+
+      final recPush = await pushEngine
+          .pushOutbox(
+            readState: () => h.container.read(todoProvider),
+            outbox: h.repository.outbox,
+            nowUtc: DateTime.now().toUtc(),
+            onItemCommitted: todoNotifier.commitPushBatch,
+          )
+          .fold(
+            (outcome) => outcome,
+            (error) => fail('unexpected push failure: ${error.describe()}'),
+          );
+      expect(recPush.pushedTasks, contains('t_rec'));
+      expect(recPush.followUpPullFolderRemoteIds, {'rf-default'});
+
+      final pullOutcome = await pullEngine
           .pull(
             repository: h.repository,
             readState: () => h.container.read(todoProvider),
             idGenerator: todoNotifier.nextId,
-            onlyFolderRemoteIds: pushOutcome.followUpPullFolderRemoteIds,
+            onlyFolderRemoteIds: recPush.followUpPullFolderRemoteIds,
           )
           .fold(
             (outcome) => outcome,
             (error) => fail('unexpected pull failure: ${error.describe()}'),
           );
 
+      expect(h.api.callLog, [
+        'PATCH tasks/rt-rec(ifMatch=ck-rec)',
+        'GET tasks(rf-default,dl-tasks-1)',
+      ]);
       expect(pullOutcome.isSelective, isTrue);
-      expect(pullOutcome.tasks.single.id, 't_1');
+      expect(pullOutcome.remoteSettings, isNull);
+      expect(
+        pullOutcome.tasks.firstWhere((t) => t.id == 't_rec').isCompleted,
+        isTrue,
+      );
     });
+
+    test(
+      'selective pull tolerates a folder that disappeared remotely',
+      () async {
+        final h = await createSyncTestHarness(
+          accountId: 'acct_push_only_missing_folder',
+          defaultTasksFolderRemoteId: 'rf-default',
+          tasks: [
+            TaskItem(
+              id: 't_1',
+              listId: 'tasks',
+              title: 'One',
+              createdAt: DateTime.utc(2026, 11, 22, 8),
+              dueDate: DateTime(2026, 11, 22),
+              recurrence: RecurrenceType.daily,
+              remoteId: 'rt-1',
+              remoteParentFolderId: 'rf-default',
+              changeKey: 'ck-1',
+            ),
+          ],
+          foldersDeltaLink: 'dl-folders-1',
+          taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
+        );
+        h.api.onFetchTasksDelta = (folderRemoteId, deltaLink) =>
+            throw const AppError.notFound(
+              message: 'Folder is gone',
+              id: 'folder_gone',
+            );
+
+        h.container
+            .read(tasksViewPresenterProvider)
+            .setTaskCompleted('t_1', completed: true);
+
+        final todoNotifier = h.container.read(todoProvider.notifier);
+        final pushOutcome = await SubstratePushEngine(h.api)
+            .pushOutbox(
+              readState: () => h.container.read(todoProvider),
+              outbox: h.repository.outbox,
+              nowUtc: DateTime.now().toUtc(),
+              onItemCommitted: todoNotifier.commitPushBatch,
+            )
+            .fold(
+              (outcome) => outcome,
+              (error) => fail('unexpected push failure: ${error.describe()}'),
+            );
+        final pullOutcome = await SubstratePullEngine(h.api)
+            .pull(
+              repository: h.repository,
+              readState: () => h.container.read(todoProvider),
+              idGenerator: todoNotifier.nextId,
+              onlyFolderRemoteIds: pushOutcome.followUpPullFolderRemoteIds,
+            )
+            .fold(
+              (outcome) => outcome,
+              (error) => fail('unexpected pull failure: ${error.describe()}'),
+            );
+
+        expect(pullOutcome.isSelective, isTrue);
+        expect(pullOutcome.tasks.single.id, 't_1');
+      },
+    );
 
     test(
       'mergeFoldersDelta does not hijack dirty unpushed list with same title',

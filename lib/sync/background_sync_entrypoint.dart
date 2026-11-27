@@ -42,7 +42,8 @@ Future<void> yataBackgroundSyncEntrypoint() async {
   channel.setMethodCallHandler((call) async {
     if (call.method != 'runBackgroundSync') return null;
     final args = call.arguments as Map<Object?, Object?>? ?? const {};
-    final laneName = args['lane'] as String? ?? BackgroundSyncLane.metadata.name;
+    final laneName =
+        args['lane'] as String? ?? BackgroundSyncLane.metadata.name;
     final reason = args['reason'] as String? ?? 'background';
     final outcome = await _runHeadlessSyncPass(
       laneName: laneName,

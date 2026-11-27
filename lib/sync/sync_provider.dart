@@ -538,7 +538,8 @@ class SyncNotifier extends Notifier<SyncState> {
     final fireIn = _pullDebouncer.schedule(delay, () {
       if (_disposed) return;
       final pending =
-          _pendingPullCommand ?? const _PullCommand(_PullScope.delta, 'debounced');
+          _pendingPullCommand ??
+          const _PullCommand(_PullScope.delta, 'debounced');
       _pendingPullCommand = null;
       unawaited(
         syncNow(

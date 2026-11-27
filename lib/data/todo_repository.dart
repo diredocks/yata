@@ -98,9 +98,7 @@ class TodoRepository {
   Map<String, String> loadTaskDeltaLinks() =>
       Map<String, String>.unmodifiable(_cache.taskDeltaLinks);
 
-  String? loadCachedEndpointUrl({
-    Duration maxAge = const Duration(hours: 12),
-  }) {
+  String? loadCachedEndpointUrl({Duration maxAge = const Duration(hours: 12)}) {
     final url = _cache.cachedEndpointUrl;
     final fetchedAt = _cache.cachedEndpointFetchedAt;
     if (url == null || url.isEmpty || fetchedAt == null) return null;
@@ -141,8 +139,7 @@ class TodoRepository {
   }) {
     final writes = <({String key, Map<String, dynamic>? payload})>[];
     if (updateGroupsDeltaLink) {
-      final normalized =
-          (groupsDeltaLink == null || groupsDeltaLink.isEmpty)
+      final normalized = (groupsDeltaLink == null || groupsDeltaLink.isEmpty)
           ? null
           : groupsDeltaLink;
       _cache.groupsDeltaLink = normalized;
@@ -152,8 +149,7 @@ class TodoRepository {
       ));
     }
     if (updateFoldersDeltaLink) {
-      final normalized =
-          (foldersDeltaLink == null || foldersDeltaLink.isEmpty)
+      final normalized = (foldersDeltaLink == null || foldersDeltaLink.isEmpty)
           ? null
           : foldersDeltaLink;
       _cache.foldersDeltaLink = normalized;

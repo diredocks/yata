@@ -148,9 +148,7 @@ class _LatencyApi extends FakeSubstrateApi {
     String taskRemoteId,
     Map<String, dynamic> patch, {
     String? changeKey,
-  }) => _rtt(
-    () => super.patchTask(taskRemoteId, patch, changeKey: changeKey),
-  );
+  }) => _rtt(() => super.patchTask(taskRemoteId, patch, changeKey: changeKey));
 }
 
 void main() {
@@ -267,8 +265,7 @@ void main() {
         .toggleTaskCompleted('task_0_0');
     while (sw.elapsed < const Duration(seconds: 10)) {
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      if (!h.container.read(syncProvider).isSyncing &&
-          api.callLog.isNotEmpty) {
+      if (!h.container.read(syncProvider).isSyncing && api.callLog.isNotEmpty) {
         break;
       }
     }

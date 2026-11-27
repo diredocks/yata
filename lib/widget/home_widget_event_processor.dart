@@ -126,9 +126,8 @@ class WidgetEventProcessor {
   }
 
   void _applySingleOp(WidgetPendingOp op) {
-    final target = _read(
-      todoProvider,
-    ).tasks.firstWhereOrNull((t) => t.id == op.taskId);
+    final target = _read(todoProvider).tasks
+        .firstWhereOrNull((t) => t.id == op.taskId);
     if (target == null) return;
 
     final presenter = _read(tasksViewPresenterProvider);
@@ -205,9 +204,8 @@ class WidgetEventProcessor {
       _scheduleBackgroundedAppCloudSync();
       return;
     }
-    _read(
-      syncProvider.notifier,
-    ).scheduleDebouncedSync(delay: const Duration(milliseconds: 400));
+    _read(syncProvider.notifier)
+        .scheduleDebouncedSync(delay: const Duration(milliseconds: 400));
   }
 
   Future<void> _flushAndPushSnapshot({bool clearRefreshing = false}) async {

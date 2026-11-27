@@ -314,7 +314,9 @@ class SyncStore {
               contentType: pAtt.contentType ?? att.contentType,
               lastModifiedDateTime:
                   pAtt.lastModifiedDateTime ?? att.lastModifiedDateTime,
-              isTransferring: pAtt.remoteId != null ? false : att.isTransferring,
+              isTransferring: pAtt.remoteId != null
+                  ? false
+                  : att.isTransferring,
             )
           else
             att,

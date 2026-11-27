@@ -287,7 +287,8 @@ void main() {
         delayFn: (_) async {},
       );
 
-      final res = (await api.fetchTasksDelta(folderRemoteId: 'f1')).getOrThrow();
+      final res = (await api.fetchTasksDelta(folderRemoteId: 'f1'))
+          .getOrThrow();
 
       expect(requestedUris.length, 3);
       expect(res.items.map((t) => t.id).toList(), ['t1', 't2', 't3']);
@@ -339,9 +340,8 @@ void main() {
           delayFn: (_) async {},
         );
 
-        final res = (await api.fetchTasksDelta(
-          folderRemoteId: 'f1',
-        )).getOrThrow();
+        final res = (await api.fetchTasksDelta(folderRemoteId: 'f1'))
+            .getOrThrow();
 
         expect(requestedTokens, [null, 'phase1']);
         expect(res.items.map((t) => t.id).toList(), ['t1']);
@@ -437,7 +437,8 @@ void main() {
         delayFn: (_) async {},
       );
 
-      final res = (await api.fetchTasksDelta(folderRemoteId: 'f1')).getOrThrow();
+      final res = (await api.fetchTasksDelta(folderRemoteId: 'f1'))
+          .getOrThrow();
 
       expect(calls, 3);
       expect(res.items.map((t) => t.id).toList(), ['t1', 't2', 't3']);
@@ -482,7 +483,8 @@ void main() {
         delayFn: (_) async {},
       );
 
-      final res = (await api.fetchTasksDelta(folderRemoteId: 'f1')).getOrThrow();
+      final res = (await api.fetchTasksDelta(folderRemoteId: 'f1'))
+          .getOrThrow();
 
       expect(requestedUrls, [
         'https://substrate.office.com/todob2/api/v1/tasks?\$expand=LinkedEntities&parentFolderId=f1&maxPageSize=50',

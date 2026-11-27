@@ -166,8 +166,7 @@ class BackgroundWorkerEventBus {
       StreamController<BackgroundDbChangedEvent>.broadcast();
   static ReceivePort? _uiReceivePort;
 
-  static Stream<BackgroundDbChangedEvent> get events =>
-      _localController.stream;
+  static Stream<BackgroundDbChangedEvent> get events => _localController.stream;
 
   /// Registers the UI isolate's `ReceivePort` so background worker isolates
   /// can push DB-change signals without polling.

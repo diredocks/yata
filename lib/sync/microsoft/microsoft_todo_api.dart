@@ -23,9 +23,7 @@ final _log = appLogFor('SyncApi');
 final _realtimeLog = appLogFor('SyncRealtime');
 
 typedef SubstrateContextResolver =
-    AsyncAppResult<SubstrateRequestContext> Function({
-      bool forceRefreshToken,
-    });
+    AsyncAppResult<SubstrateRequestContext> Function({bool forceRefreshToken});
 
 /// Resolves valid MSA bearer token, CID, and discovered Substrate base URL
 /// (caching the endpoint URL in SQLite [repository]).
@@ -35,27 +33,28 @@ AsyncAppResult<SubstrateRequestContext> resolveSubstrateContext({
   required MicrosoftAccount account,
   required TodoRepository repository,
   bool forceRefreshToken = false,
-}) => _resolveTokens(
-  authClient: authClient,
-  tokenStorage: tokenStorage,
-  account: account,
-  forceRefreshToken: forceRefreshToken,
-).flatMap((tokens) {
-  final cid = tokens.userId.isNotEmpty
-      ? tokens.userId
-      : account.microsoftUserId;
-  return _resolveBaseUrl(
-    authClient: authClient,
-    repository: repository,
-    cid: cid,
-  ).map(
-    (baseUrl) => SubstrateRequestContext(
-      baseUrl: baseUrl,
-      accessToken: tokens.accessToken,
-      cid: cid,
-    ),
-  );
-});
+}) =>
+    _resolveTokens(
+      authClient: authClient,
+      tokenStorage: tokenStorage,
+      account: account,
+      forceRefreshToken: forceRefreshToken,
+    ).flatMap((tokens) {
+      final cid = tokens.userId.isNotEmpty
+          ? tokens.userId
+          : account.microsoftUserId;
+      return _resolveBaseUrl(
+        authClient: authClient,
+        repository: repository,
+        cid: cid,
+      ).map(
+        (baseUrl) => SubstrateRequestContext(
+          baseUrl: baseUrl,
+          accessToken: tokens.accessToken,
+          cid: cid,
+        ),
+      );
+    });
 
 AsyncAppResult<MicrosoftAuthTokens> _resolveTokens({
   required MicrosoftAuthClient authClient,
@@ -649,8 +648,7 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
   AsyncAppResult<DeltaPageResult<RemoteTodoFolder>> fetchFoldersDelta({
     String? deltaLink,
   }) => _fetchDeltaPages<RemoteTodoFolder>(
-    initialRelativePath:
-        'taskfolders?\$select=*,AllExtensions/Com_Wunderlist_Import,AllExtensions/Com_Microsoft_Grocery_Configs&maxPageSize=50',
+    initialRelativePath: 'taskfolders?\$select=*,AllExtensions/Com_Wunderlist_Import,AllExtensions/Com_Microsoft_Grocery_Configs&maxPageSize=50',
     deltaLink: deltaLink,
     parser: RemoteTodoFolder.fromJson,
   );
@@ -792,10 +790,12 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
   ).map(RemoteTaskStep.fromJson);
 
   @override
-  AsyncAppResult<Unit> deleteStep(String taskRemoteId, String stepRemoteId) =>
-      _deleteResource(
-        'tasks/${Uri.encodeComponent(taskRemoteId)}/subtasks/${Uri.encodeComponent(stepRemoteId)}',
-      );
+  AsyncAppResult<Unit> deleteStep(
+    String taskRemoteId,
+    String stepRemoteId,
+  ) => _deleteResource(
+    'tasks/${Uri.encodeComponent(taskRemoteId)}/subtasks/${Uri.encodeComponent(stepRemoteId)}',
+  );
 
   @override
   AsyncAppResult<RemoteFileUpload> uploadAttachment(
@@ -803,32 +803,25 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
     required String fileName,
     required List<int> bytes,
     String? contentType,
-  }) =>
-      _runWithAuthRetry(
-        (ctx) => _sendWithThrottleRetry(
-          operation: 'uploadAttachment',
-          executeOnce: () async {
-            final uri = ctx.endpointUri(
-              'tasks/${Uri.encodeComponent(taskRemoteId)}/attachments',
-            );
-            final request = http.MultipartRequest('POST', uri);
-            final headers = _buildHeaders(ctx)..remove('Content-Type');
-            request.headers.addAll(headers);
-            request.fields['jsonMetadata'] = jsonEncode({'Name': fileName});
-            request.files.add(
-              http.MultipartFile.fromBytes(
-                'attachment',
-                bytes,
-                filename: fileName,
-              ),
-            );
-            final streamed = await _http.send(request).timeout(_requestTimeout);
-            return http.Response.fromStream(streamed);
-          },
-        ),
-      ).map(
-        (response) => RemoteFileUpload.fromJson(_decodeJsonMap(response.body)),
-      );
+  }) => _runWithAuthRetry(
+    (ctx) => _sendWithThrottleRetry(
+      operation: 'uploadAttachment',
+      executeOnce: () async {
+        final uri = ctx.endpointUri(
+          'tasks/${Uri.encodeComponent(taskRemoteId)}/attachments',
+        );
+        final request = http.MultipartRequest('POST', uri);
+        final headers = _buildHeaders(ctx)..remove('Content-Type');
+        request.headers.addAll(headers);
+        request.fields['jsonMetadata'] = jsonEncode({'Name': fileName});
+        request.files.add(
+          http.MultipartFile.fromBytes('attachment', bytes, filename: fileName),
+        );
+        final streamed = await _http.send(request).timeout(_requestTimeout);
+        return http.Response.fromStream(streamed);
+      },
+    ),
+  ).map((response) => RemoteFileUpload.fromJson(_decodeJsonMap(response.body)));
 
   Uri _resolveAttachmentDownloadUri(
     SubstrateRequestContext ctx,
@@ -877,9 +870,8 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
   @override
   Stream<RealtimeEvent> connectRealtime() async* {
     _realtimeLog.info('connecting GET realtime');
-    var ctx = (await _resolveContext(
-      forceRefreshToken: false,
-    )).fold((value) => value, (error) => throw error);
+    var ctx = (await _resolveContext(forceRefreshToken: false))
+        .fold((value) => value, (error) => throw error);
     var streamed = await _openRealtimeStream(ctx);
     if (streamed.statusCode == 401) {
       await streamed.stream.drain<void>().catchError((_) {});

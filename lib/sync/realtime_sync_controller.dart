@@ -179,7 +179,8 @@ class RealtimeSyncController {
       onScheduleFallbackSync(
         delay: const Duration(milliseconds: 200),
         forceFullSync: _shouldForceFullSyncForEvent(unhandled),
-        reason: 'realtime_${unhandled.type}_${unhandled.operation ?? 'unknown'}',
+        reason:
+            'realtime_${unhandled.type}_${unhandled.operation ?? 'unknown'}',
       );
     }
   }
@@ -222,7 +223,8 @@ class RealtimeSyncController {
     final parsed = parseRealtimeEventsBatch(events);
     final todoNotifier = ref.read(todoProvider.notifier);
     final currentState = ref.read(todoProvider);
-    final protection = todoNotifier.repository.outbox.captureCurrentProtection();
+    final protection = todoNotifier.repository.outbox
+        .captureCurrentProtection();
 
     final reconciled = reconcileRemoteDelta(
       delta: parsed.delta,

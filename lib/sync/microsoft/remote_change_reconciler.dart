@@ -16,7 +16,11 @@ typedef RemoteTaskChange = ({
   bool preserveAttachmentsWhenMissing,
 });
 
-({List<TaskItem> tasks, Set<String> seenActiveRemoteIds, bool hasUnresolvedParent})
+({
+  List<TaskItem> tasks,
+  Set<String> seenActiveRemoteIds,
+  bool hasUnresolvedParent,
+})
 _reconcileRemoteTaskChanges({
   required List<TodoList> lists,
   required List<TaskItem> currentTasks,
@@ -270,7 +274,10 @@ ReconciledRemoteDelta reconcileRemoteDelta({
       }
       effectiveGroups = mergedGroups;
       if (!returnOnlyChanged ||
-          !const ListEquality<ListGroup>().equals(liveGroups, effectiveGroups)) {
+          !const ListEquality<ListGroup>().equals(
+            liveGroups,
+            effectiveGroups,
+          )) {
         outGroups = effectiveGroups;
       }
     }
@@ -425,7 +432,11 @@ RemoteDelta? parseRealtimeEventToDelta(RealtimeEvent event) {
         return RemoteDelta(
           tasks: [
             (
-              remote: RemoteTodoTask(id: remoteId, subject: '', isDeleted: true),
+              remote: RemoteTodoTask(
+                id: remoteId,
+                subject: '',
+                isDeleted: true,
+              ),
               fallbackFolderRemoteId: null,
               preserveStepsWhenMissing: false,
               preserveAttachmentsWhenMissing: false,

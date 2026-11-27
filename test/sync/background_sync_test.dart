@@ -64,43 +64,46 @@ class _RecordingBackgroundScheduler implements BackgroundSyncScheduler {
 
 void main() {
   group('Row-level Drift persistence & BackgroundDbChangedEvent', () {
-    test('upsertTask and deleteTask modify individual rows in SQLite', () async {
-      SharedPreferences.setMockInitialValues({});
-      final db = TodoDatabase(NativeDatabase.memory());
-      addTearDown(db.close);
-      final repo = TodoRepository(db, accountKey: 'acct_row');
+    test(
+      'upsertTask and deleteTask modify individual rows in SQLite',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final db = TodoDatabase(NativeDatabase.memory());
+        addTearDown(db.close);
+        final repo = TodoRepository(db, accountKey: 'acct_row');
 
-      final t1 = TaskItem(
-        id: 't1',
-        listId: 'tasks',
-        title: 'First',
-        createdAt: DateTime.utc(2026, 11, 20),
-      );
-      final t2 = TaskItem(
-        id: 't2',
-        listId: 'tasks',
-        title: 'Second',
-        createdAt: DateTime.utc(2026, 11, 21),
-      );
+        final t1 = TaskItem(
+          id: 't1',
+          listId: 'tasks',
+          title: 'First',
+          createdAt: DateTime.utc(2026, 11, 20),
+        );
+        final t2 = TaskItem(
+          id: 't2',
+          listId: 'tasks',
+          title: 'Second',
+          createdAt: DateTime.utc(2026, 11, 21),
+        );
 
-      await repo.saveTasks([t1, t2]);
-      await repo.flushPendingWrites();
+        await repo.saveTasks([t1, t2]);
+        await repo.flushPendingWrites();
 
-      await repo.upsertTask(t1.copyWith(title: 'First Updated'));
-      await repo.flushPendingWrites();
-      await repo.preload();
+        await repo.upsertTask(t1.copyWith(title: 'First Updated'));
+        await repo.flushPendingWrites();
+        await repo.preload();
 
-      expect(
-        repo.readCachedTasks().map((t) => '${t.id}:${t.title}').toList(),
-        ['t1:First Updated', 't2:Second'],
-      );
+        expect(
+          repo.readCachedTasks().map((t) => '${t.id}:${t.title}').toList(),
+          ['t1:First Updated', 't2:Second'],
+        );
 
-      await repo.deleteTask('t1');
-      await repo.flushPendingWrites();
-      await repo.preload();
+        await repo.deleteTask('t1');
+        await repo.flushPendingWrites();
+        await repo.preload();
 
-      expect(repo.readCachedTasks().map((t) => t.id).toList(), ['t2']);
-    });
+        expect(repo.readCachedTasks().map((t) => t.id).toList(), ['t2']);
+      },
+    );
 
     test('BackgroundDbChangedEvent round-trips over wire maps and rejects invalid payloads', () {
       const event = BackgroundDbChangedEvent(
@@ -113,10 +116,7 @@ void main() {
 
       expect(BackgroundDbChangedEvent.fromWireMap('not a map'), isNull);
       expect(BackgroundDbChangedEvent.fromWireMap(<String, Object?>{}), isNull);
-      expect(
-        BackgroundDbChangedEvent.fromWireMap({'accountKey': ''}),
-        isNull,
-      );
+      expect(BackgroundDbChangedEvent.fromWireMap({'accountKey': ''}), isNull);
       expect(
         BackgroundDbChangedEvent.fromWireMap({'accountKey': 'acct_1'}),
         const BackgroundDbChangedEvent(accountKey: 'acct_1'),
@@ -417,14 +417,20 @@ void main() {
         scopeKey: 'scope_b',
       );
 
-      repoA.outbox.enqueueUpsert(entityType: SyncEntityType.task, localId: 't_1');
+      repoA.outbox.enqueueUpsert(
+        entityType: SyncEntityType.task,
+        localId: 't_1',
+      );
       await repoA.saveOutbox();
       await repoA.flushPendingWrites();
       final seq1 = repoA.outbox.ops.single.seq;
 
       // Another isolate/scope loads outbox, appends op2 (with seq > seq1), and saves.
       (await repoB.preload()).getOrThrow();
-      repoB.outbox.enqueueUpsert(entityType: SyncEntityType.task, localId: 't_2');
+      repoB.outbox.enqueueUpsert(
+        entityType: SyncEntityType.task,
+        localId: 't_2',
+      );
       await repoB.saveOutbox();
       await repoB.flushPendingWrites();
       expect(repoB.outbox.ops.map((op) => op.localId).toList(), ['t_1', 't_2']);
@@ -554,7 +560,10 @@ void main() {
           ),
         ],
       );
-      await SyncStore(repository: bgRepo, settings: settings).commitPushHeadless(
+      await SyncStore(
+        repository: bgRepo,
+        settings: settings,
+      ).commitPushHeadless(
         OutboxPushOutcome(
           ackedSeqs: [uploadSeq],
           pushedGroups: const {},
