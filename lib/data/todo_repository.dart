@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:result_dart/result_dart.dart';
@@ -6,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/result/app_result.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
+import 'sync_job.dart';
 import 'sync_outbox.dart';
 import 'todo_database.dart';
 import 'todo_settings_store.dart';
@@ -18,6 +20,9 @@ class _AccountCache {
   List<ListGroup> groups = const [];
   List<TaskItem> tasks = const [];
   SyncOutboxQueue outbox = SyncOutboxQueue();
+  final Map<String, SyncJob> jobs = <String, SyncJob>{};
+  final StreamController<List<SyncJob>> jobsController =
+      StreamController<List<SyncJob>>.broadcast();
   Future<void> writeQueue = Future<void>.value();
 }
 
@@ -52,6 +57,7 @@ class TodoRepository {
 
   static const _outboxKind = 'outbox';
   static const _remoteIdMapKind = 'remote_id_map';
+  static const _syncJobKind = 'sync_job';
 
   /// Cache buckets are shared by every repository over the same database, so a
   /// second instance for the same session sees the same data.
@@ -78,6 +84,51 @@ class TodoRepository {
 
   /// Waits for all previously enqueued SQLite writes for this account to finish.
   Future<void> flushPendingWrites() => _cache.writeQueue;
+
+  /// Reactive task stream backed by Drift when SQLite persistence is active.
+  Stream<List<TaskItem>> watchTasks() {
+    if (!_db.persistToSqlite) {
+      return Stream<List<TaskItem>>.value(_cache.tasks);
+    }
+    return _db
+        .watchTaskItemRecords(accountKey)
+        .map(
+          (rows) => List<TaskItem>.unmodifiable([
+            for (final row in rows)
+              TaskItem.fromJson(_decodePayload(row.payloadJson)),
+          ]),
+        );
+  }
+
+  /// Reactive list stream backed by Drift when SQLite persistence is active.
+  Stream<List<TodoList>> watchLists() {
+    if (!_db.persistToSqlite) {
+      return Stream<List<TodoList>>.value(_cache.lists ?? const []);
+    }
+    return _db
+        .watchTodoListRecords(accountKey)
+        .map(
+          (rows) => List<TodoList>.unmodifiable([
+            for (final row in rows)
+              TodoList.fromJson(_decodePayload(row.payloadJson)),
+          ]),
+        );
+  }
+
+  /// Reactive group stream backed by Drift when SQLite persistence is active.
+  Stream<List<ListGroup>> watchGroups() {
+    if (!_db.persistToSqlite) {
+      return Stream<List<ListGroup>>.value(_cache.groups);
+    }
+    return _db
+        .watchListGroupRecords(accountKey)
+        .map(
+          (rows) => List<ListGroup>.unmodifiable([
+            for (final row in rows)
+              ListGroup.fromJson(_decodePayload(row.payloadJson)),
+          ]),
+        );
+  }
 
   /// Loads this account's rows from SQLite into the in-memory cache.
   AsyncAppResult<Unit> preload() {
@@ -106,6 +157,7 @@ class TodoRepository {
       ];
       final outboxOps = <SyncOutboxOp>[];
       final remoteIdMap = <String, String>{};
+      final jobs = <SyncJob>[];
       for (final row in allMutations) {
         if (row.kind == _outboxKind) {
           outboxOps.add(SyncOutboxOp.fromJson(_decodePayload(row.payloadJson)));
@@ -115,6 +167,8 @@ class TodoRepository {
           if (remoteId != null) {
             remoteIdMap[row.itemKey] = remoteId;
           }
+        } else if (row.kind == _syncJobKind) {
+          jobs.add(SyncJob.fromJson(_decodePayload(row.payloadJson)));
         }
       }
 
@@ -123,6 +177,9 @@ class TodoRepository {
       cache.groups = List<ListGroup>.unmodifiable(groups);
       cache.tasks = List<TaskItem>.unmodifiable(tasks);
       cache.outbox = SyncOutboxQueue(outboxOps, remoteIdMap);
+      cache.jobs
+        ..clear()
+        ..addEntries(jobs.map((job) => MapEntry(job.jobId, job)));
       return unit;
     }, operation: 'preloadAccount');
   }
@@ -148,6 +205,43 @@ class TodoRepository {
       await _enqueueWrite(write);
       return unit;
     }, operation: operation);
+  }
+
+  /// Row-level upsert of a single task without rewriting unrelated rows.
+  AsyncAppResult<Unit> upsertTask(TaskItem task, {int? position}) {
+    final current = _cache.tasks;
+    final existingIdx = current.indexWhere((t) => t.id == task.id);
+    final resolvedPosition =
+        position ?? (existingIdx >= 0 ? existingIdx : current.length);
+    final nextTasks = [
+      for (final item in current)
+        if (item.id == task.id) task else item,
+      if (existingIdx < 0) task,
+    ];
+    _cache.tasks = List<TaskItem>.unmodifiable(nextTasks);
+    return _persistWrite(
+      'upsertTask',
+      () => _db.upsertTaskItemRecord(
+        TaskItemRecordsCompanion.insert(
+          accountKey: accountKey,
+          id: task.id,
+          listId: task.listId,
+          position: resolvedPosition,
+          payloadJson: jsonEncode(task.toJson()),
+        ),
+      ),
+    );
+  }
+
+  /// Row-level deletion of a single task without rewriting unrelated rows.
+  AsyncAppResult<Unit> deleteTask(String taskId) {
+    _cache.tasks = List<TaskItem>.unmodifiable(
+      _cache.tasks.where((t) => t.id != taskId),
+    );
+    return _persistWrite(
+      'deleteTask',
+      () => _db.deleteTaskItemRecord(accountKey, taskId),
+    );
   }
 
   AsyncAppResult<Unit> saveLists(List<TodoList> lists) {
@@ -237,6 +331,145 @@ class TodoRepository {
         ],
       );
     });
+  }
+
+  /// Inserts or updates a durable background [SyncJob].
+  AsyncAppResult<Unit> upsertSyncJob(SyncJob job) {
+    _cache.jobs[job.jobId] = job;
+    _emitCachedJobs();
+    return _persistWrite(
+      'upsertSyncJob',
+      () => _db.upsertSyncMutationRecord(
+        SyncMutationRecordsCompanion.insert(
+          accountKey: accountKey,
+          kind: _syncJobKind,
+          itemKey: job.jobId,
+          position: job.createdAt.toUtc().millisecondsSinceEpoch,
+          payloadJson: jsonEncode(job.toJson()),
+        ),
+      ),
+    );
+  }
+
+  /// Deletes a single durable background [SyncJob] by [jobId].
+  AsyncAppResult<Unit> deleteSyncJob(String jobId) {
+    _cache.jobs.remove(jobId);
+    _emitCachedJobs();
+    return _persistWrite(
+      'deleteSyncJob',
+      () => _db.deleteSyncMutationRecord(
+        accountKey,
+        kind: _syncJobKind,
+        itemKey: jobId,
+      ),
+    );
+  }
+
+  /// Clears completed [SyncJob] rows for this account.
+  AsyncAppResult<Unit> clearCompletedSyncJobs() {
+    final completedIds = [
+      for (final entry in _cache.jobs.entries)
+        if (entry.value.isTerminal) entry.key,
+    ];
+    for (final id in completedIds) {
+      _cache.jobs.remove(id);
+    }
+    _emitCachedJobs();
+    return _persistWrite('clearCompletedSyncJobs', () async {
+      final rows = await _db.selectSyncMutationRecords(
+        accountKey,
+        kind: _syncJobKind,
+      );
+      for (final row in rows) {
+        final job = SyncJob.fromJson(_decodePayload(row.payloadJson));
+        if (job.isTerminal) {
+          await _db.deleteSyncMutationRecord(
+            accountKey,
+            kind: _syncJobKind,
+            itemKey: row.itemKey,
+          );
+        }
+      }
+    });
+  }
+
+  /// Loads persisted [SyncJob] rows (optionally filtered by [lane] or readiness).
+  AsyncAppResult<List<SyncJob>> loadSyncJobs({
+    SyncJobLane? lane,
+    bool onlyRunnable = false,
+    DateTime? nowUtc,
+  }) {
+    final effectiveNow = nowUtc ?? DateTime.now().toUtc();
+    if (!_db.persistToSqlite) {
+      return Future.value(
+        Success(
+          _filterJobs(
+            _cache.jobs.values,
+            lane: lane,
+            onlyRunnable: onlyRunnable,
+            nowUtc: effectiveNow,
+          ),
+        ),
+      );
+    }
+    return guardDbCall(() async {
+      await _cache.writeQueue;
+      final rows = await _db.selectSyncMutationRecords(
+        accountKey,
+        kind: _syncJobKind,
+      );
+      final jobs = [
+        for (final row in rows)
+          SyncJob.fromJson(_decodePayload(row.payloadJson)),
+      ];
+      return _filterJobs(
+        jobs,
+        lane: lane,
+        onlyRunnable: onlyRunnable,
+        nowUtc: effectiveNow,
+      );
+    }, operation: 'loadSyncJobs');
+  }
+
+  /// Watches persisted [SyncJob] rows reactively.
+  Stream<List<SyncJob>> watchSyncJobs({SyncJobLane? lane}) {
+    if (!_db.persistToSqlite) {
+      return _cache.jobsController.stream.map(
+        (jobs) => _filterJobs(jobs, lane: lane),
+      );
+    }
+    return _db
+        .watchSyncMutationRecords(accountKey, kind: _syncJobKind)
+        .map(
+          (rows) => _filterJobs([
+            for (final row in rows)
+              SyncJob.fromJson(_decodePayload(row.payloadJson)),
+          ], lane: lane),
+        );
+  }
+
+  List<SyncJob> _filterJobs(
+    Iterable<SyncJob> jobs, {
+    SyncJobLane? lane,
+    bool onlyRunnable = false,
+    DateTime? nowUtc,
+  }) {
+    final checkTime = nowUtc ?? DateTime.now().toUtc();
+    final filtered = [
+      for (final job in jobs)
+        if ((lane == null || job.lane == lane) &&
+            (!onlyRunnable || job.isReadyAt(checkTime)))
+          job,
+    ]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return List<SyncJob>.unmodifiable(filtered);
+  }
+
+  void _emitCachedJobs() {
+    if (!_cache.jobsController.isClosed) {
+      _cache.jobsController.add(
+        List<SyncJob>.unmodifiable(_cache.jobs.values.toList()),
+      );
+    }
   }
 
   AsyncAppResult<Unit> deleteAccountRecords() {
