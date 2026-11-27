@@ -9,6 +9,7 @@ import '../models/todo_list.dart';
 import '../theme/todo_theme.dart';
 import '../view/task_checkbox.dart';
 import 'my_day_suggestions.dart';
+import 'recyclerview/animated_task_sliver_list.dart';
 import 'tasks_action_presenter.dart';
 import 'tasks_view_grouping.dart';
 import 'tasks_view_presenter.dart';
@@ -140,6 +141,41 @@ class _MyDaySuggestionsSheetBody extends ConsumerWidget {
     return parts.isEmpty ? null : parts.join(' • ');
   }
 
+  Widget _bucketHeaderSliver({
+    required AppLocalizations l10n,
+    required ThemeData theme,
+    required bool isDark,
+    required SuggestionBucketType type,
+    required bool isVisible,
+  }) {
+    return SliverToBoxAdapter(
+      child: AnimatedSize(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        alignment: Alignment.topCenter,
+        child: AnimatedOpacity(
+          opacity: isVisible ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOut,
+          child: isVisible
+              ? Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+                  child: Text(
+                    _bucketTitle(l10n, type),
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: isDark
+                          ? TodoColors.secondaryTextDark
+                          : TodoColors.secondaryTextLight,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
@@ -148,6 +184,25 @@ class _MyDaySuggestionsSheetBody extends ConsumerWidget {
     final state = ref.watch(todoProvider);
     final actionPresenter = ref.read(tasksActionPresenterProvider);
     final buckets = computeMyDaySuggestions(state.tasks);
+    final tasksByBucket = <SuggestionBucketType, List<TaskItem>>{
+      for (final bucket in buckets) bucket.type: bucket.tasks,
+    };
+
+    Widget buildSuggestionRow(TaskItem task) => _SuggestionTaskRow(
+      task: task,
+      subtitle: _subtitleFor(
+        l10n,
+        task,
+        resolveOriginListName(l10n, state.lists, task.listId),
+      ),
+      accentColor: accentColor,
+      isDark: isDark,
+      addTooltip: l10n.addToMyDay,
+      onTap: () => onOpenTask(task),
+      onAddToMyDay: () => actionPresenter.batchSetMyDay({task.id}, true),
+      onToggleComplete: () =>
+          ref.read(tasksViewPresenterProvider).toggleTaskCompleted(task.id),
+    );
 
     return SafeArea(
       top: false,
@@ -190,76 +245,59 @@ class _MyDaySuggestionsSheetBody extends ConsumerWidget {
           ),
           const Divider(height: 1),
           Expanded(
-            child: buckets.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.lightbulb_outline,
-                            size: 48,
-                            color: isDark
-                                ? TodoColors.secondaryTextDark
-                                : TodoColors.secondaryTextLight,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            l10n.suggestionsEmpty,
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodyLarge?.copyWith(
+            child: CustomScrollView(
+              controller: scrollController,
+              slivers: [
+                for (final type in SuggestionBucketType.values) ...[
+                  _bucketHeaderSliver(
+                    l10n: l10n,
+                    theme: theme,
+                    isDark: isDark,
+                    type: type,
+                    isVisible: tasksByBucket.containsKey(type),
+                  ),
+                  CollapsibleTaskBucketSliver(
+                    key: ValueKey('suggestion_bucket_${type.name}'),
+                    isExpanded: tasksByBucket.containsKey(type),
+                    tasks: tasksByBucket[type] ?? const <TaskItem>[],
+                    padding: EdgeInsets.zero,
+                    itemBuilder: (context, task) => buildSuggestionRow(task),
+                  ),
+                ],
+                if (buckets.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.lightbulb_outline,
+                              size: 48,
                               color: isDark
                                   ? TodoColors.secondaryTextDark
                                   : TodoColors.secondaryTextLight,
                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                : ListView(
-                    controller: scrollController,
-                    padding: const EdgeInsets.only(bottom: 16),
-                    children: [
-                      for (final bucket in buckets) ...[
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
-                          child: Text(
-                            _bucketTitle(l10n, bucket.type),
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              color: isDark
-                                  ? TodoColors.secondaryTextDark
-                                  : TodoColors.secondaryTextLight,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        for (final task in bucket.tasks)
-                          _SuggestionTaskRow(
-                            task: task,
-                            subtitle: _subtitleFor(
-                              l10n,
-                              task,
-                              resolveOriginListName(
-                                l10n,
-                                state.lists,
-                                task.listId,
+                            const SizedBox(height: 12),
+                            Text(
+                              l10n.suggestionsEmpty,
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                color: isDark
+                                    ? TodoColors.secondaryTextDark
+                                    : TodoColors.secondaryTextLight,
                               ),
                             ),
-                            accentColor: accentColor,
-                            isDark: isDark,
-                            addTooltip: l10n.addToMyDay,
-                            onTap: () => onOpenTask(task),
-                            onAddToMyDay: () =>
-                                actionPresenter.batchSetMyDay({task.id}, true),
-                            onToggleComplete: () => ref
-                                .read(tasksViewPresenterProvider)
-                                .toggleTaskCompleted(task.id),
-                          ),
-                      ],
-                    ],
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
+                const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              ],
+            ),
           ),
         ],
       ),

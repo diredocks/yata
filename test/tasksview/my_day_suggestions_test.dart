@@ -171,6 +171,47 @@ void main() {
     );
   });
 
+  testWidgets('suggestion rows animate out instead of disappearing', (
+    tester,
+  ) async {
+    await _pumpTasksView(
+      tester,
+      tasks: [
+        TaskItem(
+          id: 'suggested_1',
+          listId: 'tasks',
+          title: 'Pick up groceries',
+          createdAt: DateTime.now(),
+        ),
+        TaskItem(
+          id: 'suggested_2',
+          listId: 'tasks',
+          title: 'Water the plants',
+          createdAt: DateTime.now().subtract(const Duration(minutes: 1)),
+        ),
+      ],
+    );
+
+    await tester.tap(find.byKey(const ValueKey('my_day_suggestions_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SliverAnimatedList), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('add_suggestion_suggested_1')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(find.byKey(const ValueKey('removing_suggested_1')), findsOneWidget);
+    expect(find.text('Water the plants'), findsOneWidget);
+
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('removing_suggested_1')), findsNothing);
+    expect(find.text('Water the plants'), findsOneWidget);
+    // Only the My Day list behind the sheet still shows the added task.
+    expect(find.text('Pick up groceries'), findsOneWidget);
+  });
+
   testWidgets('narrow layout keeps the sheet open behind the task detail', (
     tester,
   ) async {
