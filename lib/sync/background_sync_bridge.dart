@@ -18,6 +18,11 @@ const String kBackgroundUiEventPortName = 'top.clickfling.yata.ui_events';
 /// Schedules durable background execution on the current platform's OS host
 /// (Android `WorkManager` / `YataSyncWorker`, or in-process/isolate on desktop).
 abstract class BackgroundSyncScheduler {
+  /// Whether this platform runs long-lived attachment transfers exclusively in
+  /// a dedicated OS background worker (e.g. Android WorkManager) rather than
+  /// inside the foreground UI isolate.
+  bool get handlesTransfersInBackground => false;
+
   Future<void> registerBackgroundEntrypoint(Function entrypoint);
 
   Future<void> enqueueSync({
@@ -46,6 +51,9 @@ class PlatformBackgroundSyncScheduler implements BackgroundSyncScheduler {
     if (Platform.environment.containsKey('FLUTTER_TEST')) return false;
     return Platform.isAndroid;
   }
+
+  @override
+  bool get handlesTransfersInBackground => isAndroidHost;
 
   Future<void> _invokeGuarded(String method, Object? arguments) async {
     if (!isAndroidHost) return;

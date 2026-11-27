@@ -161,7 +161,7 @@ class YataSyncWorker(
             }
 
             val uniqueName = "yata_sync_$lane"
-            val policy = if (lane == LANE_WIDGET) {
+            val policy = if (lane == LANE_WIDGET || lane == LANE_TRANSFER) {
                 ExistingWorkPolicy.APPEND_OR_REPLACE
             } else {
                 ExistingWorkPolicy.KEEP

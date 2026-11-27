@@ -301,9 +301,19 @@ class SyncWorkerEngine {
   }
 
   Future<void> _commitPushHeadless(OutboxPushOutcome outcome) async {
+    // Reload latest SQLite state before committing so concurrent foreground
+    // edits made while a slow upload was in flight are preserved.
+    await repository.preload();
     repository.outbox.ackBatch(outcome.ackedSeqs, outcome.clearedRemoteIdKeys);
+    final freshTasksById = {
+      for (final t in repository.readCachedTasks()) t.id: t,
+    };
     for (final pushedTask in outcome.pushedTasks.values) {
-      await repository.upsertTask(pushedTask);
+      final fresh = freshTasksById[pushedTask.id];
+      final mergedTask = fresh == null
+          ? pushedTask
+          : _mergePushedTaskIntoFresh(fresh, pushedTask);
+      await repository.upsertTask(mergedTask);
     }
     if (outcome.pushedGroups.isNotEmpty) {
       final groups = repository
@@ -320,6 +330,32 @@ class SyncWorkerEngine {
     }
     await repository.saveOutbox();
     await repository.flushPendingWrites();
+  }
+
+  TaskItem _mergePushedTaskIntoFresh(TaskItem fresh, TaskItem pushed) {
+    final pushedAttById = {for (final a in pushed.attachments) a.id: a};
+    return fresh.copyWith(
+      remoteId: fresh.remoteId ?? pushed.remoteId,
+      remoteParentFolderId:
+          fresh.remoteParentFolderId ?? pushed.remoteParentFolderId,
+      changeKey: pushed.changeKey ?? fresh.changeKey,
+      attachments: [
+        for (final att in fresh.attachments)
+          if (pushedAttById[att.id] case final pAtt?)
+            att.copyWith(
+              remoteId: att.remoteId ?? pAtt.remoteId,
+              size: pAtt.size > 0 ? pAtt.size : att.size,
+              contentType: pAtt.contentType ?? att.contentType,
+              lastModifiedDateTime:
+                  pAtt.lastModifiedDateTime ?? att.lastModifiedDateTime,
+              isTransferring: pAtt.remoteId != null
+                  ? false
+                  : att.isTransferring,
+            )
+          else
+            att,
+      ],
+    );
   }
 
   Future<void> _applyPullHeadless(SyncOutcome outcome, SyncKind kind) async {

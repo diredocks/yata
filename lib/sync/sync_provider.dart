@@ -243,6 +243,9 @@ class SyncNotifier extends Notifier<SyncState> {
 
   bool get _hasActiveSync => _pushRunner.isRunning || _pullRunner.isRunning;
 
+  bool get _delegatesTransfersToBackground =>
+      ref.read(backgroundSyncSchedulerProvider).handlesTransfersInBackground;
+
   MicrosoftAccount? get _activeMicrosoftAccount {
     final active = ref.read(accountProvider).activeAccount;
     return active is MicrosoftAccount ? active : null;
@@ -378,8 +381,12 @@ class SyncNotifier extends Notifier<SyncState> {
     final pendingPushReason = _pendingPushReason;
     if (pendingPushReason != null && _pushDebouncer.isActive) {
       _cancelPushDebounce();
-      _log.info('onAppPaused: flushing pending push reason=$pendingPushReason');
-      unawaited(_pushNow(reason: pendingPushReason));
+      if (!_delegatesTransfersToBackground) {
+        _log.info(
+          'onAppPaused: flushing pending push reason=$pendingPushReason',
+        );
+        unawaited(_pushNow(reason: pendingPushReason));
+      }
     }
     _scheduleDurableBackgroundHandoff(
       reason: pendingPushReason ?? 'app_paused',
@@ -389,19 +396,49 @@ class SyncNotifier extends Notifier<SyncState> {
   void _scheduleDurableBackgroundHandoff({required String reason}) {
     final active = _activeMicrosoftAccount;
     if (_disposed || active == null) return;
-    final outbox = ref.read(todoProvider.notifier).repository.outbox;
+    final repo = ref.read(todoProvider.notifier).repository;
+    final outbox = repo.outbox;
     if (outbox.isEmpty) return;
 
+    final hasMetadata = outbox.ops.any((op) => !op.isAttachmentUpload);
     final hasAttachments = outbox.ops.any((op) => op.isAttachmentUpload);
     final scheduler = ref.read(backgroundSyncSchedulerProvider);
-    unawaited(
-      scheduler.enqueueSync(
-        lane: hasAttachments ? SyncJobLane.transfer : SyncJobLane.metadata,
-        reason: reason,
-        requiresNetwork: true,
-        expedited: !hasAttachments,
-      ),
-    );
+    unawaited(() async {
+      await repo.flushPendingWrites();
+      if (_disposed) return;
+      if (hasMetadata) {
+        await scheduler.enqueueSync(
+          lane: SyncJobLane.metadata,
+          reason: reason,
+          requiresNetwork: true,
+          expedited: true,
+        );
+      }
+      if (hasAttachments) {
+        await scheduler.enqueueSync(
+          lane: SyncJobLane.transfer,
+          reason: reason,
+          requiresNetwork: true,
+          expedited: false,
+        );
+      }
+    }());
+  }
+
+  Future<void> _enqueueBackgroundTransferIfPending(String reason) async {
+    if (_disposed || !_delegatesTransfersToBackground) return;
+    final repo = ref.read(todoProvider.notifier).repository;
+    if (!repo.outbox.ops.any((op) => op.isAttachmentUpload)) return;
+    await repo.flushPendingWrites();
+    if (_disposed) return;
+    await ref
+        .read(backgroundSyncSchedulerProvider)
+        .enqueueSync(
+          lane: SyncJobLane.transfer,
+          reason: reason,
+          requiresNetwork: true,
+          expedited: false,
+        );
   }
 
   void _handleBackgroundWorkerEvent(BackgroundWorkerEvent event) {
@@ -562,6 +599,14 @@ class SyncNotifier extends Notifier<SyncState> {
       return Future<void>.value();
     }
 
+    if (_delegatesTransfersToBackground) {
+      final ops = ref.read(todoProvider.notifier).repository.outbox.ops;
+      final hasMetadata = ops.any((op) => !op.isAttachmentUpload);
+      if (!hasMetadata) {
+        return _enqueueBackgroundTransferIfPending(reason);
+      }
+    }
+
     final followUpFolders = <String>{};
     var lastSucceeded = false;
 
@@ -599,6 +644,7 @@ class SyncNotifier extends Notifier<SyncState> {
         if (lastSucceeded && !_hasActiveSync) {
           state = state.copyWith(status: SyncStatus.success, error: null);
         }
+        await _enqueueBackgroundTransferIfPending(reason);
         if (enqueueFollowUpPull &&
             followUpFolders.isNotEmpty &&
             _isForeground) {
@@ -684,6 +730,9 @@ class SyncNotifier extends Notifier<SyncState> {
         );
       },
       reason: reason,
+      laneFilter: _delegatesTransfersToBackground
+          ? PushLaneFilter.metadataOnly
+          : PushLaneFilter.all,
     );
 
     if (_disposed) return null;

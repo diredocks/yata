@@ -132,7 +132,10 @@ Future<({bool shouldRetry, bool hasPendingTransfers})> _runHeadlessSyncPass({
       drainResult.fold(
         (summary) {
           shouldRetry = summary.hasRetryableFailures;
-          hasPendingTransfers = summary.hasPendingTransfers;
+          hasPendingTransfers =
+              summary.hasPendingTransfers ||
+              (targetLane != SyncJobLane.transfer &&
+                  repo.outbox.ops.any((op) => op.isAttachmentUpload));
           _log.info(
             'Headless drain lane=$laneName reason=$reason '
             'processed=${summary.processedCount} failed=${summary.failedCount} '
