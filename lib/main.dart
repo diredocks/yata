@@ -9,6 +9,8 @@ import 'data/todo_provider.dart';
 import 'data/todo_repository.dart';
 import 'l10n/app_localizations.dart';
 import 'onboarding/landing_screen.dart';
+import 'sync/background_sync_bridge.dart';
+import 'sync/background_sync_entrypoint.dart';
 import 'theme/system_font_loader.dart';
 import 'theme/todo_theme.dart';
 import 'view/main_shell_screen.dart';
@@ -16,7 +18,10 @@ import 'widget/home_widget_sync.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await HomeWidgetService.registerBackgroundCallback();
+  await const PlatformBackgroundSyncScheduler().registerBackgroundEntrypoint(
+    yataBackgroundSyncEntrypoint,
+  );
+  BackgroundWorkerEventBus.attachUiListener();
   final prefs = await SharedPreferences.getInstance();
   final database = TodoDatabase();
   final accountSnapshot = AccountLocalStorage(prefs).load();
