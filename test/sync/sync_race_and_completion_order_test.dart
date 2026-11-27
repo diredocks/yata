@@ -208,15 +208,22 @@ void main() {
     }
     await repo.saveOutbox();
 
-    final result = await service.syncAccount(
+    final pushOutcome = (await service.pushAccount(
       account: account,
       currentState: state,
       repository: repo,
       settings: settings,
-      idGenerator: (p) => '${p}_gen',
+    )).getOrThrow();
+    final postPushState = state.copyWith(
+      tasks: [for (final t in state.tasks) pushOutcome.pushedTasks[t.id] ?? t],
     );
-
-    final outcome = result.getOrThrow();
+    final outcome = (await service.pullAccount(
+      account: account,
+      currentState: postPushState,
+      repository: repo,
+      settings: settings,
+      idGenerator: (p) => '${p}_gen',
+    )).getOrThrow();
     final split = splitTasksForDisplay(outcome.tasks, tasksList);
     expect(split.completed.map((t) => t.id), ['t3', 't2', 't1']);
   });

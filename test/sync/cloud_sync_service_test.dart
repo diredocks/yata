@@ -539,7 +539,7 @@ void main() {
       );
 
       final outcome = await service
-          .syncAccount(
+          .pullAccount(
             account: h1.account,
             currentState: h1.container.read(todoProvider),
             repository: h1.repository,
@@ -798,8 +798,20 @@ void main() {
         );
         h.api.callLog.clear();
 
+        final pushOutcome = await service
+            .pushAccount(
+              account: h.account,
+              currentState: h.container.read(todoProvider),
+              repository: h.repository,
+              settings: h.settings,
+            )
+            .fold(
+              (outcome) => outcome,
+              (error) => fail('unexpected push failure: ${error.describe()}'),
+            );
+        expect(pushOutcome.pushedTasks, contains('t_1'));
         final outcome = await service
-            .syncAccount(
+            .pullAccount(
               account: h.account,
               currentState: h.container.read(todoProvider),
               repository: h.repository,
@@ -809,7 +821,7 @@ void main() {
             )
             .fold(
               (outcome) => outcome,
-              (error) => fail('unexpected sync failure: ${error.describe()}'),
+              (error) => fail('unexpected pull failure: ${error.describe()}'),
             );
 
         expect(h.api.callLog, [
@@ -860,7 +872,18 @@ void main() {
       );
 
       await service
-          .syncAccount(
+          .pushAccount(
+            account: h.account,
+            currentState: h.container.read(todoProvider),
+            repository: h.repository,
+            settings: h.settings,
+          )
+          .fold(
+            (outcome) => outcome,
+            (error) => fail('unexpected push failure: ${error.describe()}'),
+          );
+      await service
+          .pullAccount(
             account: h.account,
             currentState: h.container.read(todoProvider),
             repository: h.repository,
@@ -870,7 +893,7 @@ void main() {
           )
           .fold(
             (outcome) => outcome,
-            (error) => fail('unexpected sync failure: ${error.describe()}'),
+            (error) => fail('unexpected pull failure: ${error.describe()}'),
           );
 
       // The stale follow-up entry is dropped instead of failing the whole pass.
@@ -949,17 +972,15 @@ void main() {
         h.api.callLog.clear();
 
         await service
-            .syncAccount(
+            .pushAccount(
               account: h.account,
               currentState: h.container.read(todoProvider),
               repository: h.repository,
               settings: h.settings,
-              idGenerator: h.container.read(todoProvider.notifier).nextId,
-              kind: SyncKind.pushOnly,
             )
             .fold(
               (outcome) => outcome,
-              (error) => fail('unexpected sync failure: ${error.describe()}'),
+              (error) => fail('unexpected push failure: ${error.describe()}'),
             );
 
         expect(h.api.callLog, contains('DELETE taskfolders/rf-copy-1'));
@@ -1030,12 +1051,11 @@ void main() {
         tokenStorage: AuthTokenStorage(h.prefs),
       );
 
-      final firstResult = await service.syncAccount(
+      final firstResult = await service.pushAccount(
         account: h.account,
         currentState: h.container.read(todoProvider),
         repository: h.repository,
         settings: h.settings,
-        idGenerator: todoNotifier.nextId,
         readLatestState: () => h.container.read(todoProvider),
         onPushCommitted: (pushOutcome) => todoNotifier.commitPushBatch(
           ackedSeqs: pushOutcome.ackedSeqs,
@@ -1044,7 +1064,6 @@ void main() {
           pushedTasks: pushOutcome.pushedTasks,
           clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
         ),
-        kind: SyncKind.pushOnly,
       );
       expect(firstResult.isError(), isTrue);
 
@@ -1058,12 +1077,11 @@ void main() {
       expect(alpha.remoteId, isNotNull);
 
       h.api.callLog.clear();
-      final secondResult = await service.syncAccount(
+      final secondResult = await service.pushAccount(
         account: h.account,
         currentState: h.container.read(todoProvider),
         repository: h.repository,
         settings: h.settings,
-        idGenerator: todoNotifier.nextId,
         readLatestState: () => h.container.read(todoProvider),
         onPushCommitted: (pushOutcome) => todoNotifier.commitPushBatch(
           ackedSeqs: pushOutcome.ackedSeqs,
@@ -1072,7 +1090,6 @@ void main() {
           pushedTasks: pushOutcome.pushedTasks,
           clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
         ),
-        kind: SyncKind.pushOnly,
       );
       expect(secondResult.isSuccess(), isTrue);
 
@@ -1129,12 +1146,11 @@ void main() {
       );
 
       await service
-          .syncAccount(
+          .pushAccount(
             account: h.account,
             currentState: h.container.read(todoProvider),
             repository: h.repository,
             settings: h.settings,
-            idGenerator: todoNotifier.nextId,
             readLatestState: () => h.container.read(todoProvider),
             onPushCommitted: (pushOutcome) => todoNotifier.commitPushBatch(
               ackedSeqs: pushOutcome.ackedSeqs,
@@ -1143,11 +1159,10 @@ void main() {
               pushedTasks: pushOutcome.pushedTasks,
               clearedRemoteIdKeys: pushOutcome.clearedRemoteIdKeys,
             ),
-            kind: SyncKind.pushOnly,
           )
           .fold(
             (outcome) => outcome,
-            (error) => fail('unexpected sync failure: ${error.describe()}'),
+            (error) => fail('unexpected push failure: ${error.describe()}'),
           );
 
       // No tasks were created for the deleted folder!

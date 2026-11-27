@@ -37,7 +37,6 @@ class SyncOutcome {
     required this.groups,
     required this.lists,
     required this.tasks,
-    required this.pushedTasksCount,
     required this.syncedAt,
     this.settingsPatch,
     this.cancelled = false,
@@ -49,7 +48,6 @@ class SyncOutcome {
 
   /// Null when the pass did not fetch remote settings (push-only syncs).
   final SyncedSettingsPatch? settingsPatch;
-  final int pushedTasksCount;
   final DateTime syncedAt;
   final bool cancelled;
 }
@@ -219,107 +217,6 @@ class CloudSyncService {
     ),
   );
 
-  /// Runs a combined sync pass: Push Outbox -> commit pushed IDs -> Pull.
-  AsyncAppResult<SyncOutcome> syncAccount({
-    required MicrosoftAccount account,
-    required TodoState currentState,
-    required TodoRepository repository,
-    required TodoSettingsStore settings,
-    required String Function(String prefix) idGenerator,
-    TodoState Function()? readLatestState,
-    Future<void> Function(OutboxPushOutcome pushOutcome)? onPushCommitted,
-    SyncKind kind = SyncKind.delta,
-    String reason = 'sync',
-  }) => _runWithAuthRetry<SyncOutcome>(
-    account: account,
-    settings: settings,
-    run: (ctx) => _executeSync(
-      ctx: ctx,
-      currentState: readLatestState?.call() ?? currentState,
-      repository: repository,
-      settings: settings,
-      idGenerator: idGenerator,
-      readLatestState: readLatestState,
-      onPushCommitted: onPushCommitted,
-      kind: kind,
-      reason: reason,
-    ),
-  );
-
-  AsyncAppResult<SyncOutcome> _executeSync({
-    required SubstrateRequestContext ctx,
-    required TodoState currentState,
-    required TodoRepository repository,
-    required TodoSettingsStore settings,
-    required String Function(String prefix) idGenerator,
-    TodoState Function()? readLatestState,
-    Future<void> Function(OutboxPushOutcome pushOutcome)? onPushCommitted,
-    required SyncKind kind,
-    required String reason,
-  }) {
-    final outbox = repository.outbox;
-    final pruneProtectSinceSeq = outbox.lastSeq;
-
-    _log.info(
-      'start reason=$reason kind=${kind.name} '
-      'localLists=${currentState.lists.length} localTasks=${currentState.tasks.length} '
-      'outboxOps=${outbox.ops.length}',
-    );
-
-    return _executePush(
-      ctx: ctx,
-      currentState: currentState,
-      repository: repository,
-      settings: settings,
-      readLatestState: readLatestState,
-      onPushCommitted: onPushCommitted,
-      reason: reason,
-    ).flatMap((pushOutcome) {
-      final fallbackState = _resolvePostPushState(
-        currentState: currentState,
-        pushOutcome: pushOutcome,
-        readLatestState: readLatestState,
-        onPushCommitted: onPushCommitted,
-      );
-      return _executePull(
-        ctx: ctx,
-        fallbackState: fallbackState,
-        readLatestState: onPushCommitted != null ? readLatestState : null,
-        repository: repository,
-        settings: settings,
-        idGenerator: idGenerator,
-        kind: kind,
-        reason: reason,
-        pruneProtectSinceSeq: pruneProtectSinceSeq,
-        pushedTasksCount: pushOutcome.pushedTasks.length,
-      );
-    });
-  }
-
-  TodoState _resolvePostPushState({
-    required TodoState currentState,
-    required OutboxPushOutcome pushOutcome,
-    required TodoState Function()? readLatestState,
-    required Future<void> Function(OutboxPushOutcome pushOutcome)?
-    onPushCommitted,
-  }) {
-    if (onPushCommitted != null) {
-      return readLatestState?.call() ?? currentState;
-    }
-    return currentState.copyWith(
-      groups: [
-        for (final g in currentState.groups)
-          pushOutcome.pushedGroups[g.id] ?? g,
-      ],
-      lists: [
-        for (final l in currentState.lists) pushOutcome.pushedLists[l.id] ?? l,
-      ],
-      tasks: [
-        for (final t in currentState.tasks) pushOutcome.pushedTasks[t.id] ?? t,
-      ],
-    );
-  }
-
   AsyncAppResult<OutboxPushOutcome> _executePush({
     required SubstrateRequestContext ctx,
     required TodoState currentState,
@@ -377,7 +274,6 @@ class CloudSyncService {
     required String reason,
     bool Function()? isCancelled,
     int? pruneProtectSinceSeq,
-    int pushedTasksCount = 0,
   }) {
     final outbox = repository.outbox;
     final pullStartSeq = outbox.lastSeq;
@@ -408,12 +304,7 @@ class CloudSyncService {
           return switch (fetched) {
             PullPatchCancelled() => Future.value(
               Success<SyncOutcome, AppError>(
-                _cancelledOutcome(
-                  liveState,
-                  reason: reason,
-                  kind: kind,
-                  pushedTasksCount: pushedTasksCount,
-                ),
+                _cancelledOutcome(liveState, reason: reason, kind: kind),
               ),
             ),
             final RemotePullPatch patch => _applyFetchedPatch(
@@ -424,7 +315,6 @@ class CloudSyncService {
               idGenerator: idGenerator,
               pullStartSeq: pullStartSeq,
               pruneProtectSinceSeq: effectivePruneSeq,
-              pushedTasksCount: pushedTasksCount,
             ),
           };
         });
@@ -434,14 +324,12 @@ class CloudSyncService {
     TodoState liveState, {
     required String reason,
     required SyncKind kind,
-    required int pushedTasksCount,
   }) {
     _log.info('pull cancelled reason=$reason kind=${kind.name}');
     return SyncOutcome(
       groups: liveState.groups,
       lists: liveState.lists,
       tasks: liveState.tasks,
-      pushedTasksCount: pushedTasksCount,
       syncedAt: DateTime.now().toUtc(),
       cancelled: true,
     );
@@ -455,7 +343,6 @@ class CloudSyncService {
     required String Function(String prefix) idGenerator,
     required int pullStartSeq,
     required int pruneProtectSinceSeq,
-    required int pushedTasksCount,
   }) => guardApiCall(() async {
     final applied = await _pullEngine.applyPatch(
       patch: patch,
@@ -473,7 +360,6 @@ class CloudSyncService {
       lists: applied.lists,
       tasks: applied.tasks,
       settingsPatch: applied.settingsPatch,
-      pushedTasksCount: pushedTasksCount,
       syncedAt: DateTime.now().toUtc(),
     );
   }, operation: 'applyPullPatch');
