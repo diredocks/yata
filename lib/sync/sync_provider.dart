@@ -312,7 +312,7 @@ class SyncNotifier extends Notifier<SyncState> {
       next,
     ) {
       if (prev != null && next > prev) {
-        schedulePushOnlySync();
+        schedulePush();
       }
     });
 
@@ -459,13 +459,9 @@ class SyncNotifier extends Notifier<SyncState> {
   }
 
   void _handleBackgroundWorkerEvent(BackgroundDbChangedEvent event) {
-    if (_disposed) return;
-    final active = _activeMicrosoftAccount;
-    if (active == null) return;
+    if (_disposed || _activeMicrosoftAccount == null) return;
     final repo = ref.read(todoProvider.notifier).repository;
-    if (event.accountKey != repo.accountKey && event.accountKey != active.id) {
-      return;
-    }
+    if (event.accountKey != repo.accountKey) return;
     unawaited(() async {
       await repo.preload();
       if (!_disposed) {
@@ -558,7 +554,7 @@ class SyncNotifier extends Notifier<SyncState> {
   }
 
   /// Schedules an independent local Outbox push pass (never blocked by pulls).
-  void schedulePushOnlySync({
+  void schedulePush({
     Duration delay = _mutationDebounceDuration,
     String reason = 'local_mutation',
   }) {
@@ -572,7 +568,7 @@ class SyncNotifier extends Notifier<SyncState> {
       unawaited(_pushNow(reason: pendingReason));
     });
     _log.info(
-      'schedulePushOnlySync reason=$reason '
+      'schedulePush reason=$reason '
       'delay=${delay.inMilliseconds}ms fireIn=${fireIn.inMilliseconds}ms',
     );
   }
@@ -709,10 +705,9 @@ class SyncNotifier extends Notifier<SyncState> {
     final todoNotifier = ref.read(todoProvider.notifier);
     final result = await SubstratePushEngine(ref.read(microsoftTodoApiProvider))
         .pushOutbox(
-          currentState: ref.read(todoProvider),
+          readState: () => ref.read(todoProvider),
           outbox: todoNotifier.repository.outbox,
           nowUtc: DateTime.now().toUtc(),
-          readLatestState: () => ref.read(todoProvider),
           onItemCommitted: (pushOutcome) async {
             if (_disposed ||
                 ref.read(accountProvider).activeAccount?.id != active.id) {
@@ -759,9 +754,20 @@ class SyncNotifier extends Notifier<SyncState> {
     final result = await SubstratePullEngine(ref.read(microsoftTodoApiProvider))
         .pull(
           repository: todoNotifier.repository,
-          currentState: ref.read(todoProvider),
+          readState: () => ref.read(todoProvider),
           idGenerator: todoNotifier.nextId,
-          readLatestState: () => ref.read(todoProvider),
+          onReconciled: (outcome) async {
+            if (_disposed ||
+                ref.read(accountProvider).activeAccount?.id != active.id) {
+              return;
+            }
+            await todoNotifier.applyRemoteState(
+              groups: outcome.isSelective ? null : outcome.groups,
+              lists: outcome.isSelective ? null : outcome.lists,
+              tasks: outcome.tasks,
+              remoteSettings: outcome.remoteSettings,
+            );
+          },
           forceFullSync: forceFullSync,
           onlyFolderRemoteIds: command.folderRemoteIds,
           isCancelled: () => _disposed || _pullGeneration != gen,
@@ -788,15 +794,6 @@ class SyncNotifier extends Notifier<SyncState> {
           'forceFullSync=$forceFullSync '
           'lists=${outcome.lists.length} tasks=${outcome.tasks.length}',
         );
-        if (ref.read(accountProvider).activeAccount?.id == active.id) {
-          await todoNotifier.applyRemoteState(
-            groups: outcome.isSelective ? null : outcome.groups,
-            lists: outcome.isSelective ? null : outcome.lists,
-            tasks: outcome.tasks,
-            remoteSettings: outcome.remoteSettings,
-            protectPendingOutbox: true,
-          );
-        }
         await ref
             .read(accountProvider.notifier)
             .updateSyncStatus(

@@ -88,7 +88,7 @@ final class _RemotePullPatch extends _PullFetch {
 /// Stateless remote fetcher & patch reconciler for Substrate v1 delta endpoints.
 ///
 /// Network fetches never hold local entity snapshots and never advance saved
-/// `deltaLink`s until reconciliation commits against live local state.
+/// `deltaLink`s until reconciliation commits synchronously against live state.
 class SubstratePullEngine {
   const SubstratePullEngine(this.todoApi);
 
@@ -101,9 +101,9 @@ class SubstratePullEngine {
   /// reconciles them against the latest live state.
   AsyncAppResult<PullOutcome> pull({
     required TodoRepository repository,
-    required TodoState currentState,
+    required TodoState Function() readState,
     required String Function(String prefix) idGenerator,
-    TodoState Function()? readLatestState,
+    Future<void> Function(PullOutcome outcome)? onReconciled,
     bool forceFullSync = false,
     Set<String>? onlyFolderRemoteIds,
     bool Function()? isCancelled,
@@ -113,13 +113,13 @@ class SubstratePullEngine {
     final outbox = repository.outbox;
     final pullStartSeq = outbox.lastSeq;
     final effectivePruneSeq = pruneProtectSinceSeq ?? pullStartSeq;
-    final startState = readLatestState?.call() ?? currentState;
+    final startState = readState();
     final isSelective = onlyFolderRemoteIds != null;
 
     bool cancelled() => isCancelled?.call() == true;
 
     PullOutcome cancelledOutcome() {
-      final live = readLatestState?.call() ?? currentState;
+      final live = readState();
       _log.info('pull cancelled reason=$reason');
       return PullOutcome(
         groups: live.groups,
@@ -171,8 +171,8 @@ class SubstratePullEngine {
     }
     final patch = fetched;
 
-    final liveState = readLatestState?.call() ?? currentState;
     if (patch.isSelective && patch.taskFetchesByFolderRemoteId.isEmpty) {
+      final liveState = readState();
       return Success(
         PullOutcome(
           groups: liveState.groups,
@@ -187,10 +187,11 @@ class SubstratePullEngine {
     return _applyPatch(
       patch: patch,
       repository: repository,
-      liveState: liveState,
+      readState: readState,
       idGenerator: idGenerator,
       pullStartSeq: pullStartSeq,
       pruneProtectSinceSeq: effectivePruneSeq,
+      onReconciled: onReconciled,
     );
   }
 
@@ -236,7 +237,10 @@ class SubstratePullEngine {
     final groupsResult = await _fetchDeltaWithMode(
       savedDeltaLink: repository.loadGroupsDeltaLink(),
       forceFullSync: forceFullSync,
-      clearDeltaLink: () => repository.saveGroupsDeltaLink(null),
+      clearDeltaLink: () => repository.saveSyncMetaBatch(
+        groupsDeltaLink: null,
+        updateGroupsDeltaLink: true,
+      ),
       fetch: (dl) => todoApi.fetchFolderGroupsDelta(deltaLink: dl),
     );
     if (groupsResult.isError()) return Failure(groupsResult.exceptionOrNull()!);
@@ -252,7 +256,10 @@ class SubstratePullEngine {
     final foldersResult = await _fetchDeltaWithMode(
       savedDeltaLink: repository.loadFoldersDeltaLink(),
       forceFullSync: forceFullSync,
-      clearDeltaLink: () => repository.saveFoldersDeltaLink(null),
+      clearDeltaLink: () => repository.saveSyncMetaBatch(
+        foldersDeltaLink: null,
+        updateFoldersDeltaLink: true,
+      ),
       fetch: (dl) => todoApi.fetchFoldersDelta(deltaLink: dl),
     );
     if (foldersResult.isError()) {
@@ -368,7 +375,7 @@ class SubstratePullEngine {
       clearDeltaLink: () async {
         final next = Map<String, String>.from(repository.loadTaskDeltaLinks())
           ..remove(folderRemoteId);
-        await repository.saveTaskDeltaLinks(next);
+        await repository.saveSyncMetaBatch(taskDeltaLinks: next);
       },
       fetch: (dl) => todoApi.fetchTasksDelta(
         folderRemoteId: folderRemoteId,
@@ -395,11 +402,13 @@ class SubstratePullEngine {
   AsyncAppResult<PullOutcome> _applyPatch({
     required _RemotePullPatch patch,
     required TodoRepository repository,
-    required TodoState liveState,
+    required TodoState Function() readState,
     required String Function(String prefix) idGenerator,
     required int pullStartSeq,
     required int pruneProtectSinceSeq,
+    Future<void> Function(PullOutcome outcome)? onReconciled,
   }) => guardApiCall(() async {
+    final liveState = readState();
     final outbox = repository.outbox;
     final protection = outbox.capturePullProtection(
       pullStartSeq: pullStartSeq,
@@ -484,9 +493,19 @@ class SubstratePullEngine {
       );
     }
 
+    final outcome = PullOutcome(
+      groups: finalGroups,
+      lists: finalLists,
+      tasks: finalTasks,
+      remoteSettings: reconciled.remoteSettings,
+      syncedAt: DateTime.now().toUtc(),
+      isSelective: patch.isSelective,
+    );
+
+    final applyFuture = onReconciled?.call(outcome);
     final groupsDeltaLink = patch.groupsFetch?.page.deltaLink;
     final foldersDeltaLink = patch.foldersFetch?.page.deltaLink;
-    await repository.saveSyncMetaBatch(
+    final metaFuture = repository.saveSyncMetaBatch(
       groupsDeltaLink: groupsDeltaLink,
       updateGroupsDeltaLink: groupsDeltaLink != null,
       foldersDeltaLink: foldersDeltaLink,
@@ -496,15 +515,10 @@ class SubstratePullEngine {
           ? taskDeltaLinks
           : null,
     );
+    if (applyFuture != null) await applyFuture;
+    await metaFuture;
 
-    return PullOutcome(
-      groups: finalGroups,
-      lists: finalLists,
-      tasks: finalTasks,
-      remoteSettings: reconciled.remoteSettings,
-      syncedAt: DateTime.now().toUtc(),
-      isSelective: patch.isSelective,
-    );
+    return outcome;
   }, operation: 'applyPullPatch');
 
   AsyncAppResult<_DeltaFetchResult<T>> _fetchDeltaWithMode<T>({

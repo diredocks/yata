@@ -66,13 +66,6 @@ class RoutineNotificationConfig {
   int get hashCode => Object.hash(time, const ListEquality<int>().hash(days));
 }
 
-bool? _decodeWireBoolOrNull(String raw) {
-  final lower = raw.trim().toLowerCase();
-  if (lower == 'true' || lower == '1' || lower == 'enabled') return true;
-  if (lower == 'false' || lower == '0' || lower == 'disabled') return false;
-  return null;
-}
-
 RoutineNotificationConfig? _decodeRoutineConfig(String raw) {
   final time = decodeRoutineConfigTime(raw);
   if (time == null) return null;
@@ -123,7 +116,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.confirmOnDelete,
     readState: (s) => s.confirmBeforeDeleting,
-    decode: _decodeWireBoolOrNull,
+    decode: parseWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(confirmBeforeDeleting: v),
     persist: (store, v) => store.saveConfirmBeforeDeleting(v),
@@ -131,7 +124,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.soundOnCompletion,
     readState: (s) => s.playCompletionSound,
-    decode: _decodeWireBoolOrNull,
+    decode: parseWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(playCompletionSound: v),
     persist: (store, v) => store.savePlayCompletionSound(v),
@@ -139,7 +132,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.myDayShowDueTasks,
     readState: (s) => s.showDueTodayInMyDay,
-    decode: _decodeWireBoolOrNull,
+    decode: parseWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(showDueTodayInMyDay: v),
     persist: (store, v) => store.saveShowDueTodayInMyDay(v),
@@ -147,7 +140,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.addTasksToTop,
     readState: (s) => s.addNewTasksOnTop,
-    decode: _decodeWireBoolOrNull,
+    decode: parseWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(addNewTasksOnTop: v),
     persist: (store, v) => store.saveAddNewTasksOnTop(v),
@@ -155,7 +148,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.moveStarredTasksToTop,
     readState: (s) => s.moveStarredTasksToTop,
-    decode: _decodeWireBoolOrNull,
+    decode: parseWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(moveStarredTasksToTop: v),
     persist: (store, v) => store.saveMoveStarredTasksToTop(v),
@@ -171,7 +164,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.reminderNotifications,
     readState: (s) => s.remindersEnabled,
-    decode: _decodeWireBoolOrNull,
+    decode: parseWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(remindersEnabled: v),
     persist: (store, v) => store.saveRemindersEnabled(v),
@@ -179,7 +172,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.dueDateNotifications,
     readState: (s) => s.dueTodayNotificationsEnabled,
-    decode: _decodeWireBoolOrNull,
+    decode: parseWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(dueTodayNotificationsEnabled: v),
     persist: (store, v) => store.saveDueTodayNotificationsEnabled(v),
@@ -201,7 +194,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.pinReminders,
     readState: (s) => s.pinReminders,
-    decode: _decodeWireBoolOrNull,
+    decode: parseWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(pinReminders: v),
     persist: (store, v) => store.savePinReminders(v),
@@ -209,7 +202,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.setAlarmClockReminderAndroid,
     readState: (s) => s.accurateReminders,
-    decode: _decodeWireBoolOrNull,
+    decode: parseWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(accurateReminders: v),
     persist: (store, v) => store.saveAccurateReminders(v),
@@ -217,8 +210,8 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.routineNotification,
     readState: (s) => s.routineNotificationEnabled,
-    decode: _decodeWireBoolOrNull,
-    encode: encodeRoutineNotificationEnabled,
+    decode: parseWireBoolOrNull,
+    encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(routineNotificationEnabled: v),
     persist: (store, v) => store.saveRoutineNotificationEnabled(v),
   ),
@@ -246,7 +239,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.smartListStarredEnabled,
     readState: (s) => s.showSmartListImportant,
-    decode: _decodeWireBoolOrNull,
+    decode: parseWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(showSmartListImportant: v),
     persist: (store, v) => store.saveShowSmartListImportant(v),
@@ -254,7 +247,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.smartListPlannedEnabled,
     readState: (s) => s.showSmartListPlanned,
-    decode: _decodeWireBoolOrNull,
+    decode: parseWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(showSmartListPlanned: v),
     persist: (store, v) => store.saveShowSmartListPlanned(v),
@@ -262,7 +255,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.smartListAllEnabled,
     readState: (s) => s.showSmartListAll,
-    decode: _decodeWireBoolOrNull,
+    decode: parseWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(showSmartListAll: v),
     persist: (store, v) => store.saveShowSmartListAll(v),
@@ -270,7 +263,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.smartListCompletedEnabled,
     readState: (s) => s.showSmartListCompleted,
-    decode: _decodeWireBoolOrNull,
+    decode: parseWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(showSmartListCompleted: v),
     persist: (store, v) => store.saveShowSmartListCompleted(v),
@@ -278,7 +271,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.smartListsAutoHide,
     readState: (s) => s.autoHideEmptySmartLists,
-    decode: _decodeWireBoolOrNull,
+    decode: parseWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(autoHideEmptySmartLists: v),
     persist: (store, v) => store.saveAutoHideEmptySmartLists(v),
@@ -369,7 +362,7 @@ applyRemoteSettingsWire({
     var updated = list;
     final showRaw = wireVal(mapping.showCompletedKey);
     if (showRaw != null) {
-      final show = _decodeWireBoolOrNull(showRaw);
+      final show = parseWireBoolOrNull(showRaw);
       if (show != null) {
         updatedShowCompletedSmartListIds.add(list.id);
         updated = updated.copyWith(showCompleted: show);
@@ -398,7 +391,7 @@ applyRemoteSettingsWire({
     }
     final ascRaw = wireVal(mapping.sortAscKey);
     if (ascRaw != null) {
-      final asc = _decodeWireBoolOrNull(ascRaw);
+      final asc = parseWireBoolOrNull(ascRaw);
       if (asc != null) {
         updated = updated.copyWith(sortAscending: asc);
       }

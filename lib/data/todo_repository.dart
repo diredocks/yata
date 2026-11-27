@@ -93,25 +93,10 @@ class TodoRepository {
 
   String? loadGroupsDeltaLink() => _cache.groupsDeltaLink;
 
-  AsyncAppResult<Unit> saveGroupsDeltaLink(String? deltaLink) =>
-      saveSyncMetaBatch(
-        groupsDeltaLink: deltaLink,
-        updateGroupsDeltaLink: true,
-      );
-
   String? loadFoldersDeltaLink() => _cache.foldersDeltaLink;
-
-  AsyncAppResult<Unit> saveFoldersDeltaLink(String? deltaLink) =>
-      saveSyncMetaBatch(
-        foldersDeltaLink: deltaLink,
-        updateFoldersDeltaLink: true,
-      );
 
   Map<String, String> loadTaskDeltaLinks() =>
       Map<String, String>.unmodifiable(_cache.taskDeltaLinks);
-
-  AsyncAppResult<Unit> saveTaskDeltaLinks(Map<String, String> links) =>
-      saveSyncMetaBatch(taskDeltaLinks: links);
 
   String? loadCachedEndpointUrl({
     Duration maxAge = const Duration(hours: 12),
@@ -196,10 +181,10 @@ class TodoRepository {
       () => _db.transaction(() async {
         for (final entry in writes) {
           if (entry.payload == null) {
-            await _db.deleteSyncMutationRecord(
+            await _db.deleteSyncMutationRecords(
               accountKey,
               kind: _syncMetaKind,
-              itemKey: entry.key,
+              itemKeys: [entry.key],
             );
           } else {
             await _db.upsertSyncMutationRecord(
@@ -220,6 +205,18 @@ class TodoRepository {
   /// Waits for all previously enqueued SQLite writes for this account to finish.
   Future<void> flushPendingWrites() => _cache.writeQueue;
 
+  Future<({List<TodoList> lists, List<ListGroup> groups, List<TaskItem> tasks})>
+  _loadEntityTables() async {
+    final listRows = await _db.selectTodoListRecords(accountKey);
+    final groupRows = await _db.selectListGroupRecords(accountKey);
+    final taskRows = await _db.selectTaskItemRecords(accountKey);
+    return (
+      lists: _decodeRows(listRows, (r) => r.payloadJson, TodoList.fromJson),
+      groups: _decodeRows(groupRows, (r) => r.payloadJson, ListGroup.fromJson),
+      tasks: _decodeRows(taskRows, (r) => r.payloadJson, TaskItem.fromJson),
+    );
+  }
+
   /// Loads this account's rows from SQLite into the in-memory cache.
   AsyncAppResult<Unit> preload() {
     if (!_db.persistToSqlite) {
@@ -227,27 +224,9 @@ class TodoRepository {
     }
     return guardDbCall(() async {
       await _cache.writeQueue;
-      final listRows = await _db.selectTodoListRecords(accountKey);
-      final groupRows = await _db.selectListGroupRecords(accountKey);
-      final taskRows = await _db.selectTaskItemRecords(accountKey);
+      final entities = await _loadEntityTables();
       final allMutations = await _db.selectSyncMutationRecords(accountKey);
 
-      // Decode first: a corrupt payload must not clobber the cache.
-      final lists = _decodeRows(
-        listRows,
-        (r) => r.payloadJson,
-        TodoList.fromJson,
-      );
-      final groups = _decodeRows(
-        groupRows,
-        (r) => r.payloadJson,
-        ListGroup.fromJson,
-      );
-      final tasks = _decodeRows(
-        taskRows,
-        (r) => r.payloadJson,
-        TaskItem.fromJson,
-      );
       final groupedMutations = allMutations.groupListsBy((row) => row.kind);
       final outboxOps = _decodeRows(
         groupedMutations[_outboxKind] ?? const [],
@@ -261,9 +240,9 @@ class TodoRepository {
       };
 
       final cache = _cache;
-      cache.lists = lists.isEmpty ? null : lists;
-      cache.groups = groups;
-      cache.tasks = tasks;
+      cache.lists = entities.lists.isEmpty ? null : entities.lists;
+      cache.groups = entities.groups;
+      cache.tasks = entities.tasks;
       cache.outbox = SyncOutboxQueue(outboxOps, remoteIdMap);
       _applyLoadedSyncMeta(cache, groupedMutations[_syncMetaKind] ?? const []);
       return unit;
@@ -278,30 +257,12 @@ class TodoRepository {
     }
     return guardDbCall(() async {
       await _cache.writeQueue;
-      final listRows = await _db.selectTodoListRecords(accountKey);
-      final groupRows = await _db.selectListGroupRecords(accountKey);
-      final taskRows = await _db.selectTaskItemRecords(accountKey);
-
-      final lists = _decodeRows(
-        listRows,
-        (r) => r.payloadJson,
-        TodoList.fromJson,
-      );
-      final groups = _decodeRows(
-        groupRows,
-        (r) => r.payloadJson,
-        ListGroup.fromJson,
-      );
-      final tasks = _decodeRows(
-        taskRows,
-        (r) => r.payloadJson,
-        TaskItem.fromJson,
-      );
+      final entities = await _loadEntityTables();
 
       final cache = _cache;
-      cache.lists = lists.isEmpty ? null : lists;
-      cache.groups = groups;
-      cache.tasks = tasks;
+      cache.lists = entities.lists.isEmpty ? null : entities.lists;
+      cache.groups = entities.groups;
+      cache.tasks = entities.tasks;
       return unit;
     }, operation: 'reloadEntities');
   }
@@ -526,47 +487,6 @@ class TodoRepository {
     final delta = _cache.outbox.takePendingPersistenceDelta();
     if (delta.isEmpty) {
       return Future.value(const Success(unit));
-    }
-    if (delta.fullReplace) {
-      final opsSnapshot = _cache.outbox.ops;
-      final remoteMapEntries = _cache.outbox.remoteIdMap.entries.toList(
-        growable: false,
-      );
-      return _persistWrite(
-        'saveOutbox',
-        () => _db.transaction(() async {
-          await _db.replaceSyncMutationRecords(
-            accountKey,
-            kind: _outboxKind,
-            rows: opsSnapshot
-                .map(
-                  (op) => SyncMutationRecordsCompanion.insert(
-                    accountKey: accountKey,
-                    kind: _outboxKind,
-                    itemKey: op.seq.toString(),
-                    position: op.seq,
-                    payloadJson: jsonEncode(op.toJson()),
-                  ),
-                )
-                .toList(growable: false),
-          );
-          await _db.replaceSyncMutationRecords(
-            accountKey,
-            kind: _remoteIdMapKind,
-            rows: remoteMapEntries
-                .map(
-                  (entry) => SyncMutationRecordsCompanion.insert(
-                    accountKey: accountKey,
-                    kind: _remoteIdMapKind,
-                    itemKey: entry.key,
-                    position: 0,
-                    payloadJson: jsonEncode({'remoteId': entry.value}),
-                  ),
-                )
-                .toList(growable: false),
-          );
-        }),
-      );
     }
 
     return _persistWrite(

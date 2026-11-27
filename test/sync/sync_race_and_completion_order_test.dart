@@ -48,7 +48,6 @@ void main() {
       lists: snapshot.lists,
       tasks: [initialTask],
       remoteSettings: const {TodoSettingKeys.soundOnCompletion: 'false'},
-      protectPendingOutbox: true,
     );
 
     final current = container.read(todoProvider);
@@ -186,7 +185,7 @@ void main() {
     await repo.saveOutbox();
 
     final pushOutcome = (await SubstratePushEngine(fakeApi).pushOutbox(
-      currentState: state,
+      readState: () => state,
       outbox: repo.outbox,
       nowUtc: DateTime.now().toUtc(),
       onItemCommitted: (o) async {
@@ -199,7 +198,7 @@ void main() {
     );
     final outcome = (await SubstratePullEngine(fakeApi).pull(
       repository: repo,
-      currentState: postPushState,
+      readState: () => postPushState,
       idGenerator: (p) => '${p}_gen',
     )).getOrThrow();
     final split = splitTasksForDisplay(outcome.tasks, tasksList);

@@ -236,7 +236,7 @@ void main() {
       final pushEngine = SubstratePushEngine(api);
 
       final pushOutcome = (await pushEngine.pushOutbox(
-        currentState: nextState,
+        readState: () => nextState,
         outbox: outbox,
         nowUtc: DateTime.utc(2026, 11, 26),
       )).getOrThrow();
@@ -273,7 +273,7 @@ void main() {
       expect(outbox.ops.first.kind, SyncOpKind.delete);
 
       await pushEngine.pushOutbox(
-        currentState: stateAfterDelete,
+        readState: () => stateAfterDelete,
         outbox: outbox,
         nowUtc: DateTime.utc(2026, 11, 26),
       );

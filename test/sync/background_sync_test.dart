@@ -388,7 +388,7 @@ void main() {
 
       // Foreground push + immediate background switch must never upload in foreground.
       final notifier = h.container.read(syncProvider.notifier);
-      notifier.schedulePushOnlySync(delay: const Duration(milliseconds: 10));
+      notifier.schedulePush(delay: const Duration(milliseconds: 10));
       await Future<void>.delayed(const Duration(milliseconds: 30));
       notifier.onAppPaused();
       await pumpEventQueue();

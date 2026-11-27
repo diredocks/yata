@@ -700,14 +700,16 @@ Future<SeededSyncSession> seedMicrosoftSyncSession({
   if (tasks.isNotEmpty) {
     await repository.saveTasks(tasks);
   }
-  if (groupsDeltaLink != null) {
-    await repository.saveGroupsDeltaLink(groupsDeltaLink);
-  }
-  if (foldersDeltaLink != null) {
-    await repository.saveFoldersDeltaLink(foldersDeltaLink);
-  }
-  if (taskDeltaLinks != null) {
-    await repository.saveTaskDeltaLinks(taskDeltaLinks);
+  if (groupsDeltaLink != null ||
+      foldersDeltaLink != null ||
+      taskDeltaLinks != null) {
+    await repository.saveSyncMetaBatch(
+      groupsDeltaLink: groupsDeltaLink,
+      updateGroupsDeltaLink: groupsDeltaLink != null,
+      foldersDeltaLink: foldersDeltaLink,
+      updateFoldersDeltaLink: foldersDeltaLink != null,
+      taskDeltaLinks: taskDeltaLinks,
+    );
   }
   if (dirtyListIds != null) {
     for (final id in dirtyListIds) {

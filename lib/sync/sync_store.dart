@@ -26,25 +26,16 @@ class SyncStore {
     final outbox = repository.outbox;
     outbox.ackBatch(outcome.ackedSeqs, outcome.clearedRemoteIdKeys);
 
-    final nextGroups = [
-      for (final current in currentState.groups)
-        if (outcome.pushedGroups[current.id] case final pushed?)
-          outbox.hasPending(SyncEntityType.group, current.id)
-              ? current.copyWith(remoteId: pushed.remoteId ?? current.remoteId)
-              : pushed.copyWith(isExpanded: current.isExpanded)
-        else
-          current,
-    ];
-
-    final nextLists = [
-      for (final current in currentState.lists)
-        if (outcome.pushedLists[current.id] case final pushed?)
-          outbox.hasPending(SyncEntityType.list, current.id)
-              ? current.copyWith(remoteId: pushed.remoteId ?? current.remoteId)
-              : pushed.copyWith(icon: current.icon)
-        else
-          current,
-    ];
+    final nextGroups = _mergePushedGroups(
+      outbox: outbox,
+      currentGroups: currentState.groups,
+      pushedGroups: outcome.pushedGroups,
+    );
+    final nextLists = _mergePushedLists(
+      outbox: outbox,
+      currentLists: currentState.lists,
+      pushedLists: outcome.pushedLists,
+    );
 
     final updatedTasks = <TaskItem>[];
     final nextTasks = [
@@ -104,41 +95,16 @@ class SyncStore {
               ),
     ];
 
-    final nextGroups = outcome.pushedGroups.isNotEmpty
-        ? repository
-              .readCachedGroups()
-              .map(
-                (g) => outcome.pushedGroups[g.id] == null
-                    ? g
-                    : (outbox.hasPending(SyncEntityType.group, g.id)
-                          ? g.copyWith(
-                              remoteId:
-                                  outcome.pushedGroups[g.id]!.remoteId ??
-                                  g.remoteId,
-                            )
-                          : outcome.pushedGroups[g.id]!.copyWith(
-                              isExpanded: g.isExpanded,
-                            )),
-              )
-              .toList(growable: false)
-        : repository.readCachedGroups();
-
-    final cachedLists = repository.readCachedLists() ?? const <TodoList>[];
-    final nextLists = outcome.pushedLists.isNotEmpty
-        ? cachedLists
-              .map(
-                (l) => outcome.pushedLists[l.id] == null
-                    ? l
-                    : (outbox.hasPending(SyncEntityType.list, l.id)
-                          ? l.copyWith(
-                              remoteId:
-                                  outcome.pushedLists[l.id]!.remoteId ??
-                                  l.remoteId,
-                            )
-                          : outcome.pushedLists[l.id]!.copyWith(icon: l.icon)),
-              )
-              .toList(growable: false)
-        : cachedLists;
+    final nextGroups = _mergePushedGroups(
+      outbox: outbox,
+      currentGroups: repository.readCachedGroups(),
+      pushedGroups: outcome.pushedGroups,
+    );
+    final nextLists = _mergePushedLists(
+      outbox: outbox,
+      currentLists: repository.readCachedLists() ?? const <TodoList>[],
+      pushedLists: outcome.pushedLists,
+    );
 
     final currentTasksById = Map<String, TaskItem>.of(freshTasksById);
     for (final updated in updatedTasks) {
@@ -163,56 +129,21 @@ class SyncStore {
     await repository.flushPendingWrites();
   }
 
-  /// Applies pulled or realtime remote snapshots/patches to [currentState]
-  /// and persists changed entities and settings to SQLite / prefs.
+  /// Applies reconciled remote state/settings to [currentState] synchronously
+  /// and returns futures covering changed entity/preference persistence.
   ({TodoState nextState, Future<void> persisted}) applyRemoteState({
     required TodoState currentState,
     List<ListGroup>? groups,
     List<TodoList>? lists,
     List<TaskItem>? tasks,
     Map<String, String>? remoteSettings,
-    bool protectPendingOutbox = false,
   }) {
     final outbox = repository.outbox;
-
-    final reconciledGroups = groups == null
-        ? currentState.groups
-        : (protectPendingOutbox
-              ? _mergePulled<ListGroup>(
-                  outbox: outbox,
-                  currentItems: currentState.groups,
-                  pulledItems: groups,
-                  type: SyncEntityType.group,
-                  idOf: (g) => g.id,
-                  mergeLocalPending: (current, pulled) => current.copyWith(
-                    remoteId: pulled.remoteId ?? current.remoteId,
-                  ),
-                  mergeClean: (current, pulled) =>
-                      pulled.copyWith(isExpanded: current.isExpanded),
-                )
-              : groups);
     final sortedGroups = groups != null
-        ? sortGroupsByOrder(reconciledGroups)
-        : reconciledGroups;
+        ? sortGroupsByOrder(groups)
+        : currentState.groups;
 
-    var reconciledLists = lists == null
-        ? currentState.lists
-        : (protectPendingOutbox
-              ? _mergePulled<TodoList>(
-                  outbox: outbox,
-                  currentItems: currentState.lists,
-                  pulledItems: lists,
-                  type: SyncEntityType.list,
-                  idOf: (l) => l.id,
-                  mergeLocalPending: (current, pulled) => current.copyWith(
-                    remoteId: pulled.remoteId ?? current.remoteId,
-                  ),
-                  mergeClean: (current, pulled) => isSyncableFolderList(current)
-                      ? pulled.copyWith(icon: current.icon)
-                      : current,
-                )
-              : lists);
-
+    var reconciledLists = lists ?? currentState.lists;
     var danglingGroupCleared = false;
     if (groups != null || lists != null) {
       final validGroupIds = {for (final g in sortedGroups) g.id};
@@ -267,21 +198,7 @@ class SyncStore {
         : (expanded: nextState.completedExpandedByList, changed: false);
 
     final validListIds = {for (final l in sortedLists) l.id};
-    var reconciledTasks = tasks == null
-        ? nextState.tasks
-        : (protectPendingOutbox
-              ? _mergePulled<TaskItem>(
-                  outbox: outbox,
-                  currentItems: nextState.tasks,
-                  pulledItems: tasks,
-                  type: SyncEntityType.task,
-                  idOf: (t) => t.id,
-                  mergeLocalPending: (current, pulled) => current.copyWith(
-                    changeKey: pulled.changeKey ?? current.changeKey,
-                  ),
-                  mergeClean: (current, pulled) => pulled,
-                )
-              : tasks);
+    var reconciledTasks = tasks ?? nextState.tasks;
     if (tasks != null) {
       reconciledTasks = reconciledTasks
           .where((t) => validListIds.contains(t.listId))
@@ -336,40 +253,38 @@ class SyncStore {
     );
   }
 
-  static List<T> _mergePulled<T>({
+  static List<ListGroup> _mergePushedGroups({
     required SyncOutboxQueue outbox,
-    required List<T> currentItems,
-    required List<T> pulledItems,
-    required SyncEntityType type,
-    required String Function(T) idOf,
-    required T Function(T current, T pulled) mergeLocalPending,
-    required T Function(T current, T pulled) mergeClean,
+    required List<ListGroup> currentGroups,
+    required Map<String, ListGroup> pushedGroups,
   }) {
-    final pulledById = {for (final item in pulledItems) idOf(item): item};
-    final currentIds = {for (final item in currentItems) idOf(item)};
-    final result = <T>[];
-    for (final current in currentItems) {
-      final id = idOf(current);
-      final pulled = pulledById[id];
-      if (pulled == null) {
-        if (outbox.hasPending(type, id)) {
-          result.add(current);
-        }
-        continue;
-      }
-      result.add(
-        outbox.hasPending(type, id)
-            ? mergeLocalPending(current, pulled)
-            : mergeClean(current, pulled),
-      );
-    }
-    for (final pulled in pulledItems) {
-      final id = idOf(pulled);
-      if (!currentIds.contains(id) && !outbox.hasPending(type, id)) {
-        result.add(pulled);
-      }
-    }
-    return result;
+    if (pushedGroups.isEmpty) return currentGroups;
+    return [
+      for (final current in currentGroups)
+        if (pushedGroups[current.id] case final pushed?)
+          outbox.hasPending(SyncEntityType.group, current.id)
+              ? current.copyWith(remoteId: pushed.remoteId ?? current.remoteId)
+              : pushed.copyWith(isExpanded: current.isExpanded)
+        else
+          current,
+    ];
+  }
+
+  static List<TodoList> _mergePushedLists({
+    required SyncOutboxQueue outbox,
+    required List<TodoList> currentLists,
+    required Map<String, TodoList> pushedLists,
+  }) {
+    if (pushedLists.isEmpty) return currentLists;
+    return [
+      for (final current in currentLists)
+        if (pushedLists[current.id] case final pushed?)
+          outbox.hasPending(SyncEntityType.list, current.id)
+              ? current.copyWith(remoteId: pushed.remoteId ?? current.remoteId)
+              : pushed.copyWith(icon: current.icon)
+        else
+          current,
+    ];
   }
 
   static TaskItem _mergePushedTaskServerFields(

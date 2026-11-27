@@ -277,7 +277,6 @@ class TodoNotifier extends Notifier<TodoState> {
     List<TodoList>? lists,
     List<TaskItem>? tasks,
     Map<String, String>? remoteSettings,
-    bool protectPendingOutbox = false,
   }) async {
     final result = _syncStore.applyRemoteState(
       currentState: state,
@@ -285,7 +284,6 @@ class TodoNotifier extends Notifier<TodoState> {
       lists: lists,
       tasks: tasks,
       remoteSettings: remoteSettings,
-      protectPendingOutbox: protectPendingOutbox,
     );
     state = result.nextState;
     await result.persisted;

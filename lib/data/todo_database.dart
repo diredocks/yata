@@ -212,12 +212,6 @@ class TodoDatabase extends _$TodoDatabase {
   Future<void> upsertSyncMutationRecord(SyncMutationRecordsCompanion row) =>
       into(syncMutationRecords).insertOnConflictUpdate(row);
 
-  Future<void> deleteSyncMutationRecord(
-    String accountKey, {
-    required String kind,
-    required String itemKey,
-  }) => deleteSyncMutationRecords(accountKey, kind: kind, itemKeys: [itemKey]);
-
   Future<void> deleteSyncMutationRecords(
     String accountKey, {
     required String kind,
@@ -232,21 +226,6 @@ class TodoDatabase extends _$TodoDatabase {
         ))
         .go();
   }
-
-  Future<void> replaceSyncMutationRecords(
-    String accountKey, {
-    required String kind,
-    required List<SyncMutationRecordsCompanion> rows,
-  }) => _replaceRecords(
-    table: syncMutationRecords,
-    rows: rows,
-    keepKeys: [
-      for (final r in rows)
-        if (r.itemKey.present) r.itemKey.value,
-    ],
-    scope: (t) => t.accountKey.equals(accountKey) & t.kind.equals(kind),
-    keyColumn: (t) => t.itemKey,
-  );
 
   Future<void> deleteAllAccountRecords(String accountKey) {
     return transaction(() async {

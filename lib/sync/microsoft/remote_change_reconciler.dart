@@ -16,34 +16,8 @@ typedef RemoteTaskChange = ({
   bool preserveAttachmentsWhenMissing,
 });
 
-class TaskReconcileResult {
-  const TaskReconcileResult({
-    required this.tasks,
-    required this.seenActiveRemoteIds,
-    required this.addedCount,
-    required this.updatedCount,
-    required this.orderChangedCount,
-    required this.deletedCount,
-    required this.ignoredCount,
-    required this.unknownParentFolderIds,
-    this.missingParentFolderCount = 0,
-  });
-
-  final List<TaskItem> tasks;
-  final Set<String> seenActiveRemoteIds;
-  final int addedCount;
-  final int updatedCount;
-  final int orderChangedCount;
-  final int deletedCount;
-  final int ignoredCount;
-  final Set<String> unknownParentFolderIds;
-  final int missingParentFolderCount;
-}
-
-/// Unified task reconciliation used by both Delta Pull and Realtime event
-/// merging so dirty protection, pending-delete protection, `changeKey`
-/// preservation, and `Subtasks` handling share a single implementation.
-TaskReconcileResult reconcileRemoteTaskChanges({
+({List<TaskItem> tasks, Set<String> seenActiveRemoteIds, bool hasUnresolvedParent})
+_reconcileRemoteTaskChanges({
   required List<TodoList> lists,
   required List<TaskItem> currentTasks,
   required Iterable<RemoteTaskChange> changes,
@@ -64,14 +38,7 @@ TaskReconcileResult reconcileRemoteTaskChanges({
   final seenActiveRemoteIds = <String>{};
   final deferredDeletesByFolder = <String, Set<String>?>{};
   final ignoredRemoteIds = <String>{};
-  final unknownParentFolderIds = <String>{};
-
-  var addedCount = 0;
-  var updatedCount = 0;
-  var orderChangedCount = 0;
-  var deletedCount = 0;
-  var ignoredCount = 0;
-  var missingParentFolderCount = 0;
+  var hasUnresolvedParent = false;
 
   for (final change in changes) {
     final remote = change.remote;
@@ -87,12 +54,10 @@ TaskReconcileResult reconcileRemoteTaskChanges({
     }
 
     if (remote.isIgnored) {
-      ignoredCount += 1;
       ignoredRemoteIds.add(remote.id);
       continue;
     }
     if (remote.isDeleted) {
-      deletedCount += 1;
       final existingSet = deferredDeletesByFolder[remote.id];
       if (fallbackLocalListId != null) {
         if (existingSet != null) {
@@ -121,19 +86,18 @@ TaskReconcileResult reconcileRemoteTaskChanges({
           localListIdByFolderRemoteId[remote.parentFolderId!] ??
           fallbackLocalListId;
       if (resolvedListId == null) {
-        unknownParentFolderIds.add(remote.parentFolderId!);
+        hasUnresolvedParent = true;
         continue;
       }
     } else {
       resolvedListId = fallbackLocalListId ?? existing?.listId;
       if (resolvedListId == null) {
-        missingParentFolderCount += 1;
+        hasUnresolvedParent = true;
         continue;
       }
     }
 
     if (existing != null) {
-      updatedCount += 1;
       final isPending = dirtyTaskIds.contains(existing.id);
       if (isPending) {
         if (remote.changeKey != null &&
@@ -143,14 +107,6 @@ TaskReconcileResult reconcileRemoteTaskChanges({
           );
         }
         continue;
-      }
-
-      final orderChanged =
-          existing.orderDateTime != remote.orderDateTime ||
-          existing.committedOrder != remote.committedOrder ||
-          existing.listId != resolvedListId;
-      if (orderChanged) {
-        orderChangedCount += 1;
       }
 
       var mapped = taskFromRemote(
@@ -176,7 +132,6 @@ TaskReconcileResult reconcileRemoteTaskChanges({
       }
       tasksById[existing.id] = mapped;
     } else {
-      addedCount += 1;
       final newLocalId = idGenerator('task');
       final created = taskFromRemote(
         remote,
@@ -211,16 +166,10 @@ TaskReconcileResult reconcileRemoteTaskChanges({
     tasksById.remove(localId);
   }
 
-  return TaskReconcileResult(
+  return (
     tasks: tasksById.values.toList(),
     seenActiveRemoteIds: seenActiveRemoteIds,
-    addedCount: addedCount,
-    updatedCount: updatedCount,
-    orderChangedCount: orderChangedCount,
-    deletedCount: deletedCount,
-    ignoredCount: ignoredCount,
-    unknownParentFolderIds: unknownParentFolderIds,
-    missingParentFolderCount: missingParentFolderCount,
+    hasUnresolvedParent: hasUnresolvedParent,
   );
 }
 
@@ -401,7 +350,7 @@ ReconciledRemoteDelta reconcileRemoteDelta({
 
   List<TaskItem>? outTasks;
   if (delta.tasks.isNotEmpty || delta.fullSyncedFolderRemoteIds.isNotEmpty) {
-    final reconciled = reconcileRemoteTaskChanges(
+    final reconciled = _reconcileRemoteTaskChanges(
       lists: effectiveLists,
       currentTasks: tasksInValidLists,
       changes: delta.tasks,
@@ -409,9 +358,7 @@ ReconciledRemoteDelta reconcileRemoteDelta({
       pendingDeletedTaskRemoteIds: protection.deletedTaskRemotes,
       idGenerator: idGenerator,
     );
-    if (strictParentResolution &&
-        (reconciled.unknownParentFolderIds.isNotEmpty ||
-            reconciled.missingParentFolderCount > 0)) {
+    if (strictParentResolution && reconciled.hasUnresolvedParent) {
       hasUnhandledEntity = true;
     }
     final fullSyncedListIds = {

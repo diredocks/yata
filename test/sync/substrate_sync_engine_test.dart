@@ -34,7 +34,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  group('CloudSyncService', () {
+  group('Substrate sync engine', () {
     test('pulls remote groups, emoji/theme folders, tasks, HTML notes, MyDay, recurrence, settings and deletes via delta', () async {
       final h = await createSyncTestHarness();
       h.api.remoteSettings.addAll({
@@ -566,7 +566,7 @@ void main() {
       final outcome = await SubstratePullEngine(realApi)
           .pull(
             repository: h1.repository,
-            currentState: h1.container.read(todoProvider),
+            readState: () => h1.container.read(todoProvider),
             idGenerator: h1.container.read(todoProvider.notifier).nextId,
           )
           .fold(
@@ -830,7 +830,7 @@ void main() {
 
         final normalPush = await pushEngine
             .pushOutbox(
-              currentState: h.container.read(todoProvider),
+              readState: () => h.container.read(todoProvider),
               outbox: h.repository.outbox,
               nowUtc: DateTime.now().toUtc(),
               onItemCommitted: todoNotifier.commitPushBatch,
@@ -851,7 +851,7 @@ void main() {
 
         final recPush = await pushEngine
             .pushOutbox(
-              currentState: h.container.read(todoProvider),
+              readState: () => h.container.read(todoProvider),
               outbox: h.repository.outbox,
               nowUtc: DateTime.now().toUtc(),
               onItemCommitted: todoNotifier.commitPushBatch,
@@ -866,7 +866,7 @@ void main() {
         final pullOutcome = await pullEngine
             .pull(
               repository: h.repository,
-              currentState: h.container.read(todoProvider),
+              readState: () => h.container.read(todoProvider),
               idGenerator: todoNotifier.nextId,
               onlyFolderRemoteIds: recPush.followUpPullFolderRemoteIds,
             )
@@ -921,7 +921,7 @@ void main() {
       final todoNotifier = h.container.read(todoProvider.notifier);
       final pushOutcome = await SubstratePushEngine(h.api)
           .pushOutbox(
-            currentState: h.container.read(todoProvider),
+            readState: () => h.container.read(todoProvider),
             outbox: h.repository.outbox,
             nowUtc: DateTime.now().toUtc(),
             onItemCommitted: todoNotifier.commitPushBatch,
@@ -933,7 +933,7 @@ void main() {
       final pullOutcome = await SubstratePullEngine(h.api)
           .pull(
             repository: h.repository,
-            currentState: h.container.read(todoProvider),
+            readState: () => h.container.read(todoProvider),
             idGenerator: todoNotifier.nextId,
             onlyFolderRemoteIds: pushOutcome.followUpPullFolderRemoteIds,
           )
@@ -1014,7 +1014,7 @@ void main() {
 
         await SubstratePushEngine(h.api)
             .pushOutbox(
-              currentState: h.container.read(todoProvider),
+              readState: () => h.container.read(todoProvider),
               outbox: h.repository.outbox,
               nowUtc: DateTime.now().toUtc(),
               onItemCommitted: (o) async {
@@ -1095,10 +1095,9 @@ void main() {
       final pushEngine = SubstratePushEngine(h.api);
 
       final firstResult = await pushEngine.pushOutbox(
-        currentState: h.container.read(todoProvider),
+        readState: () => h.container.read(todoProvider),
         outbox: h.repository.outbox,
         nowUtc: DateTime.now().toUtc(),
-        readLatestState: () => h.container.read(todoProvider),
         onItemCommitted: todoNotifier.commitPushBatch,
       );
       expect(firstResult.isError(), isTrue);
@@ -1114,10 +1113,9 @@ void main() {
 
       h.api.callLog.clear();
       final secondResult = await pushEngine.pushOutbox(
-        currentState: h.container.read(todoProvider),
+        readState: () => h.container.read(todoProvider),
         outbox: h.repository.outbox,
         nowUtc: DateTime.now().toUtc(),
-        readLatestState: () => h.container.read(todoProvider),
         onItemCommitted: todoNotifier.commitPushBatch,
       );
       expect(secondResult.isSuccess(), isTrue);
@@ -1171,10 +1169,9 @@ void main() {
 
       await SubstratePushEngine(h.api)
           .pushOutbox(
-            currentState: h.container.read(todoProvider),
+            readState: () => h.container.read(todoProvider),
             outbox: h.repository.outbox,
             nowUtc: DateTime.now().toUtc(),
-            readLatestState: () => h.container.read(todoProvider),
             onItemCommitted: todoNotifier.commitPushBatch,
           )
           .fold(

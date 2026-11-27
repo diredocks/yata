@@ -102,10 +102,9 @@ class SubstratePushEngine {
   /// settings -> step/task/folder deletions -> groups -> folders ->
   /// group deletions -> tasks/steps -> attachments.
   AsyncAppResult<OutboxPushOutcome> pushOutbox({
-    required TodoState currentState,
+    required TodoState Function() readState,
     required SyncOutboxQueue outbox,
     required DateTime nowUtc,
-    TodoState Function()? readLatestState,
     Future<void> Function(OutboxPushOutcome itemOutcome)? onItemCommitted,
     PushLaneFilter laneFilter = PushLaneFilter.all,
     String reason = 'push',
@@ -115,7 +114,7 @@ class SubstratePushEngine {
       if (batch.isEmpty) {
         return const Success(OutboxPushOutcome.empty);
       }
-      final startState = readLatestState?.call() ?? currentState;
+      final startState = readState();
       _log.info(
         'push start reason=$reason '
         'localLists=${startState.lists.length} '
@@ -124,10 +123,10 @@ class SubstratePushEngine {
       );
       final session = _PushSession(
         todoApi: todoApi,
-        initialState: startState,
+        readState: readState,
+        startOfWeek: startState.startOfWeek,
         outbox: outbox,
         nowUtc: nowUtc,
-        readLatestState: readLatestState,
         onItemCommitted: onItemCommitted,
       );
       return await session.execute(batch);
@@ -151,18 +150,18 @@ class SubstratePushEngine {
 class _PushSession {
   _PushSession({
     required this.todoApi,
-    required this.initialState,
+    required this.readState,
+    required this.startOfWeek,
     required this.outbox,
     required this.nowUtc,
-    this.readLatestState,
     this.onItemCommitted,
   });
 
   final MicrosoftTodoApi todoApi;
-  final TodoState initialState;
+  final TodoState Function() readState;
+  final WeekStart startOfWeek;
   final SyncOutboxQueue outbox;
   final DateTime nowUtc;
-  final TodoState Function()? readLatestState;
   final Future<void> Function(OutboxPushOutcome itemOutcome)? onItemCommitted;
 
   final List<int> _ackedSeqs = [];
@@ -290,13 +289,8 @@ class _PushSession {
     required List<T> Function(TodoState state) selector,
     required String Function(T item) idOf,
   }) {
-    final latest = readLatestState?.call();
-    if (latest != null) {
-      final match = selector(latest).firstWhereOrNull((e) => idOf(e) == id);
-      return match == null ? null : (pushed[id] ?? match);
-    }
-    return pushed[id] ??
-        selector(initialState).firstWhereOrNull((e) => idOf(e) == id);
+    final match = selector(readState()).firstWhereOrNull((e) => idOf(e) == id);
+    return match == null ? null : (pushed[id] ?? match);
   }
 
   T? _resolveEntity<T>({
@@ -409,8 +403,7 @@ class _PushSession {
   });
 
   AsyncAppResult<Unit> _pushSingleSetting(SyncOutboxOp op) async {
-    final latestState = readLatestState?.call() ?? initialState;
-    final wireValue = extractSettingValueForKey(latestState, op.localId);
+    final wireValue = extractSettingValueForKey(readState(), op.localId);
     if (wireValue != null) {
       final result = await todoApi.patchSetting(op.localId, wireValue);
       if (result.isError()) return Failure(result.exceptionOrNull()!);
@@ -607,7 +600,7 @@ class _PushSession {
       task,
       parentFolderRemoteId: folderRemoteId,
       isCreate: isCreate,
-      firstDayOfWeek: initialState.startOfWeek,
+      firstDayOfWeek: startOfWeek,
       dirtyFields: dirtyFields,
     );
 
@@ -882,7 +875,7 @@ class _PushSession {
         task,
         parentFolderRemoteId: folderRemoteId,
         isCreate: true,
-        firstDayOfWeek: initialState.startOfWeek,
+        firstDayOfWeek: startOfWeek,
       );
       result = await _createTaskWithConflictRetry(
         folderRemoteId,

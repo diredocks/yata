@@ -91,12 +91,10 @@ Future<BackgroundPassOutcome> runBackgroundOutboxPass({
   }
 
   final store = SyncStore(repository: repository, settings: settings);
-  final snapshot = _buildSnapshotState(repository, settings);
   final result = await SubstratePushEngine(todoApi).pushOutbox(
-    currentState: snapshot,
+    readState: () => _buildSnapshotState(repository, settings),
     outbox: repository.outbox,
     nowUtc: DateTime.now().toUtc(),
-    readLatestState: () => _buildSnapshotState(repository, settings),
     onItemCommitted: store.commitPushHeadless,
     laneFilter: laneFilter,
     reason: reason,

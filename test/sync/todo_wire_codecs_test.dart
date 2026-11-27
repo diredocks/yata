@@ -184,11 +184,11 @@ void main() {
     });
 
     test('encodes and decodes notification times and RoutineNotification', () {
-      expect(encodeRoutineNotificationEnabled(true), 'true');
-      expect(encodeRoutineNotificationEnabled(false), 'false');
-      expect(decodeRoutineNotificationEnabled('true'), isTrue);
-      expect(decodeRoutineNotificationEnabled('false'), isFalse);
-      expect(decodeRoutineNotificationEnabled('Enabled'), isTrue);
+      expect(encodeBoolSetting(true), 'true');
+      expect(encodeBoolSetting(false), 'false');
+      expect(parseWireBoolOrNull('true'), isTrue);
+      expect(parseWireBoolOrNull('false'), isFalse);
+      expect(parseWireBool('Enabled', fallback: false), isTrue);
 
       const dueTime = TimeOfDay(hour: 9, minute: 15);
       final wireDue = encodeTimeOfDaySetting(dueTime);

@@ -93,21 +93,18 @@ class SyncOutboxOp {
 /// Row-level diff describing pending persistence work for [SyncOutboxQueue].
 class OutboxPersistenceDelta {
   const OutboxPersistenceDelta({
-    this.fullReplace = false,
     this.upsertOps = const [],
     this.deleteSeqs = const [],
     this.upsertRemoteIds = const {},
     this.deleteRemoteIdKeys = const [],
   });
 
-  final bool fullReplace;
   final List<SyncOutboxOp> upsertOps;
   final List<int> deleteSeqs;
   final Map<String, String> upsertRemoteIds;
   final List<String> deleteRemoteIdKeys;
 
   bool get isEmpty =>
-      !fullReplace &&
       upsertOps.isEmpty &&
       deleteSeqs.isEmpty &&
       upsertRemoteIds.isEmpty &&
@@ -135,7 +132,6 @@ class SyncOutboxQueue {
   final Set<int> _dirtyUpsertSeqs = <int>{};
   final Set<int> _dirtyDeleteSeqs = <int>{};
   final Map<String, String?> _dirtyRemoteIds = <String, String?>{};
-  bool _needsFullReplace = false;
   int _lastSeq = 0;
   int _inFlightUpToSeq = 0;
 
@@ -160,13 +156,6 @@ class SyncOutboxQueue {
   }
 
   OutboxPersistenceDelta takePendingPersistenceDelta() {
-    if (_needsFullReplace) {
-      _needsFullReplace = false;
-      _dirtyUpsertSeqs.clear();
-      _dirtyDeleteSeqs.clear();
-      _dirtyRemoteIds.clear();
-      return const OutboxPersistenceDelta(fullReplace: true);
-    }
     if (_dirtyUpsertSeqs.isEmpty &&
         _dirtyDeleteSeqs.isEmpty &&
         _dirtyRemoteIds.isEmpty) {
@@ -503,19 +492,6 @@ class SyncOutboxQueue {
     deletedListRemotes: pendingDeletedRemoteIds(SyncEntityType.list),
     deletedTaskRemotes: pendingDeletedRemoteIds(SyncEntityType.task),
   );
-
-  void clear() {
-    _ops.clear();
-    _remoteIdByKey.clear();
-    _ackedEntitySeq.clear();
-    _deletedRemoteSeq.clear();
-    _dirtyUpsertSeqs.clear();
-    _dirtyDeleteSeqs.clear();
-    _dirtyRemoteIds.clear();
-    _needsFullReplace = true;
-    _lastSeq = 0;
-    _inFlightUpToSeq = 0;
-  }
 }
 
 /// Snapshot of dirty local IDs and deleted remote IDs used by pull

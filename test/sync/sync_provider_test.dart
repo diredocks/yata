@@ -224,7 +224,9 @@ void main() {
       expect(h.api.callLog, contains('GET tasks(rf-default,null)'));
 
       h.api.callLog.clear();
-      await h.repository.saveTaskDeltaLinks({'rf-default': 'dl-tasks-2'});
+      await h.repository.saveSyncMetaBatch(
+        taskDeltaLinks: const {'rf-default': 'dl-tasks-2'},
+      );
 
       // Manual refresh() bypasses saved deltaLinks.
       await notifier.refresh();

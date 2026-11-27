@@ -259,8 +259,8 @@ TaskSortOption decodeSortType(dynamic raw) => _decodeWireEnum(
   fallback: TaskSortOption.defaultOrder,
 );
 
-/// Parses wire booleans represented as `bool`, `num`, or `String`.
-bool parseWireBool(dynamic value, {required bool fallback}) {
+/// Parses wire booleans (`bool`, `num`, or `String`), returning `null` when invalid.
+bool? parseWireBoolOrNull(dynamic value) {
   if (value is bool) return value;
   if (value is num) return value != 0;
   if (value is String) {
@@ -268,8 +268,12 @@ bool parseWireBool(dynamic value, {required bool fallback}) {
     if (lower == 'true' || lower == '1' || lower == 'enabled') return true;
     if (lower == 'false' || lower == '0' || lower == 'disabled') return false;
   }
-  return fallback;
+  return null;
 }
+
+/// Parses wire booleans represented as `bool`, `num`, or `String`.
+bool parseWireBool(dynamic value, {required bool fallback}) =>
+    parseWireBoolOrNull(value) ?? fallback;
 
 /// Parses wire integers represented as `num` or numeric `String`.
 int? parseWireInt(dynamic value) {
@@ -381,22 +385,11 @@ TimeOfDay? decodeTimeOfDaySetting(dynamic raw) {
   return TimeOfDay(hour: local.hour, minute: local.minute);
 }
 
-/// Encodes `RoutineNotification` setting value (`"true"` / `"false"`).
-String encodeRoutineNotificationEnabled(bool enabled) {
-  return enabled ? 'true' : 'false';
-}
-
 /// Encodes boolean setting wire string (`"true"` / `"false"`).
 String encodeBoolSetting(bool value) => value ? 'true' : 'false';
 
 /// Encodes integer setting wire string.
 String encodeIntSetting(int value) => value.toString();
-
-/// Decodes `RoutineNotification` setting value (`true`/`false`/`Enabled`/`Disabled`).
-bool decodeRoutineNotificationEnabled(dynamic raw, {bool fallback = false}) {
-  if (raw == null) return fallback;
-  return parseWireBool(raw, fallback: fallback);
-}
 
 /// Encodes `RoutineNotification_Configuration` as `"<ISO>;Monday,...,Sunday"`.
 String encodeRoutineConfig(
