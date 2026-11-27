@@ -291,4 +291,144 @@ void main() {
       expect(headerDecoration.color, bgDecoration.color);
     },
   );
+
+  testWidgets(
+    'Task list plays insert animations when task count grows 0 -> 1 -> 2',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({
+        'yata.accounts': '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+        'yata.active_account_id': 'test',
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      tester.view.physicalSize = const Size(1024, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+          child: const YataApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(YataApp)),
+      );
+      final presenter = container.read(tasksViewPresenterProvider);
+
+      // 0 -> 1: first task animates in with SizeTransition + FadeTransition.
+      presenter.addTask(title: 'First short-list task');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 110));
+
+      final firstSizeFinder = find.ancestor(
+        of: find.text('First short-list task'),
+        matching: find.byType(SizeTransition),
+      );
+      expect(firstSizeFinder, findsOneWidget);
+      final firstSize = tester
+          .widget<SizeTransition>(firstSizeFinder)
+          .sizeFactor
+          .value;
+      expect(firstSize, greaterThan(0.0));
+      expect(firstSize, lessThan(1.0));
+      await tester.pumpAndSettle();
+
+      // 1 -> 2: second task also animates in without unmounting the sliver.
+      presenter.addTask(title: 'Second short-list task');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 110));
+
+      final secondSizeFinder = find.ancestor(
+        of: find.text('Second short-list task'),
+        matching: find.byType(SizeTransition),
+      );
+      expect(secondSizeFinder, findsOneWidget);
+      final secondSize = tester
+          .widget<SizeTransition>(secondSizeFinder)
+          .sizeFactor
+          .value;
+      expect(secondSize, greaterThan(0.0));
+      expect(secondSize, lessThan(1.0));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'Task list plays remove animations when task count shrinks 2 -> 1 -> 0',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({
+        'yata.accounts': '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+        'yata.active_account_id': 'test',
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      tester.view.physicalSize = const Size(1024, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+          child: const YataApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(YataApp)),
+      );
+      final presenter = container.read(tasksViewPresenterProvider);
+      presenter.addTask(title: 'Alpha task');
+      presenter.addTask(title: 'Beta task');
+      await tester.pumpAndSettle();
+
+      final tasks = container.read(todoProvider).tasks;
+      final betaId = tasks.firstWhere((t) => t.title == 'Beta task').id;
+      final alphaId = tasks.firstWhere((t) => t.title == 'Alpha task').id;
+
+      // 2 -> 1: Beta task animates out before disappearing.
+      container.read(todoProvider.notifier).deleteTasks({betaId});
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 110));
+
+      expect(find.text('Beta task'), findsOneWidget);
+      final betaRemovingFinder = find.byKey(ValueKey('removing_$betaId'));
+      expect(betaRemovingFinder, findsOneWidget);
+      final betaSizeFinder = find.descendant(
+        of: betaRemovingFinder,
+        matching: find.byType(SizeTransition),
+      );
+      expect(
+        tester.widget<SizeTransition>(betaSizeFinder).sizeFactor.value,
+        allOf(greaterThan(0.0), lessThan(1.0)),
+      );
+
+      await tester.pumpAndSettle();
+      expect(find.text('Beta task'), findsNothing);
+      expect(find.text('Alpha task'), findsOneWidget);
+
+      // 1 -> 0: Alpha task also animates out before disappearing.
+      container.read(todoProvider.notifier).deleteTasks({alphaId});
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 110));
+
+      expect(find.text('Alpha task'), findsOneWidget);
+      final alphaRemovingFinder = find.byKey(ValueKey('removing_$alphaId'));
+      expect(alphaRemovingFinder, findsOneWidget);
+      final alphaSizeFinder = find.descendant(
+        of: alphaRemovingFinder,
+        matching: find.byType(SizeTransition),
+      );
+      expect(
+        tester.widget<SizeTransition>(alphaSizeFinder).sizeFactor.value,
+        allOf(greaterThan(0.0), lessThan(1.0)),
+      );
+
+      await tester.pumpAndSettle();
+      expect(find.text('Alpha task'), findsNothing);
+    },
+  );
 }

@@ -88,21 +88,21 @@ class TasksSliverBuilder {
     required List<TaskItem> activeTasks,
     required List<TaskItem> completedTasks,
   }) {
-    if (activeTasks.isEmpty && completedTasks.isEmpty) {
-      if (hasSmartListEmptyState(currentList.smartType)) {
-        return [
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: SmartListEmptyState(
-              l10n: l10n,
-              currentList: currentList,
-              textColor: headerFg,
-              isDark: isDark,
-            ),
+    if (activeTasks.isEmpty &&
+        completedTasks.isEmpty &&
+        hasSmartListEmptyState(currentList.smartType)) {
+      return [
+        ..._buildActiveSlivers(activeTasks),
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: SmartListEmptyState(
+            l10n: l10n,
+            currentList: currentList,
+            textColor: headerFg,
+            isDark: isDark,
           ),
-        ];
-      }
-      return const [SliverToBoxAdapter(child: SizedBox.shrink())];
+        ),
+      ];
     }
 
     return [
@@ -256,7 +256,7 @@ class TasksSliverBuilder {
 
   Widget _buildFlatTaskSliver(List<TaskItem> activeTasks) {
     final canDragReorder =
-        supportsTaskReordering(currentList, activeTasks.length) &&
+        supportsListReordering(currentList) &&
         (mode == TasksViewMode.browsing || draggingTaskId != null);
 
     if (!canDragReorder) {

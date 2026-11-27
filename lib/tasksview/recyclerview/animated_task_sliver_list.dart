@@ -295,14 +295,36 @@ class AnimatedReorderableTaskSliver extends StatefulWidget {
       _AnimatedReorderableTaskSliverState();
 }
 
+class _ReorderableItemEntry {
+  _ReorderableItemEntry.live(this.task)
+    : isExiting = false,
+      exitController = null;
+
+  _ReorderableItemEntry.exiting(this.task, this.exitController)
+    : isExiting = true;
+
+  TaskItem task;
+  final bool isExiting;
+  final AnimationController? exitController;
+}
+
 class _AnimatedReorderableTaskSliverState
     extends State<AnimatedReorderableTaskSliver>
     with TickerProviderStateMixin {
+  static const _insertDuration = Duration(milliseconds: 220);
+  static const _removeDuration = Duration(milliseconds: 220);
+
   late final _FlipCoordinator _flipCoordinator;
+  late List<_ReorderableItemEntry> _displayItems;
+  final Map<String, AnimationController> _insertControllers = {};
+  final Set<AnimationController> _retiredControllers = {};
 
   @override
   void initState() {
     super.initState();
+    _displayItems = [
+      for (final task in widget.tasks) _ReorderableItemEntry.live(task),
+    ];
     _flipCoordinator = _FlipCoordinator(
       vsync: this,
       ancestorProvider: () =>
@@ -316,12 +338,131 @@ class _AnimatedReorderableTaskSliverState
     if (!_haveSameIdsInOrder(oldWidget.tasks, widget.tasks)) {
       _flipCoordinator.capturePositions();
     }
+    _syncTasks(widget.tasks);
   }
 
   @override
   void dispose() {
+    for (final controller in _insertControllers.values) {
+      controller.dispose();
+    }
+    _insertControllers.clear();
+    for (final controller in _retiredControllers) {
+      controller.dispose();
+    }
+    _retiredControllers.clear();
+    for (final entry in _displayItems) {
+      entry.exitController?.dispose();
+    }
     _flipCoordinator.dispose();
     super.dispose();
+  }
+
+  void _syncTasks(List<TaskItem> nextTasks) {
+    final nextIds = {for (final t in nextTasks) t.id};
+
+    // 1. Transition removed live items into exiting entries.
+    for (var i = 0; i < _displayItems.length; i++) {
+      final entry = _displayItems[i];
+      if (entry.isExiting || nextIds.contains(entry.task.id)) continue;
+
+      _insertControllers.remove(entry.task.id)?.dispose();
+      _flipCoordinator.cancelAnimation(entry.task.id);
+      final controller = AnimationController(
+        vsync: this,
+        duration: _removeDuration,
+        value: 1.0,
+      );
+      _displayItems[i] = _ReorderableItemEntry.exiting(entry.task, controller);
+      controller.addStatusListener((status) {
+        if (status != AnimationStatus.dismissed) return;
+        controller.dispose();
+        if (!mounted) return;
+        setState(() {
+          _displayItems.removeWhere(
+            (item) => item.isExiting && item.exitController == controller,
+          );
+        });
+      });
+      controller.reverse();
+    }
+
+    // 2. Cancel exit if a removed item was re-added before finishing exit.
+    _displayItems.removeWhere((entry) {
+      if (!entry.isExiting || !nextIds.contains(entry.task.id)) return false;
+      entry.exitController?.dispose();
+      return true;
+    });
+
+    // 3. Insert new items and reorder/update existing live items.
+    for (var i = 0; i < nextTasks.length; i++) {
+      final target = nextTasks[i];
+      final existingDisplayIdx = _displayItems.indexWhere(
+        (e) => !e.isExiting && e.task.id == target.id,
+      );
+      if (existingDisplayIdx == -1) {
+        final insertIdx = _displayIndexForLiveSlot(i);
+        _displayItems.insert(insertIdx, _ReorderableItemEntry.live(target));
+        _startInsertAnimation(target.id);
+        continue;
+      }
+
+      final entry = _displayItems[existingDisplayIdx];
+      entry.task = target;
+      final currentLiveIdx = _liveIndexForDisplayIndex(existingDisplayIdx);
+      if (currentLiveIdx != i) {
+        _displayItems.removeAt(existingDisplayIdx);
+        final targetDisplayIdx = _displayIndexForLiveSlot(i);
+        _displayItems.insert(targetDisplayIdx, entry);
+      }
+    }
+  }
+
+  void _startInsertAnimation(String id) {
+    _insertControllers.remove(id)?.dispose();
+    final controller = AnimationController(
+      vsync: this,
+      duration: _insertDuration,
+    );
+    _insertControllers[id] = controller;
+    controller.addStatusListener((status) {
+      if (status != AnimationStatus.completed) return;
+      if (_insertControllers[id] == controller) {
+        _insertControllers.remove(id);
+      }
+      _retiredControllers.add(controller);
+      if (mounted) {
+        setState(() {});
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_retiredControllers.remove(controller)) {
+          controller.dispose();
+        }
+      });
+    });
+    controller.forward();
+  }
+
+  int _liveIndexForDisplayIndex(int displayIndex) {
+    var liveIndex = 0;
+    for (var i = 0; i < displayIndex && i < _displayItems.length; i++) {
+      if (!_displayItems[i].isExiting) {
+        liveIndex++;
+      }
+    }
+    return liveIndex;
+  }
+
+  int _displayIndexForLiveSlot(int liveSlot) {
+    if (liveSlot <= 0) return 0;
+    var seenLive = 0;
+    for (var i = 0; i < _displayItems.length; i++) {
+      if (!_displayItems[i].isExiting) {
+        if (seenLive == liveSlot) return i;
+        seenLive++;
+      }
+    }
+    return _displayItems.length;
   }
 
   void _handleAnimatedStep(int oldIndex, int newIndex) {
@@ -336,22 +477,95 @@ class _AnimatedReorderableTaskSliverState
     widget.onReorder(oldIndex, newIndex);
   }
 
+  void _handleReorderItem(int oldDisplayIndex, int newDisplayIndex) {
+    if (oldDisplayIndex < 0 || oldDisplayIndex >= _displayItems.length) return;
+    if (_displayItems[oldDisplayIndex].isExiting) return;
+    final oldLive = _liveIndexForDisplayIndex(oldDisplayIndex);
+    final newLive = _liveIndexForDisplayIndex(newDisplayIndex);
+    widget.onReorder(oldLive, newLive);
+  }
+
+  void _handleReorderStart(int displayIndex) {
+    final onStart = widget.onReorderStart;
+    if (onStart == null) return;
+    if (displayIndex < 0 || displayIndex >= _displayItems.length) return;
+    if (_displayItems[displayIndex].isExiting) return;
+    onStart(_liveIndexForDisplayIndex(displayIndex));
+  }
+
+  Widget _buildExitingItem(BuildContext context, _ReorderableItemEntry entry) {
+    final animation = entry.exitController!;
+    final sizeCurve = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeInOutCubic,
+    );
+    final fadeCurve = CurvedAnimation(
+      parent: animation,
+      curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
+    );
+    return IgnorePointer(
+      key: ValueKey('removing_${entry.task.id}'),
+      child: SizeTransition(
+        sizeFactor: sizeCurve,
+        alignment: Alignment.topCenter,
+        child: FadeTransition(
+          opacity: fadeCurve,
+          child: widget.itemBuilder(context, -1, entry.task, (_, _) {}),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final proxyDecorator = widget.proxyDecorator;
     return SliverReorderableList(
-      itemCount: widget.tasks.length,
-      onReorderItem: widget.onReorder,
-      onReorderStart: widget.onReorderStart,
+      itemCount: _displayItems.length,
+      onReorderItem: _handleReorderItem,
+      onReorderStart: widget.onReorderStart == null
+          ? null
+          : _handleReorderStart,
       onReorderEnd: widget.onReorderEnd,
-      proxyDecorator: widget.proxyDecorator,
-      itemBuilder: (context, index) {
-        final task = widget.tasks[index];
-        return _FlipItem(
-          key: ValueKey(task.id),
-          id: task.id,
+      proxyDecorator: proxyDecorator == null || widget.tasks.isEmpty
+          ? null
+          : (child, displayIndex, animation) {
+              final liveIdx = _liveIndexForDisplayIndex(displayIndex)
+                  .clamp(0, widget.tasks.length - 1);
+              return proxyDecorator(child, liveIdx, animation);
+            },
+      itemBuilder: (context, displayIndex) {
+        final entry = _displayItems[displayIndex];
+        if (entry.isExiting) {
+          return _buildExitingItem(context, entry);
+        }
+        final liveIndex = _liveIndexForDisplayIndex(displayIndex);
+        Widget child = _FlipItem(
+          id: entry.task.id,
           coordinator: _flipCoordinator,
-          child: widget.itemBuilder(context, index, task, _handleAnimatedStep),
+          child: widget.itemBuilder(
+            context,
+            liveIndex,
+            entry.task,
+            _handleAnimatedStep,
+          ),
         );
+        final insertController = _insertControllers[entry.task.id];
+        if (insertController != null && !insertController.isCompleted) {
+          final sizeCurve = CurvedAnimation(
+            parent: insertController,
+            curve: Curves.easeOutCubic,
+          );
+          final fadeCurve = CurvedAnimation(
+            parent: insertController,
+            curve: const Interval(0.2, 1.0, curve: Curves.easeOut),
+          );
+          child = SizeTransition(
+            sizeFactor: sizeCurve,
+            alignment: Alignment.topCenter,
+            child: FadeTransition(opacity: fadeCurve, child: child),
+          );
+        }
+        return KeyedSubtree(key: ValueKey(entry.task.id), child: child);
       },
     );
   }
