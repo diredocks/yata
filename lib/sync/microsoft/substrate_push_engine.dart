@@ -570,8 +570,9 @@ class _PushSession {
         return todoApi
             .deleteFolder(remoteId)
             .recover(
-              (e) =>
-                  e.isCantDeleteDefaultFolder ? const Success(unit) : Failure(e),
+              (e) => e.isCantDeleteDefaultFolder
+                  ? const Success(unit)
+                  : Failure(e),
             );
       case SyncEntityType.group:
         _deletedRemoteKeys.add(

@@ -410,8 +410,7 @@ class SyncOutboxQueue {
     final prefix = '${type.name}::';
     return {
       for (final op in _ops)
-        if (op.entityType == type &&
-            (includePriorPending || op.seq > sinceSeq))
+        if (op.entityType == type && (includePriorPending || op.seq > sinceSeq))
           op.localId,
       for (final entry in _ackedEntitySeq.entries)
         if (entry.value > sinceSeq && entry.key.startsWith(prefix))

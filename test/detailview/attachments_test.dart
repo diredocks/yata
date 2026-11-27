@@ -577,7 +577,10 @@ void main() {
 
       // 4. applyRemoteState cleans up files on single-attachment and whole-task removal.
       await todoNotifier.applyRemoteState(
-        tasks: [task2Copy, task4.copyWith(attachments: const [])],
+        tasks: [
+          task2Copy,
+          task4.copyWith(attachments: const []),
+        ],
       );
       await todoNotifier.repository.flushPendingWrites();
       expect(await File(stagedA5.localPath).exists(), isFalse);

@@ -220,60 +220,57 @@ void main() {
       );
     });
 
-    test(
-      'swallows transport errors in bootstrap/syncFromWidget, still emits click actions, and keeps sync chain healthy',
-      () async {
-        final account = LocalAccount(
-          id: 'acct_a',
-          displayName: 'Alice',
-          email: 'alice@example.com',
-        );
-        final task = TaskItem(
-          id: 't1',
-          listId: 'tasks',
-          title: 'Survive widget errors',
-          createdAt: DateTime.utc(2026, 11, 24, 8),
-        );
-        final h = await createWidgetTestHarness(
-          accounts: [account],
-          activeAccountId: 'acct_a',
-          initialTasks: [task],
-        );
-        final controller = h.container.read(homeWidgetSyncProvider);
+    test('swallows transport errors in bootstrap/syncFromWidget, still emits click actions, and keeps sync chain healthy', () async {
+      final account = LocalAccount(
+        id: 'acct_a',
+        displayName: 'Alice',
+        email: 'alice@example.com',
+      );
+      final task = TaskItem(
+        id: 't1',
+        listId: 'tasks',
+        title: 'Survive widget errors',
+        createdAt: DateTime.utc(2026, 11, 24, 8),
+      );
+      final h = await createWidgetTestHarness(
+        accounts: [account],
+        activeAccountId: 'acct_a',
+        initialTasks: [task],
+      );
+      final controller = h.container.read(homeWidgetSyncProvider);
 
-        h.transport
-          ..getDataError = StateError('read failed')
-          ..initialLaunchUriError = StateError('uri failed');
+      h.transport
+        ..getDataError = StateError('read failed')
+        ..initialLaunchUriError = StateError('uri failed');
 
-        final bootstrapAction = await controller.bootstrap();
-        expect(bootstrapAction, isNull);
+      final bootstrapAction = await controller.bootstrap();
+      expect(bootstrapAction, isNull);
 
-        await controller.syncFromWidget(reason: 'resume');
+      await controller.syncFromWidget(reason: 'resume');
 
-        final emittedFuture = controller.actions.first;
-        h.transport.clickedController.add(
-          Uri.parse('yata://widget/open_list?listId=tasks'),
-        );
-        final emitted = await emittedFuture;
-        expect(emitted.type, HomeWidgetActionType.openList);
-        expect(emitted.listId, 'tasks');
+      final emittedFuture = controller.actions.first;
+      h.transport.clickedController.add(
+        Uri.parse('yata://widget/open_list?listId=tasks'),
+      );
+      final emitted = await emittedFuture;
+      expect(emitted.type, HomeWidgetActionType.openList);
+      expect(emitted.listId, 'tasks');
 
-        h.transport
-          ..getDataError = null
-          ..setPendingOps([
-            const WidgetPendingOp(
-              opId: 1,
-              type: WidgetPendingOpType.toggleComplete,
-              taskId: 't1',
-              value: true,
-              accountId: 'acct_a',
-            ),
-          ]);
-        await controller.syncFromWidget(reason: 'resume');
+      h.transport
+        ..getDataError = null
+        ..setPendingOps([
+          const WidgetPendingOp(
+            opId: 1,
+            type: WidgetPendingOpType.toggleComplete,
+            taskId: 't1',
+            value: true,
+            accountId: 'acct_a',
+          ),
+        ]);
+      await controller.syncFromWidget(reason: 'resume');
 
-        expect(h.container.read(todoProvider).tasks.single.isCompleted, isTrue);
-        expect(h.transport.storage[kWidgetAckedOpIdKey], 1);
-      },
-    );
+      expect(h.container.read(todoProvider).tasks.single.isCompleted, isTrue);
+      expect(h.transport.storage[kWidgetAckedOpIdKey], 1);
+    });
   });
 }
