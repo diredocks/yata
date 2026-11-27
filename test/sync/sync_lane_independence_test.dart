@@ -37,11 +37,7 @@ void main() {
     final pullFuture = notifier.syncNow(forceFullSync: true);
     await pullStarted.future;
 
-    h.container
-        .read(todoProvider.notifier)
-        .commit(
-          h.container.read(todoProvider).copyWith(tasks: [newTask('t_1')]),
-        );
+    h.container.read(todoProvider.notifier).addTask(newTask('t_1'));
     notifier.schedulePush(delay: Duration.zero);
     await pumpEventQueue();
 
@@ -70,11 +66,7 @@ void main() {
       final pullFuture = notifier.syncNow(forceFullSync: true);
       await pullStarted.future;
 
-      h.container
-          .read(todoProvider.notifier)
-          .commit(
-            h.container.read(todoProvider).copyWith(tasks: [newTask('t_2')]),
-          );
+      h.container.read(todoProvider.notifier).addTask(newTask('t_2'));
 
       final secondSync = notifier.syncNow(reason: SyncReason.localMutation);
       await pumpEventQueue();

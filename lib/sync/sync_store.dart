@@ -63,14 +63,6 @@ class SyncStore {
       validGroupIds: {for (final g in groups) g.id},
       validListIds: lists != null ? {for (final l in lists) l.id} : null,
       validTaskIds: {for (final t in tasks) t.id},
-      validStepIds: {
-        for (final t in tasks)
-          for (final s in t.steps) s.id,
-      },
-      validAttachmentIds: {
-        for (final t in tasks)
-          for (final a in t.attachments) a.id,
-      },
     );
   }
 
@@ -91,7 +83,7 @@ class SyncStore {
     required bool isHeadless,
   }) {
     final outbox = repository.outbox;
-    outbox.ackBatch(outcome.ackedSeqs, outcome.clearedRemoteIdKeys);
+    outbox.ackBatch(outcome.ackedSeqs);
 
     Set<String> deletedIdsOf(SyncEntityType type) => {
       for (final e in outcome.deletedEntities)
@@ -122,8 +114,9 @@ class SyncStore {
       for (final l in mergedLists)
         if (l.isSmartList) l.id,
     };
-    final removedListIds = deletedIdsOf(SyncEntityType.list)
-        .difference(smartListIds);
+    final removedListIds = deletedIdsOf(
+      SyncEntityType.list,
+    ).difference(smartListIds);
     final survivingLists = removedListIds.isEmpty
         ? mergedLists
         : [
@@ -209,14 +202,15 @@ class SyncStore {
       tasks: applied.nextTasks,
     );
 
-    final persistFutures = <Future<Object?>>[
-      if (applied.groupsMutated) repository.saveGroups(applied.nextGroups),
-      if (applied.listsMutated) repository.saveLists(applied.nextLists),
-      if (applied.updatedTasks.isNotEmpty)
-        repository.upsertTasks(applied.updatedTasks),
-      for (final id in applied.deletedTaskIds) repository.deleteTask(id),
-      repository.saveOutbox(),
-    ];
+    final persisted = repository
+        .persistSyncBatch(
+          groups: applied.groupsMutated ? applied.nextGroups : null,
+          lists: applied.listsMutated ? applied.nextLists : null,
+          upsertTasks: applied.updatedTasks,
+          deleteTaskIds: applied.deletedTaskIds,
+          saveOutbox: true,
+        )
+        .then((_) {});
 
     return (
       nextState: currentState.copyWith(
@@ -226,12 +220,13 @@ class SyncStore {
         selectedListId: selection.selectedListId,
         selectedTaskId: selection.selectedTaskId,
       ),
-      persisted: Future.wait(persistFutures).then((_) {}),
+      persisted: persisted,
     );
   }
 
   /// Headless background push commit: reloads fresh entity rows from SQLite
-  /// without resetting [repository.outbox], then commits server metadata.
+  /// without resetting [repository.outbox], then commits server metadata in one
+  /// atomic transaction.
   Future<void> commitPushHeadless(OutboxPushOutcome outcome) async {
     await repository.reloadEntities();
     final applied = _applyPushToEntities(
@@ -242,19 +237,13 @@ class SyncStore {
       isHeadless: true,
     );
 
-    if (applied.updatedTasks.isNotEmpty) {
-      await repository.upsertTasks(applied.updatedTasks);
-    }
-    for (final id in applied.deletedTaskIds) {
-      await repository.deleteTask(id);
-    }
-    if (applied.groupsMutated) {
-      await repository.saveGroups(applied.nextGroups);
-    }
-    if (applied.listsMutated) {
-      await repository.saveLists(applied.nextLists);
-    }
-    await repository.saveOutbox();
+    await repository.persistSyncBatch(
+      groups: applied.groupsMutated ? applied.nextGroups : null,
+      lists: applied.listsMutated ? applied.nextLists : null,
+      upsertTasks: applied.updatedTasks,
+      deleteTaskIds: applied.deletedTaskIds,
+      saveOutbox: true,
+    );
     await repository.flushPendingWrites();
   }
 
@@ -352,12 +341,17 @@ class SyncStore {
     final shouldSaveLists =
         lists != null || danglingGroupCleared || listsModifiedBySettings;
     final shouldSaveTasks = tasks != null || myDayResult.changed;
+    final hasDbBatch =
+        groups != null || shouldSaveLists || shouldSaveTasks || outboxPruned;
     final persistFutures = <Future<Object?>>[
       ...settingsPersistFutures,
-      if (groups != null) repository.saveGroups(sortedGroups),
-      if (shouldSaveLists) repository.saveLists(sortedLists),
-      if (shouldSaveTasks) repository.saveTasks(syncedTasks),
-      if (outboxPruned) repository.saveOutbox(),
+      if (hasDbBatch)
+        repository.persistSyncBatch(
+          groups: groups != null ? sortedGroups : null,
+          lists: shouldSaveLists ? sortedLists : null,
+          fullTasks: shouldSaveTasks ? syncedTasks : null,
+          saveOutbox: outboxPruned,
+        ),
       if (expandedOutcome.changed)
         settings.saveCompletedExpandedByList(expandedOutcome.expanded),
     ];

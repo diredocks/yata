@@ -208,12 +208,6 @@ void main() {
       );
       final taskWithAtt = taskBefore.copyWith(attachments: [localAtt]);
 
-      final prevState = TodoState(
-        groups: const [],
-        lists: [list],
-        tasks: [taskBefore],
-        selectedListId: 'l-1',
-      );
       final nextState = TodoState(
         groups: const [],
         lists: [list],
@@ -221,9 +215,9 @@ void main() {
         selectedListId: 'l-1',
       );
 
-      final commitResult = enqueueLocalCommitToOutbox(
-        prevState: prevState,
-        nextState: nextState,
+      final commitResult = enqueueTaskUpsertToOutbox(
+        prev: taskBefore,
+        next: taskWithAtt,
         nowUtc: DateTime.utc(2026, 11, 26),
         outbox: outbox,
       );
@@ -257,14 +251,12 @@ void main() {
         outbox.ackOp(seq);
       }
 
-      final stateAfterUpload = nextState.copyWith(tasks: [pushedTask]);
-      final stateAfterDelete = stateAfterUpload.copyWith(
-        tasks: [pushedTask.copyWith(attachments: const [])],
-      );
+      final taskAfterDelete = pushedTask.copyWith(attachments: const []);
+      final stateAfterDelete = nextState.copyWith(tasks: [taskAfterDelete]);
 
-      enqueueLocalCommitToOutbox(
-        prevState: stateAfterUpload,
-        nextState: stateAfterDelete,
+      enqueueTaskUpsertToOutbox(
+        prev: pushedTask,
+        next: taskAfterDelete,
         nowUtc: DateTime.utc(2026, 11, 26),
         outbox: outbox,
       );
@@ -541,13 +533,13 @@ void main() {
       );
 
       final todoNotifier = container.read(todoProvider.notifier);
-      todoNotifier.commit(
-        TodoState(
-          groups: const [],
-          lists: [list1, list2],
-          tasks: [task1, task2, task2Copy, task3, task4],
-          selectedListId: 'l-1',
-        ),
+      todoNotifier.mutateEntities(
+        groups: const [],
+        lists: [list1, list2],
+        tasks: [task1, task2, task2Copy, task3, task4],
+        touchedListIds: const {'l-1', 'l-2'},
+        touchedTaskIds: const {'t-1', 't-2', 't-2-copy', 't-3', 't-4'},
+        selectedListId: 'l-1',
       );
       await todoNotifier.repository.saveTasks(
         container.read(todoProvider).tasks,

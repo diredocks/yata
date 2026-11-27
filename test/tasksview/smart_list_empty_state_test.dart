@@ -42,15 +42,7 @@ void main() {
     final notifier = container.read(todoProvider.notifier);
     notifier.selectList(listId);
     if (photo != null) {
-      final state = container.read(todoProvider);
-      notifier.commit(
-        state.copyWith(
-          lists: [
-            for (final l in state.lists)
-              if (l.id == listId) l.copyWith(themePhoto: photo) else l,
-          ],
-        ),
-      );
+      notifier.mutateList(listId, (l) => l.copyWith(themePhoto: photo));
     }
     await tester.pumpAndSettle();
   }

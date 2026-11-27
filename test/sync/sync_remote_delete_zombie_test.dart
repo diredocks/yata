@@ -196,10 +196,6 @@ void main() {
       expect(h.container.read(syncProvider).status, SyncStatus.success);
       expect(h.container.read(todoProvider).tasks, isEmpty);
       expect(h.repository.outbox.ops, isEmpty);
-      expect(
-        h.repository.outbox.resolveRemoteId(SyncEntityType.task, 't_zombie'),
-        isNull,
-      );
 
       await h.repository.flushPendingWrites();
       final reloaded = TodoRepository.forSession(db, h.settings);
@@ -300,11 +296,6 @@ void main() {
         foldersDeltaLink: 'dl-f-1',
         taskDeltaLinks: const {'rf-default': 'dl-t-1'},
       );
-      hStepOnlyGone.repository.outbox.recordRemoteId(
-        SyncEntityType.step,
-        's_deleted',
-        'rs-del',
-      );
       hStepOnlyGone.container
           .read(detailViewPresenterProvider)
           .toggleStepCompleted('t_live', 's_deleted');
@@ -318,13 +309,6 @@ void main() {
       expect(remaining, hasLength(1));
       expect(remaining.single.steps.map((s) => s.id).toList(), ['s_kept']);
       expect(hStepOnlyGone.repository.outbox.ops, isEmpty);
-      expect(
-        hStepOnlyGone.repository.outbox.resolveRemoteId(
-          SyncEntityType.step,
-          's_deleted',
-        ),
-        isNull,
-      );
       expect(
         fakeApi.callLog.any((c) => c.startsWith('POST tasks/rt-live/subtasks')),
         isFalse,
@@ -1072,22 +1056,16 @@ void main() {
       returnRemoteTombstone = false;
       h.container
           .read(todoProvider.notifier)
-          .commit(
-            h.container
-                .read(todoProvider)
-                .copyWith(
-                  tasks: [
-                    TaskItem(
-                      id: 't_live_2',
-                      listId: 'tasks',
-                      title: 'Live 2',
-                      createdAt: now,
-                      remoteId: 'rt-live-2',
-                      remoteParentFolderId: 'rf-default',
-                      changeKey: 'ck-2',
-                    ),
-                  ],
-                ),
+          .addTask(
+            TaskItem(
+              id: 't_live_2',
+              listId: 'tasks',
+              title: 'Live 2',
+              createdAt: now,
+              remoteId: 'rt-live-2',
+              remoteParentFolderId: 'rf-default',
+              changeKey: 'ck-2',
+            ),
           );
       await h.container.read(syncProvider.notifier).syncNow();
       expect(h.container.read(syncProvider).status, SyncStatus.error);
@@ -1312,19 +1290,13 @@ void main() {
         tasks: [keptTask, goneTask],
       );
       h.repository.outbox
-        ..recordRemoteId(SyncEntityType.task, 't_kept', 'rt-kept')
-        ..recordRemoteId(SyncEntityType.step, 's_kept', 'rs-kept')
-        ..recordRemoteId(SyncEntityType.attachment, 'att_kept', 'ra-kept')
-        ..recordRemoteId(SyncEntityType.task, 't_gone', 'rt-gone')
-        ..recordRemoteId(SyncEntityType.step, 's_gone', 'rs-gone')
-        ..recordRemoteId(SyncEntityType.attachment, 'att_gone', 'ra-gone')
-        ..recordRemoteId(SyncEntityType.task, 't_pending_del', 'rt-pending-del')
-        ..recordRemoteId(SyncEntityType.step, 's_pending_del', 'rs-pending-del')
+        ..enqueueUpsert(entityType: SyncEntityType.task, localId: 't_gone')
         ..enqueueDelete(
           entityType: SyncEntityType.step,
           localId: 's_pending_del',
           remoteId: 'rs-pending-del',
           parentLocalId: 't_pending_del',
+          parentRemoteId: 'rt-pending-del',
         );
       await h.repository.saveOutbox();
       await h.repository.flushPendingWrites();
@@ -1334,6 +1306,10 @@ void main() {
           .applyRemoteState(tasks: [keptTask]);
       await h.repository.flushPendingWrites();
 
+      final taskRows = await db.selectTaskItemRecords(h.repository.accountKey);
+      expect(taskRows, hasLength(1));
+      expect(taskRows.single.id, 't_kept');
+
       final verifyRepo = TodoRepository(
         db,
         accountKey: h.repository.accountKey,
@@ -1341,46 +1317,9 @@ void main() {
       );
       (await verifyRepo.preload()).getOrThrow();
 
-      expect(
-        verifyRepo.outbox.resolveRemoteId(SyncEntityType.task, 't_kept'),
-        'rt-kept',
-      );
-      expect(
-        verifyRepo.outbox.resolveRemoteId(SyncEntityType.step, 's_kept'),
-        'rs-kept',
-      );
-      expect(
-        verifyRepo.outbox.resolveRemoteId(
-          SyncEntityType.attachment,
-          'att_kept',
-        ),
-        'ra-kept',
-      );
-
-      expect(
-        verifyRepo.outbox.resolveRemoteId(SyncEntityType.task, 't_gone'),
-        isNull,
-      );
-      expect(
-        verifyRepo.outbox.resolveRemoteId(SyncEntityType.step, 's_gone'),
-        isNull,
-      );
-      expect(
-        verifyRepo.outbox.resolveRemoteId(
-          SyncEntityType.attachment,
-          'att_gone',
-        ),
-        isNull,
-      );
-
-      expect(
-        verifyRepo.outbox.resolveRemoteId(SyncEntityType.step, 's_pending_del'),
-        'rs-pending-del',
-      );
-      expect(
-        verifyRepo.outbox.resolveRemoteId(SyncEntityType.task, 't_pending_del'),
-        'rt-pending-del',
-      );
+      expect(verifyRepo.outbox.ops, hasLength(1));
+      expect(verifyRepo.outbox.ops.single.localId, 's_pending_del');
+      expect(verifyRepo.outbox.ops.single.remoteId, 'rs-pending-del');
     });
   });
 }

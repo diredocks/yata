@@ -203,16 +203,9 @@ void main() {
 
       h.container
           .read(todoProvider.notifier)
-          .commit(
-            state.copyWith(
-              tasks: [
-                for (final t in state.tasks)
-                  if (t.id == 't_dirty')
-                    t.copyWith(title: 'Locally Dirty Edited')
-                  else
-                    t,
-              ],
-            ),
+          .mutateTask(
+            't_dirty',
+            (t) => t.copyWith(title: 'Locally Dirty Edited'),
           );
 
       await h.container

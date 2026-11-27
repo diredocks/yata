@@ -272,18 +272,9 @@ void main() {
         h.container.read(syncProvider);
         h.container
             .read(todoProvider.notifier)
-            .commit(
-              h.container
-                  .read(todoProvider)
-                  .copyWith(
-                    tasks: [
-                      h.container
-                          .read(todoProvider)
-                          .tasks
-                          .single
-                          .copyWith(title: 'Edited Right Before Pause'),
-                    ],
-                  ),
+            .mutateTask(
+              't_1',
+              (t) => t.copyWith(title: 'Edited Right Before Pause'),
             );
         await pumpEventQueue();
         expect(fakeApi.callLog, isEmpty);
@@ -339,19 +330,7 @@ void main() {
         // Edit while the delta sync is blocked on its folder pull.
         h.container
             .read(todoProvider.notifier)
-            .commit(
-              h.container
-                  .read(todoProvider)
-                  .copyWith(
-                    tasks: [
-                      h.container
-                          .read(todoProvider)
-                          .tasks
-                          .single
-                          .copyWith(title: 'Edited During Sync'),
-                    ],
-                  ),
-            );
+            .mutateTask('t_1', (t) => t.copyWith(title: 'Edited During Sync'));
         // Let the coalescing window elapse so the edit is queued.
         await Future<void>.delayed(const Duration(milliseconds: 400));
 
@@ -417,17 +396,12 @@ void main() {
         final stopwatch = Stopwatch()..start();
         Duration? firstPushAt;
         while (stopwatch.elapsed < const Duration(milliseconds: 1600)) {
-          final state = h.container.read(todoProvider);
           h.container
               .read(todoProvider.notifier)
-              .commit(
-                state.copyWith(
-                  tasks: [
-                    state.tasks.single.copyWith(
-                      title: 'Edit ${stopwatch.elapsedMilliseconds}',
-                    ),
-                  ],
-                ),
+              .mutateTask(
+                't_1',
+                (t) =>
+                    t.copyWith(title: 'Edit ${stopwatch.elapsedMilliseconds}'),
               );
           await Future<void>.delayed(const Duration(milliseconds: 100));
           firstPushAt ??=
@@ -511,9 +485,7 @@ void main() {
       await pullStarted.future;
 
       // Delete task while full pull is still blocked, then exit immediately.
-      h.container
-          .read(todoProvider.notifier)
-          .commit(h.container.read(todoProvider).copyWith(tasks: const []));
+      h.container.read(todoProvider.notifier).deleteTasks(const {'t_1'});
       notifier.onAppPaused();
 
       // DELETE must complete immediately without waiting for pullRelease.
@@ -602,14 +574,7 @@ void main() {
       await folder1Pulled.future;
 
       // Delete t_1 locally and wait for concurrent push to DELETE and ackOp it.
-      final remaining = h.container
-          .read(todoProvider)
-          .tasks
-          .where((t) => t.id != 't_1')
-          .toList();
-      h.container
-          .read(todoProvider.notifier)
-          .commit(h.container.read(todoProvider).copyWith(tasks: remaining));
+      h.container.read(todoProvider.notifier).deleteTasks(const {'t_1'});
 
       await deleteCompleted.future.timeout(const Duration(seconds: 2));
       await pumpEventQueue();
@@ -680,14 +645,7 @@ void main() {
       await pullStarted.future;
 
       // Delete t_1 while delta pull is in flight and wait for DELETE + ackOp.
-      final remaining = h.container
-          .read(todoProvider)
-          .tasks
-          .where((t) => t.id != 't_1')
-          .toList();
-      h.container
-          .read(todoProvider.notifier)
-          .commit(h.container.read(todoProvider).copyWith(tasks: remaining));
+      h.container.read(todoProvider.notifier).deleteTasks(const {'t_1'});
 
       await deleteCompleted.future.timeout(const Duration(seconds: 2));
       await pumpEventQueue();

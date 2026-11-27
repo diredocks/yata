@@ -13,19 +13,6 @@ class TasksActionPresenter {
   TodoNotifier get _store => _ref.read(todoProvider.notifier);
   TodoState get _state => _ref.read(todoProvider);
 
-  void _commitTasks(
-    List<TaskItem> updated, {
-    bool clearSelectedTaskId = false,
-  }) {
-    _store.commit(
-      _state.copyWith(
-        tasks: updated,
-        selectedTaskId: clearSelectedTaskId ? null : _state.selectedTaskId,
-      ),
-    );
-    _store.repository.saveTasks(_state.tasks);
-  }
-
   void _mapSelectedTasks(
     Set<String> taskIds,
     TaskItem Function(TaskItem task) transform,
@@ -34,7 +21,7 @@ class TasksActionPresenter {
       for (final task in _state.tasks)
         if (taskIds.contains(task.id)) transform(task) else task,
     ];
-    _commitTasks(updated);
+    _store.mutateEntities(tasks: updated, touchedTaskIds: taskIds);
   }
 
   void batchSetMyDay(Set<String> taskIds, bool value) {
@@ -129,7 +116,10 @@ class TasksActionPresenter {
         rest.add(next);
       }
     }
-    _commitTasks([...movedToTop, ...rest]);
+    _store.mutateEntities(
+      tasks: [...movedToTop, ...rest],
+      touchedTaskIds: taskIds,
+    );
   }
 
   void batchMarkImportant(Set<String> taskIds) {
@@ -179,7 +169,10 @@ class TasksActionPresenter {
     final updated = _state.addNewTasksOnTop
         ? [...copies, ..._state.tasks]
         : [..._state.tasks, ...copies];
-    _commitTasks(updated);
+    _store.mutateEntities(
+      tasks: updated,
+      touchedTaskIds: {for (final c in copies) c.id},
+    );
   }
 
   void batchSetDueDate(Set<String> taskIds, DateTime? dueDate) {
@@ -200,13 +193,7 @@ class TasksActionPresenter {
   }
 
   void batchDeleteTasks(Set<String> taskIds) {
-    final updated = _state.tasks.where((t) => !taskIds.contains(t.id)).toList();
-    _commitTasks(
-      updated,
-      clearSelectedTaskId:
-          _state.selectedTaskId != null &&
-          taskIds.contains(_state.selectedTaskId),
-    );
+    _store.deleteTasks(taskIds);
   }
 }
 

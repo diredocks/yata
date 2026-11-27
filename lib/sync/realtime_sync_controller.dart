@@ -1,99 +1,39 @@
 import 'dart:async';
-import 'dart:collection';
 
-import 'package:collection/collection.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import '../account/account_provider.dart';
 import '../core/logging/app_logger.dart';
-import '../data/todo_provider.dart';
 import '../models/account.dart';
-import '../models/task_item.dart';
 import 'microsoft/microsoft_todo_api.dart';
-import 'microsoft/remote_change_reconciler.dart';
-import 'sync_dispatcher.dart';
 import 'sync_guard.dart';
-import 'sync_provider.dart';
 
 final _log = appLogFor('SyncRealtime');
 
-/// Manages the foreground Substrate `/realtime` long-polling connection,
-/// reconnect backoff, mid-sync event buffering, and batched state merging.
-class RealtimeSyncController {
-  RealtimeSyncController({
-    required this.ref,
-    required this.isSyncInFlight,
-    required this.onScheduleFallbackPull,
-    required this.onOverflowResync,
-    required this.onCatchupDeltaSync,
+/// Pure transport manager for the foreground Substrate `/realtime` long-polling
+/// stream: handles connection lifecycle, own-request filtering, and exponential
+/// reconnect backoff without coupling to Riverpod or sync scheduling lanes.
+class RealtimeSyncStream {
+  RealtimeSyncStream({
+    required this.apiOf,
+    required this.isEnabled,
+    required this.onEvent,
+    required this.onReconnected,
   });
 
-  static const _reconnectDebounceDuration = Duration(milliseconds: 500);
-  static const _fallbackDebounceDuration = Duration(milliseconds: 200);
   static const _initialBackoff = Duration(seconds: 2);
   static const _maxBackoff = Duration(seconds: 60);
-  static const _maxPendingEvents = 200;
 
-  final Ref ref;
-  final bool Function() isSyncInFlight;
-  final void Function(PullCommand command, Duration delay)
-  onScheduleFallbackPull;
-  final void Function(SyncReason reason) onOverflowResync;
-  final Future<void> Function(SyncReason reason) onCatchupDeltaSync;
+  final MicrosoftTodoApi Function() apiOf;
+  final bool Function() isEnabled;
+  final void Function(MicrosoftAccount account, RealtimeEvent event) onEvent;
+  final void Function(MicrosoftAccount account) onReconnected;
 
   Timer? _reconnectTimer;
   StreamSubscription<RealtimeEvent>? _sub;
-  final Queue<RealtimeEvent> _pendingEvents = Queue<RealtimeEvent>();
   bool _needsSyncOnConnect = false;
   Duration _backoff = _initialBackoff;
   String? _accountId;
   bool _disposed = false;
 
-  bool get hasPendingEvents => _pendingEvents.isNotEmpty;
-
-  /// Falls back to a pull scoped to the folders the unhandled event can be
-  /// attributed to, degrading to a delta pass when it cannot be attributed.
-  PullCommand _fallbackCommand(RealtimeEvent event) {
-    final folderRemoteIds = _affectedFolderRemoteIds(event);
-    if (folderRemoteIds.isEmpty) {
-      return const PullCommand(PullScope.delta, SyncReason.realtimeEvent);
-    }
-    return PullCommand(
-      PullScope.selective,
-      SyncReason.realtimeEvent,
-      folderRemoteIds: folderRemoteIds,
-    );
-  }
-
-  /// Folder remote IDs an unhandled task event can be pinned to, restricted to
-  /// folders already known locally so a selective pull cannot miss them.
-  Set<String> _affectedFolderRemoteIds(RealtimeEvent event) {
-    // Folder and group events change the folder list itself, which a
-    // task-only selective pull cannot observe.
-    if (event.entityType != RealtimeEventEntityType.task) return const {};
-
-    final state = ref.read(todoProvider);
-    final knownFolderRemoteIds = {
-      for (final list in state.lists)
-        if (list.remoteId != null) list.remoteId!,
-    };
-    final localListId = _localListIdForTask(state.tasks, event.id);
-    final candidates = <String>{
-      if (event.payload?['ParentFolderId'] case final String id
-          when id.isNotEmpty)
-        id,
-      if (localListId != null)
-        if (state.lists.firstWhereOrNull((l) => l.id == localListId)?.remoteId
-            case final String id)
-          id,
-    };
-    return candidates.intersection(knownFolderRemoteIds);
-  }
-
-  static String? _localListIdForTask(List<TaskItem> tasks, String? remoteId) =>
-      remoteId == null
-      ? null
-      : tasks.firstWhereOrNull((t) => t.remoteId == remoteId)?.listId;
+  String? get activeAccountId => _accountId;
 
   void ensureStartedFor(MicrosoftAccount account) {
     if (_disposed || _accountId == account.id) return;
@@ -102,14 +42,13 @@ class RealtimeSyncController {
 
   void startFor(MicrosoftAccount account) {
     if (_disposed) return;
-    final accountChanged = _accountId != null && _accountId != account.id;
-    stop(clearPending: accountChanged);
+    stop(resetReconnectFlag: _accountId != null && _accountId != account.id);
     _accountId = account.id;
     _backoff = _initialBackoff;
     unawaited(_connect(account));
   }
 
-  void stop({bool clearPending = false}) {
+  void stop({bool resetReconnectFlag = false}) {
     _accountId = null;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
@@ -118,40 +57,33 @@ class RealtimeSyncController {
     if (sub != null) {
       unawaited(sub.cancel().catchError((_) {}));
     }
-    if (clearPending) {
-      _pendingEvents.clear();
+    if (resetReconnectFlag) {
       _needsSyncOnConnect = false;
     }
   }
 
-  void onAppPaused() {
-    _needsSyncOnConnect = false;
-    stop();
+  void reactivate() {
+    _disposed = false;
   }
 
   void dispose() {
     _disposed = true;
-    stop(clearPending: true);
+    stop(resetReconnectFlag: true);
   }
 
   Future<void> _connect(MicrosoftAccount account) async {
     await Future<void>.microtask(() {});
-    if (_disposed || _accountId != account.id) return;
-    if (!ref.read(realtimeSyncEnabledProvider)) return;
+    if (_disposed || _accountId != account.id || !isEnabled()) return;
 
-    final api = ref.read(microsoftTodoApiProvider);
-    final stream = api.connectRealtime();
-    _sub = stream.listen(
+    final api = apiOf();
+    _sub = api.connectRealtime().listen(
       (event) {
         if (_disposed || _accountId != account.id) return;
         _backoff = _initialBackoff;
         if (_needsSyncOnConnect) {
           _needsSyncOnConnect = false;
           _log.info('reconnected; scheduling delta sync');
-          onScheduleFallbackPull(
-            const PullCommand(PullScope.delta, SyncReason.realtimeReconnected),
-            _reconnectDebounceDuration,
-          );
+          onReconnected(account);
         }
         if (event.isKeepAlive) return;
         if (api.isOwnRequestId(event.requestId)) {
@@ -161,7 +93,7 @@ class RealtimeSyncController {
           );
           return;
         }
-        unawaited(_handleRemoteEvent(account, event));
+        onEvent(account, event);
       },
       onError: (Object error) {
         _log.info('stream error=$error');
@@ -177,132 +109,8 @@ class RealtimeSyncController {
     );
   }
 
-  Future<void> _handleRemoteEvent(
-    MicrosoftAccount account,
-    RealtimeEvent event,
-  ) async {
-    if (_disposed ||
-        _accountId != account.id ||
-        ref.read(accountProvider).activeAccount?.id != account.id) {
-      return;
-    }
-
-    if (isSyncInFlight()) {
-      if (_pendingEvents.length >= _maxPendingEvents) {
-        _pendingEvents.clear();
-        onOverflowResync(SyncReason.realtimeOverflow);
-        _log.info(
-          'deferred queue overflow ($_maxPendingEvents); '
-          'scheduling full resync',
-        );
-        return;
-      }
-      _pendingEvents.add(event);
-      _log.fine(
-        'deferred event while syncing: type=${event.type} '
-        'op=${event.operation} id=${shortSyncId(event.id)} '
-        'queued=${_pendingEvents.length}',
-      );
-      return;
-    }
-
-    final unhandled = await _applyRealtimeBatch(account, [event]);
-    if (unhandled != null && !_disposed) {
-      onScheduleFallbackPull(
-        _fallbackCommand(unhandled),
-        _fallbackDebounceDuration,
-      );
-    }
-  }
-
-  Future<void> drainPendingIfReady() async {
-    if (_disposed || _pendingEvents.isEmpty || isSyncInFlight()) return;
-    final initialActive = ref.read(accountProvider).activeAccount;
-    if (initialActive is! MicrosoftAccount || _accountId != initialActive.id) {
-      _pendingEvents.clear();
-      return;
-    }
-
-    final batch = _pendingEvents.toList(growable: false);
-    _pendingEvents.clear();
-    _log.info('draining ${batch.length} deferred realtime event(s)');
-
-    final unhandled = await _applyRealtimeBatch(
-      initialActive,
-      batch,
-      fromQueue: true,
-    );
-    if (unhandled != null && !_disposed) {
-      await onCatchupDeltaSync(SyncReason.realtimeEvent);
-    }
-  }
-
-  Future<RealtimeEvent?> _applyRealtimeBatch(
-    MicrosoftAccount account,
-    List<RealtimeEvent> events, {
-    bool fromQueue = false,
-  }) async {
-    if (_disposed ||
-        _accountId != account.id ||
-        ref.read(accountProvider).activeAccount?.id != account.id) {
-      return null;
-    }
-
-    final parsed = parseRealtimeEventsBatch(events);
-    final todoNotifier = ref.read(todoProvider.notifier);
-    final currentState = ref.read(todoProvider);
-    final protection = todoNotifier.repository.outbox
-        .captureCurrentProtection();
-
-    final reconciled = reconcileRemoteDelta(
-      delta: parsed.delta,
-      liveGroups: currentState.groups,
-      liveLists: currentState.lists,
-      liveTasks: currentState.tasks,
-      protection: protection,
-      idGenerator: todoNotifier.nextId,
-      strictParentResolution: true,
-      returnOnlyChanged: true,
-    );
-
-    final prefix = fromQueue ? '(drained) ' : '';
-    if (reconciled.hasChanges) {
-      _log.info(
-        '${prefix}applied realtime batch events=${events.length} '
-        'groups=${reconciled.groups != null} lists=${reconciled.lists != null} '
-        'tasks=${reconciled.tasks != null} '
-        'settings=${reconciled.remoteSettings?.length ?? 0}',
-      );
-      await todoNotifier.applyRemoteState(
-        groups: reconciled.groups,
-        lists: reconciled.lists,
-        tasks: reconciled.tasks,
-        remoteSettings: reconciled.remoteSettings,
-      );
-    }
-
-    final unhandled =
-        parsed.firstUnhandled ??
-        (reconciled.hasUnhandledEntity
-            ? (events.lastWhereOrNull(
-                    (e) =>
-                        e.entityType == RealtimeEventEntityType.task ||
-                        e.entityType == RealtimeEventEntityType.taskFolder,
-                  ) ??
-                  events.last)
-            : null);
-    if (unhandled != null) {
-      _log.info(
-        '${prefix}non-direct event type=${unhandled.type} op=${unhandled.operation} '
-        'id=${shortSyncId(unhandled.id)}; fallback to sync',
-      );
-    }
-    return unhandled;
-  }
-
   void _scheduleReconnect(MicrosoftAccount account, {required String reason}) {
-    if (_disposed || _accountId != account.id) return;
-    if (!ref.read(realtimeSyncEnabledProvider)) return;
+    if (_disposed || _accountId != account.id || !isEnabled()) return;
     _sub = null;
     _reconnectTimer?.cancel();
     final wait = _backoff;

@@ -538,11 +538,6 @@ void main() {
       // Background scope loads snapshot, starts upload, and records server attachment remoteId.
       (await bgRepo.preload()).getOrThrow();
       final uploadSeq = bgRepo.outbox.ops.single.seq;
-      bgRepo.outbox.recordRemoteId(
-        SyncEntityType.attachment,
-        'att_1',
-        'remote_att_1',
-      );
 
       // Foreground concurrently edits task title and writes it to SQLite.
       await fgRepo.upsertTask(initialTask.copyWith(title: 'Foreground Edit'));
@@ -569,7 +564,6 @@ void main() {
           pushedGroups: const {},
           pushedLists: const {},
           pushedTasks: {'t_1': pushedTask},
-          clearedRemoteIdKeys: const [],
           followUpPullFolderRemoteIds: const {'rf-default'},
         ),
       );
@@ -580,10 +574,6 @@ void main() {
       expect(merged.changeKey, 'ck_after_upload');
       expect(merged.attachments.single.remoteId, 'remote_att_1');
       expect(merged.attachments.single.isTransferring, isFalse);
-      expect(
-        fgRepo.outbox.resolveRemoteId(SyncEntityType.attachment, 'att_1'),
-        'remote_att_1',
-      );
       expect(fgRepo.outbox.ops, isEmpty);
     });
   });

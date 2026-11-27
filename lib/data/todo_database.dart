@@ -42,7 +42,7 @@ class TaskItemRecords extends Table {
   Set<Column<Object>> get primaryKey => {accountKey, id};
 }
 
-/// Drift table storing sync outbox ops and remote-ID mappings.
+/// Drift table storing sync outbox ops and sync metadata cursors.
 class SyncMutationRecords extends Table {
   TextColumn get accountKey => text()();
   TextColumn get kind => text()();
@@ -179,19 +179,32 @@ class TodoDatabase extends _$TodoDatabase {
     taskItemRecords,
   )..where((t) => t.accountKey.equals(accountKey) & t.id.equals(id))).go();
 
-  Future<void> replaceTaskItemRecords(
-    String accountKey,
-    List<TaskItemRecordsCompanion> rows,
-  ) => _replaceRecords(
-    table: taskItemRecords,
-    rows: rows,
-    keepKeys: [
-      for (final r in rows)
-        if (r.id.present) r.id.value,
-    ],
-    scope: (t) => t.accountKey.equals(accountKey),
-    keyColumn: (t) => t.id,
-  );
+  /// Applies a minimal row-level diff for tasks (deletes removed IDs and
+  /// upserts only created/changed/repositioned rows) in one transaction.
+  Future<void> applyTaskItemDiff(
+    String accountKey, {
+    required List<TaskItemRecordsCompanion> upserts,
+    required List<String> deleteIds,
+  }) {
+    if (upserts.isEmpty && deleteIds.isEmpty) return Future<void>.value();
+    return transaction(() async {
+      if (deleteIds.isNotEmpty) {
+        await (delete(taskItemRecords)..where(
+              (t) => t.accountKey.equals(accountKey) & t.id.isIn(deleteIds),
+            ))
+            .go();
+      }
+      if (upserts.isNotEmpty) {
+        await batch(
+          (b) => b.insertAll(
+            taskItemRecords,
+            upserts,
+            mode: InsertMode.insertOrReplace,
+          ),
+        );
+      }
+    });
+  }
 
   SimpleSelectStatement<$SyncMutationRecordsTable, SyncMutationRecord>
   _syncMutationQuery(String accountKey, {String? kind}) {

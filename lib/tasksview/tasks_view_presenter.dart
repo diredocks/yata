@@ -24,31 +24,18 @@ class TasksViewPresenter {
 
   void setPlannedDueDateFilter(PlannedDueDateFilter filter) {
     if (_state.plannedDueDateFilter == filter) return;
-    _store.commit(_state.copyWith(plannedDueDateFilter: filter));
-    _store.settings.savePlannedDueDateFilter(filter);
+    _store.mutateSetting(
+      _state.copyWith(plannedDueDateFilter: filter),
+      persistLocal: () => _store.settings.savePlannedDueDateFilter(filter),
+    );
   }
 
   void setPlannedGroupOption(PlannedGroupOption option) {
     if (_state.plannedGroupOption == option) return;
-    _store.commit(_state.copyWith(plannedGroupOption: option));
-    _store.settings.savePlannedGroupOption(option);
-  }
-
-  void _updateListById(
-    String listId,
-    TodoList Function(TodoList list) transform,
-  ) {
-    final updated = [
-      for (final list in _state.lists)
-        if (list.id == listId) transform(list) else list,
-    ];
-    _store.commit(_state.copyWith(lists: updated));
-    _store.repository.saveLists(_state.lists);
-  }
-
-  void _commitTasks(List<TaskItem> updated) {
-    _store.commit(_state.copyWith(tasks: updated));
-    _store.repository.saveTasks(_state.tasks);
+    _store.mutateSetting(
+      _state.copyWith(plannedGroupOption: option),
+      persistLocal: () => _store.settings.savePlannedGroupOption(option),
+    );
   }
 
   void setListSortOption(
@@ -56,7 +43,7 @@ class TasksViewPresenter {
     TaskSortOption option, {
     bool? ascending,
   }) {
-    _updateListById(
+    _store.mutateList(
       listId,
       (list) => list.copyWith(
         sortOption: option,
@@ -70,7 +57,7 @@ class TasksViewPresenter {
   }
 
   void toggleListSortDirection(String listId) {
-    _updateListById(
+    _store.mutateList(
       listId,
       (list) => list.sortOption == TaskSortOption.defaultOrder
           ? list
@@ -91,7 +78,7 @@ class TasksViewPresenter {
   }) {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return;
-    _updateListById(
+    _store.mutateList(
       listId,
       (list) => list.isSmartList
           ? list
@@ -115,7 +102,7 @@ class TasksViewPresenter {
     ListThemePhoto? themePhoto,
     String? customBackgroundPath,
   }) {
-    _updateListById(
+    _store.mutateList(
       listId,
       (list) => list.copyWith(
         themeColor: themeColor,
@@ -167,8 +154,6 @@ class TasksViewPresenter {
         fallbackNow: now,
       ),
     );
-    // Choosing not to keep completed tasks drops them from the copy entirely;
-    // remaining tasks and their steps keep their completion state.
     final tasksToCopy = _state.tasks.where(
       (t) => t.listId == listId && (keepCompleted || !t.isCompleted),
     );
@@ -197,16 +182,14 @@ class TasksViewPresenter {
       duplicatedList,
     ]);
     final updatedTasks = [...copiedTasks, ..._state.tasks];
-    _store.commit(
-      _state.copyWith(
-        lists: updatedLists,
-        tasks: updatedTasks,
-        selectedListId: newListId,
-        selectedTaskId: null,
-      ),
+    _store.mutateEntities(
+      lists: updatedLists,
+      tasks: updatedTasks,
+      touchedListIds: {newListId},
+      touchedTaskIds: {for (final t in copiedTasks) t.id},
+      selectedListId: newListId,
+      clearSelectedTaskId: true,
     );
-    _store.repository.saveLists(_state.lists);
-    _store.repository.saveTasks(_state.tasks);
     _store.settings.saveSelectedListId(newListId);
     if (_store.settings.loadLastEnteredListId() != null) {
       _store.setLastEnteredListId(newListId);
@@ -228,16 +211,13 @@ class TasksViewPresenter {
           : 'my_day';
     }
 
-    _store.commit(
-      _state.copyWith(
-        lists: updatedLists,
-        tasks: updatedTasks,
-        selectedListId: nextSelected,
-        selectedTaskId: null,
-      ),
+    _store.mutateEntities(
+      lists: updatedLists,
+      tasks: updatedTasks,
+      deletedListIds: {listId},
+      selectedListId: nextSelected,
+      clearSelectedTaskId: true,
     );
-    _store.repository.saveLists(_state.lists);
-    _store.repository.saveTasks(_state.tasks);
     _store.settings.saveSelectedListId(nextSelected);
   }
 
@@ -301,21 +281,11 @@ class TasksViewPresenter {
       showDueTodayInMyDay: _state.showDueTodayInMyDay,
     );
 
-    final updated = _state.addNewTasksOnTop
-        ? [newTask, ..._state.tasks]
-        : [..._state.tasks, newTask];
-    _commitTasks(updated);
+    _store.addTask(newTask, addToTop: _state.addNewTasksOnTop);
   }
 
   void restoreTask(TaskItem task, {int? index}) {
-    if (_state.tasks.any((t) => t.id == task.id)) return;
-    final updated = [..._state.tasks];
-    if (index != null && index >= 0 && index <= updated.length) {
-      updated.insert(index, task);
-    } else {
-      updated.add(task);
-    }
-    _commitTasks(updated);
+    _store.addTask(task, insertAt: index);
   }
 
   void reorderActiveTasks(
@@ -345,8 +315,10 @@ class TasksViewPresenter {
     );
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+    final touchedTaskIds = <String>{};
     for (final entry in newPositions.entries) {
       final current = reorderedVisible[entry.key];
+      touchedTaskIds.add(current.id);
       if (isMyDayView) {
         final needsMyDayDate =
             current.myDayDate == null ||
@@ -379,9 +351,12 @@ class TasksViewPresenter {
         else
           list,
     ];
-    _store.commit(_state.copyWith(lists: updatedLists, tasks: updated));
-    _store.repository.saveLists(_state.lists);
-    _store.repository.saveTasks(_state.tasks);
+    _store.mutateEntities(
+      lists: updatedLists,
+      tasks: updated,
+      touchedListIds: {_state.selectedListId},
+      touchedTaskIds: touchedTaskIds,
+    );
   }
 
   TaskItem _buildNextRecurringTask(TaskItem task, DateTime now) {
@@ -442,85 +417,82 @@ class TasksViewPresenter {
   }
 
   void setTaskCompleted(String taskId, {required bool completed}) {
-    TaskItem? nextOccurrence;
-    final updated = <TaskItem>[];
-    final now = DateTime.now();
-    var changed = false;
+    final target = _state.tasks.firstWhereOrNull((t) => t.id == taskId);
+    if (target == null || target.isCompleted == completed) return;
 
-    for (final task in _state.tasks) {
-      if (task.id != taskId) {
-        updated.add(task);
-        continue;
-      }
-      if (task.isCompleted == completed) {
-        updated.add(task);
-        continue;
-      }
-      changed = true;
-      updated.add(
-        task.copyWith(
+    final now = DateTime.now();
+    final willSpawn =
+        completed &&
+        target.hasRecurrence &&
+        _store.shouldSpawnRecurringLocally(target);
+    if (!willSpawn) {
+      _store.mutateTask(
+        taskId,
+        (task) => task.copyWith(
           isCompleted: completed,
           completedAt: completed ? now.toUtc() : null,
         ),
       );
-      if (completed &&
-          task.hasRecurrence &&
-          _store.shouldSpawnRecurringLocally(task)) {
-        nextOccurrence = _buildNextRecurringTask(task, now);
-      }
+      return;
     }
 
-    if (!changed) return;
-
-    if (nextOccurrence != null) {
-      if (_state.addNewTasksOnTop) {
-        updated.insert(0, nextOccurrence);
-      } else {
-        updated.add(nextOccurrence);
-      }
+    final nextOccurrence = _buildNextRecurringTask(target, now);
+    final updated = [
+      for (final task in _state.tasks)
+        if (task.id == taskId)
+          task.copyWith(isCompleted: true, completedAt: now.toUtc())
+        else
+          task,
+    ];
+    if (_state.addNewTasksOnTop) {
+      updated.insert(0, nextOccurrence);
+    } else {
+      updated.add(nextOccurrence);
     }
-
-    _commitTasks(updated);
+    _store.mutateEntities(
+      tasks: updated,
+      touchedTaskIds: {taskId, nextOccurrence.id},
+    );
   }
 
   void toggleTaskImportant(String taskId) {
-    TaskItem? movedToTop;
-    final updated = <TaskItem>[];
-    for (final task in _state.tasks) {
-      if (task.id != taskId) {
-        updated.add(task);
-        continue;
-      }
-      final nextImportant = !task.isImportant;
-      var nextTask = task.copyWith(isImportant: nextImportant);
-      if (nextImportant && _state.moveStarredTasksToTop) {
-        final topOrder = computeNewOrderDateTime(
-          existingOrders: _state.tasks
-              .where((t) => t.listId == task.listId && t.id != task.id)
-              .map((t) => t.orderDateTime),
-          addToTop: true,
-        );
-        final topCommitted = task.isInMyDay
-            ? computeNewOrderDateTime(
-                existingOrders: _state.tasks
-                    .where((t) => t.isInMyDay && t.id != task.id)
-                    .map((t) => t.committedOrder),
-                addToTop: true,
-              )
-            : task.committedOrder;
-        nextTask = nextTask.copyWith(
-          orderDateTime: topOrder,
-          committedOrder: topCommitted,
-        );
-        movedToTop = nextTask;
-      } else {
-        updated.add(nextTask);
-      }
+    final target = _state.tasks.firstWhereOrNull((t) => t.id == taskId);
+    if (target == null) return;
+
+    final nextImportant = !target.isImportant;
+    if (!nextImportant || !_state.moveStarredTasksToTop) {
+      _store.mutateTask(
+        taskId,
+        (task) => task.copyWith(isImportant: nextImportant),
+      );
+      return;
     }
-    if (movedToTop != null) {
-      updated.insert(0, movedToTop);
-    }
-    _commitTasks(updated);
+
+    final topOrder = computeNewOrderDateTime(
+      existingOrders: _state.tasks
+          .where((t) => t.listId == target.listId && t.id != target.id)
+          .map((t) => t.orderDateTime),
+      addToTop: true,
+    );
+    final topCommitted = target.isInMyDay
+        ? computeNewOrderDateTime(
+            existingOrders: _state.tasks
+                .where((t) => t.isInMyDay && t.id != target.id)
+                .map((t) => t.committedOrder),
+            addToTop: true,
+          )
+        : target.committedOrder;
+    final movedToTop = target.copyWith(
+      isImportant: true,
+      orderDateTime: topOrder,
+      committedOrder: topCommitted,
+    );
+    final updated = [
+      movedToTop,
+      for (final task in _state.tasks)
+        if (task.id != taskId) task,
+    ];
+    _store.mutateEntities(tasks: updated, touchedTaskIds: {taskId});
   }
 }
 
