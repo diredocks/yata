@@ -21,67 +21,46 @@ TaskItem _makeTask(String id, List<TaskStep> steps) {
 }
 
 void main() {
-  test(
-    'DetailViewPresenter.reorderSteps updates step order and descending orderDateTime',
-    () async {
-      SharedPreferences.setMockInitialValues({});
-      final prefs = await SharedPreferences.getInstance();
-      final container = ProviderContainer(
-        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
-      );
-      addTearDown(container.dispose);
+  test('DetailViewPresenter.reorderSteps updates step order and descending orderDateTime', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final container = ProviderContainer(
+      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+    );
+    addTearDown(container.dispose);
 
-      // Trigger provider initialization.
-      container.read(todoProvider);
+    // Trigger provider initialization.
+    container.read(todoProvider);
 
-      final tasksPresenter = container.read(tasksViewPresenterProvider);
-      final detailPresenter = container.read(detailViewPresenterProvider);
+    final tasksPresenter = container.read(tasksViewPresenterProvider);
+    final detailPresenter = container.read(detailViewPresenterProvider);
 
-      tasksPresenter.addTask(title: 'Task with steps');
-      final taskId = container.read(todoProvider).tasks.single.id;
+    tasksPresenter.addTask(title: 'Task with steps');
+    final taskId = container.read(todoProvider).tasks.single.id;
 
-      detailPresenter.addStep(taskId, 'Step A');
-      detailPresenter.addStep(taskId, 'Step B');
-      detailPresenter.addStep(taskId, 'Step C');
+    detailPresenter.addStep(taskId, 'Step A');
+    detailPresenter.addStep(taskId, 'Step B');
+    detailPresenter.addStep(taskId, 'Step C');
 
-      var steps = container.read(todoProvider).tasks.single.steps;
-      expect(steps.map((s) => s.title).toList(), ['Step A', 'Step B', 'Step C']);
-      expect(
-        steps[0].orderDateTime!.isAfter(steps[1].orderDateTime!),
-        isTrue,
-      );
-      expect(
-        steps[1].orderDateTime!.isAfter(steps[2].orderDateTime!),
-        isTrue,
-      );
+    var steps = container.read(todoProvider).tasks.single.steps;
+    expect(steps.map((s) => s.title).toList(), ['Step A', 'Step B', 'Step C']);
+    expect(steps[0].orderDateTime!.isAfter(steps[1].orderDateTime!), isTrue);
+    expect(steps[1].orderDateTime!.isAfter(steps[2].orderDateTime!), isTrue);
 
-      // Move Step C (index 2) to top (index 0).
-      detailPresenter.reorderSteps(taskId, 2, 0);
-      steps = container.read(todoProvider).tasks.single.steps;
-      expect(steps.map((s) => s.title).toList(), ['Step C', 'Step A', 'Step B']);
-      expect(
-        steps[0].orderDateTime!.isAfter(steps[1].orderDateTime!),
-        isTrue,
-      );
-      expect(
-        steps[1].orderDateTime!.isAfter(steps[2].orderDateTime!),
-        isTrue,
-      );
+    // Move Step C (index 2) to top (index 0).
+    detailPresenter.reorderSteps(taskId, 2, 0);
+    steps = container.read(todoProvider).tasks.single.steps;
+    expect(steps.map((s) => s.title).toList(), ['Step C', 'Step A', 'Step B']);
+    expect(steps[0].orderDateTime!.isAfter(steps[1].orderDateTime!), isTrue);
+    expect(steps[1].orderDateTime!.isAfter(steps[2].orderDateTime!), isTrue);
 
-      // Move Step C (index 0) to middle (index 1).
-      detailPresenter.reorderSteps(taskId, 0, 1);
-      steps = container.read(todoProvider).tasks.single.steps;
-      expect(steps.map((s) => s.title).toList(), ['Step A', 'Step C', 'Step B']);
-      expect(
-        steps[0].orderDateTime!.isAfter(steps[1].orderDateTime!),
-        isTrue,
-      );
-      expect(
-        steps[1].orderDateTime!.isAfter(steps[2].orderDateTime!),
-        isTrue,
-      );
-    },
-  );
+    // Move Step C (index 0) to middle (index 1).
+    detailPresenter.reorderSteps(taskId, 0, 1);
+    steps = container.read(todoProvider).tasks.single.steps;
+    expect(steps.map((s) => s.title).toList(), ['Step A', 'Step C', 'Step B']);
+    expect(steps[0].orderDateTime!.isAfter(steps[1].orderDateTime!), isTrue);
+    expect(steps[1].orderDateTime!.isAfter(steps[2].orderDateTime!), isTrue);
+  });
 
   testWidgets('Long-pressing and dragging a step reorders the list', (
     WidgetTester tester,

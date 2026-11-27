@@ -260,10 +260,9 @@ class DetailViewPresenter {
     final moved = reordered.removeAt(oldIndex);
     reordered.insert(newIndex, moved);
 
-    final newPositions = computeReorderedOrderDateTimes(
-      [for (final s in reordered) s.orderDateTime],
-      newIndex,
-    );
+    final newPositions = computeReorderedOrderDateTimes([
+      for (final s in reordered) s.orderDateTime,
+    ], newIndex);
     for (final entry in newPositions.entries) {
       reordered[entry.key] = reordered[entry.key].copyWith(
         orderDateTime: entry.value,

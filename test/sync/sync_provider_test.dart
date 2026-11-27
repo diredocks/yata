@@ -475,295 +475,270 @@ void main() {
       expect(h.api.callLog, contains('GET tasks(rf-default,null)'));
     });
 
-    test(
-      'delete push runs immediately without waiting for blocked full pull, and onAppPaused cancels in-flight pull',
-      () async {
-        final pullStarted = Completer<void>();
-        final pullRelease = Completer<void>();
-        final deleteCompleted = Completer<void>();
-        final fakeApi = BlockingFoldersApi(pullStarted, pullRelease)
-          ..onDeleteTask = (taskRemoteId) async {
-            if (!deleteCompleted.isCompleted) deleteCompleted.complete();
-          };
+    test('delete push runs immediately without waiting for blocked full pull, and onAppPaused cancels in-flight pull', () async {
+      final pullStarted = Completer<void>();
+      final pullRelease = Completer<void>();
+      final deleteCompleted = Completer<void>();
+      final fakeApi = BlockingFoldersApi(pullStarted, pullRelease)
+        ..onDeleteTask = (taskRemoteId) async {
+          if (!deleteCompleted.isCompleted) deleteCompleted.complete();
+        };
 
-        final h = await createSyncTestHarness(
-          accountId: 'acct_parallel_delete',
-          api: fakeApi,
-          defaultTasksFolderRemoteId: 'rf-default',
-          tasks: [
-            TaskItem(
-              id: 't_1',
-              listId: 'tasks',
-              title: 'Delete Me Quickly',
-              createdAt: DateTime.utc(2026, 11, 22, 8),
-              remoteId: 'rt-1',
-              remoteParentFolderId: 'rf-default',
-              changeKey: 'ck-1',
+      final h = await createSyncTestHarness(
+        accountId: 'acct_parallel_delete',
+        api: fakeApi,
+        defaultTasksFolderRemoteId: 'rf-default',
+        tasks: [
+          TaskItem(
+            id: 't_1',
+            listId: 'tasks',
+            title: 'Delete Me Quickly',
+            createdAt: DateTime.utc(2026, 11, 22, 8),
+            remoteId: 'rt-1',
+            remoteParentFolderId: 'rf-default',
+            changeKey: 'ck-1',
+          ),
+        ],
+        foldersDeltaLink: 'dl-folders-1',
+        taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
+      );
+
+      final notifier = h.container.read(syncProvider.notifier);
+      final fullSyncFuture = notifier.refresh(reason: 'startup');
+      await pullStarted.future;
+
+      // Delete task while full pull is still blocked, then exit immediately.
+      h.container
+          .read(todoProvider.notifier)
+          .commit(h.container.read(todoProvider).copyWith(tasks: const []));
+      notifier.onAppPaused();
+
+      // DELETE must complete immediately without waiting for pullRelease.
+      await deleteCompleted.future.timeout(const Duration(seconds: 2));
+      expect(fakeApi.callLog, contains('DELETE tasks/rt-1'));
+      expect(pullRelease.isCompleted, isFalse);
+
+      // Release blocked HTTP call; cancelled full pull must not fetch tasks.
+      pullRelease.complete();
+      await fullSyncFuture;
+      await pumpEventQueue();
+
+      expect(fakeApi.callLog.any((c) => c.startsWith('GET tasks(')), isFalse);
+      expect(h.container.read(todoProvider).tasks, isEmpty);
+    });
+
+    test('tombstone barrier prevents stale in-flight pull from resurrecting concurrently deleted task', () async {
+      final folder1Pulled = Completer<void>();
+      final folder2Release = Completer<void>();
+      final deleteCompleted = Completer<void>();
+      final fakeApi = _BlockingSecondFolderApi(folder1Pulled, folder2Release)
+        ..onFetchFoldersDelta = ((dl) => const DeltaPageResult(
+          items: [
+            RemoteTodoFolder(
+              id: 'rf-default',
+              name: 'Tasks',
+              isDefaultFolder: true,
             ),
+            RemoteTodoFolder(id: 'rf-second', name: 'Second'),
           ],
-          foldersDeltaLink: 'dl-folders-1',
-          taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
-        );
-
-        final notifier = h.container.read(syncProvider.notifier);
-        final fullSyncFuture = notifier.refresh(reason: 'startup');
-        await pullStarted.future;
-
-        // Delete task while full pull is still blocked, then exit immediately.
-        h.container
-            .read(todoProvider.notifier)
-            .commit(
-              h.container.read(todoProvider).copyWith(tasks: const []),
-            );
-        notifier.onAppPaused();
-
-        // DELETE must complete immediately without waiting for pullRelease.
-        await deleteCompleted.future.timeout(const Duration(seconds: 2));
-        expect(fakeApi.callLog, contains('DELETE tasks/rt-1'));
-        expect(pullRelease.isCompleted, isFalse);
-
-        // Release blocked HTTP call; cancelled full pull must not fetch tasks.
-        pullRelease.complete();
-        await fullSyncFuture;
-        await pumpEventQueue();
-
-        expect(
-          fakeApi.callLog.any((c) => c.startsWith('GET tasks(')),
-          isFalse,
-        );
-        expect(h.container.read(todoProvider).tasks, isEmpty);
-      },
-    );
-
-    test(
-      'tombstone barrier prevents stale in-flight pull from resurrecting concurrently deleted task',
-      () async {
-        final folder1Pulled = Completer<void>();
-        final folder2Release = Completer<void>();
-        final deleteCompleted = Completer<void>();
-        final fakeApi = _BlockingSecondFolderApi(folder1Pulled, folder2Release)
-          ..onFetchFoldersDelta = ((dl) => const DeltaPageResult(
-            items: [
-              RemoteTodoFolder(
-                id: 'rf-default',
-                name: 'Tasks',
-                isDefaultFolder: true,
-              ),
-              RemoteTodoFolder(id: 'rf-second', name: 'Second'),
-            ],
-            deltaLink: 'dl-folders-new',
-          ))
-          ..onFetchTasksDelta = ((folderId, dl) => const DeltaPageResult(
-            items: [
-              RemoteTodoTask(
-                id: 'rt-1',
-                changeKey: 'ck-1',
-                parentFolderId: 'rf-default',
-                subject: 'Task One',
-              ),
-              RemoteTodoTask(
-                id: 'rt-2',
-                changeKey: 'ck-2',
-                parentFolderId: 'rf-default',
-                subject: 'Task Two',
-              ),
-            ],
-            deltaLink: 'dl-tasks-default',
-          ))
-          ..onDeleteTask = ((taskRemoteId) async {
-            if (!deleteCompleted.isCompleted) deleteCompleted.complete();
-          });
-
-        final h = await createSyncTestHarness(
-          accountId: 'acct_tombstone_barrier',
-          api: fakeApi,
-          defaultTasksFolderRemoteId: 'rf-default',
-          tasks: [
-            TaskItem(
-              id: 't_1',
-              listId: 'tasks',
-              title: 'Task One',
-              createdAt: DateTime.utc(2026, 11, 22, 8),
-              remoteId: 'rt-1',
-              remoteParentFolderId: 'rf-default',
+          deltaLink: 'dl-folders-new',
+        ))
+        ..onFetchTasksDelta = ((folderId, dl) => const DeltaPageResult(
+          items: [
+            RemoteTodoTask(
+              id: 'rt-1',
               changeKey: 'ck-1',
+              parentFolderId: 'rf-default',
+              subject: 'Task One',
             ),
-            TaskItem(
-              id: 't_2',
-              listId: 'tasks',
-              title: 'Task Two',
-              createdAt: DateTime.utc(2026, 11, 22, 8),
-              remoteId: 'rt-2',
-              remoteParentFolderId: 'rf-default',
+            RemoteTodoTask(
+              id: 'rt-2',
               changeKey: 'ck-2',
+              parentFolderId: 'rf-default',
+              subject: 'Task Two',
             ),
           ],
-          foldersDeltaLink: 'dl-folders-1',
-          taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
-        );
+          deltaLink: 'dl-tasks-default',
+        ))
+        ..onDeleteTask = ((taskRemoteId) async {
+          if (!deleteCompleted.isCompleted) deleteCompleted.complete();
+        });
 
-        final notifier = h.container.read(syncProvider.notifier);
-        final fullSyncFuture = notifier.refresh(reason: 'manual');
+      final h = await createSyncTestHarness(
+        accountId: 'acct_tombstone_barrier',
+        api: fakeApi,
+        defaultTasksFolderRemoteId: 'rf-default',
+        tasks: [
+          TaskItem(
+            id: 't_1',
+            listId: 'tasks',
+            title: 'Task One',
+            createdAt: DateTime.utc(2026, 11, 22, 8),
+            remoteId: 'rt-1',
+            remoteParentFolderId: 'rf-default',
+            changeKey: 'ck-1',
+          ),
+          TaskItem(
+            id: 't_2',
+            listId: 'tasks',
+            title: 'Task Two',
+            createdAt: DateTime.utc(2026, 11, 22, 8),
+            remoteId: 'rt-2',
+            remoteParentFolderId: 'rf-default',
+            changeKey: 'ck-2',
+          ),
+        ],
+        foldersDeltaLink: 'dl-folders-1',
+        taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
+      );
 
-        // Wait until rf-default (containing rt-1 & rt-2) is fetched, while rf-second is still blocked.
-        await folder1Pulled.future;
+      final notifier = h.container.read(syncProvider.notifier);
+      final fullSyncFuture = notifier.refresh(reason: 'manual');
 
-        // Delete t_1 locally and wait for concurrent push to DELETE and ackOp it.
-        final remaining = h.container
-            .read(todoProvider)
-            .tasks
-            .where((t) => t.id != 't_1')
-            .toList();
-        h.container
-            .read(todoProvider.notifier)
-            .commit(h.container.read(todoProvider).copyWith(tasks: remaining));
+      // Wait until rf-default (containing rt-1 & rt-2) is fetched, while rf-second is still blocked.
+      await folder1Pulled.future;
 
-        await deleteCompleted.future.timeout(const Duration(seconds: 2));
-        await pumpEventQueue();
-        expect(
-          h.container.read(todoProvider.notifier).repository.outbox.isEmpty,
-          isTrue,
-        );
+      // Delete t_1 locally and wait for concurrent push to DELETE and ackOp it.
+      final remaining = h.container
+          .read(todoProvider)
+          .tasks
+          .where((t) => t.id != 't_1')
+          .toList();
+      h.container
+          .read(todoProvider.notifier)
+          .commit(h.container.read(todoProvider).copyWith(tasks: remaining));
 
-        // Now let full pull finish reconciling the stale snapshot containing rt-1.
-        folder2Release.complete();
-        await fullSyncFuture;
-        await pumpEventQueue();
+      await deleteCompleted.future.timeout(const Duration(seconds: 2));
+      await pumpEventQueue();
+      expect(
+        h.container.read(todoProvider.notifier).repository.outbox.isEmpty,
+        isTrue,
+      );
 
-        final taskIds = h.container
-            .read(todoProvider)
-            .tasks
-            .map((t) => t.id)
-            .toList();
-        expect(taskIds, ['t_2']);
-      },
-    );
+      // Now let full pull finish reconciling the stale snapshot containing rt-1.
+      folder2Release.complete();
+      await fullSyncFuture;
+      await pumpEventQueue();
 
-    test(
-      'delta pull does not resurrect task deleted and acked concurrently while pull was in flight',
-      () async {
-        final pullStarted = Completer<void>();
-        final pullRelease = Completer<void>();
-        final deleteCompleted = Completer<void>();
-        final fakeApi = BlockingFoldersApi(pullStarted, pullRelease)
-          ..onFetchTasksDelta = ((folderId, dl) => const DeltaPageResult(
-            items: [],
-            deltaLink: 'dl-tasks-2',
-          ))
-          ..onDeleteTask = ((taskRemoteId) async {
-            if (!deleteCompleted.isCompleted) deleteCompleted.complete();
-          });
+      final taskIds = h.container
+          .read(todoProvider)
+          .tasks
+          .map((t) => t.id)
+          .toList();
+      expect(taskIds, ['t_2']);
+    });
 
-        final h = await createSyncTestHarness(
-          accountId: 'acct_delta_concurrent_delete',
-          api: fakeApi,
-          defaultTasksFolderRemoteId: 'rf-default',
-          tasks: [
-            TaskItem(
-              id: 't_1',
-              listId: 'tasks',
-              title: 'Delete During Delta',
-              createdAt: DateTime.utc(2026, 11, 22, 8),
-              remoteId: 'rt-1',
-              remoteParentFolderId: 'rf-default',
-              changeKey: 'ck-1',
-            ),
-            TaskItem(
-              id: 't_2',
-              listId: 'tasks',
-              title: 'Keep Me',
-              createdAt: DateTime.utc(2026, 11, 22, 8),
-              remoteId: 'rt-2',
-              remoteParentFolderId: 'rf-default',
-              changeKey: 'ck-2',
-            ),
-          ],
-          groupsDeltaLink: 'dl-groups-1',
-          foldersDeltaLink: 'dl-folders-1',
-          taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
-        );
+    test('delta pull does not resurrect task deleted and acked concurrently while pull was in flight', () async {
+      final pullStarted = Completer<void>();
+      final pullRelease = Completer<void>();
+      final deleteCompleted = Completer<void>();
+      final fakeApi = BlockingFoldersApi(pullStarted, pullRelease)
+        ..onFetchTasksDelta = ((folderId, dl) =>
+            const DeltaPageResult(items: [], deltaLink: 'dl-tasks-2'))
+        ..onDeleteTask = ((taskRemoteId) async {
+          if (!deleteCompleted.isCompleted) deleteCompleted.complete();
+        });
 
-        final notifier = h.container.read(syncProvider.notifier);
-        // Start an incremental delta pull; it snapshots workingTasks = [t_1, t_2].
-        final deltaFuture = notifier.syncNow(
-          forceFullSync: false,
-          reason: 'manual',
-        );
-        await pullStarted.future;
+      final h = await createSyncTestHarness(
+        accountId: 'acct_delta_concurrent_delete',
+        api: fakeApi,
+        defaultTasksFolderRemoteId: 'rf-default',
+        tasks: [
+          TaskItem(
+            id: 't_1',
+            listId: 'tasks',
+            title: 'Delete During Delta',
+            createdAt: DateTime.utc(2026, 11, 22, 8),
+            remoteId: 'rt-1',
+            remoteParentFolderId: 'rf-default',
+            changeKey: 'ck-1',
+          ),
+          TaskItem(
+            id: 't_2',
+            listId: 'tasks',
+            title: 'Keep Me',
+            createdAt: DateTime.utc(2026, 11, 22, 8),
+            remoteId: 'rt-2',
+            remoteParentFolderId: 'rf-default',
+            changeKey: 'ck-2',
+          ),
+        ],
+        groupsDeltaLink: 'dl-groups-1',
+        foldersDeltaLink: 'dl-folders-1',
+        taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
+      );
 
-        // Delete t_1 while delta pull is in flight and wait for DELETE + ackOp.
-        final remaining = h.container
-            .read(todoProvider)
-            .tasks
-            .where((t) => t.id != 't_1')
-            .toList();
-        h.container
-            .read(todoProvider.notifier)
-            .commit(h.container.read(todoProvider).copyWith(tasks: remaining));
+      final notifier = h.container.read(syncProvider.notifier);
+      // Start an incremental delta pull; it snapshots workingTasks = [t_1, t_2].
+      final deltaFuture = notifier.syncNow(
+        forceFullSync: false,
+        reason: 'manual',
+      );
+      await pullStarted.future;
 
-        await deleteCompleted.future.timeout(const Duration(seconds: 2));
-        await pumpEventQueue();
-        expect(
-          h.container.read(todoProvider.notifier).repository.outbox.isEmpty,
-          isTrue,
-        );
+      // Delete t_1 while delta pull is in flight and wait for DELETE + ackOp.
+      final remaining = h.container
+          .read(todoProvider)
+          .tasks
+          .where((t) => t.id != 't_1')
+          .toList();
+      h.container
+          .read(todoProvider.notifier)
+          .commit(h.container.read(todoProvider).copyWith(tasks: remaining));
 
-        // Finish the delta pull; stale workingTasks must not resurrect t_1.
-        pullRelease.complete();
-        await deltaFuture;
-        await pumpEventQueue();
+      await deleteCompleted.future.timeout(const Duration(seconds: 2));
+      await pumpEventQueue();
+      expect(
+        h.container.read(todoProvider.notifier).repository.outbox.isEmpty,
+        isTrue,
+      );
 
-        expect(
-          h.container.read(todoProvider).tasks.map((t) => t.id).toList(),
-          ['t_2'],
-        );
-      },
-    );
+      // Finish the delta pull; stale workingTasks must not resurrect t_1.
+      pullRelease.complete();
+      await deltaFuture;
+      await pumpEventQueue();
 
-    test(
-      'cancelling an in-flight pull via onAppPaused does not advance saved deltaLinks',
-      () async {
-        final pullStarted = Completer<void>();
-        final pullRelease = Completer<void>();
-        final fakeApi = BlockingFoldersApi(pullStarted, pullRelease)
-          ..onFetchGroupsDelta = ((dl) => const DeltaPageResult(
-            items: [],
-            deltaLink: 'dl-groups-advanced',
-          ))
-          ..onFetchFoldersDelta = ((dl) => const DeltaPageResult(
-            items: [],
-            deltaLink: 'dl-folders-advanced',
-          ));
+      expect(h.container.read(todoProvider).tasks.map((t) => t.id).toList(), [
+        't_2',
+      ]);
+    });
 
-        final h = await createSyncTestHarness(
-          accountId: 'acct_cancel_no_advance_dl',
-          api: fakeApi,
-          defaultTasksFolderRemoteId: 'rf-default',
-          groupsDeltaLink: 'dl-groups-orig',
-          foldersDeltaLink: 'dl-folders-orig',
-          taskDeltaLinks: const {'rf-default': 'dl-tasks-orig'},
-        );
+    test('cancelling an in-flight pull via onAppPaused does not advance saved deltaLinks', () async {
+      final pullStarted = Completer<void>();
+      final pullRelease = Completer<void>();
+      final fakeApi = BlockingFoldersApi(pullStarted, pullRelease)
+        ..onFetchGroupsDelta = ((dl) =>
+            const DeltaPageResult(items: [], deltaLink: 'dl-groups-advanced'))
+        ..onFetchFoldersDelta = ((dl) =>
+            const DeltaPageResult(items: [], deltaLink: 'dl-folders-advanced'));
 
-        final notifier = h.container.read(syncProvider.notifier);
-        final deltaFuture = notifier.syncNow(
-          forceFullSync: false,
-          reason: 'manual',
-        );
-        await pullStarted.future;
+      final h = await createSyncTestHarness(
+        accountId: 'acct_cancel_no_advance_dl',
+        api: fakeApi,
+        defaultTasksFolderRemoteId: 'rf-default',
+        groupsDeltaLink: 'dl-groups-orig',
+        foldersDeltaLink: 'dl-folders-orig',
+        taskDeltaLinks: const {'rf-default': 'dl-tasks-orig'},
+      );
 
-        notifier.onAppPaused();
-        pullRelease.complete();
-        await deltaFuture;
-        await pumpEventQueue();
+      final notifier = h.container.read(syncProvider.notifier);
+      final deltaFuture = notifier.syncNow(
+        forceFullSync: false,
+        reason: 'manual',
+      );
+      await pullStarted.future;
 
-        expect(h.settings.loadGroupsDeltaLink(), 'dl-groups-orig');
-        expect(h.settings.loadFoldersDeltaLink(), 'dl-folders-orig');
-        expect(
-          h.settings.loadTaskDeltaLinks(),
-          const {'rf-default': 'dl-tasks-orig'},
-        );
-      },
-    );
+      notifier.onAppPaused();
+      pullRelease.complete();
+      await deltaFuture;
+      await pumpEventQueue();
+
+      expect(h.settings.loadGroupsDeltaLink(), 'dl-groups-orig');
+      expect(h.settings.loadFoldersDeltaLink(), 'dl-folders-orig');
+      expect(h.settings.loadTaskDeltaLinks(), const {
+        'rf-default': 'dl-tasks-orig',
+      });
+    });
   });
 }
 
