@@ -127,11 +127,6 @@ extension AppErrorX on AppError {
     _ => false,
   };
 
-  bool get isFolderGroupNotEmpty => switch (this) {
-    NetworkError(:final code) => code == 'FolderGroupNotEmpty',
-    _ => false,
-  };
-
   bool get isCantDeleteDefaultFolder => switch (this) {
     NetworkError(:final code) => code == 'CantDeleteDefaultFolder',
     _ => false,
