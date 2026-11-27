@@ -81,6 +81,93 @@ void main() {
       expect(taskFetches, greaterThanOrEqualTo(1));
     });
 
+    test(
+      'unhandled task event pulls only the folder the task belongs to',
+      () async {
+        final fakeApi = FakeSubstrateApi();
+        final h = await createSyncTestHarness(
+          accountId: 'acct_rt_scoped',
+          api: fakeApi,
+          realtimeSyncEnabled: true,
+          defaultTasksFolderRemoteId: 'rf-default',
+          taskDeltaLinks: const {'rf-default': 'dl-tasks-saved'},
+          tasks: [
+            TaskItem(
+              id: 't_1',
+              listId: 'tasks',
+              title: 'Task 1',
+              remoteId: 'rt-1',
+              createdAt: DateTime.utc(2026, 11, 25, 8),
+            ),
+          ],
+        );
+
+        h.container.read(syncProvider);
+        await pumpEventQueue();
+
+        h.api.realtimeController.add(
+          const RealtimeEvent(
+            id: 'rt-1',
+            type: 'Task',
+            operation: 'Restored',
+            requestId: 'other-device-req',
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        await pumpEventQueue();
+
+        expect(h.api.callLog, contains('GET tasks(rf-default,dl-tasks-saved)'));
+        expect(
+          fakeApi.callLog.where((c) => c.startsWith('GET settings')),
+          isEmpty,
+        );
+        expect(
+          fakeApi.callLog.where((c) => c.startsWith('GET foldergroups')),
+          isEmpty,
+        );
+        expect(
+          fakeApi.callLog.where((c) => c.startsWith('GET taskfolders')),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      'unhandled task event without a known folder degrades to delta, not full',
+      () async {
+        final fakeApi = FakeSubstrateApi();
+        final h = await createSyncTestHarness(
+          accountId: 'acct_rt_unscoped',
+          api: fakeApi,
+          realtimeSyncEnabled: true,
+          defaultTasksFolderRemoteId: 'rf-default',
+          groupsDeltaLink: 'dl-groups-saved',
+          foldersDeltaLink: 'dl-folders-saved',
+          taskDeltaLinks: const {'rf-default': 'dl-tasks-saved'},
+        );
+
+        h.container.read(syncProvider);
+        await pumpEventQueue();
+
+        h.api.realtimeController.add(
+          const RealtimeEvent(
+            id: 'rt-unknown',
+            type: 'Task',
+            operation: 'Created',
+            requestId: 'other-device-req',
+          ),
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+        await pumpEventQueue();
+
+        expect(h.api.callLog, contains('GET foldergroups(dl-groups-saved)'));
+        expect(h.api.callLog, contains('GET taskfolders(dl-folders-saved)'));
+        expect(h.api.callLog, isNot(contains('GET foldergroups(null)')));
+        expect(h.api.callLog, isNot(contains('GET taskfolders(null)')));
+        expect(h.api.callLog, isNot(contains('GET tasks(rf-default,null)')));
+      },
+    );
+
     test('direct Task realtime payload updates OrderDateTime and CommittedOrder without fetching delta, preserves missing Subtasks, and respects dirty tasks', () async {
       final today = DateTime.now();
       final tOld = DateTime.utc(2026, 11, 22, 8);

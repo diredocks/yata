@@ -8,6 +8,7 @@ import '../account/account_provider.dart';
 import '../core/logging/app_logger.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
+import '../models/task_item.dart';
 import 'microsoft/microsoft_todo_api.dart';
 import 'microsoft/remote_change_reconciler.dart';
 import 'sync_dispatcher.dart';
@@ -50,20 +51,49 @@ class RealtimeSyncController {
 
   bool get hasPendingEvents => _pendingEvents.isNotEmpty;
 
-  static bool _shouldForceFullSyncForEvent(RealtimeEvent event) =>
-      switch (event.entityType) {
-        RealtimeEventEntityType.task ||
-        RealtimeEventEntityType.taskFolder ||
-        RealtimeEventEntityType.folderGroup => true,
-        RealtimeEventEntityType.setting ||
-        RealtimeEventEntityType.keepAlive ||
-        RealtimeEventEntityType.unknown => false,
-      };
+  /// Falls back to a pull scoped to the folders the unhandled event can be
+  /// attributed to, degrading to a delta pass when it cannot be attributed.
+  PullCommand _fallbackCommand(RealtimeEvent event) {
+    final folderRemoteIds = _affectedFolderRemoteIds(event);
+    if (folderRemoteIds.isEmpty) {
+      return const PullCommand(PullScope.delta, SyncReason.realtimeEvent);
+    }
+    return PullCommand(
+      PullScope.selective,
+      SyncReason.realtimeEvent,
+      folderRemoteIds: folderRemoteIds,
+    );
+  }
 
-  static PullCommand _fallbackCommand(RealtimeEvent event) => PullCommand(
-    _shouldForceFullSyncForEvent(event) ? PullScope.full : PullScope.delta,
-    SyncReason.realtimeEvent,
-  );
+  /// Folder remote IDs an unhandled task event can be pinned to, restricted to
+  /// folders already known locally so a selective pull cannot miss them.
+  Set<String> _affectedFolderRemoteIds(RealtimeEvent event) {
+    // Folder and group events change the folder list itself, which a
+    // task-only selective pull cannot observe.
+    if (event.entityType != RealtimeEventEntityType.task) return const {};
+
+    final state = ref.read(todoProvider);
+    final knownFolderRemoteIds = {
+      for (final list in state.lists)
+        if (list.remoteId != null) list.remoteId!,
+    };
+    final localListId = _localListIdForTask(state.tasks, event.id);
+    final candidates = <String>{
+      if (event.payload?['ParentFolderId'] case final String id
+          when id.isNotEmpty)
+        id,
+      if (localListId != null)
+        if (state.lists.firstWhereOrNull((l) => l.id == localListId)?.remoteId
+            case final String id)
+          id,
+    };
+    return candidates.intersection(knownFolderRemoteIds);
+  }
+
+  static String? _localListIdForTask(List<TaskItem> tasks, String? remoteId) =>
+      remoteId == null
+      ? null
+      : tasks.firstWhereOrNull((t) => t.remoteId == remoteId)?.listId;
 
   void ensureStartedFor(MicrosoftAccount account) {
     if (_disposed || _accountId == account.id) return;
