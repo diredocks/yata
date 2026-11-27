@@ -51,14 +51,12 @@ class HomeViewPresenter {
       ),
     );
     final updated = sortListsPreservingSmartLists([..._state.lists, newList]);
-    _store.commit(
-      _state.copyWith(
-        lists: updated,
-        selectedListId: newList.id,
-        selectedTaskId: null,
-      ),
+    _store.mutateEntities(
+      lists: updated,
+      touchedListIds: {newList.id},
+      selectedListId: newList.id,
+      clearSelectedTaskId: true,
     );
-    _store.repository.saveLists(_state.lists);
     _store.settings.saveSelectedListId(newList.id);
   }
 
@@ -70,8 +68,8 @@ class HomeViewPresenter {
         else
           group,
     ];
-    _store.commit(_state.copyWith(groups: updated));
-    _store.repository.saveGroups(updated);
+    // Local-only UI state; no outbox mutation needed.
+    _store.mutateEntities(groups: updated);
   }
 
   String _deduplicateGroupTitle(String title, {String? excludeGroupId}) {
@@ -105,8 +103,7 @@ class HomeViewPresenter {
       ),
     );
     final updated = sortGroupsByOrder([..._state.groups, newGroup]);
-    _store.commit(_state.copyWith(groups: updated));
-    _store.repository.saveGroups(_state.groups);
+    _store.mutateEntities(groups: updated, touchedGroupIds: {newGroup.id});
     return newGroup;
   }
 
@@ -117,33 +114,50 @@ class HomeViewPresenter {
       for (final group in _state.groups)
         if (group.id == groupId) group.copyWith(title: deduped) else group,
     ];
-    _store.commit(_state.copyWith(groups: updated));
-    _store.repository.saveGroups(updated);
+    _store.mutateEntities(groups: updated, touchedGroupIds: {groupId});
   }
 
   void deleteGroup(String groupId) {
     final updatedGroups = _state.groups.where((g) => g.id != groupId).toList();
+    final touchedListIds = <String>{};
     final updatedLists = [
       for (final list in _state.lists)
-        if (list.groupId == groupId) list.copyWith(groupId: null) else list,
-    ];
-    _store.commit(_state.copyWith(groups: updatedGroups, lists: updatedLists));
-    _store.repository.saveGroups(updatedGroups);
-    _store.repository.saveLists(updatedLists);
-  }
-
-  void setGroupLists(String groupId, Set<String> memberListIds) {
-    final updated = [
-      for (final list in _state.lists)
-        if (!list.isSmartList && memberListIds.contains(list.id))
-          list.copyWith(groupId: groupId)
-        else if (list.groupId == groupId && !memberListIds.contains(list.id))
-          list.copyWith(groupId: null)
+        if (list.groupId == groupId)
+          () {
+            touchedListIds.add(list.id);
+            return list.copyWith(groupId: null);
+          }()
         else
           list,
     ];
-    _store.commit(_state.copyWith(lists: updated));
-    _store.repository.saveLists(updated);
+    _store.mutateEntities(
+      groups: updatedGroups,
+      lists: updatedLists,
+      deletedGroupIds: {groupId},
+      touchedListIds: touchedListIds,
+    );
+  }
+
+  void setGroupLists(String groupId, Set<String> memberListIds) {
+    final touchedListIds = <String>{};
+    final updated = [
+      for (final list in _state.lists)
+        if (!list.isSmartList &&
+            memberListIds.contains(list.id) &&
+            list.groupId != groupId)
+          () {
+            touchedListIds.add(list.id);
+            return list.copyWith(groupId: groupId);
+          }()
+        else if (list.groupId == groupId && !memberListIds.contains(list.id))
+          () {
+            touchedListIds.add(list.id);
+            return list.copyWith(groupId: null);
+          }()
+        else
+          list,
+    ];
+    _store.mutateEntities(lists: updated, touchedListIds: touchedListIds);
   }
 
   void reorderTopLevelEntries(
@@ -175,7 +189,7 @@ class HomeViewPresenter {
     }
 
     final updatedGroups = groupOrderUpdates.isEmpty
-        ? _state.groups
+        ? null
         : sortGroupsByOrder([
             for (final group in _state.groups)
               if (groupOrderUpdates.containsKey(group.id))
@@ -184,7 +198,7 @@ class HomeViewPresenter {
                 group,
           ]);
     final updatedLists = listOrderUpdates.isEmpty
-        ? _state.lists
+        ? null
         : sortListsPreservingSmartLists([
             for (final list in _state.lists)
               if (listOrderUpdates.containsKey(list.id))
@@ -193,13 +207,12 @@ class HomeViewPresenter {
                 list,
           ]);
 
-    _store.commit(_state.copyWith(groups: updatedGroups, lists: updatedLists));
-    if (groupOrderUpdates.isNotEmpty) {
-      _store.repository.saveGroups(_state.groups);
-    }
-    if (listOrderUpdates.isNotEmpty) {
-      _store.repository.saveLists(_state.lists);
-    }
+    _store.mutateEntities(
+      groups: updatedGroups,
+      lists: updatedLists,
+      touchedGroupIds: groupOrderUpdates.keys.toSet(),
+      touchedListIds: listOrderUpdates.keys.toSet(),
+    );
   }
 
   void reorderGroupLists(
@@ -234,8 +247,10 @@ class HomeViewPresenter {
         else
           list,
     ]);
-    _store.commit(_state.copyWith(lists: updatedLists));
-    _store.repository.saveLists(_state.lists);
+    _store.mutateEntities(
+      lists: updatedLists,
+      touchedListIds: listOrderUpdates.keys.toSet(),
+    );
   }
 }
 

@@ -16,30 +16,6 @@ class DetailViewPresenter {
   TodoNotifier get _store => _ref.read(todoProvider.notifier);
   TodoState get _state => _ref.read(todoProvider);
 
-  void _commitTasks(
-    List<TaskItem> updated, {
-    bool clearSelectedTaskId = false,
-  }) {
-    _store.commit(
-      _state.copyWith(
-        tasks: updated,
-        selectedTaskId: clearSelectedTaskId ? null : _state.selectedTaskId,
-      ),
-    );
-    _store.repository.saveTasks(_state.tasks);
-  }
-
-  void _updateTaskById(
-    String taskId,
-    TaskItem Function(TaskItem task) transform,
-  ) {
-    final updated = [
-      for (final task in _state.tasks)
-        if (task.id == taskId) transform(task) else task,
-    ];
-    _commitTasks(updated);
-  }
-
   void toggleTaskCompleted(String taskId) {
     _ref.read(tasksViewPresenterProvider).toggleTaskCompleted(taskId);
   }
@@ -50,7 +26,7 @@ class DetailViewPresenter {
 
   void toggleTaskMyDay(String taskId) {
     final now = DateTime.now();
-    _updateTaskById(taskId, (task) {
+    _store.mutateTask(taskId, (task) {
       final adding = !task.isInMyDay;
       final dueToday =
           task.dueDate != null && TodoNotifier.isSameDay(task.dueDate!, now);
@@ -80,32 +56,26 @@ class DetailViewPresenter {
   void updateTaskTitle(String taskId, String title) {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return;
-    _updateTaskById(taskId, (task) => task.copyWith(title: trimmed));
+    _store.mutateTask(taskId, (task) => task.copyWith(title: trimmed));
   }
 
   void updateTaskNote(String taskId, String note) {
     final nowUtc = DateTime.now().toUtc();
-    var changed = false;
-    final updated = <TaskItem>[];
-    for (final task in _state.tasks) {
-      if (task.id == taskId && task.note != note) {
-        changed = true;
-        updated.add(task.copyWith(note: note, noteUpdatedAt: nowUtc));
-      } else {
-        updated.add(task);
-      }
-    }
-    if (!changed) return;
-    _commitTasks(updated);
+    _store.mutateTask(
+      taskId,
+      (task) => task.note == note
+          ? task
+          : task.copyWith(note: note, noteUpdatedAt: nowUtc),
+    );
   }
 
   void moveTaskToList(String taskId, String targetListId) {
-    _updateTaskById(taskId, (task) => task.copyWith(listId: targetListId));
+    _store.mutateTask(taskId, (task) => task.copyWith(listId: targetListId));
   }
 
   void setTaskDueDate(String taskId, DateTime? dueDate) {
     final now = DateTime.now();
-    _updateTaskById(
+    _store.mutateTask(
       taskId,
       (task) => TodoNotifier.applyDueDate(
         task,
@@ -117,7 +87,7 @@ class DetailViewPresenter {
   }
 
   void setTaskReminder(String taskId, DateTime? reminderAt) {
-    _updateTaskById(
+    _store.mutateTask(
       taskId,
       (task) => task.copyWith(reminderAt: reminderAt?.toUtc()),
     );
@@ -129,7 +99,7 @@ class DetailViewPresenter {
     Map<String, dynamic>? rawRecurrence,
   }) {
     final now = DateTime.now();
-    _updateTaskById(
+    _store.mutateTask(
       taskId,
       (task) => TodoNotifier.applyRecurrence(
         task,
@@ -146,21 +116,20 @@ class DetailViewPresenter {
   }
 
   void deleteTask(String taskId) {
-    final updated = _state.tasks.where((t) => t.id != taskId).toList();
-    _commitTasks(updated, clearSelectedTaskId: _state.selectedTaskId == taskId);
+    _store.deleteTasks({taskId});
   }
 
   String nextAttachmentId() => _store.nextId('att');
 
   void addAttachment(String taskId, TaskAttachment attachment) {
-    _updateTaskById(
+    _store.mutateTask(
       taskId,
       (task) => task.copyWith(attachments: [...task.attachments, attachment]),
     );
   }
 
   void updateAttachment(String taskId, TaskAttachment attachment) {
-    _updateTaskById(
+    _store.mutateTask(
       taskId,
       (task) => task.copyWith(
         attachments: [
@@ -172,7 +141,7 @@ class DetailViewPresenter {
   }
 
   void deleteAttachment(String taskId, String attachmentId) {
-    _updateTaskById(
+    _store.mutateTask(
       taskId,
       (task) => task.copyWith(
         attachments: task.attachments
@@ -185,7 +154,7 @@ class DetailViewPresenter {
   void addStep(String taskId, String title) {
     final trimmed = title.trim();
     if (trimmed.isEmpty) return;
-    _updateTaskById(
+    _store.mutateTask(
       taskId,
       (task) => task.copyWith(
         steps: [
@@ -204,7 +173,7 @@ class DetailViewPresenter {
   }
 
   void toggleStepCompleted(String taskId, String stepId) {
-    _updateTaskById(
+    _store.mutateTask(
       taskId,
       (task) => task.copyWith(
         steps: [
@@ -219,7 +188,7 @@ class DetailViewPresenter {
   }
 
   void deleteStep(String taskId, String stepId) {
-    _updateTaskById(
+    _store.mutateTask(
       taskId,
       (task) => task.copyWith(
         steps: task.steps.where((s) => s.id != stepId).toList(),
@@ -249,7 +218,7 @@ class DetailViewPresenter {
       );
     }
 
-    _updateTaskById(taskId, (t) => t.copyWith(steps: reordered));
+    _store.mutateTask(taskId, (t) => t.copyWith(steps: reordered));
   }
 
   void renameStep(String taskId, String stepId, String newTitle) {
@@ -258,7 +227,7 @@ class DetailViewPresenter {
       deleteStep(taskId, stepId);
       return;
     }
-    _updateTaskById(
+    _store.mutateTask(
       taskId,
       (task) => task.copyWith(
         steps: [
@@ -307,7 +276,10 @@ class DetailViewPresenter {
     } else {
       updated.add(promoted);
     }
-    _commitTasks(updated);
+    _store.mutateEntities(
+      tasks: updated,
+      touchedTaskIds: {taskId, promoted.id},
+    );
   }
 }
 
