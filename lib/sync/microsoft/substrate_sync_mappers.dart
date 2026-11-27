@@ -78,7 +78,7 @@ List<ListGroup> mergeFolderGroupsDelta({
   for (final remote in remoteDelta) {
     final idx = result.indexWhere((g) => g.remoteId == remote.id);
     if (remote.isDeleted) {
-      if (idx >= 0 && !dirtyGroupIds.contains(result[idx].id)) {
+      if (idx >= 0) {
         result.removeAt(idx);
       }
       continue;
@@ -156,7 +156,7 @@ List<TodoList> mergeFoldersDelta({
       final idx = result.indexWhere(
         (l) => !l.isSmartList && l.remoteId == remote.id,
       );
-      if (idx >= 0 && !dirtyListIds.contains(result[idx].id)) {
+      if (idx >= 0) {
         result.removeAt(idx);
       }
       continue;

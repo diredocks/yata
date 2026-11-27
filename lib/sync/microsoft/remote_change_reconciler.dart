@@ -20,6 +20,7 @@ typedef RemoteTaskChange = ({
   List<TaskItem> tasks,
   Set<String> seenActiveRemoteIds,
   bool hasUnresolvedParent,
+  Set<String> deferredDirtyDeleteListIds,
 })
 _reconcileRemoteTaskChanges({
   required List<TodoList> lists,
@@ -28,6 +29,7 @@ _reconcileRemoteTaskChanges({
   required Set<String> dirtyTaskIds,
   required Set<String> pendingDeletedTaskRemoteIds,
   required String Function(String prefix) idGenerator,
+  bool deferDirtyDeletes = false,
 }) {
   final localListIdByFolderRemoteId = {
     for (final l in lists)
@@ -71,6 +73,7 @@ _reconcileRemoteTaskChanges({
         }
       } else {
         // Unscoped delete (e.g. Realtime Task/Deleted without folder context).
+        seenActiveRemoteIds.remove(remote.id);
         deferredDeletesByFolder[remote.id] = null;
       }
       continue;
@@ -151,20 +154,27 @@ _reconcileRemoteTaskChanges({
 
   for (final ignoredRemoteId in ignoredRemoteIds) {
     final localId = taskIdByRemoteId[ignoredRemoteId];
-    if (localId == null || dirtyTaskIds.contains(localId)) continue;
+    if (localId == null) continue;
     tasksById.remove(localId);
   }
 
+  final deferredDirtyDeleteListIds = <String>{};
   for (final entry in deferredDeletesByFolder.entries) {
     final deletedRemoteId = entry.key;
     final deletedFromListIds = entry.value;
     if (seenActiveRemoteIds.contains(deletedRemoteId)) continue;
     final localId = taskIdByRemoteId[deletedRemoteId];
-    if (localId == null || dirtyTaskIds.contains(localId)) continue;
+    if (localId == null) continue;
     final localTask = tasksById[localId];
     if (localTask == null) continue;
     if (deletedFromListIds != null &&
         !deletedFromListIds.contains(localTask.listId)) {
+      continue;
+    }
+    if (deferDirtyDeletes &&
+        deletedFromListIds != null &&
+        dirtyTaskIds.contains(localId)) {
+      deferredDirtyDeleteListIds.add(localTask.listId);
       continue;
     }
     tasksById.remove(localId);
@@ -174,6 +184,7 @@ _reconcileRemoteTaskChanges({
     tasks: tasksById.values.toList(),
     seenActiveRemoteIds: seenActiveRemoteIds,
     hasUnresolvedParent: hasUnresolvedParent,
+    deferredDirtyDeleteListIds: deferredDirtyDeleteListIds,
   );
 }
 
@@ -205,6 +216,7 @@ class ReconciledRemoteDelta {
     this.tasks,
     this.remoteSettings,
     this.hasUnhandledEntity = false,
+    this.deferredDeleteFolderRemoteIds = const {},
   });
 
   final List<ListGroup>? groups;
@@ -212,6 +224,7 @@ class ReconciledRemoteDelta {
   final List<TaskItem>? tasks;
   final Map<String, String>? remoteSettings;
   final bool hasUnhandledEntity;
+  final Set<String> deferredDeleteFolderRemoteIds;
 
   bool get hasChanges =>
       groups != null ||
@@ -231,6 +244,7 @@ ReconciledRemoteDelta reconcileRemoteDelta({
   required String Function(String prefix) idGenerator,
   bool strictParentResolution = false,
   bool returnOnlyChanged = false,
+  bool deferDirtyDeletes = false,
 }) {
   var hasUnhandledEntity = false;
 
@@ -354,8 +368,13 @@ ReconciledRemoteDelta reconcileRemoteDelta({
     for (final l in effectiveLists)
       if (l.remoteId != null) l.remoteId!: l.id,
   };
+  final folderRemoteIdByLocalListId = {
+    for (final l in effectiveLists)
+      if (l.remoteId != null) l.id: l.remoteId!,
+  };
 
   List<TaskItem>? outTasks;
+  var deferredDeleteFolderRemoteIds = const <String>{};
   if (delta.tasks.isNotEmpty || delta.fullSyncedFolderRemoteIds.isNotEmpty) {
     final reconciled = _reconcileRemoteTaskChanges(
       lists: effectiveLists,
@@ -364,10 +383,15 @@ ReconciledRemoteDelta reconcileRemoteDelta({
       dirtyTaskIds: protection.dirtyTasks,
       pendingDeletedTaskRemoteIds: protection.deletedTaskRemotes,
       idGenerator: idGenerator,
+      deferDirtyDeletes: deferDirtyDeletes,
     );
     if (strictParentResolution && reconciled.hasUnresolvedParent) {
       hasUnhandledEntity = true;
     }
+    deferredDeleteFolderRemoteIds = {
+      for (final listId in reconciled.deferredDirtyDeleteListIds)
+        ?folderRemoteIdByLocalListId[listId],
+    };
     final fullSyncedListIds = {
       for (final folderRemoteId in delta.fullSyncedFolderRemoteIds)
         ?localListIdByFolderRemoteId[folderRemoteId],
@@ -398,6 +422,7 @@ ReconciledRemoteDelta reconcileRemoteDelta({
     tasks: outTasks,
     remoteSettings: outSettings,
     hasUnhandledEntity: hasUnhandledEntity,
+    deferredDeleteFolderRemoteIds: deferredDeleteFolderRemoteIds,
   );
 }
 

@@ -17,59 +17,213 @@ class SyncStore {
   final TodoRepository repository;
   final TodoSettingsStore settings;
 
+  static ({List<TodoList> lists, bool changed}) _clearDanglingGroupIds(
+    List<TodoList> lists,
+    Set<String> validGroupIds,
+  ) {
+    var changed = false;
+    final cleaned = <TodoList>[];
+    for (final list in lists) {
+      if (list.groupId != null && !validGroupIds.contains(list.groupId)) {
+        changed = true;
+        cleaned.add(list.copyWith(groupId: null));
+      } else {
+        cleaned.add(list);
+      }
+    }
+    return (lists: changed ? cleaned : lists, changed: changed);
+  }
+
+  static ({String selectedListId, String? selectedTaskId}) _sanitizeSelection({
+    required TodoState state,
+    required List<TodoList> lists,
+    required List<TaskItem> tasks,
+    bool checkList = true,
+    bool checkTask = true,
+  }) {
+    final selectedListId =
+        !checkList || lists.any((l) => l.id == state.selectedListId)
+        ? state.selectedListId
+        : 'my_day';
+    final selectedTaskId = !checkTask
+        ? state.selectedTaskId
+        : (state.selectedTaskId != null &&
+                  tasks.any((t) => t.id == state.selectedTaskId)
+              ? state.selectedTaskId
+              : null);
+    return (selectedListId: selectedListId, selectedTaskId: selectedTaskId);
+  }
+
+  bool _pruneOutbox({
+    required List<ListGroup> groups,
+    required List<TodoList>? lists,
+    required List<TaskItem> tasks,
+  }) {
+    return repository.outbox.pruneOrphanedEntities(
+      validGroupIds: {for (final g in groups) g.id},
+      validListIds: lists != null ? {for (final l in lists) l.id} : null,
+      validTaskIds: {for (final t in tasks) t.id},
+      validStepIds: {
+        for (final t in tasks)
+          for (final s in t.steps) s.id,
+      },
+      validAttachmentIds: {
+        for (final t in tasks)
+          for (final a in t.attachments) a.id,
+      },
+    );
+  }
+
+  ({
+    List<ListGroup> nextGroups,
+    List<TodoList> nextLists,
+    List<TaskItem> nextTasks,
+    List<TaskItem> updatedTasks,
+    Set<String> deletedTaskIds,
+    bool groupsMutated,
+    bool listsMutated,
+  })
+  _applyPushToEntities({
+    required OutboxPushOutcome outcome,
+    required List<ListGroup> currentGroups,
+    required List<TodoList>? currentLists,
+    required List<TaskItem> currentTasks,
+    required bool isHeadless,
+  }) {
+    final outbox = repository.outbox;
+    outbox.ackBatch(outcome.ackedSeqs, outcome.clearedRemoteIdKeys);
+
+    Set<String> deletedIdsOf(SyncEntityType type) => {
+      for (final e in outcome.deletedEntities)
+        if (e.type == type) e.localId,
+    };
+
+    final deletedGroupIds = deletedIdsOf(SyncEntityType.group);
+    final mergedGroups = _mergePushedGroups(
+      outbox: outbox,
+      currentGroups: currentGroups,
+      pushedGroups: outcome.pushedGroups,
+    );
+    final nextGroups = deletedGroupIds.isEmpty
+        ? mergedGroups
+        : [
+            for (final g in mergedGroups)
+              if (!deletedGroupIds.contains(g.id)) g,
+          ];
+    final groupsRemoved = nextGroups.length != mergedGroups.length;
+    final validGroupIds = {for (final g in nextGroups) g.id};
+
+    final mergedLists = _mergePushedLists(
+      outbox: outbox,
+      currentLists: currentLists ?? const <TodoList>[],
+      pushedLists: outcome.pushedLists,
+    );
+    final smartListIds = {
+      for (final l in mergedLists)
+        if (l.isSmartList) l.id,
+    };
+    final removedListIds = deletedIdsOf(
+      SyncEntityType.list,
+    ).difference(smartListIds);
+    final survivingLists = removedListIds.isEmpty
+        ? mergedLists
+        : [
+            for (final l in mergedLists)
+              if (!removedListIds.contains(l.id)) l,
+          ];
+    final listsRemoved = survivingLists.length != mergedLists.length;
+    final cleanedLists = _clearDanglingGroupIds(survivingLists, validGroupIds);
+    final nextLists = cleanedLists.lists;
+
+    final deletedTaskIds = deletedIdsOf(SyncEntityType.task);
+    final updatedTasks = <TaskItem>[];
+    final nextTasks = <TaskItem>[];
+    final seenTaskIds = <String>{};
+    for (final current in currentTasks) {
+      seenTaskIds.add(current.id);
+      final pushed = outcome.pushedTasks[current.id];
+      final resolved = pushed != null
+          ? ((isHeadless || outbox.hasPending(SyncEntityType.task, current.id))
+                ? _mergePushedTaskServerFields(current, pushed)
+                : pushed)
+          : current;
+      if (deletedTaskIds.contains(current.id) ||
+          removedListIds.contains(resolved.listId)) {
+        deletedTaskIds.add(current.id);
+        continue;
+      }
+      if (pushed != null) {
+        updatedTasks.add(resolved);
+      }
+      nextTasks.add(resolved);
+    }
+
+    if (isHeadless) {
+      for (final pushed in outcome.pushedTasks.values) {
+        if (seenTaskIds.contains(pushed.id) ||
+            deletedTaskIds.contains(pushed.id) ||
+            removedListIds.contains(pushed.listId)) {
+          continue;
+        }
+        updatedTasks.add(pushed);
+        nextTasks.add(pushed);
+      }
+    }
+
+    _pruneOutbox(
+      groups: nextGroups,
+      lists: currentLists == null ? null : nextLists,
+      tasks: nextTasks,
+    );
+
+    return (
+      nextGroups: nextGroups,
+      nextLists: nextLists,
+      nextTasks: nextTasks,
+      updatedTasks: updatedTasks,
+      deletedTaskIds: deletedTaskIds,
+      groupsMutated: outcome.pushedGroups.isNotEmpty || groupsRemoved,
+      listsMutated:
+          outcome.pushedLists.isNotEmpty || listsRemoved || cleanedLists.changed,
+    );
+  }
+
   /// Merges server-assigned identifiers/metadata from [outcome] into
   /// [currentState], updates the outbox, and persists touched rows to SQLite.
   ({TodoState nextState, Future<void> persisted}) commitPushToState({
     required TodoState currentState,
     required OutboxPushOutcome outcome,
   }) {
-    final outbox = repository.outbox;
-    outbox.ackBatch(outcome.ackedSeqs, outcome.clearedRemoteIdKeys);
-
-    final nextGroups = _mergePushedGroups(
-      outbox: outbox,
+    final applied = _applyPushToEntities(
+      outcome: outcome,
       currentGroups: currentState.groups,
-      pushedGroups: outcome.pushedGroups,
-    );
-    final nextLists = _mergePushedLists(
-      outbox: outbox,
       currentLists: currentState.lists,
-      pushedLists: outcome.pushedLists,
+      currentTasks: currentState.tasks,
+      isHeadless: false,
     );
 
-    final updatedTasks = <TaskItem>[];
-    final nextTasks = [
-      for (final current in currentState.tasks)
-        if (outcome.pushedTasks[current.id] case final pushed?)
-          () {
-            final resolved = outbox.hasPending(SyncEntityType.task, current.id)
-                ? _mergePushedTaskServerFields(current, pushed)
-                : pushed;
-            updatedTasks.add(resolved);
-            return resolved;
-          }()
-        else
-          current,
-    ];
-
-    outbox.pruneOrphanedEntities(
-      validGroupIds: {for (final g in nextGroups) g.id},
-      validListIds: {for (final l in nextLists) l.id},
-      validTaskIds: {for (final t in nextTasks) t.id},
+    final selection = _sanitizeSelection(
+      state: currentState,
+      lists: applied.nextLists,
+      tasks: applied.nextTasks,
     );
 
     final persistFutures = <Future<Object?>>[
-      if (outcome.pushedGroups.isNotEmpty) repository.saveGroups(nextGroups),
-      if (outcome.pushedLists.isNotEmpty) repository.saveLists(nextLists),
-      if (updatedTasks.isNotEmpty) repository.upsertTasks(updatedTasks),
+      if (applied.groupsMutated) repository.saveGroups(applied.nextGroups),
+      if (applied.listsMutated) repository.saveLists(applied.nextLists),
+      if (applied.updatedTasks.isNotEmpty)
+        repository.upsertTasks(applied.updatedTasks),
+      for (final id in applied.deletedTaskIds) repository.deleteTask(id),
       repository.saveOutbox(),
     ];
 
     return (
       nextState: currentState.copyWith(
-        groups: nextGroups,
-        lists: nextLists,
-        tasks: nextTasks,
+        groups: applied.nextGroups,
+        lists: applied.nextLists,
+        tasks: applied.nextTasks,
+        selectedListId: selection.selectedListId,
+        selectedTaskId: selection.selectedTaskId,
       ),
       persisted: Future.wait(persistFutures).then((_) {}),
     );
@@ -79,51 +233,25 @@ class SyncStore {
   /// without resetting [repository.outbox], then commits server metadata.
   Future<void> commitPushHeadless(OutboxPushOutcome outcome) async {
     await repository.reloadEntities();
-    final outbox = repository.outbox;
-    outbox.ackBatch(outcome.ackedSeqs, outcome.clearedRemoteIdKeys);
-
-    final freshTasksById = {
-      for (final t in repository.readCachedTasks()) t.id: t,
-    };
-    final updatedTasks = <TaskItem>[
-      for (final pushedTask in outcome.pushedTasks.values)
-        freshTasksById[pushedTask.id] == null
-            ? pushedTask
-            : _mergePushedTaskServerFields(
-                freshTasksById[pushedTask.id]!,
-                pushedTask,
-              ),
-    ];
-
-    final nextGroups = _mergePushedGroups(
-      outbox: outbox,
+    final applied = _applyPushToEntities(
+      outcome: outcome,
       currentGroups: repository.readCachedGroups(),
-      pushedGroups: outcome.pushedGroups,
-    );
-    final nextLists = _mergePushedLists(
-      outbox: outbox,
-      currentLists: repository.readCachedLists() ?? const <TodoList>[],
-      pushedLists: outcome.pushedLists,
+      currentLists: repository.readCachedLists(),
+      currentTasks: repository.readCachedTasks(),
+      isHeadless: true,
     );
 
-    final currentTasksById = Map<String, TaskItem>.of(freshTasksById);
-    for (final updated in updatedTasks) {
-      currentTasksById[updated.id] = updated;
+    if (applied.updatedTasks.isNotEmpty) {
+      await repository.upsertTasks(applied.updatedTasks);
     }
-    outbox.pruneOrphanedEntities(
-      validGroupIds: {for (final g in nextGroups) g.id},
-      validListIds: {for (final l in nextLists) l.id},
-      validTaskIds: currentTasksById.keys.toSet(),
-    );
-
-    if (updatedTasks.isNotEmpty) {
-      await repository.upsertTasks(updatedTasks);
+    for (final id in applied.deletedTaskIds) {
+      await repository.deleteTask(id);
     }
-    if (outcome.pushedGroups.isNotEmpty) {
-      await repository.saveGroups(nextGroups);
+    if (applied.groupsMutated) {
+      await repository.saveGroups(applied.nextGroups);
     }
-    if (outcome.pushedLists.isNotEmpty) {
-      await repository.saveLists(nextLists);
+    if (applied.listsMutated) {
+      await repository.saveLists(applied.nextLists);
     }
     await repository.saveOutbox();
     await repository.flushPendingWrites();
@@ -143,23 +271,13 @@ class SyncStore {
         ? sortGroupsByOrder(groups)
         : currentState.groups;
 
-    var reconciledLists = lists ?? currentState.lists;
-    var danglingGroupCleared = false;
-    if (groups != null || lists != null) {
-      final validGroupIds = {for (final g in sortedGroups) g.id};
-      final cleanedLists = <TodoList>[];
-      for (final list in reconciledLists) {
-        if (list.groupId != null && !validGroupIds.contains(list.groupId)) {
-          danglingGroupCleared = true;
-          cleanedLists.add(list.copyWith(groupId: null));
-        } else {
-          cleanedLists.add(list);
-        }
-      }
-      if (danglingGroupCleared) {
-        reconciledLists = cleanedLists;
-      }
-    }
+    final cleanedLists = (groups != null || lists != null)
+        ? _clearDanglingGroupIds(lists ?? currentState.lists, {
+            for (final g in sortedGroups) g.id,
+          })
+        : (lists: lists ?? currentState.lists, changed: false);
+    var reconciledLists = cleanedLists.lists;
+    final danglingGroupCleared = cleanedLists.changed;
 
     final pendingSettings = outbox.pendingLocalIds(SyncEntityType.setting);
     var nextState = currentState;
@@ -214,17 +332,21 @@ class SyncStore {
         : (tasks: reconciledTasks, changed: false);
     final syncedTasks = myDayResult.tasks;
 
-    final validSelectedListId = lists != null
-        ? (sortedLists.any((l) => l.id == nextState.selectedListId)
-              ? nextState.selectedListId
-              : 'my_day')
-        : nextState.selectedListId;
-    final validSelectedTaskId = (tasks != null || lists != null)
-        ? (nextState.selectedTaskId != null &&
-                  syncedTasks.any((t) => t.id == nextState.selectedTaskId)
-              ? nextState.selectedTaskId
-              : null)
-        : nextState.selectedTaskId;
+    final selection = _sanitizeSelection(
+      state: nextState,
+      lists: sortedLists,
+      tasks: syncedTasks,
+      checkList: lists != null,
+      checkTask: tasks != null || lists != null,
+    );
+
+    final outboxPruned = (groups != null || lists != null || tasks != null)
+        ? _pruneOutbox(
+            groups: sortedGroups,
+            lists: sortedLists,
+            tasks: syncedTasks,
+          )
+        : false;
 
     final shouldSaveLists =
         lists != null || danglingGroupCleared || listsModifiedBySettings;
@@ -234,6 +356,7 @@ class SyncStore {
       if (groups != null) repository.saveGroups(sortedGroups),
       if (shouldSaveLists) repository.saveLists(sortedLists),
       if (shouldSaveTasks) repository.saveTasks(syncedTasks),
+      if (outboxPruned) repository.saveOutbox(),
       if (expandedOutcome.changed)
         settings.saveCompletedExpandedByList(expandedOutcome.expanded),
     ];
@@ -243,8 +366,8 @@ class SyncStore {
         groups: sortedGroups,
         lists: sortedLists,
         tasks: syncedTasks,
-        selectedListId: validSelectedListId,
-        selectedTaskId: validSelectedTaskId,
+        selectedListId: selection.selectedListId,
+        selectedTaskId: selection.selectedTaskId,
         completedExpandedByList: expandedOutcome.expanded,
       ),
       persisted: persistFutures.isEmpty

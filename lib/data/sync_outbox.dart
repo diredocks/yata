@@ -2,6 +2,8 @@ enum SyncEntityType { group, list, task, step, attachment, setting }
 
 enum SyncOpKind { upsert, delete }
 
+typedef SyncEntityKey = ({SyncEntityType type, String localId});
+
 /// A single ordered local mutation queued for push to Substrate.
 class SyncOutboxOp {
   const SyncOutboxOp({
@@ -222,7 +224,7 @@ class SyncOutboxQueue {
   /// commit sequence for concurrent pull reconciliation and delete tombstones.
   void ackBatch(
     Iterable<int> ackedSeqs,
-    Iterable<({SyncEntityType type, String localId})> clearedRemoteIdKeys,
+    Iterable<SyncEntityKey> clearedRemoteIdKeys,
   ) {
     for (final seq in ackedSeqs) {
       ackOp(seq);
@@ -398,11 +400,19 @@ class SyncOutboxQueue {
         (op.remoteId ?? resolveRemoteId(type, op.localId))!,
   };
 
-  /// Local IDs with pending ops or acknowledged commits strictly after [sinceSeq].
-  Set<String> modifiedLocalIdsSince(SyncEntityType type, int sinceSeq) {
+  /// Local IDs with pending ops (optionally restricted to `seq > sinceSeq`)
+  /// or acknowledged commits strictly after [sinceSeq].
+  Set<String> modifiedLocalIdsSince(
+    SyncEntityType type,
+    int sinceSeq, {
+    bool includePriorPending = true,
+  }) {
     final prefix = '${type.name}::';
     return {
-      ...pendingLocalIds(type),
+      for (final op in _ops)
+        if (op.entityType == type &&
+            (includePriorPending || op.seq > sinceSeq))
+          op.localId,
       for (final entry in _ackedEntitySeq.entries)
         if (entry.value > sinceSeq && entry.key.startsWith(prefix))
           entry.key.substring(prefix.length),
@@ -420,25 +430,70 @@ class SyncOutboxQueue {
     };
   }
 
-  /// Drops any pending non-delete ops for items whose parent list no longer exists.
-  void pruneOrphanedEntities({
+  /// Drops pending non-delete ops and stale remoteId mappings for entities
+  /// that no longer exist in local state. Returns `true` if any op or mapping
+  /// was removed.
+  bool pruneOrphanedEntities({
     required Set<String> validGroupIds,
-    required Set<String> validListIds,
+    required Set<String>? validListIds,
     required Set<String> validTaskIds,
+    Set<String>? validStepIds,
+    Set<String>? validAttachmentIds,
   }) {
+    var changed = false;
     _ops.removeWhere((op) {
       if (op.kind == SyncOpKind.delete) return false;
       final orphaned = switch (op.entityType) {
         SyncEntityType.group => !validGroupIds.contains(op.localId),
-        SyncEntityType.list => !validListIds.contains(op.localId),
+        SyncEntityType.list =>
+          validListIds != null && !validListIds.contains(op.localId),
         SyncEntityType.task => !validTaskIds.contains(op.localId),
         SyncEntityType.attachment =>
           op.parentLocalId != null && !validTaskIds.contains(op.parentLocalId!),
         SyncEntityType.step || SyncEntityType.setting => false,
       };
-      if (orphaned) _markDelete(op.seq);
+      if (orphaned) {
+        _markDelete(op.seq);
+        changed = true;
+      }
       return orphaned;
     });
+
+    final protectedRemoteKeys = <String>{};
+    for (final op in _ops) {
+      if (op.kind != SyncOpKind.delete) continue;
+      protectedRemoteKeys.add(op.key);
+      if (op.parentLocalId != null) {
+        protectedRemoteKeys.add(
+          remoteKey(SyncEntityType.task, op.parentLocalId!),
+        );
+      }
+    }
+
+    final staleRemoteKeys = <String>[];
+    for (final key in _remoteIdByKey.keys) {
+      if (protectedRemoteKeys.contains(key)) continue;
+      final sep = key.indexOf('::');
+      if (sep <= 0) continue;
+      final typeName = key.substring(0, sep);
+      final localId = key.substring(sep + 2);
+      final isStale = switch (typeName) {
+        'group' => !validGroupIds.contains(localId),
+        'list' => validListIds != null && !validListIds.contains(localId),
+        'task' => !validTaskIds.contains(localId),
+        'step' => validStepIds != null && !validStepIds.contains(localId),
+        'attachment' =>
+          validAttachmentIds != null && !validAttachmentIds.contains(localId),
+        _ => false,
+      };
+      if (isStale) staleRemoteKeys.add(key);
+    }
+    for (final key in staleRemoteKeys) {
+      _remoteIdByKey.remove(key);
+      _dirtyRemoteIds[key] = null;
+      changed = true;
+    }
+    return changed;
   }
 
   /// Captures dirty-entity and delete-tombstone protection sets for applying a
@@ -455,14 +510,17 @@ class SyncOutboxQueue {
     pruneKeepGroups: modifiedLocalIdsSince(
       SyncEntityType.group,
       pruneProtectSinceSeq,
+      includePriorPending: false,
     ),
     pruneKeepLists: modifiedLocalIdsSince(
       SyncEntityType.list,
       pruneProtectSinceSeq,
+      includePriorPending: false,
     ),
     pruneKeepTasks: modifiedLocalIdsSince(
       SyncEntityType.task,
       pruneProtectSinceSeq,
+      includePriorPending: false,
     ),
     deletedGroupRemotes: deletedRemoteIdsSince(
       SyncEntityType.group,

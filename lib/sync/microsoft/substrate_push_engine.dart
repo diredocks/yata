@@ -28,6 +28,7 @@ class OutboxPushOutcome {
     required this.pushedTasks,
     required this.clearedRemoteIdKeys,
     required this.followUpPullFolderRemoteIds,
+    this.deletedEntities = const {},
   });
 
   static const empty = OutboxPushOutcome(
@@ -43,17 +44,19 @@ class OutboxPushOutcome {
   final Map<String, ListGroup> pushedGroups;
   final Map<String, TodoList> pushedLists;
   final Map<String, TaskItem> pushedTasks;
-  final List<({SyncEntityType type, String localId})> clearedRemoteIdKeys;
+  final List<SyncEntityKey> clearedRemoteIdKeys;
 
   /// Folders needing one targeted task pull (recurring task completion or
   /// attachment upload where the server creates extra entities/links).
   final Set<String> followUpPullFolderRemoteIds;
+  final Set<SyncEntityKey> deletedEntities;
 
   bool get didWork =>
       ackedSeqs.isNotEmpty ||
       pushedGroups.isNotEmpty ||
       pushedLists.isNotEmpty ||
-      pushedTasks.isNotEmpty;
+      pushedTasks.isNotEmpty ||
+      deletedEntities.isNotEmpty;
 }
 
 bool _isReorderOnlyTaskPatch(
@@ -165,14 +168,17 @@ class _PushSession {
   final Future<void> Function(OutboxPushOutcome itemOutcome)? onItemCommitted;
 
   final List<int> _ackedSeqs = [];
-  final List<({SyncEntityType type, String localId})> _clearedRemoteIdKeys = [];
+  final List<SyncEntityKey> _clearedRemoteIdKeys = [];
   final Map<String, ListGroup> _pushedGroups = {};
   final Map<String, TodoList> _pushedLists = {};
   final Map<String, TaskItem> _pushedTasks = {};
   final Set<String> _followUpPullFolderRemoteIds = {};
-  final Set<String> _deletedGroupRemoteIds = {};
-  final Set<String> _deletedListRemoteIds = {};
-  final Set<String> _deletedTaskRemoteIds = {};
+  final Set<String> _deletedRemoteKeys = {};
+  final Set<SyncEntityKey> _deletedEntities = {};
+  AppError? _firstItemError;
+
+  static bool _isSessionFatalError(AppError error) =>
+      error is AuthError || error is DatabaseError || error.isRetryable;
 
   static bool _sameCalendarDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
@@ -225,6 +231,8 @@ class _PushSession {
       if (result.isError()) return Failure(result.exceptionOrNull()!);
     }
 
+    if (_firstItemError != null) return Failure(_firstItemError!);
+
     return Success(
       OutboxPushOutcome(
         ackedSeqs: _ackedSeqs,
@@ -233,17 +241,28 @@ class _PushSession {
         pushedTasks: _pushedTasks,
         clearedRemoteIdKeys: _clearedRemoteIdKeys,
         followUpPullFolderRemoteIds: _followUpPullFolderRemoteIds,
+        deletedEntities: _deletedEntities,
       ),
     );
   }
 
   AsyncAppResult<Unit> _runSequentially(
     List<SyncOutboxOp> ops,
-    AsyncAppResult<Unit> Function(SyncOutboxOp op) run,
-  ) async {
+    AsyncAppResult<Unit> Function(SyncOutboxOp op) run, {
+    bool stopOnItemError = false,
+  }) async {
     for (final op in ops) {
       final result = await run(op);
-      if (result.isError()) return result;
+      final err = result.exceptionOrNull();
+      if (err == null) continue;
+      if (err.isNotFound && await _handleNotFound(op)) continue;
+      if (_isSessionFatalError(err)) return Failure(err);
+      _firstItemError ??= err;
+      _log.warning(
+        'push op failed entity=${op.entityType.name} local=${op.localId} '
+        'error=${err.describe()}',
+      );
+      if (stopOnItemError) break;
     }
     return const Success(unit);
   }
@@ -253,13 +272,15 @@ class _PushSession {
     ListGroup? group,
     TodoList? list,
     TaskItem? task,
-    ({SyncEntityType type, String localId})? clearedRemoteIdKey,
+    SyncEntityKey? deletedEntity,
+    SyncEntityKey? clearedRemoteIdKey,
     String? followUpFolderRemoteId,
   }) async {
     _ackedSeqs.add(seq);
     if (group != null) _pushedGroups[group.id] = group;
     if (list != null) _pushedLists[list.id] = list;
     if (task != null) _pushedTasks[task.id] = task;
+    if (deletedEntity != null) _deletedEntities.add(deletedEntity);
     if (clearedRemoteIdKey != null) {
       _clearedRemoteIdKeys.add(clearedRemoteIdKey);
     }
@@ -279,6 +300,7 @@ class _PushSession {
         followUpPullFolderRemoteIds: followUpFolderRemoteId != null
             ? {followUpFolderRemoteId}
             : const {},
+        deletedEntities: deletedEntity != null ? {deletedEntity} : const {},
       ),
     );
   }
@@ -301,8 +323,10 @@ class _PushSession {
     required String Function(T item) idOf,
     required String? Function(T item) remoteIdOf,
     required T Function(T item, String remoteId) withRemoteId,
-    required Set<String> deletedRemoteIds,
   }) {
+    if (_deletedEntities.contains((type: entityType, localId: localId))) {
+      return null;
+    }
     final raw = _findLive(
       id: localId,
       pushed: pushed,
@@ -318,7 +342,9 @@ class _PushSession {
         : raw;
     final effectiveRemoteId = remoteIdOf(resolved);
     if (effectiveRemoteId != null &&
-        deletedRemoteIds.contains(effectiveRemoteId)) {
+        _deletedRemoteKeys.contains(
+          SyncOutboxQueue.remoteKey(entityType, effectiveRemoteId),
+        )) {
       return null;
     }
     return resolved;
@@ -332,7 +358,6 @@ class _PushSession {
     idOf: (g) => g.id,
     remoteIdOf: (g) => g.remoteId,
     withRemoteId: (g, remoteId) => g.copyWith(remoteId: remoteId),
-    deletedRemoteIds: _deletedGroupRemoteIds,
   );
 
   TodoList? _resolveList(String localId) => _resolveEntity(
@@ -343,24 +368,137 @@ class _PushSession {
     idOf: (l) => l.id,
     remoteIdOf: (l) => l.remoteId,
     withRemoteId: (l, remoteId) => l.copyWith(remoteId: remoteId),
-    deletedRemoteIds: _deletedListRemoteIds,
   );
 
-  TaskItem? _resolveTask(String localId) => _resolveEntity(
-    entityType: SyncEntityType.task,
-    localId: localId,
-    pushed: _pushedTasks,
-    selector: (s) => s.tasks,
-    idOf: (t) => t.id,
-    remoteIdOf: (t) => t.remoteId,
-    withRemoteId: (t, remoteId) => t.copyWith(remoteId: remoteId),
-    deletedRemoteIds: _deletedTaskRemoteIds,
-  );
+  TaskItem? _resolveTask(String localId) {
+    final resolved = _resolveEntity(
+      entityType: SyncEntityType.task,
+      localId: localId,
+      pushed: _pushedTasks,
+      selector: (s) => s.tasks,
+      idOf: (t) => t.id,
+      remoteIdOf: (t) => t.remoteId,
+      withRemoteId: (t, remoteId) => t.copyWith(remoteId: remoteId),
+    );
+    if (resolved != null &&
+        _deletedEntities.contains((
+          type: SyncEntityType.list,
+          localId: resolved.listId,
+        ))) {
+      return null;
+    }
+    return resolved;
+  }
 
   String? _resolveGroupRemoteId(String? groupId) {
     if (groupId == null) return null;
-    return _resolveGroup(groupId)?.remoteId ??
+    final liveGroup = _resolveGroup(groupId);
+    if (liveGroup == null) return null;
+    return liveGroup.remoteId ??
         outbox.resolveRemoteId(SyncEntityType.group, groupId);
+  }
+
+  Future<bool> _handleNotFound(SyncOutboxOp op) async {
+    if (op.kind == SyncOpKind.delete) {
+      await _commitOp(
+        seq: op.seq,
+        clearedRemoteIdKey: (type: op.entityType, localId: op.localId),
+      );
+      return true;
+    }
+    final target = _resolveNotFoundDeletionTarget(op);
+    if (target == null) return false;
+    await _commitRemoteDeletion(op, target.entity, remoteId: target.remoteId);
+    return true;
+  }
+
+  ({SyncEntityKey entity, String? remoteId})? _resolveNotFoundDeletionTarget(
+    SyncOutboxOp op,
+  ) {
+    switch (op.entityType) {
+      case SyncEntityType.group:
+        final group = _resolveGroup(op.localId);
+        if (group?.remoteId == null) return null;
+        return (
+          entity: (type: SyncEntityType.group, localId: group!.id),
+          remoteId: group.remoteId,
+        );
+      case SyncEntityType.list:
+        final list = _resolveList(op.localId);
+        if (list == null || list.isSmartList || list.remoteId == null) {
+          return null;
+        }
+        return (
+          entity: (type: SyncEntityType.list, localId: list.id),
+          remoteId: list.remoteId,
+        );
+      case SyncEntityType.task:
+        final task = _resolveTask(op.localId);
+        if (task == null) return null;
+        if (task.remoteId != null) {
+          return (
+            entity: (type: SyncEntityType.task, localId: task.id),
+            remoteId: task.remoteId,
+          );
+        }
+        final parentList = _resolveList(task.listId);
+        if (parentList == null ||
+            parentList.isSmartList ||
+            parentList.remoteId == null) {
+          return null;
+        }
+        return (
+          entity: (type: SyncEntityType.list, localId: parentList.id),
+          remoteId: parentList.remoteId,
+        );
+      case SyncEntityType.attachment:
+        final parentTask = op.parentLocalId != null
+            ? _resolveTask(op.parentLocalId!)
+            : null;
+        if (parentTask?.remoteId == null) return null;
+        return (
+          entity: (type: SyncEntityType.task, localId: parentTask!.id),
+          remoteId: parentTask.remoteId,
+        );
+      case SyncEntityType.step:
+      case SyncEntityType.setting:
+        return null;
+    }
+  }
+
+  Future<void> _commitRemoteDeletion(
+    SyncOutboxOp op,
+    SyncEntityKey entity, {
+    String? remoteId,
+  }) async {
+    final effectiveRemoteId =
+        remoteId ?? outbox.resolveRemoteId(entity.type, entity.localId);
+    if (effectiveRemoteId != null) {
+      _deletedRemoteKeys.add(
+        SyncOutboxQueue.remoteKey(entity.type, effectiveRemoteId),
+      );
+    }
+    switch (entity.type) {
+      case SyncEntityType.group:
+        _pushedGroups.remove(entity.localId);
+      case SyncEntityType.list:
+        _pushedLists.remove(entity.localId);
+      case SyncEntityType.task:
+        _pushedTasks.remove(entity.localId);
+      case SyncEntityType.step:
+      case SyncEntityType.attachment:
+      case SyncEntityType.setting:
+        break;
+    }
+    _log.info(
+      'push DELETE-WINS ${entity.type.name} local=${entity.localId} '
+      'remote=${shortSyncId(effectiveRemoteId)}',
+    );
+    await _commitOp(
+      seq: op.seq,
+      deletedEntity: entity,
+      clearedRemoteIdKey: entity,
+    );
   }
 
   String? _resolveLiveListRemoteId(String listId) {
@@ -385,22 +523,6 @@ class _PushSession {
     final result = rawFields.map((name) => byName[name]).nonNulls.toSet();
     return result.isEmpty ? null : result;
   }
-
-  AsyncAppResult<Unit> _deleteIgnoring(
-    AsyncAppResult<Unit> Function() deleteCall, {
-    bool Function(AppError error)? treatAsDeletedOn,
-  }) => deleteCall().recover((error) {
-    final ignored = (treatAsDeletedOn ?? (e) => e.isNotFound)(error);
-    return ignored ? const Success(unit) : Failure(error);
-  });
-
-  AsyncAppResult<T> _patchOrRecreateOnNotFound<T extends Object>({
-    required AsyncAppResult<T> Function() patch,
-    required AsyncAppResult<T> Function() create,
-  }) => patch().recover((error) async {
-    if (!error.isNotFound) return Failure<T, AppError>(error);
-    return create();
-  });
 
   AsyncAppResult<Unit> _pushSingleSetting(SyncOutboxOp op) async {
     final wireValue = extractSettingValueForKey(readState(), op.localId);
@@ -431,27 +553,31 @@ class _PushSession {
       case SyncEntityType.step:
         final taskRemoteId = _resolveParentTaskRemoteId(op);
         if (taskRemoteId == null) return Future.value(const Success(unit));
-        return _deleteIgnoring(
-          () => todoApi.deleteStep(taskRemoteId, remoteId),
-        );
+        return todoApi.deleteStep(taskRemoteId, remoteId);
       case SyncEntityType.attachment:
         final taskRemoteId = _resolveParentTaskRemoteId(op);
         if (taskRemoteId == null) return Future.value(const Success(unit));
-        return _deleteIgnoring(
-          () => todoApi.deleteLinkedEntity(taskRemoteId, remoteId),
-        );
+        return todoApi.deleteLinkedEntity(taskRemoteId, remoteId);
       case SyncEntityType.task:
-        _deletedTaskRemoteIds.add(remoteId);
-        return _deleteIgnoring(() => todoApi.deleteTask(remoteId));
-      case SyncEntityType.list:
-        _deletedListRemoteIds.add(remoteId);
-        return _deleteIgnoring(
-          () => todoApi.deleteFolder(remoteId),
-          treatAsDeletedOn: (e) => e.isNotFound || e.isCantDeleteDefaultFolder,
+        _deletedRemoteKeys.add(
+          SyncOutboxQueue.remoteKey(op.entityType, remoteId),
         );
+        return todoApi.deleteTask(remoteId);
+      case SyncEntityType.list:
+        _deletedRemoteKeys.add(
+          SyncOutboxQueue.remoteKey(op.entityType, remoteId),
+        );
+        return todoApi
+            .deleteFolder(remoteId)
+            .recover(
+              (e) =>
+                  e.isCantDeleteDefaultFolder ? const Success(unit) : Failure(e),
+            );
       case SyncEntityType.group:
-        _deletedGroupRemoteIds.add(remoteId);
-        return _deleteIgnoring(() => todoApi.deleteFolderGroup(remoteId));
+        _deletedRemoteKeys.add(
+          SyncOutboxQueue.remoteKey(op.entityType, remoteId),
+        );
+        return todoApi.deleteFolderGroup(remoteId);
       case SyncEntityType.setting:
         return Future.value(const Success(unit));
     }
@@ -464,15 +590,12 @@ class _PushSession {
       return const Success(unit);
     }
 
-    AsyncAppResult<RemoteFolderGroup> createGroup() =>
-        todoApi.createFolderGroup(
-          name: group.title,
-          orderDateTime: group.orderDateTime ?? nowUtc,
-        );
-
     final AppResult<RemoteFolderGroup> remoteResult;
     if (group.remoteId == null) {
-      remoteResult = await createGroup();
+      remoteResult = await todoApi.createFolderGroup(
+        name: group.title,
+        orderDateTime: group.orderDateTime ?? nowUtc,
+      );
     } else {
       final dirtyFields = _decodeEnumFields(op.fields, GroupDirtyField.values);
       final patchPayload = buildGroupPatchPayload(
@@ -487,9 +610,9 @@ class _PushSession {
         'push PATCH group=${group.id} remote=${shortSyncId(group.remoteId)} '
         'keys=${patchPayload.keys.toList()}',
       );
-      remoteResult = await _patchOrRecreateOnNotFound(
-        patch: () => todoApi.patchFolderGroup(group.remoteId!, patchPayload),
-        create: createGroup,
+      remoteResult = await todoApi.patchFolderGroup(
+        group.remoteId!,
+        patchPayload,
       );
     }
 
@@ -517,17 +640,15 @@ class _PushSession {
     }
 
     final parentGroupRemoteId = _resolveGroupRemoteId(list.groupId);
-    AsyncAppResult<RemoteTodoFolder> createFolder() => todoApi.createFolder(
-      buildFolderCreatePayload(
-        list,
-        parentGroupRemoteId: parentGroupRemoteId,
-        nowUtc: nowUtc,
-      ),
-    );
-
     final AppResult<RemoteTodoFolder> remoteResult;
     if (!list.isSmartList && list.remoteId == null) {
-      remoteResult = await createFolder();
+      remoteResult = await todoApi.createFolder(
+        buildFolderCreatePayload(
+          list,
+          parentGroupRemoteId: parentGroupRemoteId,
+          nowUtc: nowUtc,
+        ),
+      );
     } else if (list.remoteId != null) {
       final dirtyFields = _decodeEnumFields(op.fields, ListDirtyField.values);
       final patchPayload = buildFolderPatchPayload(
@@ -543,10 +664,7 @@ class _PushSession {
         'push PATCH folder=${list.id} remote=${shortSyncId(list.remoteId)} '
         'keys=${patchPayload.keys.toList()}',
       );
-      remoteResult = await _patchOrRecreateOnNotFound(
-        patch: () => todoApi.patchFolder(list.remoteId!, patchPayload),
-        create: createFolder,
-      );
+      remoteResult = await todoApi.patchFolder(list.remoteId!, patchPayload);
     } else {
       await _commitOp(seq: op.seq);
       return const Success(unit);
@@ -572,7 +690,11 @@ class _PushSession {
     return runResultsWithConcurrency(
       opsByLocalId.values.toList(),
       SubstratePushEngine._maxConcurrentTaskPushes,
-      (opsForTask) => _runSequentially(opsForTask, _pushSingleTaskOp),
+      (opsForTask) => _runSequentially(
+        opsForTask,
+        _pushSingleTaskOp,
+        stopOnItemError: true,
+      ),
     );
   }
 
@@ -633,7 +755,6 @@ class _PushSession {
         : await _patchTaskWithConflictRetry(
             task: task,
             payload: payload,
-            folderRemoteId: folderRemoteId,
             dirtyFields: dirtyFields,
             baseNote: op.baseNote,
           );
@@ -643,12 +764,7 @@ class _PushSession {
     final remoteTask = patchOutcome.remoteTask;
     outbox.recordRemoteId(SyncEntityType.task, task.id, remoteTask.id);
 
-    final wasRecreated = !isCreate && remoteTask.id != task.remoteId;
-    final stepsToSync = wasRecreated
-        ? [for (final s in task.steps) s.copyWith(remoteId: null)]
-        : task.steps;
-    final Set<String>? stepDirtyIdsForTask =
-        (wasRecreated || isCreate || dirtyFields == null)
+    final Set<String>? stepDirtyIdsForTask = (isCreate || dirtyFields == null)
         ? null
         : (dirtyFields.contains(TaskDirtyField.steps)
               ? op.stepIds
@@ -656,7 +772,7 @@ class _PushSession {
 
     final stepsResult = await _syncStepsForTask(
       taskRemoteId: remoteTask.id,
-      localSteps: stepsToSync,
+      localSteps: task.steps,
       dirtyStepIds: stepDirtyIdsForTask,
     );
     if (stepsResult.isError()) return Failure(stepsResult.exceptionOrNull()!);
@@ -801,7 +917,6 @@ class _PushSession {
   AsyncAppResult<_TaskPatchOutcome> _patchTaskWithConflictRetry({
     required TaskItem task,
     required Map<String, dynamic> payload,
-    required String folderRemoteId,
     required Set<TaskDirtyField>? dirtyFields,
     required String? baseNote,
   }) async {
@@ -866,20 +981,6 @@ class _PushSession {
         task.remoteId!,
         currentPayload,
         changeKey: currentChangeKey,
-      );
-    }
-
-    final finalErr = result.exceptionOrNull();
-    if (finalErr != null && finalErr.isNotFound) {
-      final createPayload = buildTaskWritePayload(
-        task,
-        parentFolderRemoteId: folderRemoteId,
-        isCreate: true,
-        firstDayOfWeek: startOfWeek,
-      );
-      result = await _createTaskWithConflictRetry(
-        folderRemoteId,
-        createPayload,
       );
     }
 
@@ -962,29 +1063,27 @@ class _PushSession {
         continue;
       }
 
-      final stepResult = await _patchOrRecreateOnNotFound<TaskStep>(
-        patch: () => todoApi
-            .patchStep(taskRemoteId, step.remoteId!, {
-              'Subject': step.title,
-              'IsCompleted': step.isCompleted,
-              if (step.orderDateTime != null)
-                'OrderDateTime': formatSubstrateUtcTimestamp(
-                  step.orderDateTime!,
-                ),
-            })
-            .map(
-              (patched) => step.copyWith(
-                orderDateTime: patched.orderDateTime ?? step.orderDateTime,
-              ),
-            ),
-        create: () => _createAndSyncStep(
-          taskRemoteId: taskRemoteId,
-          step: step,
-          stepOrder: stepOrder,
+      final stepResult = await todoApi.patchStep(taskRemoteId, step.remoteId!, {
+        'Subject': step.title,
+        'IsCompleted': step.isCompleted,
+        if (step.orderDateTime != null)
+          'OrderDateTime': formatSubstrateUtcTimestamp(step.orderDateTime!),
+      });
+      final stepErr = stepResult.exceptionOrNull();
+      if (stepErr != null) {
+        if (stepErr.isNotFound) {
+          final probe = await todoApi.getTask(taskRemoteId);
+          if (probe.isError()) return Failure(probe.exceptionOrNull()!);
+          continue;
+        }
+        return Failure(stepErr);
+      }
+      final patched = stepResult.getOrNull()!;
+      syncedSteps.add(
+        step.copyWith(
+          orderDateTime: patched.orderDateTime ?? step.orderDateTime,
         ),
       );
-      if (stepResult.isError()) return Failure(stepResult.exceptionOrNull()!);
-      syncedSteps.add(stepResult.getOrNull()!);
     }
 
     return Success(syncedSteps);

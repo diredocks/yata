@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../account/account_provider.dart';
+import '../core/result/app_result.dart';
 import '../data/todo_provider.dart';
 import 'home_widget_service.dart';
 
@@ -96,14 +97,18 @@ class HomeWidgetSyncController with WidgetsBindingObserver {
   }
 
   Future<HomeWidgetAction?> bootstrap() async {
-    _strings = await HomeWidgetService.resolveSystemStrings();
-    if (_disposed) return null;
-    await syncFromWidget(reason: 'startup');
-    if (_disposed) return null;
-    pushCurrentState(force: true);
-    final uri = await _service.consumeInitialLaunchUri();
-    if (_disposed) return null;
-    return HomeWidgetAction.fromUri(uri);
+    HomeWidgetAction? action;
+    await guardAsyncUnit(() async {
+      _strings = await HomeWidgetService.resolveSystemStrings();
+      if (_disposed) return;
+      await syncFromWidget(reason: 'startup');
+      if (_disposed) return;
+      pushCurrentState(force: true);
+      final uri = await _service.consumeInitialLaunchUri();
+      if (_disposed) return;
+      action = HomeWidgetAction.fromUri(uri);
+    }, operation: 'homeWidgetBootstrap');
+    return action;
   }
 
   Future<void> syncFromWidget({required String reason}) {
@@ -181,25 +186,34 @@ class HomeWidgetSyncController with WidgetsBindingObserver {
     unawaited(_refreshStringsAndPush(locales));
   }
 
-  Future<void> _refreshStringsAndPush(List<Locale>? locales) async {
-    _strings = await HomeWidgetService.resolveSystemStrings(locales: locales);
-    if (_disposed) return;
-    pushCurrentState();
+  Future<void> _refreshStringsAndPush(List<Locale>? locales) {
+    return guardAsyncUnit(() async {
+      _strings = await HomeWidgetService.resolveSystemStrings(locales: locales);
+      if (_disposed) return;
+      pushCurrentState();
+    }, operation: 'homeWidgetRefreshStrings');
   }
 
-  Future<void> _handleClickedUri(Uri uri) async {
-    await syncFromWidget(reason: 'click');
-    if (_disposed) return;
-    final action = HomeWidgetAction.fromUri(uri);
-    if (action != null && !_actionsController.isClosed) {
-      _actionsController.add(action);
-    }
+  Future<void> _handleClickedUri(Uri uri) {
+    return guardAsyncUnit(() async {
+      await syncFromWidget(reason: 'click');
+      if (_disposed) return;
+      final action = HomeWidgetAction.fromUri(uri);
+      if (action != null && !_actionsController.isClosed) {
+        _actionsController.add(action);
+      }
+    }, operation: 'homeWidgetHandleClick');
   }
 
-  Future<void> _enqueue(Future<void> Function() task) {
-    final next = _syncChain.then((_) => task(), onError: (_) => task());
-    _syncChain = next.then((_) {}, onError: (_, _) {});
-    return next;
+  Future<void> _enqueue(
+    Future<void> Function() task, {
+    String operation = 'homeWidgetSync',
+  }) {
+    final next = _syncChain.then(
+      (_) => guardAsyncUnit(task, operation: operation),
+    );
+    _syncChain = next.then((_) {});
+    return _syncChain;
   }
 
   void dispose() {

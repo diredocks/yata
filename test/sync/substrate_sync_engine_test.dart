@@ -640,7 +640,7 @@ void main() {
       },
     );
 
-    test('recovers from ErrorItemNotFound (404) on deleted/missing task PATCH and clears pending deletes', () async {
+    test('applies delete-wins on ErrorItemNotFound (404) for deleted/missing task PATCH and clears pending deletes', () async {
       final now = DateTime.utc(2026, 4, 15, 10, 0);
       final fakeApi = FakeSubstrateApi()
         ..onDeleteTask = (taskRemoteId) async {
@@ -677,7 +677,7 @@ void main() {
             updatedAt: now,
           ),
           TaskItem(
-            id: 't-recreate',
+            id: 't-missing',
             listId: 'tasks',
             title: 'Edited after remote delete',
             remoteId: 'rt-missing',
@@ -690,7 +690,7 @@ void main() {
           ),
         ],
         pendingDeletedTaskRemoteIds: const ['rt-ghost'],
-        dirtyTaskIds: const {'t-ghost', 't-recreate'},
+        dirtyTaskIds: const {'t-ghost', 't-missing'},
       );
 
       await h.container.read(syncProvider.notifier).syncNow();
@@ -701,6 +701,14 @@ void main() {
         isEmpty,
       );
       expect(h.repository.outbox.pendingLocalIds(SyncEntityType.task), isEmpty);
+      expect(
+        h.repository.outbox.resolveRemoteId(SyncEntityType.task, 't-missing'),
+        isNull,
+      );
+      expect(
+        h.repository.outbox.resolveRemoteId(SyncEntityType.step, 's1'),
+        isNull,
+      );
 
       expect(
         h.api.callLog.any((c) => c.contains('PATCH tasks/rt-ghost')),
@@ -711,17 +719,15 @@ void main() {
         isFalse,
       );
       expect(
-        h.api.callLog,
-        contains(
-          'POST taskfolders/rf-default/tasks Edited after remote delete',
+        h.api.callLog.any(
+          (c) => c.contains('POST taskfolders/rf-default/tasks'),
         ),
+        isFalse,
       );
-      final recreated = h.container
-          .read(todoProvider)
-          .tasks
-          .firstWhere((t) => t.id == 't-recreate');
-      expect(recreated.remoteId, isNot('rt-missing'));
-      expect(recreated.steps.single.remoteId, isNot('rs-old'));
+      expect(
+        h.container.read(todoProvider).tasks.any((t) => t.id == 't-missing'),
+        isFalse,
+      );
     });
 
     test('folder theme PATCH and delta merge round-trip solid <-> photo backgrounds', () {

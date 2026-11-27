@@ -462,6 +462,7 @@ class SubstratePullEngine {
       liveTasks: liveState.tasks,
       protection: protection,
       idGenerator: idGenerator,
+      deferDirtyDeletes: patch.isSelective,
     );
 
     final finalGroups = reconciled.groups ?? liveState.groups;
@@ -482,8 +483,16 @@ class SubstratePullEngine {
       final localListId = localListIdByFolderRemoteId[folderRemoteId];
       if (localListId == null) continue;
       final taskDeltaResult = taskFetch.page;
-      if (taskDeltaResult.deltaLink != null) {
+      final hasDeferredDirtyDelete = reconciled.deferredDeleteFolderRemoteIds
+          .contains(folderRemoteId);
+      if (taskDeltaResult.deltaLink != null && !hasDeferredDirtyDelete) {
         taskDeltaLinks[folderRemoteId] = taskDeltaResult.deltaLink!;
+      } else if (hasDeferredDirtyDelete) {
+        _log.info(
+          'pull folder="${listTitleByLocalId[localListId] ?? localListId}" '
+          'remote=${shortSyncId(folderRemoteId)} withheld deltaLink due to '
+          'deferred dirty delete',
+        );
       }
       _log.info(
         'pull folder="${listTitleByLocalId[localListId] ?? localListId}" '

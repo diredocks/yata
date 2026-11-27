@@ -92,18 +92,23 @@ Future<BackgroundPassOutcome> runBackgroundOutboxPass({
   }
 
   final store = SyncStore(repository: repository, settings: settings);
+  var didCommitAny = false;
   final result = await SubstratePushEngine(todoApi).pushOutbox(
     readState: () => _buildSnapshotState(repository, settings),
     outbox: repository.outbox,
     nowUtc: DateTime.now().toUtc(),
-    onItemCommitted: store.commitPushHeadless,
+    onItemCommitted: (itemOutcome) async {
+      if (itemOutcome.didWork) didCommitAny = true;
+      await store.commitPushHeadless(itemOutcome);
+    },
     laneFilter: laneFilter,
     reason: reason,
   );
 
   return result.fold(
     (outcome) {
-      if (outcome.didWork) {
+      final didMutateDb = outcome.didWork || didCommitAny;
+      if (didMutateDb) {
         (onDbChanged ?? BackgroundWorkerEventBus.emit)(
           BackgroundDbChangedEvent(
             accountKey: repository.accountKey,
@@ -117,15 +122,24 @@ Future<BackgroundPassOutcome> runBackgroundOutboxPass({
       );
       _log.info(
         'Headless outbox push lane=${lane?.name ?? 'all'} reason=$reason '
-        'didWork=${outcome.didWork} pendingTransfers=$hasPendingTransfers',
+        'didWork=$didMutateDb pendingTransfers=$hasPendingTransfers',
       );
       return (
         shouldRetry: false,
         hasPendingTransfers: hasPendingTransfers,
-        didMutateDb: outcome.didWork,
+        didMutateDb: didMutateDb,
       );
     },
     (error) {
+      if (didCommitAny) {
+        (onDbChanged ?? BackgroundWorkerEventBus.emit)(
+          BackgroundDbChangedEvent(
+            accountKey: repository.accountKey,
+            lane: lane,
+            reason: reason,
+          ),
+        );
+      }
       _log.warning(
         'Headless outbox push failed lane=${lane?.name ?? 'all'} '
         'reason=$reason: ${error.describe()}',
@@ -136,7 +150,7 @@ Future<BackgroundPassOutcome> runBackgroundOutboxPass({
       return (
         shouldRetry: error.isRetryable,
         hasPendingTransfers: hasPendingTransfers,
-        didMutateDb: false,
+        didMutateDb: didCommitAny,
       );
     },
   );

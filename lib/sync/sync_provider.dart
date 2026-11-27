@@ -102,11 +102,77 @@ class SyncNotifier extends Notifier<SyncState> {
   bool _disposed = false;
   bool _isForeground = true;
   int _pullGeneration = 0;
+  AppError? _pushError;
+  AppError? _pullError;
+  bool _hasCompletedSync = false;
+  String? _activeAccountId;
 
   bool get _hasActiveSync => _pushLane.isRunning || _pullLane.isRunning;
 
   bool get _delegatesTransfersToBackground =>
       ref.read(backgroundSyncSchedulerProvider).handlesTransfersInBackground;
+
+  bool get _hasPendingForegroundPushOps {
+    final ops = ref.read(todoProvider.notifier).repository.outbox.ops;
+    return _delegatesTransfersToBackground
+        ? ops.any((op) => !op.isAttachmentUpload)
+        : ops.isNotEmpty;
+  }
+
+  AppError? get _effectiveError {
+    if (_pushError != null &&
+        _pushError is! AuthError &&
+        !_hasPendingForegroundPushOps) {
+      _pushError = null;
+    }
+    if (_pullError is AuthError) return _pullError;
+    if (_pushError is AuthError) return _pushError;
+    return _pullError ?? _pushError;
+  }
+
+  static SyncStatus _statusForError(AppError error) => switch (error) {
+    AuthError(:final requiresReauth) when requiresReauth =>
+      SyncStatus.requiresRelogin,
+    _ => SyncStatus.error,
+  };
+
+  void _publishState({DateTime? lastSyncedAt, bool preferIdle = false}) {
+    if (_disposed) return;
+    if (_hasActiveSync) {
+      state = state.copyWith(
+        status: SyncStatus.syncing,
+        lastSyncedAt: lastSyncedAt ?? state.lastSyncedAt,
+        error: null,
+      );
+      return;
+    }
+    final error = _effectiveError;
+    final nextStatus = error != null
+        ? _statusForError(error)
+        : (preferIdle
+              ? SyncStatus.idle
+              : (_hasCompletedSync ? SyncStatus.success : SyncStatus.idle));
+    state = state.copyWith(
+      status: nextStatus,
+      lastSyncedAt: lastSyncedAt ?? state.lastSyncedAt,
+      error: error?.userMessage,
+    );
+  }
+
+  Future<void> _persistAccountSyncStatus(
+    MicrosoftAccount active, {
+    DateTime? lastSyncedAt,
+  }) {
+    final error = _effectiveError;
+    return ref
+        .read(accountProvider.notifier)
+        .updateSyncStatus(
+          active.id,
+          lastSyncedAt: lastSyncedAt,
+          syncError: error?.userMessage,
+          clearSyncError: error == null,
+        );
+  }
 
   MicrosoftAccount? get _activeMicrosoftAccount {
     final active = ref.read(accountProvider).activeAccount;
@@ -144,6 +210,12 @@ class SyncNotifier extends Notifier<SyncState> {
         ),
       ),
     );
+    if (accountIdentity.id != _activeAccountId) {
+      _pushError = null;
+      _pullError = null;
+      _hasCompletedSync = false;
+      _activeAccountId = accountIdentity.id;
+    }
     final activeAccount = ref.read(accountProvider).activeAccount;
 
     ref.listen<int>(todoProvider.select((s) => s.mutationVersion), (
@@ -159,6 +231,9 @@ class SyncNotifier extends Notifier<SyncState> {
       realtime.stop(clearPending: true);
       _stopPeriodicSync();
       _resetChannels();
+      _pushError = null;
+      _pullError = null;
+      _hasCompletedSync = false;
       return const SyncState();
     }
 
@@ -343,7 +418,8 @@ class SyncNotifier extends Notifier<SyncState> {
       if (!_disposed &&
           _isForeground &&
           needsFollowUpFull &&
-          state.status == SyncStatus.success) {
+          _pullError == null &&
+          !state.requiresRelogin) {
         await syncNow(forceFullSync: true, reason: SyncReason.startup);
       }
     }());
@@ -409,10 +485,10 @@ class SyncNotifier extends Notifier<SyncState> {
     final outbox = ref.read(todoProvider.notifier).repository.outbox;
     var effective = command;
     if (outbox.isNotEmpty) {
+      effective = command.protectSince(outbox.lastSeq);
       if (_pullLane.isRunning) {
         unawaited(_pushNow(reason: command.reason));
       } else {
-        effective = command.protectSince(outbox.lastSeq);
         await _pushNow(reason: command.reason, enqueueFollowUpPull: false);
         if (_disposed) return;
       }
@@ -472,8 +548,12 @@ class SyncNotifier extends Notifier<SyncState> {
       },
       onCycleComplete: () async {
         if (lastSucceeded && !_hasActiveSync) {
-          state = state.copyWith(status: SyncStatus.success, error: null);
+          final active = _activeMicrosoftAccount;
+          if (active != null) {
+            await _persistAccountSyncStatus(active);
+          }
         }
+        _publishState();
         await _enqueueBackgroundTransferIfPending(reason);
         if (enqueueFollowUpPull &&
             followUpFolders.isNotEmpty &&
@@ -499,6 +579,9 @@ class SyncNotifier extends Notifier<SyncState> {
       return Future<void>.value();
     }
 
+    DateTime? lastSyncedAt;
+    var lastCancelled = false;
+
     if (!_pullLane.isRunning) {
       state = state.copyWith(status: SyncStatus.syncing, error: null);
     }
@@ -510,8 +593,13 @@ class SyncNotifier extends Notifier<SyncState> {
         'syncNow coalesced into in-flight sync: reason=${command.reason.label} '
         'scope=${command.scope.name} (queuedScope=${merged.scope.name})',
       ),
-      execute: _pullOnce,
+      execute: (cmd) async {
+        final res = await _pullOnce(cmd);
+        lastCancelled = res.cancelled;
+        if (res.syncedAt != null) lastSyncedAt = res.syncedAt;
+      },
       onCycleComplete: () async {
+        _publishState(lastSyncedAt: lastSyncedAt, preferIdle: lastCancelled);
         if (!_hasActiveSync) {
           await _drainRealtimeIfReady();
         }
@@ -547,7 +635,9 @@ class SyncNotifier extends Notifier<SyncState> {
     if (_disposed) return null;
 
     return result.fold(
-      (outcome) async {
+      (outcome) {
+        _pushError = null;
+        _hasCompletedSync = true;
         _log.info(
           'push success reason=${reason.label} '
           'pushedTasks=${outcome.pushedTasks.length}',
@@ -555,15 +645,24 @@ class SyncNotifier extends Notifier<SyncState> {
         return outcome;
       },
       (error) async {
-        await _handleSyncError(active, reason, error);
+        _pushError = error;
+        _log.info(
+          'sync error reason=${reason.label} status=${_statusForError(error)} '
+          'error=${error.describe()}',
+        );
+        await _persistAccountSyncStatus(active);
         return null;
       },
     );
   }
 
-  Future<bool> _pullOnce(PullCommand command) async {
+  Future<({bool ok, DateTime? syncedAt, bool cancelled})> _pullOnce(
+    PullCommand command,
+  ) async {
     final active = _activeMicrosoftAccount;
-    if (_disposed || active == null) return false;
+    if (_disposed || active == null) {
+      return (ok: false, syncedAt: null, cancelled: false);
+    }
 
     final gen = ++_pullGeneration;
     final forceFullSync = command.scope == PullScope.full;
@@ -598,7 +697,9 @@ class SyncNotifier extends Notifier<SyncState> {
           reason: command.reason.label,
         );
 
-    if (_disposed) return false;
+    if (_disposed) {
+      return (ok: false, syncedAt: null, cancelled: false);
+    }
 
     return result.fold(
       (outcome) async {
@@ -607,23 +708,16 @@ class SyncNotifier extends Notifier<SyncState> {
             'sync cancelled reason=${command.reason.label} '
             'forceFullSync=$forceFullSync',
           );
-          if (!_disposed && !_pushLane.isRunning) {
-            state = state.copyWith(status: SyncStatus.idle);
-          }
-          return false;
+          return (ok: false, syncedAt: null, cancelled: true);
         }
+        _pullError = null;
+        _hasCompletedSync = true;
         _log.info(
           'sync success reason=${command.reason.label} '
           'forceFullSync=$forceFullSync '
           'lists=${outcome.lists.length} tasks=${outcome.tasks.length}',
         );
-        await ref
-            .read(accountProvider.notifier)
-            .updateSyncStatus(
-              active.id,
-              lastSyncedAt: outcome.syncedAt,
-              clearSyncError: true,
-            );
+        await _persistAccountSyncStatus(active, lastSyncedAt: outcome.syncedAt);
         await refreshMicrosoftProfileIfIncomplete(
           authClient: ref.read(microsoftAuthClientProvider),
           tokenStorage: ref.read(authTokenStorageProvider),
@@ -633,45 +727,18 @@ class SyncNotifier extends Notifier<SyncState> {
               .read(accountProvider.notifier)
               .updateMicrosoftProfile,
         );
-        if (!_disposed && !_pushLane.isRunning) {
-          state = state.copyWith(
-            status: SyncStatus.success,
-            lastSyncedAt: outcome.syncedAt,
-            error: null,
-          );
-        } else if (!_disposed) {
-          state = state.copyWith(lastSyncedAt: outcome.syncedAt, error: null);
-        }
-        return true;
+        return (ok: true, syncedAt: outcome.syncedAt, cancelled: false);
       },
       (error) async {
-        await _handleSyncError(active, command.reason, error);
-        return false;
+        _pullError = error;
+        _log.info(
+          'sync error reason=${command.reason.label} '
+          'status=${_statusForError(error)} error=${error.describe()}',
+        );
+        await _persistAccountSyncStatus(active);
+        return (ok: false, syncedAt: null, cancelled: false);
       },
     );
-  }
-
-  Future<void> _handleSyncError(
-    MicrosoftAccount active,
-    SyncReason reason,
-    AppError error,
-  ) async {
-    final status = switch (error) {
-      AuthError(:final requiresReauth) when requiresReauth =>
-        SyncStatus.requiresRelogin,
-      _ => SyncStatus.error,
-    };
-    _log.info(
-      'sync error reason=${reason.label} status=$status '
-      'error=${error.describe()}',
-    );
-    final message = error.userMessage;
-    await ref
-        .read(accountProvider.notifier)
-        .updateSyncStatus(active.id, syncError: message);
-    if (!_disposed) {
-      state = state.copyWith(status: status, error: message);
-    }
   }
 
   Future<void> _drainRealtimeIfReady() async {

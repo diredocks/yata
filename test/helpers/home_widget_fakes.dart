@@ -36,6 +36,8 @@ class FakeHomeWidgetTransport implements HomeWidgetTransport {
   int updateCalls = 0;
   Uri? initialLaunchUri;
   Future<void> Function()? onSaveSnapshotHook;
+  Object? getDataError;
+  Object? initialLaunchUriError;
 
   void setPendingOps(List<WidgetPendingOp> ops) {
     storage[kWidgetPendingOpsKey] = jsonEncode([
@@ -52,7 +54,10 @@ class FakeHomeWidgetTransport implements HomeWidgetTransport {
   }
 
   @override
-  Future<T?> getData<T>(String key) async => storage[key] as T?;
+  Future<T?> getData<T>(String key) async {
+    if (getDataError != null) throw getDataError!;
+    return storage[key] as T?;
+  }
 
   @override
   Future<void> saveData(String key, Object? value) async {
@@ -82,7 +87,10 @@ class FakeHomeWidgetTransport implements HomeWidgetTransport {
   }
 
   @override
-  Future<Uri?> initiallyLaunchedFromHomeWidget() async => initialLaunchUri;
+  Future<Uri?> initiallyLaunchedFromHomeWidget() async {
+    if (initialLaunchUriError != null) throw initialLaunchUriError!;
+    return initialLaunchUri;
+  }
 
   @override
   Stream<Uri?> get widgetClicked => clickedController.stream;

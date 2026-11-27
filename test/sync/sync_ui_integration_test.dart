@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,7 +13,9 @@ import 'package:yata/models/task_item.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
 import 'package:yata/sync/sync_provider.dart';
 import 'package:yata/sync/microsoft/todo_wire_codecs.dart';
+import 'package:yata/widget/home_widget_sync.dart';
 
+import '../helpers/home_widget_fakes.dart';
 import '../helpers/microsoft_sync_fakes.dart';
 
 Future<void> _pumpYataApp(
@@ -20,6 +23,7 @@ Future<void> _pumpYataApp(
   required SharedPreferences prefs,
   required FakeSubstrateApi api,
   bool startupSyncEnabled = false,
+  List<Override> extraOverrides = const [],
   Key? key,
 }) async {
   await tester.pumpWidget(
@@ -32,6 +36,7 @@ Future<void> _pumpYataApp(
         realtimeSyncEnabledProvider.overrideWithValue(false),
         periodicSyncEnabledProvider.overrideWithValue(false),
         startupSyncEnabledProvider.overrideWithValue(startupSyncEnabled),
+        ...extraOverrides,
       ],
       child: const YataApp(),
     ),
@@ -678,6 +683,48 @@ void main() {
           tester.getTopLeft(find.text('Task Two')).dy,
           lessThan(tester.getTopLeft(find.text('Task One')).dy),
         );
+      },
+    );
+
+    testWidgets(
+      'cold-start syncOnSessionStart still runs when home widget transport throws during bootstrap',
+      (tester) async {
+        final session = await seedMicrosoftSyncSession(
+          accountId: 'acct_startup_widget_throw',
+          lastSyncedAt: DateTime.utc(2026, 11, 26),
+          defaultTasksFolderRemoteId: 'rf-default',
+          groupsDeltaLink: 'dl-groups-1',
+          foldersDeltaLink: 'dl-folders-1',
+          taskDeltaLinks: const {'rf-default': 'dl-tasks-1'},
+        );
+        final fakeApi = FakeSubstrateApi()
+          ..onFetchGroupsDelta = ((dl) =>
+              DeltaPageResult(items: const [], deltaLink: dl ?? 'dl-groups-2'))
+          ..onFetchFoldersDelta = ((dl) =>
+              DeltaPageResult(items: const [], deltaLink: dl ?? 'dl-folders-2'))
+          ..onFetchTasksDelta = ((folderId, dl) =>
+              DeltaPageResult(items: const [], deltaLink: dl ?? 'dl-tasks-2'));
+        addTearDown(fakeApi.realtimeController.close);
+
+        final widgetTransport = FakeHomeWidgetTransport()
+          ..getDataError = StateError('widget read failed')
+          ..initialLaunchUriError = StateError('widget launch uri failed');
+        addTearDown(widgetTransport.closeStreams);
+
+        await _pumpYataApp(
+          tester,
+          prefs: session.prefs,
+          api: fakeApi,
+          startupSyncEnabled: true,
+          extraOverrides: [
+            homeWidgetServiceProvider.overrideWithValue(
+              HomeWidgetService(widgetTransport),
+            ),
+          ],
+        );
+
+        expect(fakeApi.callLog, contains('GET tasks(rf-default,dl-tasks-1)'));
+        expect(fakeApi.callLog, contains('GET tasks(rf-default,null)'));
       },
     );
   });
