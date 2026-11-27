@@ -71,7 +71,6 @@ class RemoteTodoFolder {
     this.folderType,
     this.parentFolderGroupId,
     this.themeColor,
-    this.themeBackground,
     this.showCompletedTasks = true,
     this.sortOption = TaskSortOption.defaultOrder,
     this.sortAscending = false,
@@ -85,7 +84,6 @@ class RemoteTodoFolder {
   final String? folderType;
   final String? parentFolderGroupId;
   final String? themeColor;
-  final String? themeBackground;
   final bool showCompletedTasks;
   final TaskSortOption sortOption;
   final bool sortAscending;
@@ -110,7 +108,6 @@ class RemoteTodoFolder {
       folderType: json['FolderType'] as String?,
       parentFolderGroupId: json['ParentFolderGroupId'] as String?,
       themeColor: json['ThemeColor'] as String?,
-      themeBackground: json['ThemeBackground'] as String?,
       showCompletedTasks: json['ShowCompletedTasks'] as bool? ?? true,
       sortOption: sortOption,
       sortAscending: sortAscending,
@@ -150,7 +147,6 @@ class RemoteLinkedEntity {
     this.entityType = 'file',
     this.entitySubType,
     this.webLink,
-    this.applicationName,
     this.size = 0,
     this.contentType,
     this.lastModifiedDateTime,
@@ -161,7 +157,6 @@ class RemoteLinkedEntity {
   final String entityType;
   final String? entitySubType;
   final String? webLink;
-  final String? applicationName;
   final int size;
   final String? contentType;
   final DateTime? lastModifiedDateTime;
@@ -178,7 +173,6 @@ class RemoteLinkedEntity {
       entityType: json['EntityType'] as String? ?? 'file',
       entitySubType: json['EntitySubType'] as String?,
       webLink: json['WebLink'] as String?,
-      applicationName: json['ApplicationName'] as String?,
       size: (previewMap?['Size'] as num?)?.toInt() ?? 0,
       contentType: previewMap?['ContentType'] as String?,
       lastModifiedDateTime: parseSubstrateTimestamp(
@@ -271,7 +265,6 @@ class RemoteTodoTask {
     this.lastModifiedDateTime,
     this.recurrence = RecurrenceType.none,
     this.rawRecurrence,
-    this.uncommittedDue = false,
     this.subtasks = const [],
     this.linkedEntities = const [],
     this.isDeleted = false,
@@ -299,7 +292,6 @@ class RemoteTodoTask {
   final DateTime? lastModifiedDateTime;
   final RecurrenceType recurrence;
   final Map<String, dynamic>? rawRecurrence;
-  final bool uncommittedDue;
   final List<RemoteTaskStep> subtasks;
   final List<RemoteLinkedEntity> linkedEntities;
   final bool isDeleted;
@@ -379,7 +371,6 @@ class RemoteTodoTask {
       ),
       recurrence: decodeSubstrateRecurrence(recurrenceMap),
       rawRecurrence: normalizeRawRecurrence(recurrenceMap),
-      uncommittedDue: json['UncommittedDue'] as bool? ?? false,
       subtasks: subtasks,
       linkedEntities: linkedEntities,
       isDeleted: reason == 'deleted',
