@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,7 +5,6 @@ import '../data/order_date_time.dart';
 import '../data/todo_provider.dart';
 import '../models/task_item.dart';
 import '../tasksview/tasks_view_presenter.dart';
-import 'attachments/attachment_service.dart';
 import 'recurrence/task_pickers.dart';
 
 /// Presenter for `detailview/DetailViewFragment`, matching `detailview/DetailViewPresenter`.
@@ -149,13 +146,7 @@ class DetailViewPresenter {
   }
 
   void deleteTask(String taskId) {
-    final removed = _state.tasks.where((t) => t.id == taskId).toList();
     final updated = _state.tasks.where((t) => t.id != taskId).toList();
-    unawaited(
-      _ref
-          .read(attachmentServiceProvider)
-          .deleteUnreferencedTaskCaches(removed, remainingTasks: updated),
-    );
     _commitTasks(updated, clearSelectedTaskId: _state.selectedTaskId == taskId);
   }
 
@@ -181,10 +172,6 @@ class DetailViewPresenter {
   }
 
   void deleteAttachment(String taskId, String attachmentId) {
-    final task = _state.tasks.firstWhereOrNull((t) => t.id == taskId);
-    final removed = task?.attachments.firstWhereOrNull(
-      (a) => a.id == attachmentId,
-    );
     _updateTaskById(
       taskId,
       (task) => task.copyWith(
@@ -193,13 +180,6 @@ class DetailViewPresenter {
             .toList(),
       ),
     );
-    if (removed != null) {
-      unawaited(
-        _ref.read(attachmentServiceProvider).deleteUnreferencedCaches([
-          removed,
-        ], remainingTasks: _state.tasks),
-      );
-    }
   }
 
   void addStep(String taskId, String title) {

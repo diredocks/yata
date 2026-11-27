@@ -161,58 +161,6 @@ class AttachmentService {
     return targetPath;
   }
 
-  /// Deletes the local cached file (and its parent attachment directory if empty).
-  Future<void> deleteLocalCache(String? localPath) async {
-    if (localPath == null || localPath.isEmpty) return;
-    try {
-      final file = File(localPath);
-      if (await file.exists()) {
-        await file.delete();
-      }
-      final parent = file.parent;
-      if (await parent.exists() && (await parent.list().isEmpty)) {
-        await parent.delete();
-      }
-    } catch (e) {
-      _log.warning('Failed to delete local attachment cache: $e');
-    }
-  }
-
-  /// Deletes local cache files for [removedAttachments] that are not still
-  /// referenced by any task in [remainingTasks].
-  Future<void> deleteUnreferencedCaches(
-    Iterable<TaskAttachment> removedAttachments, {
-    required Iterable<TaskItem> remainingTasks,
-  }) async {
-    final removedPaths = <String>{
-      for (final att in removedAttachments)
-        if (att.localPath case final path? when path.isNotEmpty) path,
-    };
-    if (removedPaths.isEmpty) return;
-
-    final referencedPaths = <String>{
-      for (final att in remainingTasks.expand((t) => t.attachments))
-        if (att.localPath case final path? when path.isNotEmpty) path,
-    };
-    for (final path in removedPaths) {
-      if (!referencedPaths.contains(path)) {
-        await deleteLocalCache(path);
-      }
-    }
-  }
-
-  /// Deletes local cache files for [removedTasks] that are not still referenced
-  /// by any task in [remainingTasks].
-  Future<void> deleteUnreferencedTaskCaches(
-    Iterable<TaskItem> removedTasks, {
-    required Iterable<TaskItem> remainingTasks,
-  }) {
-    return deleteUnreferencedCaches(
-      removedTasks.expand((t) => t.attachments),
-      remainingTasks: remainingTasks,
-    );
-  }
-
   /// Deletes the entire local attachment directory for [accountId].
   Future<void> deleteAccountAttachments(String accountId) async {
     try {

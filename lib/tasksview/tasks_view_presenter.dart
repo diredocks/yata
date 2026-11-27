@@ -1,11 +1,8 @@
-import 'dart:async';
-
 import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/order_date_time.dart';
 import '../data/todo_provider.dart';
-import '../detailview/attachments/attachment_service.dart';
 import '../detailview/recurrence/task_pickers.dart';
 import '../homeview/home_view_ordering.dart';
 import '../models/task_item.dart';
@@ -222,17 +219,8 @@ class TasksViewPresenter {
     final target = _state.lists[targetIndex];
     if (target.isSmartList) return;
 
-    final removedTasks = _state.tasks.where((t) => t.listId == listId).toList();
     final updatedLists = _state.lists.where((l) => l.id != listId).toList();
     final updatedTasks = _state.tasks.where((t) => t.listId != listId).toList();
-    unawaited(
-      _ref
-          .read(attachmentServiceProvider)
-          .deleteUnreferencedTaskCaches(
-            removedTasks,
-            remainingTasks: updatedTasks,
-          ),
-    );
     var nextSelected = _state.selectedListId;
     if (_state.selectedListId == listId) {
       nextSelected = targetIndex > 0

@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:collection/collection.dart';
 import 'package:result_dart/result_dart.dart';
@@ -335,6 +337,66 @@ class TodoRepository {
     }, operation: operation);
   }
 
+  static Iterable<String> _attachmentLocalPaths(Iterable<TaskItem> tasks) =>
+      tasks
+          .expand((t) => t.attachments)
+          .map((a) => a.localPath)
+          .nonNulls
+          .where((p) => p.isNotEmpty);
+
+  static List<String> _unreferencedAttachmentPaths(
+    List<TaskItem> previousTasks,
+    List<TaskItem> nextTasks,
+  ) {
+    final orphaned = _attachmentLocalPaths(previousTasks).toSet();
+    if (orphaned.isEmpty) return const [];
+    orphaned.removeAll(_attachmentLocalPaths(nextTasks));
+    return orphaned.toList(growable: false);
+  }
+
+  static Future<void> _deleteAttachmentFiles(List<String> paths) async {
+    for (final localPath in paths) {
+      try {
+        final file = File(localPath);
+        if (await file.exists()) {
+          await file.delete();
+        }
+        final parent = file.parent;
+        if (await parent.exists() && await parent.list().isEmpty) {
+          await parent.delete();
+        }
+      } on Object catch (e) {
+        _log.warning('Failed to delete local attachment cache: $e');
+      }
+    }
+  }
+
+  AsyncAppResult<Unit> _persistTasksChange(
+    String operation,
+    List<TaskItem> previousTasks,
+    List<TaskItem> nextTasks,
+    Future<void> Function() write,
+  ) {
+    final snapshot = List<TaskItem>.unmodifiable(nextTasks);
+    _cache.tasks = snapshot;
+    final orphanedPaths = _unreferencedAttachmentPaths(previousTasks, snapshot);
+    if (!_db.persistToSqlite) {
+      if (orphanedPaths.isNotEmpty) {
+        unawaited(_enqueueWrite(() => _deleteAttachmentFiles(orphanedPaths)));
+      }
+      return Future.value(const Success(unit));
+    }
+    return guardDbCall(() async {
+      await _enqueueWrite(() async {
+        await write();
+        if (orphanedPaths.isNotEmpty) {
+          await _deleteAttachmentFiles(orphanedPaths);
+        }
+      });
+      return unit;
+    }, operation: operation);
+  }
+
   /// Row-level upsert of a single task without rewriting unrelated rows.
   AsyncAppResult<Unit> upsertTask(TaskItem task, {int? position}) {
     final current = _cache.tasks;
@@ -346,9 +408,10 @@ class TodoRepository {
         if (item.id == task.id) task else item,
       if (existingIdx < 0) task,
     ];
-    _cache.tasks = List<TaskItem>.unmodifiable(nextTasks);
-    return _persistWrite(
+    return _persistTasksChange(
       'upsertTask',
+      current,
+      nextTasks,
       () => _db.upsertTaskItemRecord(
         TaskItemRecordsCompanion.insert(
           accountKey: accountKey,
@@ -367,11 +430,12 @@ class TodoRepository {
     if (taskList.isEmpty) {
       return Future.value(const Success(unit));
     }
+    final current = _cache.tasks;
     final uniqueById = {for (final t in taskList) t.id: t};
     final pendingById = Map<String, TaskItem>.of(uniqueById);
     final nextTasks = <TaskItem>[];
     final positions = <String, int>{};
-    for (final existing in _cache.tasks) {
+    for (final existing in current) {
       final replacement = pendingById.remove(existing.id);
       if (replacement != null) {
         positions[replacement.id] = nextTasks.length;
@@ -384,10 +448,11 @@ class TodoRepository {
       positions[added.id] = nextTasks.length;
       nextTasks.add(added);
     }
-    _cache.tasks = List<TaskItem>.unmodifiable(nextTasks);
     final toPersist = uniqueById.values.toList(growable: false);
-    return _persistWrite(
+    return _persistTasksChange(
       'upsertTasks',
+      current,
+      nextTasks,
       () => _db.transaction(() async {
         for (final task in toPersist) {
           await _db.upsertTaskItemRecord(
@@ -406,11 +471,14 @@ class TodoRepository {
 
   /// Row-level deletion of a single task without rewriting unrelated rows.
   AsyncAppResult<Unit> deleteTask(String taskId) {
-    _cache.tasks = List<TaskItem>.unmodifiable(
-      _cache.tasks.where((t) => t.id != taskId),
-    );
-    return _persistWrite(
+    final current = _cache.tasks;
+    final nextTasks = current
+        .where((t) => t.id != taskId)
+        .toList(growable: false);
+    return _persistTasksChange(
       'deleteTask',
+      current,
+      nextTasks,
       () => _db.deleteTaskItemRecord(accountKey, taskId),
     );
   }
@@ -458,10 +526,12 @@ class TodoRepository {
   }
 
   AsyncAppResult<Unit> saveTasks(List<TaskItem> tasks) {
+    final current = _cache.tasks;
     final snapshot = List<TaskItem>.unmodifiable(tasks);
-    _cache.tasks = snapshot;
-    return _persistWrite(
+    return _persistTasksChange(
       'saveTasks',
+      current,
+      snapshot,
       () => _db.replaceTaskItemRecords(
         accountKey,
         snapshot

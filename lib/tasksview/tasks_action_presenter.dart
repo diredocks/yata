@@ -1,10 +1,7 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/order_date_time.dart';
 import '../data/todo_provider.dart';
-import '../detailview/attachments/attachment_service.dart';
 import '../models/task_item.dart';
 
 /// Batch action presenter matching `tasksview/TasksActionPresenter`.
@@ -203,13 +200,7 @@ class TasksActionPresenter {
   }
 
   void batchDeleteTasks(Set<String> taskIds) {
-    final removed = _state.tasks.where((t) => taskIds.contains(t.id)).toList();
     final updated = _state.tasks.where((t) => !taskIds.contains(t.id)).toList();
-    unawaited(
-      _ref
-          .read(attachmentServiceProvider)
-          .deleteUnreferencedTaskCaches(removed, remainingTasks: updated),
-    );
     _commitTasks(
       updated,
       clearSelectedTaskId:

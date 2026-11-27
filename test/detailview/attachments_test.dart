@@ -14,6 +14,7 @@ import 'package:yata/data/todo_repository.dart';
 import 'package:yata/data/todo_sync_reconciler.dart';
 import 'package:yata/detailview/attachments/attachment_service.dart';
 import 'package:yata/detailview/attachments/attachments_card_view.dart';
+import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/l10n/app_localizations.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
@@ -385,7 +386,7 @@ void main() {
   });
 
   group('Per-account attachment storage & cleanup', () {
-    test('isolates attachments by accountId and cleans up on batchDeleteTasks, deleteList, and signOut', () async {
+    test('isolates attachments by accountId and cleans up automatically across local deletes, remote syncs, and signOut', () async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       final tempDir = await Directory.systemTemp.createTemp(
@@ -445,6 +446,16 @@ void main() {
         attachmentId: 'att-a3',
         sourcePath: srcFile.path,
         fileName: 'a3.txt',
+      );
+      final stagedA4 = await attService.stageLocalFile(
+        attachmentId: 'att-a4',
+        sourcePath: srcFile.path,
+        fileName: 'a4.txt',
+      );
+      final stagedA5 = await attService.stageLocalFile(
+        attachmentId: 'att-a5',
+        sourcePath: srcFile.path,
+        fileName: 'a5.txt',
       );
 
       expect(
@@ -510,15 +521,36 @@ void main() {
           ),
         ],
       );
+      final task4 = TaskItem(
+        id: 't-4',
+        listId: 'l-1',
+        title: 'Task 4',
+        createdAt: DateTime.utc(2026, 11, 26),
+        attachments: [
+          TaskAttachment(
+            id: 'att-a4',
+            displayName: 'a4.txt',
+            localPath: stagedA4.localPath,
+          ),
+          TaskAttachment(
+            id: 'att-a5',
+            displayName: 'a5.txt',
+            localPath: stagedA5.localPath,
+          ),
+        ],
+      );
 
       final todoNotifier = container.read(todoProvider.notifier);
       todoNotifier.commit(
         TodoState(
           groups: const [],
           lists: [list1, list2],
-          tasks: [task1, task2, task2Copy, task3],
+          tasks: [task1, task2, task2Copy, task3, task4],
           selectedListId: 'l-1',
         ),
+      );
+      await todoNotifier.repository.saveTasks(
+        container.read(todoProvider).tasks,
       );
 
       // 1. batchDeleteTasks deletes unreferenced t-1 file, keeps shared t-2 file.
@@ -526,16 +558,38 @@ void main() {
         't-1',
         't-2',
       });
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await todoNotifier.repository.flushPendingWrites();
       expect(await File(stagedA1.localPath).exists(), isFalse);
       expect(await File(stagedA2.localPath).exists(), isTrue);
 
       // 2. deleteList removes t-3's attachment file.
       container.read(tasksViewPresenterProvider).deleteList('l-2');
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await todoNotifier.repository.flushPendingWrites();
       expect(await File(stagedA3.localPath).exists(), isFalse);
 
-      // 3. signOut deletes acctA's entire attachment directory without touching acctB.
+      // 3. deleteAttachment removes single unreferenced attachment file.
+      container
+          .read(detailViewPresenterProvider)
+          .deleteAttachment('t-4', 'att-a4');
+      await todoNotifier.repository.flushPendingWrites();
+      expect(await File(stagedA4.localPath).exists(), isFalse);
+      expect(await File(stagedA5.localPath).exists(), isTrue);
+
+      // 4. applyRemoteState cleans up files on single-attachment and whole-task removal.
+      await todoNotifier.applyRemoteState(
+        tasks: [task2Copy, task4.copyWith(attachments: const [])],
+      );
+      await todoNotifier.repository.flushPendingWrites();
+      expect(await File(stagedA5.localPath).exists(), isFalse);
+      expect(await File(stagedA2.localPath).exists(), isTrue);
+
+      await todoNotifier.applyRemoteState(
+        tasks: [task4.copyWith(attachments: const [])],
+      );
+      await todoNotifier.repository.flushPendingWrites();
+      expect(await File(stagedA2.localPath).exists(), isFalse);
+
+      // 5. signOut deletes acctA's entire attachment directory without touching acctB.
       await accountNotifier.signOut(acctA.id);
       expect(
         await Directory(p.join(tempDir.path, 'attachments', acctA.id)).exists(),

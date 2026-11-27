@@ -377,8 +377,14 @@ void main() {
       () async {
         final tempDir = Directory.systemTemp.createTempSync('yata_att_404_');
         addTearDown(() => tempDir.deleteSync(recursive: true));
-        final filePath = p.join(tempDir.path, 'note.txt');
-        File(filePath).writeAsStringSync('hello');
+        final fgFilePath = p.join(tempDir.path, 'fg', 'note.txt');
+        File(fgFilePath)
+          ..parent.createSync(recursive: true)
+          ..writeAsStringSync('hello');
+        final bgFilePath = p.join(tempDir.path, 'bg', 'note.txt');
+        File(bgFilePath)
+          ..parent.createSync(recursive: true)
+          ..writeAsStringSync('hello');
         final now = DateTime.utc(2026, 11, 27, 8);
 
         // Foreground syncNow()
@@ -404,7 +410,7 @@ void main() {
                 TaskAttachment(
                   id: 'att_1',
                   displayName: 'note.txt',
-                  localPath: filePath,
+                  localPath: fgFilePath,
                   isTransferring: true,
                 ),
               ],
@@ -423,9 +429,12 @@ void main() {
         await h.repository.saveOutbox();
 
         await h.container.read(syncProvider.notifier).syncNow();
+        await h.repository.flushPendingWrites();
         expect(h.container.read(syncProvider).status, SyncStatus.success);
         expect(h.container.read(todoProvider).tasks, isEmpty);
         expect(h.repository.outbox.ops, isEmpty);
+        expect(File(fgFilePath).existsSync(), isFalse);
+        expect(Directory(p.dirname(fgFilePath)).existsSync(), isFalse);
 
         // Headless background transfer lane
         final bgDb = TodoDatabase(NativeDatabase.memory());
@@ -446,7 +455,7 @@ void main() {
               TaskAttachment(
                 id: 'att_bg',
                 displayName: 'note.txt',
-                localPath: filePath,
+                localPath: bgFilePath,
                 isTransferring: true,
               ),
             ],
@@ -473,6 +482,8 @@ void main() {
         expect(passOutcome.shouldRetry, isFalse);
         expect(passOutcome.didMutateDb, isTrue);
         expect(emittedEvents, hasLength(1));
+        expect(File(bgFilePath).existsSync(), isFalse);
+        expect(Directory(p.dirname(bgFilePath)).existsSync(), isFalse);
 
         final verifyRepo = TodoRepository.forSession(bgDb, bgSettings);
         (await verifyRepo.preload()).getOrThrow();
