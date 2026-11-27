@@ -405,6 +405,43 @@ class SyncOutboxQueue {
     });
   }
 
+  /// Captures dirty-entity and delete-tombstone protection sets for applying a
+  /// pull patch started at [pullStartSeq] with full-sync prune protection from
+  /// [pruneProtectSinceSeq].
+  OutboxPullProtection capturePullProtection({
+    required int pullStartSeq,
+    required int pruneProtectSinceSeq,
+  }) => OutboxPullProtection(
+    dirtySettings: modifiedLocalIdsSince(SyncEntityType.setting, pullStartSeq),
+    dirtyGroups: modifiedLocalIdsSince(SyncEntityType.group, pullStartSeq),
+    dirtyLists: modifiedLocalIdsSince(SyncEntityType.list, pullStartSeq),
+    dirtyTasks: modifiedLocalIdsSince(SyncEntityType.task, pullStartSeq),
+    pruneKeepGroups: modifiedLocalIdsSince(
+      SyncEntityType.group,
+      pruneProtectSinceSeq,
+    ),
+    pruneKeepLists: modifiedLocalIdsSince(
+      SyncEntityType.list,
+      pruneProtectSinceSeq,
+    ),
+    pruneKeepTasks: modifiedLocalIdsSince(
+      SyncEntityType.task,
+      pruneProtectSinceSeq,
+    ),
+    deletedGroupRemotes: deletedRemoteIdsSince(
+      SyncEntityType.group,
+      pullStartSeq,
+    ),
+    deletedListRemotes: deletedRemoteIdsSince(
+      SyncEntityType.list,
+      pullStartSeq,
+    ),
+    deletedTaskRemotes: deletedRemoteIdsSince(
+      SyncEntityType.task,
+      pullStartSeq,
+    ),
+  );
+
   void clear() {
     _ops.clear();
     _remoteIdByKey.clear();
@@ -413,4 +450,32 @@ class SyncOutboxQueue {
     _lastSeq = 0;
     _inFlightUpToSeq = 0;
   }
+}
+
+/// Snapshot of dirty local IDs and deleted remote IDs used by pull
+/// reconciliation to protect concurrent local edits and delete tombstones.
+class OutboxPullProtection {
+  const OutboxPullProtection({
+    required this.dirtySettings,
+    required this.dirtyGroups,
+    required this.dirtyLists,
+    required this.dirtyTasks,
+    required this.pruneKeepGroups,
+    required this.pruneKeepLists,
+    required this.pruneKeepTasks,
+    required this.deletedGroupRemotes,
+    required this.deletedListRemotes,
+    required this.deletedTaskRemotes,
+  });
+
+  final Set<String> dirtySettings;
+  final Set<String> dirtyGroups;
+  final Set<String> dirtyLists;
+  final Set<String> dirtyTasks;
+  final Set<String> pruneKeepGroups;
+  final Set<String> pruneKeepLists;
+  final Set<String> pruneKeepTasks;
+  final Set<String> deletedGroupRemotes;
+  final Set<String> deletedListRemotes;
+  final Set<String> deletedTaskRemotes;
 }

@@ -41,11 +41,32 @@ String formatDayString(DateTime day) {
 /// (`-9223372036853L`), filtering `.NET` `0001-01-01` and Windows FILETIME
 /// `1601-01-01` sentinel timestamps.
 const int _kMinSubstrateTimestampMillis = -9223372036853;
+final RegExp _explicitOffsetRegex = RegExp(r'[+-]\d{2}:?\d{2}$');
+
+bool _isSentinelDatePrefix(String trimmed) =>
+    trimmed.isEmpty || trimmed.startsWith('0001-01-01');
+
+bool _hasExplicitOffset(String trimmed) =>
+    trimmed.endsWith('Z') ||
+    trimmed.endsWith('z') ||
+    _explicitOffsetRegex.hasMatch(trimmed);
 
 bool _isValidSubstrateTimestamp(DateTime? parsed) =>
     parsed != null &&
     parsed.year > 1 &&
     parsed.millisecondsSinceEpoch >= _kMinSubstrateTimestampMillis;
+
+/// Converts [firstDayOfWeek] to the Substrate weekday wire name.
+String firstDayOfWeekWireName(WeekStart firstDayOfWeek) =>
+    switch (firstDayOfWeek) {
+      WeekStart.system || WeekStart.monday => 'Monday',
+      WeekStart.tuesday => 'Tuesday',
+      WeekStart.wednesday => 'Wednesday',
+      WeekStart.thursday => 'Thursday',
+      WeekStart.friday => 'Friday',
+      WeekStart.saturday => 'Saturday',
+      WeekStart.sunday => 'Sunday',
+    };
 
 /// Parses an ISO timestamp string, ignoring MS `.NET` sentinel `0001-01-01`.
 ///
@@ -54,7 +75,7 @@ bool _isValidSubstrateTimestamp(DateTime? parsed) =>
 DateTime? parseSubstrateTimestamp(String? raw) {
   if (raw == null) return null;
   var trimmed = raw.trim();
-  if (trimmed.isEmpty || trimmed.startsWith('0001-01-01')) {
+  if (_isSentinelDatePrefix(trimmed)) {
     return null;
   }
   final tIndex = trimmed.indexOf('T');
@@ -63,10 +84,7 @@ DateTime? parseSubstrateTimestamp(String? raw) {
         trimmed.substring(0, tIndex) +
         trimmed.substring(tIndex).replaceAll('-', '');
   }
-  final hasExplicitOffset =
-      trimmed.endsWith('Z') ||
-      trimmed.endsWith('z') ||
-      RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(trimmed);
+  final hasExplicitOffset = _hasExplicitOffset(trimmed);
   if (tIndex >= 0 && !hasExplicitOffset) {
     trimmed = '${trimmed}Z';
   }
@@ -98,13 +116,10 @@ DateTime? parseSubstrateDateTimeTimeZone(Map<String, dynamic>? map) {
   final raw = map['DateTime'] as String?;
   if (raw == null) return null;
   final trimmed = raw.trim();
-  if (trimmed.isEmpty || trimmed.startsWith('0001-01-01')) {
+  if (_isSentinelDatePrefix(trimmed)) {
     return null;
   }
-  final hasExplicitOffset =
-      trimmed.endsWith('Z') ||
-      trimmed.endsWith('z') ||
-      RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(trimmed);
+  final hasExplicitOffset = _hasExplicitOffset(trimmed);
   if (hasExplicitOffset) {
     final parsed = DateTime.tryParse(trimmed);
     if (!_isValidSubstrateTimestamp(parsed)) return null;
@@ -142,7 +157,7 @@ DateTime? parseSubstrateDay(dynamic raw) {
   }
   if (rawStr == null) return null;
   final trimmed = rawStr.trim();
-  if (trimmed.isEmpty || trimmed.startsWith('0001-01-01')) {
+  if (_isSentinelDatePrefix(trimmed)) {
     return null;
   }
   if (trimmed.length <= 10 || trimmed.contains('T00:')) {
@@ -159,8 +174,7 @@ DateTime? parseSubstrateDay(dynamic raw) {
       return DateTime(y, m, d);
     }
   }
-  final hasExplicitOffset =
-      trimmed.endsWith('Z') || RegExp(r'[+-]\d{2}:?\d{2}$').hasMatch(trimmed);
+  final hasExplicitOffset = _hasExplicitOffset(trimmed);
   final candidate = (!hasExplicitOffset && tz == 'utc')
       ? '${trimmed}Z'
       : trimmed;
@@ -181,15 +195,7 @@ Map<String, dynamic>? encodeSubstrateRecurrence(
   WeekStart firstDayOfWeek = WeekStart.system,
 }) {
   if (type == RecurrenceType.none) return null;
-  final firstDay = switch (firstDayOfWeek) {
-    WeekStart.system || WeekStart.monday => 'Monday',
-    WeekStart.tuesday => 'Tuesday',
-    WeekStart.wednesday => 'Wednesday',
-    WeekStart.thursday => 'Thursday',
-    WeekStart.friday => 'Friday',
-    WeekStart.saturday => 'Saturday',
-    WeekStart.sunday => 'Sunday',
-  };
+  final firstDay = firstDayOfWeekWireName(firstDayOfWeek);
   return switch (type) {
     RecurrenceType.none => null,
     RecurrenceType.daily => {

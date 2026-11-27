@@ -231,6 +231,33 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
     return headers;
   }
 
+  AsyncAppResult<http.Response> _sendWithThrottleRetry({
+    required Future<http.Response> Function() executeOnce,
+    required String operation,
+    Set<int> acceptedStatusCodes = const {},
+  }) => guardApiCall(() async {
+    await _awaitThrottleGate();
+    var response = await executeOnce();
+    final retryDelay = _extractThrottleDelay(response);
+    if (retryDelay != null) {
+      final nextUntil = DateTime.now().add(retryDelay);
+      if (_throttleUntil == null || nextUntil.isAfter(_throttleUntil!)) {
+        _throttleUntil = nextUntil;
+      }
+      await _delay(retryDelay);
+      if (_throttleUntil == nextUntil) {
+        _throttleUntil = null;
+      }
+      response = await executeOnce();
+    }
+
+    if ((response.statusCode < 200 || response.statusCode >= 300) &&
+        !acceptedStatusCodes.contains(response.statusCode)) {
+      throw _buildApiError(response);
+    }
+    return response;
+  }, operation: operation);
+
   AsyncAppResult<http.Response> _sendRequest({
     required SubstrateRequestContext ctx,
     required String method,
@@ -239,53 +266,32 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
     String? ifMatch,
     Object? jsonBody,
     Set<int> acceptedStatusCodes = const {},
-  }) {
-    return guardApiCall(() async {
-      Future<http.Response> executeOnce() {
-        final headers = _buildHeaders(
-          ctx,
-          trackChanges: trackChanges,
-          ifMatch: ifMatch,
-        );
-        final encoded = jsonBody == null ? null : jsonEncode(jsonBody);
-        return switch (method) {
-          'GET' => _http.get(uri, headers: headers).timeout(_requestTimeout),
-          'POST' =>
-            _http
-                .post(uri, headers: headers, body: encoded)
-                .timeout(_requestTimeout),
-          'PATCH' =>
-            _http
-                .patch(uri, headers: headers, body: encoded)
-                .timeout(_requestTimeout),
-          'DELETE' =>
-            _http.delete(uri, headers: headers).timeout(_requestTimeout),
-          _ => throw ArgumentError('Unsupported HTTP method: $method'),
-        };
-      }
-
-      await _awaitThrottleGate();
-      var response = await executeOnce();
-      final retryDelay = _extractThrottleDelay(response);
-      if (retryDelay != null) {
-        final nextUntil = DateTime.now().add(retryDelay);
-        if (_throttleUntil == null || nextUntil.isAfter(_throttleUntil!)) {
-          _throttleUntil = nextUntil;
-        }
-        await _delay(retryDelay);
-        if (_throttleUntil == nextUntil) {
-          _throttleUntil = null;
-        }
-        response = await executeOnce();
-      }
-
-      if ((response.statusCode < 200 || response.statusCode >= 300) &&
-          !acceptedStatusCodes.contains(response.statusCode)) {
-        throw _buildApiError(response);
-      }
-      return response;
-    }, operation: '$method ${uri.path}');
-  }
+  }) => _sendWithThrottleRetry(
+    operation: '$method ${uri.path}',
+    acceptedStatusCodes: acceptedStatusCodes,
+    executeOnce: () {
+      final headers = _buildHeaders(
+        ctx,
+        trackChanges: trackChanges,
+        ifMatch: ifMatch,
+      );
+      final encoded = jsonBody == null ? null : jsonEncode(jsonBody);
+      return switch (method) {
+        'GET' => _http.get(uri, headers: headers).timeout(_requestTimeout),
+        'POST' =>
+          _http
+              .post(uri, headers: headers, body: encoded)
+              .timeout(_requestTimeout),
+        'PATCH' =>
+          _http
+              .patch(uri, headers: headers, body: encoded)
+              .timeout(_requestTimeout),
+        'DELETE' =>
+          _http.delete(uri, headers: headers).timeout(_requestTimeout),
+        _ => throw ArgumentError('Unsupported HTTP method: $method'),
+      };
+    },
+  );
 
   Duration? _extractThrottleDelay(http.Response response) {
     final status = response.statusCode;
@@ -324,38 +330,18 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
   }
 
   AppError _buildApiError(http.Response response) {
-    String? errorCode;
-    String message = 'Substrate request failed (${response.statusCode})';
-
-    if (response.body.trim().isNotEmpty) {
-      try {
-        final decoded = jsonDecode(response.body);
-        if (decoded is Map) {
-          final errObj = decoded['error'] ?? decoded['Error'];
-          if (errObj is Map) {
-            final innerObj =
-                errObj['innerError'] ??
-                errObj['innererror'] ??
-                errObj['InnerError'];
-            final innerCode = innerObj is Map
-                ? (innerObj['code'] ?? innerObj['Code']) as String?
-                : null;
-            errorCode =
-                innerCode ?? (errObj['code'] ?? errObj['Code']) as String?;
-            final msg = (errObj['message'] ?? errObj['Message']) as String?;
-            if (msg != null && msg.isNotEmpty) {
-              message = msg;
-            }
-          } else {
-            errorCode = (decoded['code'] ?? decoded['Code']) as String?;
-            final msg = (decoded['message'] ?? decoded['Message']) as String?;
-            if (msg != null && msg.isNotEmpty) {
-              message = msg;
-            }
-          }
-        }
-      } on FormatException catch (_) {}
-    }
+    final decoded = tryDecodeJsonMap(response.body);
+    final errObj = asJsonMap(decoded?['error'] ?? decoded?['Error']) ?? decoded;
+    final innerObj = asJsonMap(
+      errObj?['innerError'] ?? errObj?['innererror'] ?? errObj?['InnerError'],
+    );
+    final errorCode =
+        (innerObj?['code'] ?? innerObj?['Code']) as String? ??
+        (errObj?['code'] ?? errObj?['Code']) as String?;
+    final rawMessage = (errObj?['message'] ?? errObj?['Message']) as String?;
+    final message = (rawMessage != null && rawMessage.isNotEmpty)
+        ? rawMessage
+        : 'Substrate request failed (${response.statusCode})';
 
     return appErrorFromHttpStatus(
       statusCode: response.statusCode,
@@ -404,13 +390,8 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
     required Uri uri,
   }) => _sendRequest(ctx: ctx, method: 'DELETE', uri: uri).map((_) => unit);
 
-  Map<String, dynamic> _decodeJsonMap(String body) {
-    if (body.trim().isEmpty) return const {};
-    final decoded = jsonDecode(body);
-    if (decoded is Map<String, dynamic>) return decoded;
-    if (decoded is Map) return Map<String, dynamic>.from(decoded);
-    return const {};
-  }
+  Map<String, dynamic> _decodeJsonMap(String body) =>
+      tryDecodeJsonMap(body) ?? const {};
 
   AsyncAppResult<DeltaPageResult<T>> _fetchDeltaPages<T>({
     required SubstrateRequestContext ctx,
@@ -459,35 +440,16 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
       final trimmedNext = rawNext?.trim();
       final hasNext = trimmedNext != null && trimmedNext.isNotEmpty;
 
-      if (!usedDelta && pages == 1) {
-        // Mirror MS To Do GswSync.g() -> h(): on an initial/full fetch, page 1
-        // only returns the head page + a checkpoint DeltaLink (or NextLink);
-        // unconditionally chain into f(nextLink ?? deltaLink) to drain all pages.
-        final continuation = hasNext
-            ? trimmedNext
-            : (hasDelta ? trimmedDelta : null);
-        if (continuation != null) {
-          final resolved = currentUri.resolve(continuation);
-          if (visitedUris.contains(resolved)) {
-            if (hasDelta) {
-              resolvedDeltaLink = currentUri.resolve(trimmedDelta).toString();
-            }
-            nextUri = null;
-          } else {
-            nextUri = resolved;
-          }
-        } else {
-          nextUri = null;
-        }
-      } else if (hasDelta) {
-        // Inside GswSync.f(): a DeltaLink terminates pagination.
-        resolvedDeltaLink = currentUri.resolve(trimmedDelta).toString();
-        nextUri = null;
-      } else if (hasNext) {
-        final resolved = currentUri.resolve(trimmedNext);
-        nextUri = visitedUris.contains(resolved) ? null : resolved;
-      } else {
-        nextUri = null;
+      final step = _resolveNextDeltaUri(
+        currentUri: currentUri,
+        visitedUris: visitedUris,
+        isInitialFirstPage: !usedDelta && pages == 1,
+        nextLink: hasNext ? trimmedNext : null,
+        deltaLink: hasDelta ? trimmedDelta : null,
+      );
+      nextUri = step.nextUri;
+      if (step.terminalDeltaLink != null) {
+        resolvedDeltaLink = step.terminalDeltaLink;
       }
     }
 
@@ -502,6 +464,44 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
 
     return Success(
       DeltaPageResult<T>(items: items, deltaLink: resolvedDeltaLink),
+    );
+  }
+
+  ({Uri? nextUri, String? terminalDeltaLink}) _resolveNextDeltaUri({
+    required Uri currentUri,
+    required Set<Uri> visitedUris,
+    required bool isInitialFirstPage,
+    required String? nextLink,
+    required String? deltaLink,
+  }) {
+    if (isInitialFirstPage) {
+      // Mirror MS To Do GswSync.g() -> h(): on an initial/full fetch, page 1
+      // only returns the head page + a checkpoint DeltaLink (or NextLink);
+      // unconditionally chain into f(nextLink ?? deltaLink) to drain all pages.
+      final continuation = nextLink ?? deltaLink;
+      if (continuation == null) return (nextUri: null, terminalDeltaLink: null);
+      final resolved = currentUri.resolve(continuation);
+      if (visitedUris.contains(resolved)) {
+        return (
+          nextUri: null,
+          terminalDeltaLink: deltaLink != null
+              ? currentUri.resolve(deltaLink).toString()
+              : null,
+        );
+      }
+      return (nextUri: resolved, terminalDeltaLink: null);
+    }
+    if (deltaLink != null) {
+      return (
+        nextUri: null,
+        terminalDeltaLink: currentUri.resolve(deltaLink).toString(),
+      );
+    }
+    if (nextLink == null) return (nextUri: null, terminalDeltaLink: null);
+    final resolved = currentUri.resolve(nextLink);
+    return (
+      nextUri: visitedUris.contains(resolved) ? null : resolved,
+      terminalDeltaLink: null,
     );
   }
 
@@ -685,17 +685,16 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
   /// POST returns HTTP 409 whose body is the existing task (not an error
   /// payload), treat it as the created task instead of failing.
   RemoteTodoTask? _tryParseCreatedTaskConflict(String body) {
-    if (body.trim().isEmpty) return null;
+    final decoded = tryDecodeJsonMap(body);
+    if (decoded == null) return null;
+    if (decoded['error'] != null || decoded['Error'] != null) {
+      _log.info(
+        'Error object received in payload along with 409 on task create',
+      );
+      return null;
+    }
     try {
-      final decoded = jsonDecode(body);
-      if (decoded is! Map) return null;
-      if (decoded['error'] != null || decoded['Error'] != null) {
-        _log.info(
-          'Error object received in payload along with 409 on task create',
-        );
-        return null;
-      }
-      final task = RemoteTodoTask.fromJson(Map<String, dynamic>.from(decoded));
+      final task = RemoteTodoTask.fromJson(decoded);
       if (task.id.isEmpty) {
         _log.warning('409 task create payload has empty online Id');
         return null;
@@ -705,9 +704,7 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
         'id=${shortSyncId(task.id)}',
       );
       return task;
-    } on FormatException catch (_) {
-      return null;
-    } on TypeError catch (_) {
+    } on TypeError {
       return null;
     }
   }
@@ -786,22 +783,22 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
     final uri = ctx.endpointUri(
       'tasks/${Uri.encodeComponent(taskRemoteId)}/attachments',
     );
-    return guardApiCall(() async {
-      await _awaitThrottleGate();
-      final request = http.MultipartRequest('POST', uri);
-      final headers = _buildHeaders(ctx)..remove('Content-Type');
-      request.headers.addAll(headers);
-      request.fields['jsonMetadata'] = jsonEncode({'Name': fileName});
-      request.files.add(
-        http.MultipartFile.fromBytes('attachment', bytes, filename: fileName),
-      );
-      final streamed = await _http.send(request).timeout(_requestTimeout);
-      final response = await http.Response.fromStream(streamed);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw _buildApiError(response);
-      }
-      return RemoteFileUpload.fromJson(_decodeJsonMap(response.body));
-    }, operation: 'uploadAttachment');
+    return _sendWithThrottleRetry(
+      operation: 'uploadAttachment',
+      executeOnce: () async {
+        final request = http.MultipartRequest('POST', uri);
+        final headers = _buildHeaders(ctx)..remove('Content-Type');
+        request.headers.addAll(headers);
+        request.fields['jsonMetadata'] = jsonEncode({'Name': fileName});
+        request.files.add(
+          http.MultipartFile.fromBytes('attachment', bytes, filename: fileName),
+        );
+        final streamed = await _http.send(request).timeout(_requestTimeout);
+        return http.Response.fromStream(streamed);
+      },
+    ).map(
+      (response) => RemoteFileUpload.fromJson(_decodeJsonMap(response.body)),
+    );
   }
 
   @override
@@ -818,19 +815,15 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
       final path = trimmed.startsWith('/') ? trimmed : '/$trimmed';
       uri = Uri.parse('${base.scheme}://${base.authority}$path');
     }
-    return guardApiCall(() async {
-      await _awaitThrottleGate();
-      final headers = _buildHeaders(ctx)
-        ..remove('Content-Type')
-        ..['Accept'] = '*/*';
-      final response = await _http
-          .get(uri, headers: headers)
-          .timeout(_requestTimeout);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw _buildApiError(response);
-      }
-      return response.bodyBytes;
-    }, operation: 'downloadAttachment');
+    return _sendWithThrottleRetry(
+      operation: 'downloadAttachment',
+      executeOnce: () {
+        final headers = _buildHeaders(ctx)
+          ..remove('Content-Type')
+          ..['Accept'] = '*/*';
+        return _http.get(uri, headers: headers).timeout(_requestTimeout);
+      },
+    ).map((response) => response.bodyBytes);
   }
 
   @override
@@ -864,27 +857,18 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
         .transform(utf8.decoder)
         .transform(const LineSplitter());
     await for (final line in lines) {
-      final trimmed = line.trim();
-      if (trimmed.isEmpty) continue;
-      try {
-        final decoded = jsonDecode(trimmed);
-        if (decoded is Map) {
-          final event = RealtimeEvent.fromJson(
-            Map<String, dynamic>.from(decoded),
-          );
-          if (!event.isKeepAlive) {
-            _realtimeLog.fine(
-              'recv type=${event.type} op=${event.operation} '
-              'id=${shortSyncId(event.id)} req=${event.requestId} '
-              'hasPayload=${event.payload != null} '
-              'keys=${event.payload?.keys.toList()}',
-            );
-          }
-          yield event;
-        }
-      } on FormatException catch (_) {
-        // Ignore non-JSON keepalive / delimiter lines.
+      final decoded = tryDecodeJsonMap(line);
+      if (decoded == null) continue;
+      final event = RealtimeEvent.fromJson(decoded);
+      if (!event.isKeepAlive) {
+        _realtimeLog.fine(
+          'recv type=${event.type} op=${event.operation} '
+          'id=${shortSyncId(event.id)} req=${event.requestId} '
+          'hasPayload=${event.payload != null} '
+          'keys=${event.payload?.keys.toList()}',
+        );
       }
+      yield event;
     }
     _realtimeLog.info('stream closed');
   }

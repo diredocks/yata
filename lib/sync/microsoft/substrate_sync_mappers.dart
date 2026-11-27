@@ -210,17 +210,6 @@ List<TodoList> mergeFoldersDelta({
   return sortListsPreservingSmartLists(result);
 }
 
-String _firstDayOfWeekWireName(WeekStart firstDayOfWeek) =>
-    switch (firstDayOfWeek) {
-      WeekStart.system || WeekStart.monday => 'Monday',
-      WeekStart.tuesday => 'Tuesday',
-      WeekStart.wednesday => 'Wednesday',
-      WeekStart.thursday => 'Thursday',
-      WeekStart.friday => 'Friday',
-      WeekStart.saturday => 'Saturday',
-      WeekStart.sunday => 'Sunday',
-    };
-
 Map<String, dynamic>? encodeTaskRecurrenceMap(
   TaskItem task, {
   required WeekStart firstDayOfWeek,
@@ -229,7 +218,7 @@ Map<String, dynamic>? encodeTaskRecurrenceMap(
   if (raw != null) {
     raw.putIfAbsent(
       'FirstDayOfWeek',
-      () => _firstDayOfWeekWireName(firstDayOfWeek),
+      () => firstDayOfWeekWireName(firstDayOfWeek),
     );
     return raw;
   }
