@@ -431,4 +431,167 @@ void main() {
       expect(find.text('Alpha task'), findsNothing);
     },
   );
+
+  testWidgets(
+    'Swiping left to delete collapses slot invisibly without flashing card back',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({
+        'yata.accounts': '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+        'yata.active_account_id': 'test',
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      tester.view.physicalSize = const Size(1024, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+          child: const YataApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(YataApp)),
+      );
+      final presenter = container.read(tasksViewPresenterProvider);
+      presenter.addTask(title: 'Bottom task');
+      presenter.addTask(title: 'Top task');
+      await tester.pumpAndSettle();
+
+      final topId = container
+          .read(todoProvider)
+          .tasks
+          .firstWhere((t) => t.title == 'Top task')
+          .id;
+      final beforeBottomY = tester.getTopLeft(find.text('Bottom task')).dy;
+
+      // Swipe Top task left past the 40% threshold.
+      await tester.drag(find.text('Top task'), const Offset(-450, 0));
+      // Finish the 180ms fling-out animation so onSwipeLeft fires.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 190));
+      // Advance halfway through the 220ms slot collapse animation.
+      await tester.pump(const Duration(milliseconds: 110));
+
+      final removingFinder = find.byKey(ValueKey('removing_$topId'));
+      expect(removingFinder, findsOneWidget);
+
+      // The exiting slot collapses smoothly while kept completely invisible (opacity 0),
+      // so the swiped-off card never flashes back into view.
+      final opacityFinder = find.descendant(
+        of: removingFinder,
+        matching: find.byType(Opacity),
+      );
+      expect(opacityFinder, findsAtLeastNWidgets(1));
+      expect(tester.widget<Opacity>(opacityFinder.first).opacity, 0.0);
+
+      final sizeFinder = find.descendant(
+        of: removingFinder,
+        matching: find.byType(SizeTransition),
+      );
+      expect(
+        tester.widget<SizeTransition>(sizeFinder).sizeFactor.value,
+        allOf(greaterThan(0.0), lessThan(1.0)),
+      );
+
+      final midBottomY = tester.getTopLeft(find.text('Bottom task')).dy;
+      expect(midBottomY, lessThan(beforeBottomY));
+
+      await tester.pumpAndSettle();
+      expect(find.text('Top task'), findsNothing);
+      final afterBottomY = tester.getTopLeft(find.text('Bottom task')).dy;
+      expect(afterBottomY, lessThan(midBottomY));
+    },
+  );
+
+  testWidgets(
+    'Multi-select batch delete fades out deleted tasks and smoothly repositions remaining items',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({
+        'yata.accounts': '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+        'yata.active_account_id': 'test',
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      tester.view.physicalSize = const Size(1024, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+          child: const YataApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(YataApp)),
+      );
+      final presenter = container.read(tasksViewPresenterProvider);
+      presenter.addTask(title: 'Task 1');
+      presenter.addTask(title: 'Task 2');
+      presenter.addTask(title: 'Task 3');
+      presenter.addTask(title: 'Task 4');
+      await tester.pumpAndSettle();
+
+      final tasks = container.read(todoProvider).tasks;
+      final task4Id = tasks.firstWhere((t) => t.title == 'Task 4').id;
+      final task2Id = tasks.firstWhere((t) => t.title == 'Task 2').id;
+      final beforeTask1Y = tester.getTopLeft(find.text('Task 1')).dy;
+
+      // Enter multi-select via long-press on Task 4, then tap Task 2.
+      await tester.longPress(find.text('Task 4'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Task 2'));
+      await tester.pumpAndSettle();
+
+      // Open multi-select overflow menu and trigger Delete -> Confirm.
+      await tester.tap(find.byIcon(Icons.more_vert).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete').last);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 90));
+
+      // Both deleted tasks are fading out and collapsing instead of vanishing immediately.
+      for (final deletedId in [task4Id, task2Id]) {
+        final removingFinder = find.byKey(ValueKey('removing_$deletedId'));
+        expect(removingFinder, findsOneWidget);
+        final fadeFinder = find.descendant(
+          of: removingFinder,
+          matching: find.byType(FadeTransition),
+        );
+        expect(fadeFinder, findsAtLeastNWidgets(1));
+        expect(
+          tester.widget<FadeTransition>(fadeFinder.first).opacity.value,
+          allOf(greaterThan(0.0), lessThan(1.0)),
+        );
+        final sizeFinder = find.descendant(
+          of: removingFinder,
+          matching: find.byType(SizeTransition),
+        );
+        expect(
+          tester.widget<SizeTransition>(sizeFinder).sizeFactor.value,
+          allOf(greaterThan(0.0), lessThan(1.0)),
+        );
+      }
+
+      // Remaining task below has started moving upward smoothly.
+      final midTask1Y = tester.getTopLeft(find.text('Task 1')).dy;
+      expect(midTask1Y, lessThan(beforeTask1Y));
+
+      await tester.pumpAndSettle();
+      expect(find.text('Task 4'), findsNothing);
+      expect(find.text('Task 2'), findsNothing);
+      expect(find.text('Task 3'), findsOneWidget);
+      expect(find.text('Task 1'), findsOneWidget);
+      final afterTask1Y = tester.getTopLeft(find.text('Task 1')).dy;
+      expect(afterTask1Y, lessThan(midTask1Y));
+    },
+  );
 }

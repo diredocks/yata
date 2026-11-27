@@ -13,10 +13,12 @@ class AnimatedTaskSliverList extends StatefulWidget {
     super.key,
     required this.tasks,
     required this.itemBuilder,
+    this.swipedTaskIds = const {},
   });
 
   final List<TaskItem> tasks;
   final Widget Function(BuildContext context, TaskItem task) itemBuilder;
+  final Set<String> swipedTaskIds;
 
   @override
   State<AnimatedTaskSliverList> createState() => _AnimatedTaskSliverListState();
@@ -74,10 +76,15 @@ class _AnimatedTaskSliverListState extends State<AnimatedTaskSliverList>
       if (!nextIds.contains(existing.id)) {
         _items.removeAt(i);
         _flipCoordinator.cancelAnimation(existing.id);
+        final isSwipedOut = widget.swipedTaskIds.contains(existing.id);
         listState.removeItem(
           i,
-          (context, animation) =>
-              _buildExitingItem(context, existing, animation),
+          (context, animation) => _buildExitingItem(
+            context,
+            existing,
+            animation,
+            isSwipedOut: isSwipedOut,
+          ),
           duration: _removeDuration,
         );
       }
@@ -102,28 +109,33 @@ class _AnimatedTaskSliverListState extends State<AnimatedTaskSliverList>
   Widget _buildExitingItem(
     BuildContext context,
     TaskItem task,
-    Animation<double> animation,
-  ) {
+    Animation<double> animation, {
+    bool isSwipedOut = false,
+  }) {
     // Fade out during the first ~130ms (matching DefaultItemAnimator.removeDuration)
     // as animation goes 1.0 -> 0.0, while row height collapses smoothly over 220ms.
+    // Swiped-out items already slid off-screen, so collapse their slot invisibly.
     final sizeCurve = CurvedAnimation(
       parent: animation,
       curve: Curves.easeInOutCubic,
     );
-    final fadeCurve = CurvedAnimation(
-      parent: animation,
-      curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
-    );
+    final child = widget.itemBuilder(context, task);
+    final content = isSwipedOut
+        ? Opacity(opacity: 0.0, child: child)
+        : FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
+            ),
+            child: child,
+          );
     return IgnorePointer(
       child: KeyedSubtree(
         key: ValueKey('removing_${task.id}'),
         child: SizeTransition(
           sizeFactor: sizeCurve,
           alignment: Alignment.topCenter,
-          child: FadeTransition(
-            opacity: fadeCurve,
-            child: widget.itemBuilder(context, task),
-          ),
+          child: content,
         ),
       ),
     );
@@ -182,12 +194,14 @@ class CollapsibleTaskBucketSliver extends StatefulWidget {
     required this.tasks,
     required this.padding,
     required this.itemBuilder,
+    this.swipedTaskIds = const {},
   });
 
   final bool isExpanded;
   final List<TaskItem> tasks;
   final EdgeInsetsGeometry padding;
   final Widget Function(BuildContext context, TaskItem task) itemBuilder;
+  final Set<String> swipedTaskIds;
 
   @override
   State<CollapsibleTaskBucketSliver> createState() =>
@@ -257,6 +271,7 @@ class _CollapsibleTaskBucketSliverState
         padding: widget.padding,
         sliver: AnimatedTaskSliverList(
           tasks: _renderedTasks,
+          swipedTaskIds: widget.swipedTaskIds,
           itemBuilder: widget.itemBuilder,
         ),
       ),
@@ -272,6 +287,7 @@ class AnimatedReorderableTaskSliver extends StatefulWidget {
     required this.tasks,
     required this.onReorder,
     required this.itemBuilder,
+    this.swipedTaskIds = const {},
     this.proxyDecorator,
     this.onReorderStart,
     this.onReorderEnd,
@@ -279,6 +295,7 @@ class AnimatedReorderableTaskSliver extends StatefulWidget {
 
   final List<TaskItem> tasks;
   final void Function(int oldIndex, int newIndex) onReorder;
+  final Set<String> swipedTaskIds;
   final ReorderItemProxyDecorator? proxyDecorator;
   final void Function(int index)? onReorderStart;
   final void Function(int index)? onReorderEnd;
@@ -298,13 +315,18 @@ class AnimatedReorderableTaskSliver extends StatefulWidget {
 class _ReorderableItemEntry {
   _ReorderableItemEntry.live(this.task)
     : isExiting = false,
+      isSwipedOut = false,
       exitController = null;
 
-  _ReorderableItemEntry.exiting(this.task, this.exitController)
-    : isExiting = true;
+  _ReorderableItemEntry.exiting(
+    this.task,
+    this.exitController, {
+    required this.isSwipedOut,
+  }) : isExiting = true;
 
   TaskItem task;
   final bool isExiting;
+  final bool isSwipedOut;
   final AnimationController? exitController;
 }
 
@@ -373,15 +395,25 @@ class _AnimatedReorderableTaskSliverState
         duration: _removeDuration,
         value: 1.0,
       );
-      _displayItems[i] = _ReorderableItemEntry.exiting(entry.task, controller);
+      _displayItems[i] = _ReorderableItemEntry.exiting(
+        entry.task,
+        controller,
+        isSwipedOut: widget.swipedTaskIds.contains(entry.task.id),
+      );
       controller.addStatusListener((status) {
         if (status != AnimationStatus.dismissed) return;
-        controller.dispose();
-        if (!mounted) return;
-        setState(() {
-          _displayItems.removeWhere(
-            (item) => item.isExiting && item.exitController == controller,
-          );
+        _retiredControllers.add(controller);
+        if (mounted) {
+          setState(() {
+            _displayItems.removeWhere(
+              (item) => item.isExiting && item.exitController == controller,
+            );
+          });
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_retiredControllers.remove(controller)) {
+            controller.dispose();
+          }
         });
       });
       controller.reverse();
@@ -499,19 +531,22 @@ class _AnimatedReorderableTaskSliverState
       parent: animation,
       curve: Curves.easeInOutCubic,
     );
-    final fadeCurve = CurvedAnimation(
-      parent: animation,
-      curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
-    );
+    final child = widget.itemBuilder(context, -1, entry.task, (_, _) {});
+    final content = entry.isSwipedOut
+        ? Opacity(opacity: 0.0, child: child)
+        : FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
+            ),
+            child: child,
+          );
     return IgnorePointer(
       key: ValueKey('removing_${entry.task.id}'),
       child: SizeTransition(
         sizeFactor: sizeCurve,
         alignment: Alignment.topCenter,
-        child: FadeTransition(
-          opacity: fadeCurve,
-          child: widget.itemBuilder(context, -1, entry.task, (_, _) {}),
-        ),
+        child: content,
       ),
     );
   }
