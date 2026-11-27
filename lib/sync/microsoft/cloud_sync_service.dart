@@ -173,6 +173,7 @@ class CloudSyncService {
     TodoState Function()? readLatestState,
     Future<void> Function(OutboxPushOutcome pushOutcome)? onPushCommitted,
     String reason = 'push',
+    PushLaneFilter laneFilter = PushLaneFilter.all,
   }) => _runWithAuthRetry<OutboxPushOutcome>(
     account: account,
     settings: settings,
@@ -184,6 +185,7 @@ class CloudSyncService {
       readLatestState: readLatestState,
       onPushCommitted: onPushCommitted,
       reason: reason,
+      laneFilter: laneFilter,
     ),
   );
 
@@ -225,6 +227,7 @@ class CloudSyncService {
     TodoState Function()? readLatestState,
     Future<void> Function(OutboxPushOutcome pushOutcome)? onPushCommitted,
     required String reason,
+    required PushLaneFilter laneFilter,
   }) {
     final nowUtc = DateTime.now().toUtc();
     final outbox = repository.outbox;
@@ -241,6 +244,7 @@ class CloudSyncService {
       outbox: outbox,
       nowUtc: nowUtc,
       readLatestState: readLatestState,
+      laneFilter: laneFilter,
       onItemCommitted: (itemOutcome) async {
         if (itemOutcome.followUpPullFolderRemoteIds.isNotEmpty) {
           await settings.savePendingTaskFolderPulls({
