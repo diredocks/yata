@@ -317,9 +317,40 @@ class TodoNotifier extends Notifier<TodoState> {
     );
   }
 
-  /// Inserts a single new or restored task and persists it with its outbox op
-  /// in one atomic SQLite transaction.
+  /// Inserts a single new task and persists it with its outbox op in one
+  /// atomic SQLite transaction.
   void addTask(TaskItem task, {bool addToTop = false, int? insertAt}) {
+    _insertTask(task, addToTop: addToTop, insertAt: insertAt);
+  }
+
+  /// Restores a previously deleted [task] (e.g. via Undo).
+  ///
+  /// If its pending deletion has not been pushed yet, cancels the queued delete
+  /// op and keeps the existing remote identity. Otherwise the remote task is
+  /// already deleted (or being deleted), so stale remote IDs are cleared to
+  /// recreate the task cleanly instead of triggering Delete-Wins on a 404 PATCH.
+  void restoreTask(TaskItem task, {int? insertAt}) {
+    if (state.tasks.any((t) => t.id == task.id)) return;
+    final cancelledPendingDelete = repository.outbox.cancelPendingDeletes(
+      SyncEntityType.task,
+      task.id,
+    );
+    final restored = cancelledPendingDelete
+        ? task
+        : _stripRemoteIdentityForRestore(task);
+    _insertTask(
+      restored,
+      insertAt: insertAt,
+      forceSaveOutbox: cancelledPendingDelete,
+    );
+  }
+
+  void _insertTask(
+    TaskItem task, {
+    bool addToTop = false,
+    int? insertAt,
+    bool forceSaveOutbox = false,
+  }) {
     if (state.tasks.any((t) => t.id == task.id)) return;
     final tracked = enqueueTaskUpsertToOutbox(
       prev: null,
@@ -346,8 +377,31 @@ class TodoNotifier extends Notifier<TodoState> {
       repository.persistSyncBatch(
         fullTasks: (addToTop || insertAt != null) ? nextTasks : null,
         upsertTasks: (addToTop || insertAt != null) ? const [] : [tracked.task],
-        saveOutbox: tracked.syncNeeded,
+        saveOutbox: forceSaveOutbox || tracked.syncNeeded,
       ),
+    );
+  }
+
+  static TaskItem _stripRemoteIdentityForRestore(TaskItem task) {
+    if (task.remoteId == null &&
+        task.remoteParentFolderId == null &&
+        task.changeKey == null &&
+        task.steps.every((s) => s.remoteId == null) &&
+        task.attachments.every((a) => a.remoteId == null)) {
+      return task;
+    }
+    return task.copyWith(
+      remoteId: null,
+      remoteParentFolderId: null,
+      changeKey: null,
+      steps: [
+        for (final step in task.steps)
+          step.remoteId == null ? step : step.copyWith(remoteId: null),
+      ],
+      attachments: [
+        for (final att in task.attachments)
+          att.remoteId == null ? att : att.copyWith(remoteId: null),
+      ],
     );
   }
 

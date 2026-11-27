@@ -285,7 +285,7 @@ class TasksViewPresenter {
   }
 
   void restoreTask(TaskItem task, {int? index}) {
-    _store.addTask(task, insertAt: index);
+    _store.restoreTask(task, insertAt: index);
   }
 
   void reorderActiveTasks(
