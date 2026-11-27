@@ -114,9 +114,8 @@ class SyncStore {
       for (final l in mergedLists)
         if (l.isSmartList) l.id,
     };
-    final removedListIds = deletedIdsOf(
-      SyncEntityType.list,
-    ).difference(smartListIds);
+    final removedListIds = deletedIdsOf(SyncEntityType.list)
+        .difference(smartListIds);
     final survivingLists = removedListIds.isEmpty
         ? mergedLists
         : [

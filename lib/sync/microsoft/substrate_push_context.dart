@@ -175,9 +175,8 @@ class PushContext {
     if (_deletedEntities.contains((type: entityType, localId: localId))) {
       return null;
     }
-    final match = selector(
-      readState(),
-    ).firstWhereOrNull((e) => idOf(e) == localId);
+    final match = selector(readState())
+        .firstWhereOrNull((e) => idOf(e) == localId);
     final raw = match == null ? null : (pushed[localId] ?? match);
     if (raw == null) return null;
     final rawRemoteId = remoteIdOf(raw);

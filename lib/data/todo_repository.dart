@@ -698,7 +698,9 @@ class TodoRepository {
               await _db.deleteSyncMutationRecords(
                 accountKey,
                 kind: _outboxKind,
-                itemKeys: [for (final s in outboxDelta.deleteSeqs) s.toString()],
+                itemKeys: [
+                  for (final s in outboxDelta.deleteSeqs) s.toString(),
+                ],
               );
             }
             for (final op in outboxDelta.upsertOps) {

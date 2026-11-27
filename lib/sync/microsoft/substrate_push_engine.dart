@@ -153,8 +153,11 @@ class _PushStageRunner {
     return runResultsWithConcurrency(
       opsByLocalId.values.toList(),
       SubstratePushEngine._maxConcurrentTaskPushes,
-      (opsForTask) =>
-          _runSequentially(opsForTask, _tasks.pushTaskOp, stopOnItemError: true),
+      (opsForTask) => _runSequentially(
+        opsForTask,
+        _tasks.pushTaskOp,
+        stopOnItemError: true,
+      ),
     );
   }
 
@@ -186,7 +189,11 @@ class _PushStageRunner {
     }
     final target = _resolveNotFoundDeletionTarget(op);
     if (target == null) return false;
-    await ctx.commitRemoteDeletion(op, target.entity, remoteId: target.remoteId);
+    await ctx.commitRemoteDeletion(
+      op,
+      target.entity,
+      remoteId: target.remoteId,
+    );
     return true;
   }
 

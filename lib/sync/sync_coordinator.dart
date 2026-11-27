@@ -751,11 +751,7 @@ class SyncCoordinator {
     _pendingRealtimeEvents.clear();
     _realtimeLog.info('draining ${batch.length} deferred realtime event(s)');
 
-    final unhandled = await _applyRealtimeBatch(
-      active,
-      batch,
-      fromQueue: true,
-    );
+    final unhandled = await _applyRealtimeBatch(active, batch, fromQueue: true);
     if (unhandled != null && !_disposed) {
       await syncNow(forceFullSync: false, reason: SyncReason.realtimeEvent);
     }
@@ -774,10 +770,7 @@ class SyncCoordinator {
 
     final parsed = parseRealtimeEventsBatch(events);
     final currentState = host.readTodoState();
-    final protection = host
-        .readRepository()
-        .outbox
-        .captureCurrentProtection();
+    final protection = host.readRepository().outbox.captureCurrentProtection();
 
     final reconciled = reconcileRemoteDelta(
       delta: parsed.delta,
