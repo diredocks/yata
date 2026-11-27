@@ -489,6 +489,21 @@ class SyncOutboxQueue {
     ),
   );
 
+  /// Captures current pending local IDs and pending delete tombstones without
+  /// prune-protection sets (used for immediate realtime event reconciliation).
+  OutboxPullProtection captureCurrentProtection() => OutboxPullProtection(
+    dirtySettings: pendingLocalIds(SyncEntityType.setting),
+    dirtyGroups: pendingLocalIds(SyncEntityType.group),
+    dirtyLists: pendingLocalIds(SyncEntityType.list),
+    dirtyTasks: pendingLocalIds(SyncEntityType.task),
+    pruneKeepGroups: const {},
+    pruneKeepLists: const {},
+    pruneKeepTasks: const {},
+    deletedGroupRemotes: pendingDeletedRemoteIds(SyncEntityType.group),
+    deletedListRemotes: pendingDeletedRemoteIds(SyncEntityType.list),
+    deletedTaskRemotes: pendingDeletedRemoteIds(SyncEntityType.task),
+  );
+
   void clear() {
     _ops.clear();
     _remoteIdByKey.clear();

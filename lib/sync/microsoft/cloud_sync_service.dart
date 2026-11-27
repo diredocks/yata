@@ -6,7 +6,6 @@ import '../../core/logging/app_logger.dart';
 import '../../core/result/app_result.dart';
 import '../../data/sync_outbox.dart';
 import '../../data/todo_repository.dart';
-import '../../data/todo_settings_sync.dart';
 import '../../data/todo_state.dart';
 import '../../models/account.dart';
 import '../../models/task_item.dart';
@@ -37,7 +36,7 @@ class SyncOutcome {
     required this.lists,
     required this.tasks,
     required this.syncedAt,
-    this.settingsPatch,
+    this.remoteSettings,
     this.cancelled = false,
   });
 
@@ -46,7 +45,7 @@ class SyncOutcome {
   final List<TaskItem> tasks;
 
   /// Null when the pass did not fetch remote settings (push-only syncs).
-  final SyncedSettingsPatch? settingsPatch;
+  final Map<String, String>? remoteSettings;
   final DateTime syncedAt;
   final bool cancelled;
 }
@@ -354,7 +353,7 @@ class CloudSyncService {
       groups: applied.groups,
       lists: applied.lists,
       tasks: applied.tasks,
-      settingsPatch: applied.settingsPatch,
+      remoteSettings: applied.remoteSettings,
       syncedAt: DateTime.now().toUtc(),
     );
   }, operation: 'applyPullPatch');

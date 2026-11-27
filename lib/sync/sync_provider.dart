@@ -828,7 +828,7 @@ class SyncNotifier extends Notifier<SyncState> {
             groups: kind == SyncKind.pushOnly ? null : outcome.groups,
             lists: kind == SyncKind.pushOnly ? null : outcome.lists,
             tasks: outcome.tasks,
-            settingsPatch: outcome.settingsPatch,
+            remoteSettings: outcome.remoteSettings,
             protectPendingOutbox: true,
           );
         }

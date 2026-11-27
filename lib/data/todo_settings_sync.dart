@@ -49,48 +49,6 @@ const Map<String, SmartListSettingKeys> smartListSettingKeyMap = {
   ),
 };
 
-class SmartListSettingsPatch {
-  const SmartListSettingsPatch({
-    this.showCompleted,
-    this.hasTheme = false,
-    this.themeColor,
-    this.themePhoto,
-    this.clearThemePhoto = false,
-    this.sortOption,
-    this.sortAscending,
-  });
-
-  final bool? showCompleted;
-  final bool hasTheme;
-  final ListThemeColor? themeColor;
-  final ListThemePhoto? themePhoto;
-  final bool clearThemePhoto;
-  final TaskSortOption? sortOption;
-  final bool? sortAscending;
-
-  SmartListSettingsPatch merge({
-    bool? showCompleted,
-    bool? hasTheme,
-    ListThemeColor? themeColor,
-    ListThemePhoto? themePhoto,
-    bool? clearThemePhoto,
-    TaskSortOption? sortOption,
-    bool? sortAscending,
-  }) {
-    return SmartListSettingsPatch(
-      showCompleted: showCompleted ?? this.showCompleted,
-      hasTheme: (hasTheme ?? false) || this.hasTheme,
-      themeColor: themeColor ?? this.themeColor,
-      themePhoto: (clearThemePhoto ?? false)
-          ? null
-          : (themePhoto ?? this.themePhoto),
-      clearThemePhoto: (clearThemePhoto ?? false) || this.clearThemePhoto,
-      sortOption: sortOption ?? this.sortOption,
-      sortAscending: sortAscending ?? this.sortAscending,
-    );
-  }
-}
-
 class RoutineNotificationConfig {
   const RoutineNotificationConfig({required this.time, required this.days});
 
@@ -108,59 +66,28 @@ class RoutineNotificationConfig {
   int get hashCode => Object.hash(time, const ListEquality<int>().hash(days));
 }
 
-class SyncedSettingsPatch {
-  const SyncedSettingsPatch({
-    this.confirmBeforeDeleting,
-    this.playCompletionSound,
-    this.showDueTodayInMyDay,
-    this.addNewTasksOnTop,
-    this.moveStarredTasksToTop,
-    this.startOfWeek,
-    this.remindersEnabled,
-    this.dueTodayNotificationsEnabled,
-    this.dueTodayNotificationTime,
-    this.pinReminders,
-    this.accurateReminders,
-    this.routineNotificationEnabled,
-    this.routineNotificationConfig,
-    this.showSmartListImportant,
-    this.showSmartListPlanned,
-    this.showSmartListAll,
-    this.showSmartListCompleted,
-    this.autoHideEmptySmartLists,
-    this.plannedDueDateFilter,
-    this.plannedGroupOption,
-    this.smartListPatches = const {},
-  });
+bool? _decodeWireBoolOrNull(String raw) {
+  final lower = raw.trim().toLowerCase();
+  if (lower == 'true' || lower == '1' || lower == 'enabled') return true;
+  if (lower == 'false' || lower == '0' || lower == 'disabled') return false;
+  return null;
+}
 
-  final bool? confirmBeforeDeleting;
-  final bool? playCompletionSound;
-  final bool? showDueTodayInMyDay;
-  final bool? addNewTasksOnTop;
-  final bool? moveStarredTasksToTop;
-  final WeekStart? startOfWeek;
-  final bool? remindersEnabled;
-  final bool? dueTodayNotificationsEnabled;
-  final TimeOfDay? dueTodayNotificationTime;
-  final bool? pinReminders;
-  final bool? accurateReminders;
-  final bool? routineNotificationEnabled;
-  final RoutineNotificationConfig? routineNotificationConfig;
-  final bool? showSmartListImportant;
-  final bool? showSmartListPlanned;
-  final bool? showSmartListAll;
-  final bool? showSmartListCompleted;
-  final bool? autoHideEmptySmartLists;
-  final PlannedDueDateFilter? plannedDueDateFilter;
-  final PlannedGroupOption? plannedGroupOption;
-  final Map<String, SmartListSettingsPatch> smartListPatches;
+RoutineNotificationConfig? _decodeRoutineConfig(String raw) {
+  final time = decodeRoutineConfigTime(raw);
+  if (time == null) return null;
+  final days = decodeRoutineConfigDays(raw);
+  return RoutineNotificationConfig(
+    time: time,
+    days: (days == null || days.isEmpty) ? const [1, 2, 3, 4, 5, 6, 7] : days,
+  );
 }
 
 class _GlobalSettingSpec<T> {
   const _GlobalSettingSpec({
     required this.key,
     required this.readState,
-    required this.readPatch,
+    required this.decode,
     required this.encode,
     required this.applyToState,
     required this.persist,
@@ -168,7 +95,7 @@ class _GlobalSettingSpec<T> {
 
   final String key;
   final T Function(TodoState state) readState;
-  final T? Function(SyncedSettingsPatch patch) readPatch;
+  final T? Function(String raw) decode;
   final String Function(T value) encode;
   final TodoState Function(TodoState state, T value) applyToState;
   final Future<void> Function(TodoSettingsStore store, T value) persist;
@@ -178,18 +105,17 @@ class _GlobalSettingSpec<T> {
 
   String encodeState(TodoState state) => encode(readState(state));
 
-  TodoState applyIfPresent({
+  TodoState applyWire({
     required TodoState state,
-    required SyncedSettingsPatch patch,
+    required String? raw,
     required TodoSettingsStore settings,
-    required bool Function(String key) canApply,
     required List<Future<void>> persistFutures,
   }) {
-    final value = readPatch(patch);
-    if (value == null || !canApply(key)) return state;
-    final next = applyToState(state, value);
+    if (raw == null) return state;
+    final value = decode(raw);
+    if (value == null) return state;
     persistFutures.add(persist(settings, value));
-    return next;
+    return applyToState(state, value);
   }
 }
 
@@ -197,7 +123,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.confirmOnDelete,
     readState: (s) => s.confirmBeforeDeleting,
-    readPatch: (p) => p.confirmBeforeDeleting,
+    decode: _decodeWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(confirmBeforeDeleting: v),
     persist: (store, v) => store.saveConfirmBeforeDeleting(v),
@@ -205,7 +131,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.soundOnCompletion,
     readState: (s) => s.playCompletionSound,
-    readPatch: (p) => p.playCompletionSound,
+    decode: _decodeWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(playCompletionSound: v),
     persist: (store, v) => store.savePlayCompletionSound(v),
@@ -213,7 +139,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.myDayShowDueTasks,
     readState: (s) => s.showDueTodayInMyDay,
-    readPatch: (p) => p.showDueTodayInMyDay,
+    decode: _decodeWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(showDueTodayInMyDay: v),
     persist: (store, v) => store.saveShowDueTodayInMyDay(v),
@@ -221,7 +147,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.addTasksToTop,
     readState: (s) => s.addNewTasksOnTop,
-    readPatch: (p) => p.addNewTasksOnTop,
+    decode: _decodeWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(addNewTasksOnTop: v),
     persist: (store, v) => store.saveAddNewTasksOnTop(v),
@@ -229,7 +155,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.moveStarredTasksToTop,
     readState: (s) => s.moveStarredTasksToTop,
-    readPatch: (p) => p.moveStarredTasksToTop,
+    decode: _decodeWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(moveStarredTasksToTop: v),
     persist: (store, v) => store.saveMoveStarredTasksToTop(v),
@@ -237,7 +163,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<WeekStart>(
     key: TodoSettingKeys.startWeekFrom,
     readState: (s) => s.startOfWeek,
-    readPatch: (p) => p.startOfWeek,
+    decode: decodeWeekStart,
     encode: (v) => encodeIntSetting(encodeWeekStart(v)),
     applyToState: (s, v) => s.copyWith(startOfWeek: v),
     persist: (store, v) => store.saveStartOfWeek(v),
@@ -245,7 +171,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.reminderNotifications,
     readState: (s) => s.remindersEnabled,
-    readPatch: (p) => p.remindersEnabled,
+    decode: _decodeWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(remindersEnabled: v),
     persist: (store, v) => store.saveRemindersEnabled(v),
@@ -253,7 +179,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.dueDateNotifications,
     readState: (s) => s.dueTodayNotificationsEnabled,
-    readPatch: (p) => p.dueTodayNotificationsEnabled,
+    decode: _decodeWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(dueTodayNotificationsEnabled: v),
     persist: (store, v) => store.saveDueTodayNotificationsEnabled(v),
@@ -264,7 +190,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
       hour: s.dueTodayNotificationHour,
       minute: s.dueTodayNotificationMinute,
     ),
-    readPatch: (p) => p.dueTodayNotificationTime,
+    decode: decodeTimeOfDaySetting,
     encode: encodeTimeOfDaySetting,
     applyToState: (s, v) => s.copyWith(
       dueTodayNotificationHour: v.hour,
@@ -275,7 +201,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.pinReminders,
     readState: (s) => s.pinReminders,
-    readPatch: (p) => p.pinReminders,
+    decode: _decodeWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(pinReminders: v),
     persist: (store, v) => store.savePinReminders(v),
@@ -283,7 +209,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.setAlarmClockReminderAndroid,
     readState: (s) => s.accurateReminders,
-    readPatch: (p) => p.accurateReminders,
+    decode: _decodeWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(accurateReminders: v),
     persist: (store, v) => store.saveAccurateReminders(v),
@@ -291,7 +217,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.routineNotification,
     readState: (s) => s.routineNotificationEnabled,
-    readPatch: (p) => p.routineNotificationEnabled,
+    decode: _decodeWireBoolOrNull,
     encode: encodeRoutineNotificationEnabled,
     applyToState: (s, v) => s.copyWith(routineNotificationEnabled: v),
     persist: (store, v) => store.saveRoutineNotificationEnabled(v),
@@ -305,7 +231,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
       ),
       days: s.routineNotificationDays,
     ),
-    readPatch: (p) => p.routineNotificationConfig,
+    decode: _decodeRoutineConfig,
     encode: (v) => encodeRoutineConfig(v.time, days: v.days),
     applyToState: (s, v) => s.copyWith(
       routineNotificationHour: v.time.hour,
@@ -320,7 +246,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.smartListStarredEnabled,
     readState: (s) => s.showSmartListImportant,
-    readPatch: (p) => p.showSmartListImportant,
+    decode: _decodeWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(showSmartListImportant: v),
     persist: (store, v) => store.saveShowSmartListImportant(v),
@@ -328,7 +254,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.smartListPlannedEnabled,
     readState: (s) => s.showSmartListPlanned,
-    readPatch: (p) => p.showSmartListPlanned,
+    decode: _decodeWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(showSmartListPlanned: v),
     persist: (store, v) => store.saveShowSmartListPlanned(v),
@@ -336,7 +262,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.smartListAllEnabled,
     readState: (s) => s.showSmartListAll,
-    readPatch: (p) => p.showSmartListAll,
+    decode: _decodeWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(showSmartListAll: v),
     persist: (store, v) => store.saveShowSmartListAll(v),
@@ -344,7 +270,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.smartListCompletedEnabled,
     readState: (s) => s.showSmartListCompleted,
-    readPatch: (p) => p.showSmartListCompleted,
+    decode: _decodeWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(showSmartListCompleted: v),
     persist: (store, v) => store.saveShowSmartListCompleted(v),
@@ -352,7 +278,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<bool>(
     key: TodoSettingKeys.smartListsAutoHide,
     readState: (s) => s.autoHideEmptySmartLists,
-    readPatch: (p) => p.autoHideEmptySmartLists,
+    decode: _decodeWireBoolOrNull,
     encode: encodeBoolSetting,
     applyToState: (s, v) => s.copyWith(autoHideEmptySmartLists: v),
     persist: (store, v) => store.saveAutoHideEmptySmartLists(v),
@@ -360,7 +286,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<PlannedDueDateFilter>(
     key: TodoSettingKeys.smartListPlannedDueDateFilter,
     readState: (s) => s.plannedDueDateFilter,
-    readPatch: (p) => p.plannedDueDateFilter,
+    decode: decodePlannedDueDateFilter,
     encode: (v) => encodeIntSetting(encodePlannedDueDateFilter(v)),
     applyToState: (s, v) => s.copyWith(plannedDueDateFilter: v),
     persist: (store, v) => store.savePlannedDueDateFilter(v),
@@ -368,7 +294,7 @@ final List<_GlobalSettingSpec<Object?>> _globalSettingSpecs = [
   _GlobalSettingSpec<PlannedGroupOption>(
     key: TodoSettingKeys.smartListPlannedGroupType,
     readState: (s) => s.plannedGroupOption,
-    readPatch: (p) => p.plannedGroupOption,
+    decode: decodePlannedGroupOption,
     encode: (v) => encodeIntSetting(encodePlannedGroupOption(v)),
     applyToState: (s, v) => s.copyWith(plannedGroupOption: v),
     persist: (store, v) => store.savePlannedGroupOption(v),
@@ -402,87 +328,93 @@ Set<String> detectGlobalSettingChanges(TodoState prev, TodoState next) => {
     if (spec.hasChanged(prev, next)) spec.key,
 };
 
-({TodoState state, List<TodoList> lists, List<Future<void>> persistFutures})
-applySyncedSettingsPatch({
+/// Decodes and applies raw Substrate `/settings` wire key/value entries
+/// directly into [current] and [lists], skipping any locally dirty keys.
+({
+  TodoState state,
+  List<TodoList> lists,
+  List<Future<void>> persistFutures,
+  Set<String> updatedShowCompletedSmartListIds,
+})
+applyRemoteSettingsWire({
   required TodoSettingsStore settings,
   required TodoState current,
-  required TodoState? snapshot,
-  required SyncedSettingsPatch patch,
+  required Map<String, String> remoteSettings,
   required List<TodoList> lists,
   required Set<String> dirtySettings,
 }) {
-  bool canApplySetting(String key) {
-    if (dirtySettings.contains(key)) return false;
-    if (snapshot == null) return true;
-    return extractSettingValueForKey(current, key) ==
-        extractSettingValueForKey(snapshot, key);
-  }
+  String? wireVal(String? key) =>
+      (key == null || dirtySettings.contains(key)) ? null : remoteSettings[key];
 
   final persistFutures = <Future<void>>[];
   var next = current;
   for (final spec in _globalSettingSpecs) {
-    next = spec.applyIfPresent(
+    next = spec.applyWire(
       state: next,
-      patch: patch,
+      raw: wireVal(spec.key),
       settings: settings,
-      canApply: canApplySetting,
       persistFutures: persistFutures,
     );
   }
 
-  if (patch.smartListPatches.isEmpty) {
-    return (state: next, lists: lists, persistFutures: persistFutures);
+  final updatedShowCompletedSmartListIds = <String>{};
+  var anyListChanged = false;
+  final updatedLists = <TodoList>[];
+  for (final list in lists) {
+    final mapping = smartListSettingKeyMap[list.id];
+    if (mapping == null) {
+      updatedLists.add(list);
+      continue;
+    }
+    var updated = list;
+    final showRaw = wireVal(mapping.showCompletedKey);
+    if (showRaw != null) {
+      final show = _decodeWireBoolOrNull(showRaw);
+      if (show != null) {
+        updatedShowCompletedSmartListIds.add(list.id);
+        updated = updated.copyWith(showCompleted: show);
+      }
+    }
+    final themeRaw = wireVal(mapping.themeColorKey);
+    if (themeRaw != null && themeRaw.trim().isNotEmpty) {
+      final decoded = decodeThemeColor(
+        themeRaw,
+        fallbackColor: updated.themeColor,
+      );
+      final themeChanged =
+          decoded.themeColor != updated.themeColor ||
+          decoded.themePhoto != updated.themePhoto;
+      updated = updated.copyWith(
+        themeColor: decoded.themeColor,
+        themePhoto: decoded.themePhoto,
+        customBackgroundPath: themeChanged
+            ? null
+            : updated.customBackgroundPath,
+      );
+    }
+    final sortRaw = wireVal(mapping.sortTypeKey);
+    if (sortRaw != null) {
+      updated = updated.copyWith(sortOption: decodeSortType(sortRaw));
+    }
+    final ascRaw = wireVal(mapping.sortAscKey);
+    if (ascRaw != null) {
+      final asc = _decodeWireBoolOrNull(ascRaw);
+      if (asc != null) {
+        updated = updated.copyWith(sortAscending: asc);
+      }
+    }
+    if (!identical(updated, list)) {
+      anyListChanged = true;
+    }
+    updatedLists.add(updated);
   }
 
-  final updatedLists = [
-    for (final list in lists)
-      _applySmartListPatch(
-        list: list,
-        patch: patch.smartListPatches[list.id],
-        mapping: smartListSettingKeyMap[list.id],
-        canApplySetting: canApplySetting,
-      ),
-  ];
-  return (state: next, lists: updatedLists, persistFutures: persistFutures);
-}
-
-TodoList _applySmartListPatch({
-  required TodoList list,
-  required SmartListSettingsPatch? patch,
-  required SmartListSettingKeys? mapping,
-  required bool Function(String key) canApplySetting,
-}) {
-  if (patch == null || mapping == null) return list;
-  var updated = list;
-  if (patch.showCompleted != null &&
-      mapping.showCompletedKey != null &&
-      canApplySetting(mapping.showCompletedKey!)) {
-    updated = updated.copyWith(showCompleted: patch.showCompleted!);
-  }
-  if (patch.hasTheme &&
-      mapping.themeColorKey != null &&
-      canApplySetting(mapping.themeColorKey!)) {
-    final nextColor = patch.themeColor ?? updated.themeColor;
-    final nextPhoto = patch.clearThemePhoto ? null : patch.themePhoto;
-    final themeChanged =
-        nextColor != updated.themeColor || nextPhoto != updated.themePhoto;
-    updated = updated.copyWith(
-      themeColor: nextColor,
-      themePhoto: nextPhoto,
-      customBackgroundPath: themeChanged ? null : updated.customBackgroundPath,
-    );
-  }
-  if (patch.sortOption != null &&
-      mapping.sortTypeKey != null &&
-      canApplySetting(mapping.sortTypeKey!)) {
-    updated = updated.copyWith(sortOption: patch.sortOption!);
-  }
-  if (patch.sortAscending != null &&
-      mapping.sortAscKey != null &&
-      canApplySetting(mapping.sortAscKey!)) {
-    updated = updated.copyWith(sortAscending: patch.sortAscending!);
-  }
-  return updated;
+  return (
+    state: next,
+    lists: anyListChanged ? updatedLists : lists,
+    persistFutures: persistFutures,
+    updatedShowCompletedSmartListIds: updatedShowCompletedSmartListIds,
+  );
 }
 
 /// Encodes local [state] field corresponding to Substrate setting [key].
@@ -510,124 +442,4 @@ String? extractSettingValueForKey(TodoState state, String key) {
     }
   }
   return null;
-}
-
-/// Converts raw Substrate `GET settings` map into a [SyncedSettingsPatch].
-SyncedSettingsPatch buildSyncedSettingsPatchFromWire(
-  Map<String, String> remoteSettings, {
-  Set<String> skipKeys = const {},
-}) {
-  String? getVal(String key) =>
-      skipKeys.contains(key) ? null : remoteSettings[key];
-
-  bool? boolOrNull(String key) {
-    final raw = getVal(key);
-    if (raw == null) return null;
-    final lower = raw.trim().toLowerCase();
-    if (lower == 'true' || lower == '1' || lower == 'enabled') return true;
-    if (lower == 'false' || lower == '0' || lower == 'disabled') return false;
-    return null;
-  }
-
-  T? mapVal<T>(String key, T? Function(String raw) decode) {
-    final raw = getVal(key);
-    return raw == null ? null : decode(raw);
-  }
-
-  final smartPatches = <String, SmartListSettingsPatch>{};
-  for (final entry in smartListSettingKeyMap.entries) {
-    final listId = entry.key;
-    final mapping = entry.value;
-    var patch = const SmartListSettingsPatch();
-    var touched = false;
-
-    if (mapping.showCompletedKey != null) {
-      final show = boolOrNull(mapping.showCompletedKey!);
-      if (show != null) {
-        patch = patch.merge(showCompleted: show);
-        touched = true;
-      }
-    }
-    if (mapping.themeColorKey != null) {
-      final rawTheme = getVal(mapping.themeColorKey!);
-      if (rawTheme != null && rawTheme.trim().isNotEmpty) {
-        final decoded = decodeThemeColor(rawTheme);
-        patch = patch.merge(
-          hasTheme: true,
-          themeColor: decoded.themeColor,
-          themePhoto: decoded.themePhoto,
-          clearThemePhoto: decoded.themePhoto == null,
-        );
-        touched = true;
-      }
-    }
-    if (mapping.sortTypeKey != null) {
-      final rawSort = getVal(mapping.sortTypeKey!);
-      if (rawSort != null) {
-        patch = patch.merge(sortOption: decodeSortType(rawSort));
-        touched = true;
-      }
-    }
-    if (mapping.sortAscKey != null) {
-      final asc = boolOrNull(mapping.sortAscKey!);
-      if (asc != null) {
-        patch = patch.merge(sortAscending: asc);
-        touched = true;
-      }
-    }
-
-    if (touched) {
-      smartPatches[listId] = patch;
-    }
-  }
-
-  return SyncedSettingsPatch(
-    confirmBeforeDeleting: boolOrNull(TodoSettingKeys.confirmOnDelete),
-    playCompletionSound: boolOrNull(TodoSettingKeys.soundOnCompletion),
-    showDueTodayInMyDay: boolOrNull(TodoSettingKeys.myDayShowDueTasks),
-    addNewTasksOnTop: boolOrNull(TodoSettingKeys.addTasksToTop),
-    moveStarredTasksToTop: boolOrNull(TodoSettingKeys.moveStarredTasksToTop),
-    startOfWeek: mapVal(TodoSettingKeys.startWeekFrom, decodeWeekStart),
-    remindersEnabled: boolOrNull(TodoSettingKeys.reminderNotifications),
-    dueTodayNotificationsEnabled: boolOrNull(
-      TodoSettingKeys.dueDateNotifications,
-    ),
-    dueTodayNotificationTime: mapVal(
-      TodoSettingKeys.dueDateNotificationTime,
-      decodeTimeOfDaySetting,
-    ),
-    pinReminders: boolOrNull(TodoSettingKeys.pinReminders),
-    accurateReminders: boolOrNull(TodoSettingKeys.setAlarmClockReminderAndroid),
-    routineNotificationEnabled: boolOrNull(TodoSettingKeys.routineNotification),
-    routineNotificationConfig: mapVal(
-      TodoSettingKeys.routineNotificationConfiguration,
-      (raw) {
-        final time = decodeRoutineConfigTime(raw);
-        if (time == null) return null;
-        final days = decodeRoutineConfigDays(raw);
-        return RoutineNotificationConfig(
-          time: time,
-          days: (days == null || days.isEmpty)
-              ? const [1, 2, 3, 4, 5, 6, 7]
-              : days,
-        );
-      },
-    ),
-    showSmartListImportant: boolOrNull(TodoSettingKeys.smartListStarredEnabled),
-    showSmartListPlanned: boolOrNull(TodoSettingKeys.smartListPlannedEnabled),
-    showSmartListAll: boolOrNull(TodoSettingKeys.smartListAllEnabled),
-    showSmartListCompleted: boolOrNull(
-      TodoSettingKeys.smartListCompletedEnabled,
-    ),
-    autoHideEmptySmartLists: boolOrNull(TodoSettingKeys.smartListsAutoHide),
-    plannedDueDateFilter: mapVal(
-      TodoSettingKeys.smartListPlannedDueDateFilter,
-      decodePlannedDueDateFilter,
-    ),
-    plannedGroupOption: mapVal(
-      TodoSettingKeys.smartListPlannedGroupType,
-      decodePlannedGroupOption,
-    ),
-    smartListPatches: smartPatches,
-  );
 }

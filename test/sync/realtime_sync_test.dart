@@ -624,5 +624,94 @@ void main() {
       expect(fakeApi.callLog, isNot(contains('GET taskfolders(null)')));
       expect(fakeApi.callLog, isNot(contains('GET tasks(rf-default,null)')));
     });
+
+    test('deferred mid-sync group, folder, task, and setting events drain in one batched update', () async {
+      final taskFetchStarted = Completer<void>();
+      final allowTaskFetchFinish = Completer<void>();
+      final fakeApi = BlockingTasksDeltaApi(
+        taskFetchStarted,
+        allowTaskFetchFinish,
+      );
+
+      final h = await createSyncTestHarness(
+        accountId: 'acct_rt_batch_drain',
+        api: fakeApi,
+        realtimeSyncEnabled: true,
+        defaultTasksFolderRemoteId: 'rf-default',
+        taskDeltaLinks: const {'rf-default': 'dl-1'},
+      );
+
+      h.container.read(syncProvider);
+      await pumpEventQueue();
+
+      var stateNotifications = 0;
+      h.container.listen(todoProvider, (_, _) => stateNotifications += 1);
+
+      final syncFuture = h.container.read(syncProvider.notifier).syncNow();
+      await taskFetchStarted.future;
+      final beforeDrainNotifications = stateNotifications;
+
+      h.api.realtimeController.add(
+        const RealtimeEvent(
+          id: 'rg-batch',
+          type: 'FolderGroup',
+          operation: 'Created',
+          requestId: 'other-req-g',
+          payload: {'Id': 'rg-batch', 'Name': 'Batch Group'},
+        ),
+      );
+      h.api.realtimeController.add(
+        const RealtimeEvent(
+          id: 'rf-batch',
+          type: 'TaskFolder',
+          operation: 'Created',
+          requestId: 'other-req-f',
+          payload: {
+            'Id': 'rf-batch',
+            'Name': 'Batch Folder',
+            'ParentFolderGroupId': 'rg-batch',
+          },
+        ),
+      );
+      h.api.realtimeController.add(
+        const RealtimeEvent(
+          id: 'rt-batch',
+          type: 'Task',
+          operation: 'Created',
+          requestId: 'other-req-t',
+          payload: {
+            'Id': 'rt-batch',
+            'ParentFolderId': 'rf-batch',
+            'Subject': 'Batch Task',
+          },
+        ),
+      );
+      h.api.realtimeController.add(
+        const RealtimeEvent(
+          id: 'ConfirmOnDelete',
+          type: 'Setting',
+          operation: 'Updated',
+          requestId: 'other-req-s',
+          payload: {'Key': 'ConfirmOnDelete', 'Value': 'false'},
+        ),
+      );
+      await pumpEventQueue();
+
+      allowTaskFetchFinish.complete();
+      await syncFuture;
+      await pumpEventQueue();
+
+      // Pull applied once + entire 4-event realtime batch applied in one commit.
+      expect(stateNotifications - beforeDrainNotifications, 2);
+
+      final state = h.container.read(todoProvider);
+      final group = state.groups.firstWhere((g) => g.remoteId == 'rg-batch');
+      final folder = state.lists.firstWhere((l) => l.remoteId == 'rf-batch');
+      final task = state.tasks.firstWhere((t) => t.remoteId == 'rt-batch');
+      expect(folder.groupId, group.id);
+      expect(task.listId, folder.id);
+      expect(task.title, 'Batch Task');
+      expect(state.confirmBeforeDeleting, isFalse);
+    });
   });
 }

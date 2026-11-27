@@ -170,7 +170,7 @@ class SyncStore {
     List<ListGroup>? groups,
     List<TodoList>? lists,
     List<TaskItem>? tasks,
-    SyncedSettingsPatch? settingsPatch,
+    Map<String, String>? remoteSettings,
     bool protectPendingOutbox = false,
   }) {
     final outbox = repository.outbox;
@@ -234,12 +234,12 @@ class SyncStore {
     var nextState = currentState;
     final settingsPersistFutures = <Future<void>>[];
     var listsModifiedBySettings = false;
-    if (settingsPatch != null) {
-      final applied = applySyncedSettingsPatch(
+    var updatedShowCompletedSmartListIds = const <String>{};
+    if (remoteSettings != null && remoteSettings.isNotEmpty) {
+      final applied = applyRemoteSettingsWire(
         settings: settings,
         current: currentState,
-        snapshot: null,
-        patch: settingsPatch,
+        remoteSettings: remoteSettings,
         lists: reconciledLists,
         dirtySettings: pendingSettings,
       );
@@ -247,19 +247,21 @@ class SyncStore {
       listsModifiedBySettings = !identical(applied.lists, reconciledLists);
       reconciledLists = applied.lists;
       settingsPersistFutures.addAll(applied.persistFutures);
+      updatedShowCompletedSmartListIds =
+          applied.updatedShowCompletedSmartListIds;
     }
 
     final sortedLists = (lists != null || danglingGroupCleared)
         ? sortListsPreservingSmartLists(reconciledLists)
         : reconciledLists;
 
-    final expandedOutcome = (lists != null || settingsPatch != null)
+    final expandedOutcome =
+        (lists != null || updatedShowCompletedSmartListIds.isNotEmpty)
         ? recomputeCompletedExpandedByList(
             currentExpanded: nextState.completedExpandedByList,
             lists: sortedLists,
             dirtyListIds: outbox.pendingLocalIds(SyncEntityType.list),
-            dirtySettingKeys: pendingSettings,
-            settingsPatch: settingsPatch,
+            updatedShowCompletedSmartListIds: updatedShowCompletedSmartListIds,
             includeSyncableFolders: lists != null,
           )
         : (expanded: nextState.completedExpandedByList, changed: false);
@@ -286,7 +288,7 @@ class SyncStore {
           .toList();
     }
 
-    final myDayResult = (tasks != null || settingsPatch != null)
+    final myDayResult = (tasks != null || remoteSettings != null)
         ? syncTasksMyDayFlags(
             reconciledTasks,
             now: DateTime.now(),

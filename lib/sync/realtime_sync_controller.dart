@@ -1,22 +1,22 @@
 import 'dart:async';
 import 'dart:collection';
 
+import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../account/account_provider.dart';
 import '../core/logging/app_logger.dart';
-import '../data/sync_outbox.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
 import 'microsoft/microsoft_todo_api.dart';
-import 'microsoft/realtime_event_merger.dart';
+import 'microsoft/remote_change_reconciler.dart';
 import 'sync_log_format.dart';
 import 'sync_provider.dart';
 
 final _log = appLogFor('SyncRealtime');
 
 /// Manages the foreground Substrate `/realtime` long-polling connection,
-/// reconnect backoff, mid-sync event buffering, and direct state merging.
+/// reconnect backoff, mid-sync event buffering, and batched state merging.
 class RealtimeSyncController {
   RealtimeSyncController({
     required this.ref,
@@ -184,165 +184,100 @@ class RealtimeSyncController {
       return;
     }
 
-    final handled = await _applyRealtimeEventNow(account, event);
-    if (!handled && !_disposed) {
+    final unhandled = await _applyRealtimeBatch(account, [event]);
+    if (unhandled != null && !_disposed) {
       onScheduleFallbackSync(
         delay: const Duration(milliseconds: 200),
-        forceFullSync: _shouldForceFullSyncForEvent(event),
-        reason: 'realtime_${event.type}_${event.operation ?? 'unknown'}',
+        forceFullSync: _shouldForceFullSyncForEvent(unhandled),
+        reason: 'realtime_${unhandled.type}_${unhandled.operation ?? 'unknown'}',
       );
     }
   }
 
   Future<void> drainPendingIfReady() async {
-    if (_disposed || _pendingEvents.isEmpty) return;
+    if (_disposed || _pendingEvents.isEmpty || isSyncInFlight()) return;
     final initialActive = ref.read(accountProvider).activeAccount;
     if (initialActive is! MicrosoftAccount || _accountId != initialActive.id) {
       _pendingEvents.clear();
       return;
     }
 
-    _log.info('draining ${_pendingEvents.length} deferred realtime event(s)');
+    final batch = _pendingEvents.toList(growable: false);
+    _pendingEvents.clear();
+    _log.info('draining ${batch.length} deferred realtime event(s)');
 
-    var needsFallbackSync = false;
-    var fallbackReason = 'realtime_deferred';
-
-    while (!_disposed && !isSyncInFlight() && _pendingEvents.isNotEmpty) {
-      final currentActive = ref.read(accountProvider).activeAccount;
-      if (currentActive is! MicrosoftAccount ||
-          _accountId != currentActive.id) {
-        _pendingEvents.clear();
-        return;
-      }
-      final event = _pendingEvents.removeFirst();
-      final handled = await _applyRealtimeEventNow(
-        currentActive,
-        event,
-        fromQueue: true,
-      );
-      if (!handled) {
-        needsFallbackSync = true;
-        fallbackReason =
-            'realtime_${event.type}_${event.operation ?? 'unknown'}';
-      }
-    }
-
-    if (needsFallbackSync && !_disposed) {
-      await onCatchupDeltaSync(fallbackReason);
-    }
-  }
-
-  Future<bool> _commitMerge<T>(
-    RealtimeMergeResult<T> result, {
-    required String prefix,
-    required bool fallbackForceFull,
-    required Future<void> Function(T value) apply,
-  }) async {
-    if (result.handled) {
-      _log.info('$prefix${result.summary}');
-      final value = result.value;
-      if (result.changed && value != null) {
-        await apply(value);
-      }
-      return true;
-    }
-    _log.info(
-      '$prefix${result.summary}; fallback to sync (forceFullSync=$fallbackForceFull)',
+    final unhandled = await _applyRealtimeBatch(
+      initialActive,
+      batch,
+      fromQueue: true,
     );
-    return false;
+    if (unhandled != null && !_disposed) {
+      await onCatchupDeltaSync(
+        'realtime_${unhandled.type}_${unhandled.operation ?? 'unknown'}',
+      );
+    }
   }
 
-  Future<bool> _applyRealtimeEventNow(
+  Future<RealtimeEvent?> _applyRealtimeBatch(
     MicrosoftAccount account,
-    RealtimeEvent event, {
+    List<RealtimeEvent> events, {
     bool fromQueue = false,
   }) async {
     if (_disposed ||
         _accountId != account.id ||
         ref.read(accountProvider).activeAccount?.id != account.id) {
-      return true;
+      return null;
     }
 
+    final parsed = parseRealtimeEventsBatch(events);
     final todoNotifier = ref.read(todoProvider.notifier);
     final currentState = ref.read(todoProvider);
+    final protection = todoNotifier.repository.outbox.captureCurrentProtection();
+
+    final reconciled = reconcileRemoteDelta(
+      delta: parsed.delta,
+      liveGroups: currentState.groups,
+      liveLists: currentState.lists,
+      liveTasks: currentState.tasks,
+      protection: protection,
+      idGenerator: todoNotifier.nextId,
+      strictParentResolution: true,
+      returnOnlyChanged: true,
+    );
+
     final prefix = fromQueue ? '(drained) ' : '';
-
-    final outbox = todoNotifier.repository.outbox;
-    switch (event.entityType) {
-      case RealtimeEventEntityType.task:
-        return _commitMerge(
-          mergeRealtimeTaskEvent(
-            event: event,
-            lists: currentState.lists,
-            currentTasks: currentState.tasks,
-            dirtyTaskIds: outbox.pendingLocalIds(SyncEntityType.task),
-            pendingDeletedTaskRemoteIds: outbox.pendingDeletedRemoteIds(
-              SyncEntityType.task,
-            ),
-            idGenerator: todoNotifier.nextId,
-          ),
-          prefix: prefix,
-          fallbackForceFull: !fromQueue,
-          apply: (tasks) => todoNotifier.applyRemoteState(tasks: tasks),
-        );
-
-      case RealtimeEventEntityType.taskFolder:
-        return _commitMerge(
-          mergeRealtimeFolderEvent(
-            event: event,
-            groups: currentState.groups,
-            currentLists: currentState.lists,
-            currentTasks: currentState.tasks,
-            dirtyListIds: outbox.pendingLocalIds(SyncEntityType.list),
-            pendingDeletedListRemoteIds: outbox.pendingDeletedRemoteIds(
-              SyncEntityType.list,
-            ),
-            idGenerator: todoNotifier.nextId,
-          ),
-          prefix: prefix,
-          fallbackForceFull: !fromQueue,
-          apply: (update) => todoNotifier.applyRemoteState(
-            lists: update.lists,
-            tasks: update.tasks,
-          ),
-        );
-
-      case RealtimeEventEntityType.folderGroup:
-        return _commitMerge(
-          mergeRealtimeFolderGroupEvent(
-            event: event,
-            currentGroups: currentState.groups,
-            dirtyGroupIds: outbox.pendingLocalIds(SyncEntityType.group),
-            pendingDeletedGroupRemoteIds: outbox.pendingDeletedRemoteIds(
-              SyncEntityType.group,
-            ),
-            idGenerator: todoNotifier.nextId,
-          ),
-          prefix: prefix,
-          fallbackForceFull: !fromQueue,
-          apply: (groups) => todoNotifier.applyRemoteState(groups: groups),
-        );
-
-      case RealtimeEventEntityType.setting:
-        return _commitMerge(
-          mergeRealtimeSettingEvent(
-            event: event,
-            dirtySettingKeys: outbox.pendingLocalIds(SyncEntityType.setting),
-          ),
-          prefix: prefix,
-          fallbackForceFull: false,
-          apply: (patch) =>
-              todoNotifier.applyRemoteState(settingsPatch: patch),
-        );
-
-      case RealtimeEventEntityType.keepAlive:
-      case RealtimeEventEntityType.unknown:
-        _log.info(
-          '${prefix}non-direct event type=${event.type} op=${event.operation}; '
-          'fallback to sync (forceFullSync=false)',
-        );
-        return false;
+    if (reconciled.hasChanges) {
+      _log.info(
+        '${prefix}applied realtime batch events=${events.length} '
+        'groups=${reconciled.groups != null} lists=${reconciled.lists != null} '
+        'tasks=${reconciled.tasks != null} '
+        'settings=${reconciled.remoteSettings?.length ?? 0}',
+      );
+      await todoNotifier.applyRemoteState(
+        groups: reconciled.groups,
+        lists: reconciled.lists,
+        tasks: reconciled.tasks,
+        remoteSettings: reconciled.remoteSettings,
+      );
     }
+
+    final unhandled =
+        parsed.firstUnhandled ??
+        (reconciled.hasUnhandledEntity
+            ? (events.lastWhereOrNull(
+                    (e) =>
+                        e.entityType == RealtimeEventEntityType.task ||
+                        e.entityType == RealtimeEventEntityType.taskFolder,
+                  ) ??
+                  events.last)
+            : null);
+    if (unhandled != null) {
+      _log.info(
+        '${prefix}non-direct event type=${unhandled.type} op=${unhandled.operation} '
+        'id=${shortSyncId(unhandled.id)}; fallback to sync',
+      );
+    }
+    return unhandled;
   }
 
   void _scheduleReconnect(MicrosoftAccount account, {required String reason}) {

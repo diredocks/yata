@@ -825,7 +825,7 @@ void main() {
           'PATCH tasks/rt-1(ifMatch=ck-1)',
           'GET tasks(rf-default,dl-tasks-1)',
         ]);
-        expect(outcome.settingsPatch, isNull);
+        expect(outcome.remoteSettings, isNull);
         expect(h.repository.loadPendingTaskFolderPulls(), isEmpty);
         expect(
           outcome.tasks.firstWhere((t) => t.id == 't_1').isCompleted,

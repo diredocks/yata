@@ -6,6 +6,7 @@ import 'package:yata/data/todo_state.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_models.dart';
 import 'package:yata/sync/microsoft/substrate_sync_mappers.dart';
+import 'package:yata/sync/microsoft/todo_wire_codecs.dart';
 
 void main() {
   test('mergeFoldersDelta clears customBackgroundPath when remote theme changes and preserves it otherwise', () {
@@ -46,7 +47,7 @@ void main() {
     expect(themeChanged.single.customBackgroundPath, isNull);
   });
 
-  test('applySyncedSettingsPatch clears smart list customBackgroundPath when remote theme changes', () async {
+  test('applyRemoteSettingsWire clears smart list customBackgroundPath when remote theme changes', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final store = TodoSettingsStore(prefs);
@@ -64,19 +65,10 @@ void main() {
       selectedListId: myDay.id,
     );
 
-    final unchanged = applySyncedSettingsPatch(
+    final unchanged = applyRemoteSettingsWire(
       settings: store,
       current: state,
-      snapshot: null,
-      patch: const SyncedSettingsPatch(
-        smartListPatches: {
-          'my_day': SmartListSettingsPatch(
-            hasTheme: true,
-            themeColor: ListThemeColor.blue,
-            clearThemePhoto: true,
-          ),
-        },
-      ),
+      remoteSettings: const {TodoSettingKeys.myDayThemeColor: 'dark_blue'},
       lists: [myDay],
       dirtySettings: const {},
     );
@@ -85,19 +77,10 @@ void main() {
       '/tmp/custom_myday.jpg',
     );
 
-    final changed = applySyncedSettingsPatch(
+    final changed = applyRemoteSettingsWire(
       settings: store,
       current: state,
-      snapshot: null,
-      patch: const SyncedSettingsPatch(
-        smartListPatches: {
-          'my_day': SmartListSettingsPatch(
-            hasTheme: true,
-            themeColor: ListThemeColor.green,
-            clearThemePhoto: true,
-          ),
-        },
-      ),
+      remoteSettings: const {TodoSettingKeys.myDayThemeColor: 'dark_green'},
       lists: [myDay],
       dirtySettings: const {},
     );

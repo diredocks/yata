@@ -62,8 +62,7 @@ TaskItem computeTaskMyDayFlag(
   required Map<String, bool> currentExpanded,
   required List<TodoList> lists,
   Set<String> dirtyListIds = const {},
-  Set<String> dirtySettingKeys = const {},
-  SyncedSettingsPatch? settingsPatch,
+  Set<String> updatedShowCompletedSmartListIds = const {},
   bool includeSyncableFolders = true,
 }) {
   final nextExpanded = Map<String, bool>.from(currentExpanded);
@@ -82,17 +81,10 @@ TaskItem computeTaskMyDayFlag(
         nextExpanded[list.id] = list.showCompleted;
         changed = true;
       }
-    } else if (settingsPatch != null) {
-      final showKey = smartListSettingKeyMap[list.id]?.showCompletedKey;
-      final patchedShow =
-          settingsPatch.smartListPatches[list.id]?.showCompleted;
-      if (patchedShow != null &&
-          showKey != null &&
-          !dirtySettingKeys.contains(showKey) &&
-          nextExpanded[list.id] != list.showCompleted) {
-        nextExpanded[list.id] = list.showCompleted;
-        changed = true;
-      }
+    } else if (updatedShowCompletedSmartListIds.contains(list.id) &&
+        nextExpanded[list.id] != list.showCompleted) {
+      nextExpanded[list.id] = list.showCompleted;
+      changed = true;
     }
   }
   return (expanded: nextExpanded, changed: changed);

@@ -16,7 +16,6 @@ import '../theme/custom_background_service.dart';
 import 'todo_database.dart';
 import 'todo_repository.dart';
 import 'todo_settings_store.dart';
-import 'todo_settings_sync.dart';
 import 'todo_state.dart';
 import 'todo_sync_reconciler.dart';
 
@@ -277,7 +276,7 @@ class TodoNotifier extends Notifier<TodoState> {
     List<ListGroup>? groups,
     List<TodoList>? lists,
     List<TaskItem>? tasks,
-    SyncedSettingsPatch? settingsPatch,
+    Map<String, String>? remoteSettings,
     bool protectPendingOutbox = false,
   }) async {
     final result = _syncStore.applyRemoteState(
@@ -285,7 +284,7 @@ class TodoNotifier extends Notifier<TodoState> {
       groups: groups,
       lists: lists,
       tasks: tasks,
-      settingsPatch: settingsPatch,
+      remoteSettings: remoteSettings,
       protectPendingOutbox: protectPendingOutbox,
     );
     state = result.nextState;

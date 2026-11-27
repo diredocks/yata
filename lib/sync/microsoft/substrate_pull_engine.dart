@@ -6,14 +6,12 @@ import '../../core/logging/app_logger.dart';
 import '../../core/result/app_result.dart';
 import '../../data/sync_outbox.dart';
 import '../../data/todo_repository.dart';
-import '../../data/todo_settings_sync.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
 import '../sync_concurrency.dart';
 import '../sync_log_format.dart';
 import 'microsoft_todo_api.dart';
 import 'remote_change_reconciler.dart';
-import 'substrate_sync_mappers.dart';
 
 final _log = appLogFor('SyncEngine');
 
@@ -22,13 +20,13 @@ class FullPullResult {
     required this.groups,
     required this.lists,
     required this.tasks,
-    required this.settingsPatch,
+    required this.remoteSettings,
   });
 
   final List<ListGroup> groups;
   final List<TodoList> lists;
   final List<TaskItem> tasks;
-  final SyncedSettingsPatch? settingsPatch;
+  final Map<String, String>? remoteSettings;
 }
 
 enum DeltaFetchMode {
@@ -361,167 +359,67 @@ class SubstratePullEngine {
       pruneProtectSinceSeq: pruneProtectSinceSeq,
     );
 
-    final settingsPatch = !patch.isSelective && patch.remoteSettings != null
-        ? buildSyncedSettingsPatchFromWire(
-            patch.remoteSettings!,
-            skipKeys: protection.dirtySettings,
-          )
-        : null;
+    final taskChanges = <RemoteTaskChange>[];
+    final fullSyncedFolderRemoteIds = <String>{};
+    for (final MapEntry(key: folderRemoteId, value: taskFetch)
+        in patch.taskFetchesByFolderRemoteId.entries) {
+      final taskDeltaResult = taskFetch.page;
+      if (patch.forceFullSync &&
+          taskFetch.didFullFetch &&
+          taskDeltaResult.deltaLink != null) {
+        fullSyncedFolderRemoteIds.add(folderRemoteId);
+      }
+      for (final remote in taskDeltaResult.items) {
+        taskChanges.add((
+          remote: remote,
+          fallbackFolderRemoteId: folderRemoteId,
+          preserveStepsWhenMissing: false,
+          preserveAttachmentsWhenMissing: false,
+        ));
+      }
+    }
 
-    final nextGroups = patch.isSelective
-        ? liveGroups
-        : _applyGroupsDelta(
-            patch: patch,
-            liveGroups: liveGroups,
-            protection: protection,
-            idGenerator: idGenerator,
-          );
+    final delta = RemoteDelta(
+      groups: patch.isSelective
+          ? const []
+          : (patch.groupsFetch?.page.items ?? const []),
+      folders: patch.isSelective
+          ? const []
+          : (patch.foldersFetch?.page.items ?? const []),
+      tasks: taskChanges,
+      remoteSettings: patch.isSelective ? null : patch.remoteSettings,
+      pruneGroups:
+          !patch.isSelective &&
+          patch.forceFullSync &&
+          patch.groupsFetch?.page.deltaLink != null,
+      pruneFolders:
+          !patch.isSelective &&
+          patch.forceFullSync &&
+          patch.foldersFetch?.page.deltaLink != null,
+      fullSyncedFolderRemoteIds: fullSyncedFolderRemoteIds,
+    );
 
-    final nextLists = patch.isSelective
-        ? liveLists
-        : _applyFoldersDelta(
-            patch: patch,
-            liveLists: liveLists,
-            nextGroups: nextGroups,
-            protection: protection,
-            idGenerator: idGenerator,
-          );
-
-    final localListIdByFolderRemoteId = {
-      for (final l in nextLists)
-        if (l.remoteId != null) l.remoteId!: l.id,
-    };
-    final taskDeltaLinks = Map<String, String>.from(
-      repository.loadTaskDeltaLinks(),
-    )..removeWhere((id, _) => !localListIdByFolderRemoteId.containsKey(id));
-
-    final validListIds = {for (final l in nextLists) l.id};
-    final liveTasksInValidLists = liveTasks
-        .where((t) => validListIds.contains(t.listId))
-        .toList();
-
-    final nextTasks = _applyTaskDeltas(
-      patch: patch,
-      nextLists: nextLists,
-      liveTasksInValidLists: liveTasksInValidLists,
-      localListIdByFolderRemoteId: localListIdByFolderRemoteId,
-      taskDeltaLinks: taskDeltaLinks,
+    final reconciled = reconcileRemoteDelta(
+      delta: delta,
+      liveGroups: liveGroups,
+      liveLists: liveLists,
+      liveTasks: liveTasks,
       protection: protection,
       idGenerator: idGenerator,
     );
 
-    await _commitDeltaLinks(
-      patch: patch,
-      repository: repository,
-      localListIdByFolderRemoteId: localListIdByFolderRemoteId,
-      taskDeltaLinks: taskDeltaLinks,
-    );
+    final finalGroups = reconciled.groups ?? liveGroups;
+    final finalLists = reconciled.lists ?? liveLists;
+    final finalTasks = reconciled.tasks ?? liveTasks;
 
-    return FullPullResult(
-      groups: nextGroups,
-      lists: nextLists,
-      tasks: nextTasks,
-      settingsPatch: settingsPatch,
-    );
-  }
-
-  List<ListGroup> _applyGroupsDelta({
-    required RemotePullPatch patch,
-    required List<ListGroup> liveGroups,
-    required OutboxPullProtection protection,
-    required String Function(String prefix) idGenerator,
-  }) {
-    final groupsDelta = patch.groupsFetch?.page;
-    if (groupsDelta == null) return liveGroups;
-
-    final filteredItems = groupsDelta.items
-        .whereNot((g) => protection.deletedGroupRemotes.contains(g.id))
-        .toList();
-    final merged = mergeFolderGroupsDelta(
-      localGroups: liveGroups,
-      remoteDelta: filteredItems,
-      dirtyGroupIds: protection.dirtyGroups,
-      idGenerator: idGenerator,
-    );
-    if (!patch.forceFullSync || groupsDelta.deltaLink == null) return merged;
-
-    final seenRemoteIds = {
-      for (final g in filteredItems)
-        if (!g.isDeleted && g.id.isNotEmpty) g.id,
+    final localListIdByFolderRemoteId = {
+      for (final l in finalLists)
+        if (l.remoteId != null) l.remoteId!: l.id,
     };
-    return _pruneStale(
-      items: merged,
-      shouldKeep: (g) =>
-          g.remoteId == null ||
-          seenRemoteIds.contains(g.remoteId) ||
-          protection.pruneKeepGroups.contains(g.id),
-      onPruned: (g) => _log.fine(
-        'pull full-sync prune stale group=${g.id} '
-        'remote=${shortSyncId(g.remoteId)} title="${g.title}"',
-      ),
-    );
-  }
-
-  List<TodoList> _applyFoldersDelta({
-    required RemotePullPatch patch,
-    required List<TodoList> liveLists,
-    required List<ListGroup> nextGroups,
-    required OutboxPullProtection protection,
-    required String Function(String prefix) idGenerator,
-  }) {
-    final foldersDelta = patch.foldersFetch?.page;
-    if (foldersDelta == null) return liveLists;
-
-    final filteredItems = foldersDelta.items
-        .whereNot((f) => protection.deletedListRemotes.contains(f.id))
-        .toList();
-    final groupLocalIdByRemoteId = {
-      for (final g in nextGroups)
-        if (g.remoteId != null) g.remoteId!: g.id,
-    };
-    final merged = mergeFoldersDelta(
-      localLists: liveLists,
-      remoteDelta: filteredItems,
-      dirtyListIds: protection.dirtyLists,
-      groupLocalIdByRemoteId: groupLocalIdByRemoteId,
-      idGenerator: idGenerator,
-    );
-    if (!patch.forceFullSync || foldersDelta.deltaLink == null) return merged;
-
-    final seenRemoteIds = {
-      for (final f in filteredItems)
-        if (!f.isDeleted && !f.isIgnoredSpecialFolder && f.id.isNotEmpty) f.id,
-    };
-    if (seenRemoteIds.isEmpty) return merged;
-
-    return _pruneStale(
-      items: merged,
-      shouldKeep: (l) =>
-          l.isSmartList ||
-          l.remoteId == null ||
-          seenRemoteIds.contains(l.remoteId) ||
-          protection.pruneKeepLists.contains(l.id),
-      onPruned: (l) => _log.fine(
-        'pull full-sync prune stale list=${l.id} '
-        'remote=${shortSyncId(l.remoteId)} title="${l.title}"',
-      ),
-    );
-  }
-
-  List<TaskItem> _applyTaskDeltas({
-    required RemotePullPatch patch,
-    required List<TodoList> nextLists,
-    required List<TaskItem> liveTasksInValidLists,
-    required Map<String, String> localListIdByFolderRemoteId,
-    required Map<String, String> taskDeltaLinks,
-    required OutboxPullProtection protection,
-    required String Function(String prefix) idGenerator,
-  }) {
-    if (patch.taskFetchesByFolderRemoteId.isEmpty) return liveTasksInValidLists;
-
-    final listTitleByLocalId = {for (final l in nextLists) l.id: l.title};
-    final fullSyncedListIds = <String>{};
-    final allChanges = <RemoteTaskChange>[];
+    final listTitleByLocalId = {for (final l in finalLists) l.id: l.title};
+    final taskDeltaLinks = Map<String, String>.from(
+      repository.loadTaskDeltaLinks(),
+    )..removeWhere((id, _) => !localListIdByFolderRemoteId.containsKey(id));
 
     for (final MapEntry(key: folderRemoteId, value: taskFetch)
         in patch.taskFetchesByFolderRemoteId.entries) {
@@ -531,21 +429,6 @@ class SubstratePullEngine {
       if (taskDeltaResult.deltaLink != null) {
         taskDeltaLinks[folderRemoteId] = taskDeltaResult.deltaLink!;
       }
-      if (patch.forceFullSync &&
-          taskFetch.didFullFetch &&
-          taskDeltaResult.deltaLink != null) {
-        fullSyncedListIds.add(localListId);
-      }
-      allChanges.addAll(
-        taskDeltaResult.items.map(
-          (remote) => (
-            remote: remote,
-            fallbackLocalListId: localListId,
-            preserveStepsWhenMissing: false,
-            preserveAttachmentsWhenMissing: false,
-          ),
-        ),
-      );
       _log.info(
         'pull folder="${listTitleByLocalId[localListId] ?? localListId}" '
         'remote=${shortSyncId(folderRemoteId)} mode=${taskFetch.mode.label} '
@@ -554,28 +437,18 @@ class SubstratePullEngine {
       );
     }
 
-    final reconciled = reconcileRemoteTaskChanges(
-      lists: nextLists,
-      currentTasks: liveTasksInValidLists,
-      changes: allChanges,
-      dirtyTaskIds: protection.dirtyTasks,
-      pendingDeletedTaskRemoteIds: protection.deletedTaskRemotes,
-      idGenerator: idGenerator,
+    await _commitDeltaLinks(
+      patch: patch,
+      repository: repository,
+      localListIdByFolderRemoteId: localListIdByFolderRemoteId,
+      taskDeltaLinks: taskDeltaLinks,
     );
 
-    if (fullSyncedListIds.isEmpty) return reconciled.tasks;
-    return _pruneStale(
-      items: reconciled.tasks,
-      shouldKeep: (task) =>
-          task.remoteId == null ||
-          !fullSyncedListIds.contains(task.listId) ||
-          reconciled.seenActiveRemoteIds.contains(task.remoteId) ||
-          protection.pruneKeepTasks.contains(task.id),
-      onPruned: (removed) => _log.fine(
-        'pull full-sync prune stale local=${removed.id} '
-        'remote=${shortSyncId(removed.remoteId)} '
-        'title="${removed.title}" list=${removed.listId}',
-      ),
+    return FullPullResult(
+      groups: finalGroups,
+      lists: finalLists,
+      tasks: finalTasks,
+      remoteSettings: reconciled.remoteSettings,
     );
   }
 
@@ -638,21 +511,5 @@ class SubstratePullEngine {
                     ? DeltaFetchMode.initialFull
                     : DeltaFetchMode.delta));
     return result.map((page) => DeltaFetchResult(page: page, mode: mode));
-  }
-
-  List<T> _pruneStale<T>({
-    required List<T> items,
-    required bool Function(T item) shouldKeep,
-    required void Function(T item) onPruned,
-  }) {
-    final kept = <T>[];
-    for (final item in items) {
-      if (shouldKeep(item)) {
-        kept.add(item);
-      } else {
-        onPruned(item);
-      }
-    }
-    return kept;
   }
 }

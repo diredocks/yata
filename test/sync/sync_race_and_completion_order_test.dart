@@ -13,6 +13,7 @@ import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/sync/microsoft/cloud_sync_service.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_models.dart';
+import 'package:yata/sync/microsoft/todo_wire_codecs.dart';
 import 'package:yata/sync/sync_provider.dart';
 import 'package:yata/tasksview/tasks_view_grouping.dart';
 
@@ -47,7 +48,7 @@ void main() {
     final applyFuture = notifier.applyRemoteState(
       lists: snapshot.lists,
       tasks: [initialTask],
-      settingsPatch: const SyncedSettingsPatch(playCompletionSound: false),
+      remoteSettings: const {TodoSettingKeys.soundOnCompletion: 'false'},
       protectPendingOutbox: true,
     );
 
