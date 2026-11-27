@@ -73,9 +73,9 @@ class PushContext {
   final Map<String, ListGroup> _pushedGroups = {};
   final Map<String, TodoList> _pushedLists = {};
   final Map<String, TaskItem> _pushedTasks = {};
-  final Map<String, String> _sessionRemoteIds = {};
+  final Map<SyncEntityKey, String> _sessionRemoteIds = {};
   final Set<String> _followUpPullFolderRemoteIds = {};
-  final Set<String> _deletedRemoteKeys = {};
+  final Set<SyncRemoteKey> _deletedRemoteKeys = {};
   final Set<SyncEntityKey> _deletedEntities = {};
 
   OutboxPushOutcome buildOutcome() => OutboxPushOutcome(
@@ -92,15 +92,15 @@ class PushContext {
     String localId,
     String remoteId,
   ) {
-    _sessionRemoteIds[SyncOutboxQueue.remoteKey(type, localId)] = remoteId;
+    _sessionRemoteIds[(type: type, localId: localId)] = remoteId;
     outbox.backfillRemoteId(type, localId, remoteId);
   }
 
   String? resolveSessionRemoteId(SyncEntityType type, String localId) =>
-      _sessionRemoteIds[SyncOutboxQueue.remoteKey(type, localId)];
+      _sessionRemoteIds[(type: type, localId: localId)];
 
   void markDeletedRemoteKey(SyncEntityType type, String remoteId) {
-    _deletedRemoteKeys.add(SyncOutboxQueue.remoteKey(type, remoteId));
+    _deletedRemoteKeys.add((type: type, remoteId: remoteId));
   }
 
   Future<void> commitOp({
@@ -144,18 +144,12 @@ class PushContext {
     if (effectiveRemoteId != null) {
       markDeletedRemoteKey(entity.type, effectiveRemoteId);
     }
-    switch (entity.type) {
-      case SyncEntityType.group:
-        _pushedGroups.remove(entity.localId);
-      case SyncEntityType.list:
-        _pushedLists.remove(entity.localId);
-      case SyncEntityType.task:
-        _pushedTasks.remove(entity.localId);
-      case SyncEntityType.step:
-      case SyncEntityType.attachment:
-      case SyncEntityType.setting:
-        break;
-    }
+    final pushedByType = <SyncEntityType, Map<String, Object?>>{
+      SyncEntityType.group: _pushedGroups,
+      SyncEntityType.list: _pushedLists,
+      SyncEntityType.task: _pushedTasks,
+    };
+    pushedByType[entity.type]?.remove(entity.localId);
     _log.info(
       'push DELETE-WINS ${entity.type.name} local=${entity.localId} '
       'remote=${shortSyncId(effectiveRemoteId)}',
@@ -187,9 +181,10 @@ class PushContext {
         : raw;
     final effectiveRemoteId = remoteIdOf(resolved);
     if (effectiveRemoteId != null &&
-        _deletedRemoteKeys.contains(
-          SyncOutboxQueue.remoteKey(entityType, effectiveRemoteId),
-        )) {
+        _deletedRemoteKeys.contains((
+          type: entityType,
+          remoteId: effectiveRemoteId,
+        ))) {
       return null;
     }
     return resolved;
