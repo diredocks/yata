@@ -9,7 +9,6 @@
   "tasks": "Tasks",
   "newList": "New list",
   "newGroup": "New group",
-  "untitledGroup": "Untitled group",
   "listNameHint": "Enter list title",
   "groupNameHint": "Enter group title",
   "create": "Create",
@@ -72,11 +71,6 @@
   "searchEmptyPrompt": "What would you like to find?",
   "searchNoResults": "We searched far and wide and couldn't find any tasks matching your search.",
   "emptyListTitle": "Tasks show up here if they aren't part of any lists you've created.",
-  "emptyMyDayTitle": "Focus on your day",
-  "emptyMyDaySubtitle": "Get things done with My Day, a list that refreshes every day.",
-  "emptyImportantTitle": "Try starring some tasks to see them here.",
-  "emptyPlannedTitle": "Tasks with due dates or reminders show up here.",
-  "emptyCompletedTitle": "Completed tasks show up here.",
   "settings": "Settings",
   "general": "General",
   "smartListsSection": "Smart lists",
@@ -109,12 +103,6 @@
   "reorderTasks": "Reorder",
   "moveToList": "Move to list",
   "selectAll": "Select all",
-  "selectedCount": "{count} selected",
-  "@selectedCount": {
-    "placeholders": {
-      "count": {"type": "int"}
-    }
-  },
   "deleteSelectedConfirm": "Delete {count} selected tasks permanently?",
   "@deleteSelectedConfirm": {
     "placeholders": {
@@ -135,7 +123,6 @@
   },
   "userName": "Local Account",
   "userSubtitle": "Offline workspace",
-  "listThemeColor": "Theme color",
   "moreOptions": "More options",
   "renameList": "Rename list",
   "changeTheme": "Change theme",
@@ -230,17 +217,14 @@
   "landingSubtitle": "Your tasks, stored locally on this device.",
   "loginInputHint": "Email, phone, or username",
   "signIn": "Sign in",
-  "createNewAccount": "Create a new account",
   "addAccount": "Add account",
   "manageAccounts": "Manage accounts",
   "signOut": "Sign out",
   "yesSignOut": "Yes, sign out",
   "signOutWarning": "When you sign out we'll forget your account on this device until you sign in again.",
   "localAccount": "Local account",
-  "accountSection": "Account",
   "activeAccount": "Active",
   "useLocalAccount": "Use a local account",
-  "microsoftAccount": "Microsoft account",
   "signingIn": "Signing you in...",
   "syncNow": "Sync",
   "syncing": "Syncing...",
@@ -254,19 +238,12 @@
   "notYetSynced": "Not yet synced",
   "unableToSync": "Unable to sync",
   "reloginRequired": "Session expired. Please sign in again.",
-  "deviceCodeTitle": "Sign in with Microsoft",
-  "deviceCodeInstructions": "Open the link below in your browser and enter this code to sign in:",
-  "copyCode": "Copy code",
-  "codeCopied": "Code copied",
-  "openBrowser": "Open browser",
-  "waitingForSignIn": "Waiting for you to complete sign-in...",
   "signInFailed": "Sign-in failed: {error}",
   "@signInFailed": {
     "placeholders": {
       "error": {"type": "String"}
     }
   },
-  "clientIdLabel": "App Client ID (optional)",
   "notificationsSection": "Notifications",
   "remindersEnabled": "Enable Reminders",
   "remindersEnabledSummary": "Notify when a task reminder time is reached",
@@ -276,7 +253,6 @@
   "dueTodayNotificationTime": "Time of Due Today notifications",
   "routineNotifications": "Plan your day reminders",
   "routineNotificationsSummary": "Get reminded to plan your day",
-  "routineNotificationTime": "Plan your day time",
   "quickAddNotification": "Quick add notification",
   "quickAddNotificationSummary": "Add your tasks from the notification bar",
   "notificationCompleteAction": "Complete",
@@ -433,7 +409,6 @@
   "addShortcut": "Add shortcut to homescreen",
   "updateShortcut": "Update homescreen shortcut",
   "copiedToClipboard": "Copied list to clipboard",
-  "shortcutAdded": "Shortcut added to homescreen",
   "shortcutUpdated": "Homescreen shortcut updated",
   "printedWithApp": "Printed with {appName}",
   "@printedWithApp": {
@@ -444,7 +419,6 @@
     }
   },
   "printError": "Unable to print list",
-  "shareError": "Unable to share list",
   "addFile": "Add file",
   "takePhoto": "Take photo",
   "chooseFile": "Choose file",
@@ -459,6 +433,5 @@
   },
   "attachmentTotalTooLarge": "Total attachment size per task cannot exceed 25 MB",
   "attachmentOpenError": "Unable to open file",
-  "attachmentDownloadError": "Unable to download file",
-  "attachmentUploadError": "Unable to upload file"
+  "attachmentDownloadError": "Unable to download file"
 }
