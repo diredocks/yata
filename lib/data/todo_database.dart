@@ -42,7 +42,8 @@ class TaskItemRecords extends Table {
   Set<Column<Object>> get primaryKey => {accountKey, id};
 }
 
-/// Drift table storing sync dirty entity IDs and pending remote deletions.
+/// Drift table storing sync outbox ops, remote-ID mappings, and durable
+/// background sync jobs (`kind = 'sync_job'`).
 class SyncMutationRecords extends Table {
   TextColumn get accountKey => text()();
   TextColumn get kind => text()();
@@ -102,16 +103,41 @@ class TodoDatabase extends _$TodoDatabase {
         .get();
   }
 
+  Stream<List<TodoListRecord>> watchTodoListRecords(String accountKey) {
+    return (select(todoListRecords)
+          ..where((t) => t.accountKey.equals(accountKey))
+          ..orderBy([(t) => OrderingTerm.asc(t.position)]))
+        .watch();
+  }
+
+  /// Row-level diff upsert: updates/inserts present rows and prunes only
+  /// removed IDs without wiping the table.
   Future<void> replaceTodoListRecords(
     String accountKey,
     List<TodoListRecordsCompanion> rows,
   ) {
     return transaction(() async {
-      await (delete(
-        todoListRecords,
-      )..where((t) => t.accountKey.equals(accountKey))).go();
-      if (rows.isEmpty) return;
-      await batch((b) => b.insertAll(todoListRecords, rows));
+      final keepIds = rows
+          .where((row) => row.id.present)
+          .map((row) => row.id.value)
+          .toList(growable: false);
+      if (keepIds.isEmpty) {
+        await (delete(
+          todoListRecords,
+        )..where((t) => t.accountKey.equals(accountKey))).go();
+        return;
+      }
+      await (delete(todoListRecords)..where(
+            (t) => t.accountKey.equals(accountKey) & t.id.isNotIn(keepIds),
+          ))
+          .go();
+      await batch(
+        (b) => b.insertAll(
+          todoListRecords,
+          rows,
+          mode: InsertMode.insertOrReplace,
+        ),
+      );
     });
   }
 
@@ -122,16 +148,40 @@ class TodoDatabase extends _$TodoDatabase {
         .get();
   }
 
+  Stream<List<ListGroupRecord>> watchListGroupRecords(String accountKey) {
+    return (select(listGroupRecords)
+          ..where((t) => t.accountKey.equals(accountKey))
+          ..orderBy([(t) => OrderingTerm.asc(t.position)]))
+        .watch();
+  }
+
+  /// Row-level diff upsert for list groups.
   Future<void> replaceListGroupRecords(
     String accountKey,
     List<ListGroupRecordsCompanion> rows,
   ) {
     return transaction(() async {
-      await (delete(
-        listGroupRecords,
-      )..where((t) => t.accountKey.equals(accountKey))).go();
-      if (rows.isEmpty) return;
-      await batch((b) => b.insertAll(listGroupRecords, rows));
+      final keepIds = rows
+          .where((row) => row.id.present)
+          .map((row) => row.id.value)
+          .toList(growable: false);
+      if (keepIds.isEmpty) {
+        await (delete(
+          listGroupRecords,
+        )..where((t) => t.accountKey.equals(accountKey))).go();
+        return;
+      }
+      await (delete(listGroupRecords)..where(
+            (t) => t.accountKey.equals(accountKey) & t.id.isNotIn(keepIds),
+          ))
+          .go();
+      await batch(
+        (b) => b.insertAll(
+          listGroupRecords,
+          rows,
+          mode: InsertMode.insertOrReplace,
+        ),
+      );
     });
   }
 
@@ -142,16 +192,50 @@ class TodoDatabase extends _$TodoDatabase {
         .get();
   }
 
+  Stream<List<TaskItemRecord>> watchTaskItemRecords(String accountKey) {
+    return (select(taskItemRecords)
+          ..where((t) => t.accountKey.equals(accountKey))
+          ..orderBy([(t) => OrderingTerm.asc(t.position)]))
+        .watch();
+  }
+
+  Future<void> upsertTaskItemRecord(TaskItemRecordsCompanion row) {
+    return into(taskItemRecords).insertOnConflictUpdate(row);
+  }
+
+  Future<void> deleteTaskItemRecord(String accountKey, String id) {
+    return (delete(
+      taskItemRecords,
+    )..where((t) => t.accountKey.equals(accountKey) & t.id.equals(id))).go();
+  }
+
+  /// Row-level diff upsert for tasks.
   Future<void> replaceTaskItemRecords(
     String accountKey,
     List<TaskItemRecordsCompanion> rows,
   ) {
     return transaction(() async {
-      await (delete(
-        taskItemRecords,
-      )..where((t) => t.accountKey.equals(accountKey))).go();
-      if (rows.isEmpty) return;
-      await batch((b) => b.insertAll(taskItemRecords, rows));
+      final keepIds = rows
+          .where((row) => row.id.present)
+          .map((row) => row.id.value)
+          .toList(growable: false);
+      if (keepIds.isEmpty) {
+        await (delete(
+          taskItemRecords,
+        )..where((t) => t.accountKey.equals(accountKey))).go();
+        return;
+      }
+      await (delete(taskItemRecords)..where(
+            (t) => t.accountKey.equals(accountKey) & t.id.isNotIn(keepIds),
+          ))
+          .go();
+      await batch(
+        (b) => b.insertAll(
+          taskItemRecords,
+          rows,
+          mode: InsertMode.insertOrReplace,
+        ),
+      );
     });
   }
 
@@ -168,18 +252,84 @@ class TodoDatabase extends _$TodoDatabase {
     return query.get();
   }
 
+  Stream<List<SyncMutationRecord>> watchSyncMutationRecords(
+    String accountKey, {
+    String? kind,
+  }) {
+    final query = select(syncMutationRecords)
+      ..where((t) => t.accountKey.equals(accountKey))
+      ..orderBy([(t) => OrderingTerm.asc(t.position)]);
+    if (kind != null) {
+      query.where((t) => t.kind.equals(kind));
+    }
+    return query.watch();
+  }
+
+  Future<void> upsertSyncMutationRecord(SyncMutationRecordsCompanion row) {
+    return into(syncMutationRecords).insertOnConflictUpdate(row);
+  }
+
+  Future<void> deleteSyncMutationRecord(
+    String accountKey, {
+    required String kind,
+    required String itemKey,
+  }) {
+    return (delete(syncMutationRecords)..where(
+          (t) =>
+              t.accountKey.equals(accountKey) &
+              t.kind.equals(kind) &
+              t.itemKey.equals(itemKey),
+        ))
+        .go();
+  }
+
+  Future<void> deleteSyncMutationRecords(
+    String accountKey, {
+    required String kind,
+    required List<String> itemKeys,
+  }) {
+    if (itemKeys.isEmpty) return Future<void>.value();
+    return (delete(syncMutationRecords)..where(
+          (t) =>
+              t.accountKey.equals(accountKey) &
+              t.kind.equals(kind) &
+              t.itemKey.isIn(itemKeys),
+        ))
+        .go();
+  }
+
+  /// Row-level diff upsert for outbox / remote-id records.
   Future<void> replaceSyncMutationRecords(
     String accountKey, {
     required String kind,
     required List<SyncMutationRecordsCompanion> rows,
   }) {
     return transaction(() async {
+      final keepKeys = rows
+          .where((row) => row.itemKey.present)
+          .map((row) => row.itemKey.value)
+          .toList(growable: false);
+      if (keepKeys.isEmpty) {
+        await (delete(syncMutationRecords)..where(
+              (t) => t.accountKey.equals(accountKey) & t.kind.equals(kind),
+            ))
+            .go();
+        return;
+      }
       await (delete(syncMutationRecords)..where(
-            (t) => t.accountKey.equals(accountKey) & t.kind.equals(kind),
+            (t) =>
+                t.accountKey.equals(accountKey) &
+                t.kind.equals(kind) &
+                t.itemKey.isNotIn(keepKeys),
           ))
           .go();
-      if (rows.isEmpty) return;
-      await batch((b) => b.insertAll(syncMutationRecords, rows));
+      await batch(
+        (b) => b.insertAll(
+          syncMutationRecords,
+          rows,
+          mode: InsertMode.insertOrReplace,
+        ),
+      );
     });
   }
 
