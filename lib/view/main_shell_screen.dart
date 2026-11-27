@@ -404,20 +404,24 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
               child: FadeTransition(opacity: animation, child: child),
             ),
             child: showDetail
-                ? Row(
-                    key: ValueKey('detail_${state.selectedTaskId}'),
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const VerticalDivider(width: 1),
-                      SizedBox(
-                        width: 360,
-                        child: DetailViewScreen(
-                          taskId: state.selectedTaskId!,
-                          onClose: () =>
-                              ref.read(todoProvider.notifier).selectTask(null),
+                ? KeyedSubtree(
+                    key: const ValueKey('detail_open'),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const VerticalDivider(width: 1),
+                        SizedBox(
+                          width: 360,
+                          child: DetailViewScreen(
+                            key: ValueKey(state.selectedTaskId),
+                            taskId: state.selectedTaskId!,
+                            onClose: () => ref
+                                .read(todoProvider.notifier)
+                                .selectTask(null),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   )
                 : const SizedBox.shrink(key: ValueKey('detail_empty')),
           ),
