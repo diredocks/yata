@@ -347,19 +347,7 @@ void main() {
 
       h.container
           .read(todoProvider.notifier)
-          .commit(
-            h.container
-                .read(todoProvider)
-                .copyWith(
-                  tasks: [
-                    h.container
-                        .read(todoProvider)
-                        .tasks
-                        .first
-                        .copyWith(title: 'Local Edit'),
-                  ],
-                ),
-          );
+          .mutateTask('t_1', (t) => t.copyWith(title: 'Local Edit'));
 
       await h.container.read(syncProvider.notifier).syncNow();
       expect(patchAttempts, 2);
@@ -435,19 +423,7 @@ void main() {
 
       h.container
           .read(todoProvider.notifier)
-          .commit(
-            h.container
-                .read(todoProvider)
-                .copyWith(
-                  tasks: [
-                    for (final t in h.container.read(todoProvider).tasks)
-                      if (t.id == 't_1')
-                        t.copyWith(title: 'Edited Mid-Sync')
-                      else
-                        t,
-                  ],
-                ),
-          );
+          .mutateTask('t_1', (t) => t.copyWith(title: 'Edited Mid-Sync'));
 
       allowPatchFinish.complete();
       await syncFuture;
@@ -491,11 +467,7 @@ void main() {
             TaskStep(id: 's_1', title: 'Step 1', remoteId: 'rs-src'),
           ],
         );
-        h.container
-            .read(todoProvider.notifier)
-            .commit(
-              h.container.read(todoProvider).copyWith(tasks: [originalTask]),
-            );
+        h.container.read(todoProvider.notifier).addTask(originalTask);
         h.container.read(tasksActionPresenterProvider).batchCopyToList({
           't_src',
         }, 'tasks');
