@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:yata/data/storage/todo_repository.dart';
+import 'package:yata/data/db/todo_repository.dart';
 import 'package:yata/data/lists/todo_settings_store.dart';
 import 'package:yata/detailview/detail_view_screen.dart';
 import 'package:yata/detailview/details/detail_cards.dart';
@@ -11,7 +11,7 @@ import 'package:yata/l10n/app_localizations.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/settings/settings_screen.dart';
 import 'package:yata/theme/todo_theme.dart';
-import 'package:yata/data/storage/preferences.dart';
+import 'package:yata/data/preferences.dart';
 
 void main() {
   test('TodoTheme applies dynamicColorScheme when provided and falls back when null', () {

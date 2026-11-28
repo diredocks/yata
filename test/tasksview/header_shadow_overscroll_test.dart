@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/main.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 import 'package:yata/theme/todo_theme.dart';
-import 'package:yata/data/storage/preferences.dart';
+import 'package:yata/data/preferences.dart';
 
 void main() {
   testWidgets('Header shadow is part of the overscroll transformed subtree', (

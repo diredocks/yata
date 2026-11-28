@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/core/error/app_error.dart';
 import 'package:yata/data/sync/sync_outbox.dart';
 import 'package:yata/data/state/todo_provider.dart';
-import 'package:yata/data/storage/todo_repository.dart';
+import 'package:yata/data/db/todo_repository.dart';
 import 'package:yata/data/lists/todo_settings_store.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
@@ -20,7 +20,7 @@ import 'package:yata/sync/sync_store.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
-import 'package:yata/data/storage/todo_database.dart';
+import 'package:yata/data/db/todo_database.dart';
 
 class _RecordingBackgroundScheduler implements BackgroundSyncScheduler {
   _RecordingBackgroundScheduler({this.handlesTransfersInBackground = false});

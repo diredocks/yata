@@ -8,9 +8,9 @@ import '../../auth/msa_webview_launcher.dart';
 import '../../core/error/app_error.dart';
 import 'account_local_storage.dart';
 import '../attachments/attachment_storage.dart';
-import '../storage/preferences.dart';
+import '../preferences.dart';
 import '../state/todo_provider.dart';
-import '../storage/todo_repository.dart';
+import '../db/todo_repository.dart';
 import '../../models/account.dart';
 import '../../sync/microsoft/microsoft_todo_api.dart';
 

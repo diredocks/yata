@@ -7,7 +7,7 @@ import 'package:yata/main.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/tasksview/recyclerview/animated_task_sliver_list.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
-import 'package:yata/data/storage/preferences.dart';
+import 'package:yata/data/preferences.dart';
 
 TaskItem _makeTask(String id, String title) {
   return TaskItem(

@@ -5,7 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/main.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
-import 'package:yata/data/storage/preferences.dart';
+import 'package:yata/data/preferences.dart';
 
 void main() {
   testWidgets('Double tapping task list header scrolls back to top', (

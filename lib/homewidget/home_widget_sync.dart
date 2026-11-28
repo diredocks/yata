@@ -10,7 +10,7 @@ import '../data/state/todo_provider.dart';
 import 'home_widget_service.dart';
 
 export 'home_widget_service.dart';
-import '../data/storage/preferences.dart';
+import '../data/preferences.dart';
 
 final homeWidgetSyncProvider = Provider<HomeWidgetSyncController>((ref) {
   final controller = HomeWidgetSyncController(

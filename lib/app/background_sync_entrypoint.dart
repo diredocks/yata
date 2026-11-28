@@ -11,9 +11,9 @@ import '../core/logging/app_logger.dart';
 import '../core/result/app_result.dart';
 import '../data/account/account_local_storage.dart';
 import '../data/account/account_provider.dart';
-import '../data/storage/preferences.dart';
+import '../data/preferences.dart';
 import '../data/state/todo_provider.dart';
-import '../data/storage/todo_repository.dart';
+import '../data/db/todo_repository.dart';
 import '../data/lists/todo_settings_store.dart';
 import '../homewidget/home_widget_service.dart';
 import '../models/account.dart';
@@ -23,7 +23,7 @@ import '../sync/microsoft/microsoft_todo_api.dart';
 import '../sync/microsoft/substrate_push_engine.dart';
 import '../sync/sync_provider.dart';
 import '../sync/sync_store.dart';
-import '../data/storage/todo_database.dart';
+import '../data/db/todo_database.dart';
 
 final _log = appLogFor('BackgroundEntrypoint');
 

@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'data/account/account_local_storage.dart';
 import 'data/account/account_provider.dart';
 import 'data/state/todo_provider.dart';
-import 'data/storage/todo_repository.dart';
+import 'data/db/todo_repository.dart';
 import 'l10n/app_localizations.dart';
 import 'onboarding/landing_screen.dart';
 import 'sync/background_sync_bridge.dart';
@@ -15,8 +15,8 @@ import 'theme/system_font_loader.dart';
 import 'theme/todo_theme.dart';
 import 'app/main_shell_screen.dart';
 import 'homewidget/home_widget_sync.dart';
-import 'data/storage/preferences.dart';
-import 'data/storage/todo_database.dart';
+import 'data/preferences.dart';
+import 'data/db/todo_database.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

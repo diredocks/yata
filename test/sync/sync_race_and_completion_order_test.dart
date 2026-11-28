@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/data/sync/sync_outbox.dart';
 import 'package:yata/data/state/todo_provider.dart';
-import 'package:yata/data/storage/todo_repository.dart';
+import 'package:yata/data/db/todo_repository.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_models.dart';
@@ -19,8 +19,8 @@ import 'package:yata/ui/task_grouping.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
-import 'package:yata/data/storage/preferences.dart';
-import 'package:yata/data/storage/todo_database.dart';
+import 'package:yata/data/preferences.dart';
+import 'package:yata/data/db/todo_database.dart';
 
 void main() {
   test('applyPulledState preserves local task edit made while persisting settings patch', () async {

@@ -21,7 +21,7 @@ import 'package:yata/ui/task_grouping.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 import 'package:yata/theme/todo_theme.dart';
 import 'package:yata/homewidget/home_widget_service.dart';
-import 'package:yata/data/storage/preferences.dart';
+import 'package:yata/data/preferences.dart';
 
 const _testLocalizationDelegates = <LocalizationsDelegate<dynamic>>[
   AppLocalizations.delegate,

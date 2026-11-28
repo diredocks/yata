@@ -4,7 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/main.dart';
 import 'package:yata/tasksview/tasks_view_screen.dart';
-import 'package:yata/data/storage/preferences.dart';
+import 'package:yata/data/preferences.dart';
 
 void main() {
   testWidgets('TasksViewScreen respects bottom safe area padding', (

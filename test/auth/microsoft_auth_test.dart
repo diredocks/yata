@@ -18,7 +18,7 @@ import 'package:yata/sync/sync_provider.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
-import 'package:yata/data/storage/preferences.dart';
+import 'package:yata/data/preferences.dart';
 
 void main() {
   setUp(() {

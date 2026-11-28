@@ -1,5 +1,5 @@
 import '../data/sync/sync_outbox.dart';
-import '../data/storage/todo_repository.dart';
+import '../data/db/todo_repository.dart';
 import '../data/lists/todo_settings_store.dart';
 import '../data/lists/todo_settings_sync.dart';
 import '../data/state/todo_state.dart';

@@ -9,7 +9,7 @@ import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/tasksview/list_actions_service.dart';
 import 'package:yata/tasksview/list_export_formatter.dart';
-import 'package:yata/data/storage/preferences.dart';
+import 'package:yata/data/preferences.dart';
 
 class _FakeListActionsService implements ListActionsService {
   _FakeListActionsService();

@@ -14,7 +14,7 @@ import 'package:yata/auth/msa_webview_launcher.dart';
 import 'package:yata/core/error/app_error.dart';
 import 'package:yata/core/result/app_result.dart';
 import 'package:yata/data/sync/sync_outbox.dart';
-import 'package:yata/data/storage/todo_repository.dart';
+import 'package:yata/data/db/todo_repository.dart';
 import 'package:yata/data/lists/todo_settings_store.dart';
 import 'package:yata/models/account.dart';
 import 'package:yata/models/default_lists.dart';
@@ -23,7 +23,7 @@ import 'package:yata/models/todo_list.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
 import 'package:yata/core/network/http_guard.dart';
 import 'package:yata/sync/sync_provider.dart';
-import 'package:yata/data/storage/preferences.dart';
+import 'package:yata/data/preferences.dart';
 
 class FakeInteractiveMsaClient implements MsaInteractiveSignInClient {
   FakeInteractiveMsaClient(this.result);

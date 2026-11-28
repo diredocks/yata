@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/data/account/account_provider.dart';
 import 'package:yata/data/sync/sync_outbox.dart';
 import 'package:yata/data/state/todo_provider.dart';
-import 'package:yata/data/storage/todo_repository.dart';
+import 'package:yata/data/db/todo_repository.dart';
 import 'package:yata/main.dart';
 import 'package:yata/models/account.dart';
 import 'package:yata/models/task_item.dart';
@@ -18,7 +18,7 @@ import 'package:yata/homewidget/home_widget_sync.dart';
 import '../helpers/home_widget_fakes.dart';
 import '../helpers/microsoft_sync_fakes.dart';
 
-import 'package:yata/data/storage/preferences.dart';
+import 'package:yata/data/preferences.dart';
 
 Future<void> _pumpYataApp(
   WidgetTester tester, {
