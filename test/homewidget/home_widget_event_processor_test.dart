@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yata/data/state/todo_provider.dart';
 import 'package:yata/models/account.dart';
@@ -90,7 +92,7 @@ void main() {
       final result = await WidgetEventProcessor(
         widgetService: h.container.read(homeWidgetServiceProvider),
         read: h.container.read,
-        strings: HomeWidgetStrings.fallbackEnglish(),
+        strings: HomeWidgetStrings.fromLocale(const Locale('en')),
         isBackground: false,
         runCloudSync: () async {},
         scheduleBackgroundedAppCloudSync: () {},
@@ -122,7 +124,7 @@ void main() {
       await WidgetEventProcessor(
         widgetService: h.container.read(homeWidgetServiceProvider),
         read: h.container.read,
-        strings: HomeWidgetStrings.fallbackEnglish(),
+        strings: HomeWidgetStrings.fromLocale(const Locale('en')),
         isBackground: false,
         runCloudSync: () async {},
         scheduleBackgroundedAppCloudSync: () {},
@@ -147,7 +149,7 @@ void main() {
         final result = await WidgetEventProcessor(
           widgetService: h.container.read(homeWidgetServiceProvider),
           read: h.container.read,
-          strings: HomeWidgetStrings.fallbackEnglish(),
+          strings: HomeWidgetStrings.fromLocale(const Locale('en')),
           isBackground: true,
           runCloudSync: () async {
             throw StateError('network down');
@@ -188,7 +190,7 @@ void main() {
       await WidgetEventProcessor(
         widgetService: hBg.container.read(homeWidgetServiceProvider),
         read: hBg.container.read,
-        strings: HomeWidgetStrings.fallbackEnglish(),
+        strings: HomeWidgetStrings.fromLocale(const Locale('en')),
         isBackground: true,
         runCloudSync: () async {
           bgCloudSyncCalls += 1;
@@ -216,7 +218,7 @@ void main() {
       await WidgetEventProcessor(
         widgetService: hFgPaused.container.read(homeWidgetServiceProvider),
         read: hFgPaused.container.read,
-        strings: HomeWidgetStrings.fallbackEnglish(),
+        strings: HomeWidgetStrings.fromLocale(const Locale('en')),
         isBackground: false,
         isAppForeground: false,
         runCloudSync: () async {

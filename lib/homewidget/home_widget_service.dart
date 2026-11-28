@@ -184,7 +184,7 @@ class HomeWidgetService {
     TodoState state, {
     String? accountId,
     String accountName = '',
-    HomeWidgetStrings? strings,
+    required HomeWidgetStrings strings,
     int ackedOpId = 0,
     bool clearRefreshing = false,
     bool force = false,
@@ -195,7 +195,7 @@ class HomeWidgetService {
       state,
       accountId: accountId,
       accountName: accountName,
-      strings: strings ?? HomeWidgetStrings.fallbackEnglish(),
+      strings: strings,
       now: now,
     );
     final payloadJson = jsonEncode(canonicalPayload);

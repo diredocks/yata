@@ -74,9 +74,6 @@ class HomeWidgetStrings {
     );
   }
 
-  factory HomeWidgetStrings.fallbackEnglish() =>
-      HomeWidgetStrings.fromLocale(const Locale('en'));
-
   factory HomeWidgetStrings.fromLocale(Locale locale) {
     final supported = AppLocalizations.delegate.isSupported(locale)
         ? locale

@@ -15,6 +15,11 @@ import 'package:yata/settings/settings_screen.dart';
 import 'package:yata/data/preferences.dart';
 import 'package:yata/notifications/reminder_schedule.dart';
 
+
+final _enStrings = NotificationStrings.fromLocalizations(
+  lookupAppLocalizations(const Locale('en')),
+);
+
 class _FakeTransport implements NotificationTransport {
   _FakeTransport({
     this.permissionStatus = const NotificationPermissionStatus(),
@@ -237,6 +242,7 @@ void main() {
           tasks: [activeTask, completedTask, pastTask],
           pinReminders: true,
         ),
+        strings: _enStrings,
       );
 
       final task1Id = notificationIdForTask('task_1');
@@ -248,6 +254,7 @@ void main() {
       // Disabling reminders cancels the scheduled notification.
       await service.syncWithState(
         _makeState(tasks: [activeTask], remindersEnabled: false),
+        strings: _enStrings,
       );
       expect(transport.scheduled, isEmpty);
       expect(transport.cancelled, contains(task1Id));
@@ -278,6 +285,7 @@ void main() {
         routineNotificationMinute: 30,
         quickAddNotificationEnabled: true,
       ),
+      strings: _enStrings,
     );
 
     expect(
@@ -309,6 +317,7 @@ void main() {
         routineNotificationEnabled: false,
         quickAddNotificationEnabled: false,
       ),
+      strings: _enStrings,
     );
     expect(
       transport.shown.containsKey(NotificationService.quickAddNotificationId),

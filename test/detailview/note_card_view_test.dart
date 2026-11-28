@@ -23,6 +23,8 @@ import 'package:yata/theme/todo_theme.dart';
 import 'package:yata/homewidget/home_widget_service.dart';
 import 'package:yata/data/preferences.dart';
 
+final _enStrings = HomeWidgetStrings.fromLocale(const Locale('en'));
+
 const _testLocalizationDelegates = <LocalizationsDelegate<dynamic>>[
   AppLocalizations.delegate,
   ...GlobalMaterialLocalizations.delegates,
@@ -695,6 +697,7 @@ void main() {
           ],
           selectedListId: 'tasks',
         ),
+        strings: _enStrings,
         accountId: 'acct_1',
         accountName: 'Test',
       );

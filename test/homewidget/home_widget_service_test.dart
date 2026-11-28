@@ -11,6 +11,8 @@ import 'package:yata/homewidget/home_widget_service.dart';
 
 import '../helpers/home_widget_fakes.dart';
 
+final _enStrings = HomeWidgetStrings.fromLocale(const Locale('en'));
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -225,16 +227,23 @@ void main() {
         );
 
         final now = DateTime(2026, 11, 24, 9);
-        final f1 = service.syncWithState(s1, accountId: 'a', now: now);
+        final f1 = service.syncWithState(
+          s1,
+          strings: _enStrings,
+          accountId: 'a',
+          now: now,
+        );
         await Future<void>.delayed(Duration.zero);
         final f2 = service.syncWithState(
           s2,
+          strings: _enStrings,
           accountId: 'a',
           ackedOpId: 4,
           now: now,
         );
         final f3 = service.syncWithState(
           s3,
+          strings: _enStrings,
           accountId: 'a',
           clearRefreshing: true,
           now: now,
@@ -268,12 +277,23 @@ void main() {
       );
       final now = DateTime(2026, 11, 24, 9);
 
-      await service.syncWithState(state, accountId: 'a', now: now);
-      await service.syncWithState(state, accountId: 'a', now: now);
+      await service.syncWithState(
+        state,
+        strings: _enStrings,
+        accountId: 'a',
+        now: now,
+      );
+      await service.syncWithState(
+        state,
+        strings: _enStrings,
+        accountId: 'a',
+        now: now,
+      );
       expect(transport.commits, hasLength(1));
 
       await service.syncWithState(
         state,
+        strings: _enStrings,
         accountId: 'a',
         ackedOpId: 1,
         now: now,
@@ -282,20 +302,32 @@ void main() {
 
       await service.syncWithState(
         state,
+        strings: _enStrings,
         accountId: 'a',
         clearRefreshing: true,
         now: now,
       );
       expect(transport.commits, hasLength(3));
 
-      await service.syncWithState(state, accountId: 'a', force: true, now: now);
+      await service.syncWithState(
+        state,
+        strings: _enStrings,
+        accountId: 'a',
+        force: true,
+        now: now,
+      );
       expect(transport.commits, hasLength(4));
 
       await service.clearWidgetData();
       expect(transport.storage[kWidgetSnapshotKey], isNull);
       expect(transport.updateCalls, 5);
 
-      await service.syncWithState(state, accountId: 'a', now: now);
+      await service.syncWithState(
+        state,
+        strings: _enStrings,
+        accountId: 'a',
+        now: now,
+      );
       expect(transport.commits, hasLength(5));
     });
 
@@ -339,7 +371,7 @@ void main() {
         state,
         accountId: 'a',
         accountName: 'Test',
-        strings: HomeWidgetStrings.fallbackEnglish(),
+        strings: _enStrings,
         now: now,
       );
       final listTaskIds = payload['listTaskIds'] as Map<String, dynamic>;

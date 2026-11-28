@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui' show Locale;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -62,11 +61,6 @@ class NotificationStrings {
       defaultTasksListName: l10n.tasks,
     );
   }
-
-  static NotificationStrings fallbackEnglish() =>
-      NotificationStrings.fromLocalizations(
-        lookupAppLocalizations(const Locale('en')),
-      );
 
   final String completeActionLabel;
   final String snoozeActionLabel;
@@ -560,10 +554,10 @@ class NotificationService {
 
   Future<void> syncWithState(
     TodoState state, {
-    NotificationStrings? strings,
+    required NotificationStrings strings,
   }) async {
     await ensureInitialized();
-    final l10n = strings ?? NotificationStrings.fallbackEnglish();
+    final l10n = strings;
     final now = _clock();
 
     // 1. Task reminder notifications.
