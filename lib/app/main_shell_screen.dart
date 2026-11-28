@@ -181,6 +181,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
         lists: state.lists,
         currentList: currentList,
         startOfWeek: state.startOfWeek,
+        showListPicker: true,
         onSubmit:
             ({
               required String title,

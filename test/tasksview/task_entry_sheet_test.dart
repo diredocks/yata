@@ -56,6 +56,52 @@ void main() {
     expect(find.text('Add due date'), findsOneWidget);
   });
 
+  testWidgets('showListPicker forces the target chip for a custom list', (
+    WidgetTester tester,
+  ) async {
+    final customList = lists.firstWhere((l) => l.id == 'custom_1');
+    String? submittedTargetListId;
+
+    await tester.pumpWidget(
+      _wrapSheet(
+        TaskEntrySheet(
+          lists: lists,
+          currentList: customList,
+          showListPicker: true,
+          onSubmit:
+              ({
+                required title,
+                targetListId,
+                dueDate,
+                reminderAt,
+                RecurrenceType recurrence = RecurrenceType.none,
+                rawRecurrence,
+              }) {
+                submittedTargetListId = targetListId;
+              },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Chip starts on the current list.
+    expect(find.byType(ActionChip), findsOneWidget);
+    expect(find.text('Groceries'), findsOneWidget);
+
+    await tester.tap(find.byType(ActionChip));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'Tasks'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tasks'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'From notification');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.pumpAndSettle();
+
+    expect(submittedTargetListId, 'tasks');
+  });
+
   testWidgets(
     'Planned list shows list picker chip and defaults due date to Today',
     (WidgetTester tester) async {
