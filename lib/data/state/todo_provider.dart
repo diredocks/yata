@@ -19,7 +19,7 @@ import '../db/todo_repository.dart';
 import '../lists/todo_settings_store.dart';
 import '../lists/todo_settings_sync.dart';
 import 'todo_state.dart';
-import '../../core/time/calendar_day.dart';
+import '../../core/utils.dart';
 import '../tasks/my_day.dart';
 
 export 'todo_state.dart';

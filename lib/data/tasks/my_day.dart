@@ -1,4 +1,4 @@
-import '../../core/time/calendar_day.dart';
+import '../../core/utils.dart';
 import '../../models/task_item.dart';
 
 /// Recomputes [TaskItem.isInMyDay] from [TaskItem.myDayDate],

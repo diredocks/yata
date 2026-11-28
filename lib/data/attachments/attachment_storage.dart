@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import '../../core/fs/path_segment.dart';
+import '../../core/utils.dart';
 import '../../core/logging/app_logger.dart';
 
 final _log = appLogFor('Attachments');

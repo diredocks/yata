@@ -7,7 +7,7 @@ import '../data/tasks/task_mutations.dart';
 import '../data/ordering/list_ordering.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
-import '../core/time/calendar_day.dart';
+import '../core/utils.dart';
 
 /// Presenter for `tasksview/TasksViewFragment`, matching `tasksview/TasksViewPresenter`.
 class TasksViewPresenter {

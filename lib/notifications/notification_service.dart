@@ -13,7 +13,7 @@ import 'reminder_schedule.dart';
 import '../data/state/todo_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/todo_theme.dart';
-import '../core/time/calendar_day.dart';
+import '../core/utils.dart';
 
 final _log = appLogFor('NotificationTransport');
 

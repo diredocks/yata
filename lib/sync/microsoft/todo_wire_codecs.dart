@@ -6,7 +6,7 @@ import 'package:material_ui/material_ui.dart' show TimeOfDay;
 import '../../models/todo_list.dart';
 import 'substrate_time_codecs.dart';
 
-export '../../core/uuid.dart' show generateUuidV4;
+export '../../core/utils.dart' show generateUuidV4;
 export '../../data/ordering/order_date_time.dart';
 export 'substrate_time_codecs.dart' hide kIsoWeekdayNames;
 

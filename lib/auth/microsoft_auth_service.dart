@@ -8,7 +8,7 @@ import '../core/error/app_error.dart';
 import '../core/logging/app_logger.dart';
 import '../core/network/http_guard.dart';
 import '../core/result/app_result.dart';
-import '../core/uuid.dart';
+import '../core/utils.dart';
 import 'auth_token_storage.dart';
 import 'msa_profile_parser.dart';
 

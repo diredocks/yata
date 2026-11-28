@@ -5,7 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../core/fs/path_segment.dart';
+import '../../core/utils.dart';
 
 /// Maximum allowed size for a custom background image (25 MB), matching the
 /// original app's limit.

@@ -12,7 +12,7 @@ import 'package:yata/tasksview/tasks_view_presenter.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
-import 'package:yata/core/time/calendar_day.dart';
+import 'package:yata/core/utils.dart';
 
 void main() {
   setUp(() {

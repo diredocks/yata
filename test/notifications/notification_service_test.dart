@@ -15,7 +15,6 @@ import 'package:yata/settings/settings_screen.dart';
 import 'package:yata/data/preferences.dart';
 import 'package:yata/notifications/reminder_schedule.dart';
 
-
 final _enStrings = NotificationStrings.fromLocalizations(
   lookupAppLocalizations(const Locale('en')),
 );
