@@ -262,9 +262,16 @@ class _NoteCardViewState extends State<NoteCardView> {
                     duration: const Duration(milliseconds: 180),
                     curve: Curves.easeOutCubic,
                     height: _previewHeight,
+                    clipBehavior: Clip.hardEdge,
+                    decoration: const BoxDecoration(),
                     child: Stack(
                       children: [
-                        WebViewWidget(controller: _previewController!),
+                        OverflowBox(
+                          alignment: Alignment.topLeft,
+                          minHeight: 142,
+                          maxHeight: 142,
+                          child: WebViewWidget(controller: _previewController!),
+                        ),
                         if (!_previewReady)
                           Positioned.fill(
                             child: IgnorePointer(
