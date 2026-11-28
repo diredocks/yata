@@ -268,14 +268,8 @@ class _NoteCardViewState extends State<NoteCardView> {
                         if (!_previewReady)
                           Positioned.fill(
                             child: IgnorePointer(
-                              child: ColoredBox(
-                                color: widget.cardColor,
-                                child: Text(
-                                  widget.task.note,
-                                  maxLines: 6,
-                                  overflow: TextOverflow.fade,
-                                  style: theme.textTheme.bodyLarge,
-                                ),
+                              child: _NotePreviewSkeleton(
+                                backgroundColor: widget.cardColor,
                               ),
                             ),
                           ),
@@ -328,6 +322,76 @@ class _NoteCardViewState extends State<NoteCardView> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _NotePreviewSkeleton extends StatefulWidget {
+  const _NotePreviewSkeleton({required this.backgroundColor});
+
+  final Color backgroundColor;
+
+  @override
+  State<_NotePreviewSkeleton> createState() => _NotePreviewSkeletonState();
+}
+
+class _NotePreviewSkeletonState extends State<_NotePreviewSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+    final baseColor = onSurface.withValues(alpha: 0.08);
+    final highlightColor = onSurface.withValues(alpha: 0.16);
+
+    return ColoredBox(
+      color: widget.backgroundColor,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final slide = _controller.value * 2 - 0.5;
+          final gradient = LinearGradient(
+            begin: Alignment(slide - 0.8, 0),
+            end: Alignment(slide + 0.8, 0),
+            colors: [baseColor, highlightColor, baseColor],
+          );
+
+          Widget bar(double widthFactor) {
+            return FractionallySizedBox(
+              widthFactor: widthFactor,
+              child: Container(
+                height: 14,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  gradient: gradient,
+                ),
+              ),
+            );
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              bar(0.62),
+              const SizedBox(height: 10),
+              bar(0.95),
+              const SizedBox(height: 10),
+              bar(0.78),
+            ],
+          );
+        },
       ),
     );
   }
