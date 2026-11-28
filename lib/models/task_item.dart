@@ -106,6 +106,8 @@ abstract class TaskItem with _$TaskItem {
     RecurrenceType recurrence,
     Map<String, dynamic>? rawRecurrence,
     @Default('') String note,
+    @Default('') String noteHtml,
+    String? noteContentType,
     @JsonKey(
       fromJson: nullableUtcDateTimeFromJson,
       toJson: nullableUtcDateTimeToJson,
@@ -146,6 +148,11 @@ abstract class TaskItem with _$TaskItem {
       (rawRecurrence != null && rawRecurrence!.isNotEmpty);
 
   int get completedStepsCount => steps.where((step) => step.isCompleted).length;
+
+  bool get isHtmlNote => noteContentType?.trim().toLowerCase() == 'html';
+
+  bool get hasNote =>
+      note.trim().isNotEmpty || noteHtml.toLowerCase().contains('<img');
 
   bool get isOverdue {
     if (dueDate == null || isCompleted) return false;

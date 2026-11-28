@@ -308,3 +308,36 @@ String stripHtmlToPlainText(String raw, {String? contentType}) {
       .replaceAll('\r', '\n')
       .replaceAll(RegExp(r'\n+$'), '');
 }
+
+const int maxHtmlBodyLength = 327680;
+const int maxTextBodyLength = 32768;
+
+/// Returns `true` when [raw] HTML contains neither visible plain text nor an
+/// `<img>` tag (aligning with MS To Do's `HtmlUtils.b`).
+bool isHtmlBodyEmpty(String raw) {
+  if (raw.isEmpty) return true;
+  if (raw.toLowerCase().contains('<img')) return false;
+  return stripHtmlToPlainText(raw, contentType: 'HTML').trim().isEmpty;
+}
+
+/// Wraps an HTML fragment in a full `<html><head><meta ...></head><body>`
+/// document (aligning with MS To Do's `RichEditText` export), or returns `""`
+/// when [raw] has no visible content or images.
+String normalizeHtmlBodyDocument(String raw) {
+  if (isHtmlBodyEmpty(raw)) return '';
+  final trimmed = raw.trim();
+  final lower = trimmed.toLowerCase();
+  final doc = lower.contains('<html')
+      ? trimmed
+      : '<html><head>'
+            '<meta http-equiv="Content-Type" content="text/html; charset=utf-8">'
+            '</head><body>$trimmed</body></html>';
+  if (doc.length <= maxHtmlBodyLength) return doc;
+  return doc.substring(0, maxHtmlBodyLength);
+}
+
+/// Truncates a plain-text task note to [maxTextBodyLength].
+String truncatePlainTextBody(String raw) {
+  if (raw.length <= maxTextBodyLength) return raw;
+  return raw.substring(0, maxTextBodyLength);
+}

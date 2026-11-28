@@ -206,6 +206,8 @@ class TaskMutations {
         recurrence: task.recurrence,
         rawRecurrence: normalizeRawRecurrence(task.rawRecurrence),
         note: task.note,
+        noteHtml: task.noteHtml,
+        noteContentType: task.noteContentType,
         steps: [
           for (final step in task.steps)
             TaskStep(
