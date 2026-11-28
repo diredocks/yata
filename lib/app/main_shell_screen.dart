@@ -304,14 +304,10 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
         .read(todoSettingsStoreProvider)
         .loadLastEnteredListId();
     if (lastListId == null) return;
-    final lists = ref.read(todoProvider).lists;
-    TodoList? targetList;
-    for (final list in lists) {
-      if (list.id == lastListId) {
-        targetList = list;
-        break;
-      }
-    }
+    final targetList = ref
+        .read(todoProvider)
+        .lists
+        .firstWhereOrNull((list) => list.id == lastListId);
     if (targetList == null) {
       ref.read(todoProvider.notifier).setLastEnteredListId(null);
       return;
