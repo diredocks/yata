@@ -5,6 +5,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/fs/path_segment.dart';
+
 /// Maximum allowed size for a custom background image (25 MB), matching the
 /// original app's limit.
 const int kMaxCustomBackgroundBytes = 25 * 1024 * 1024;
@@ -59,11 +61,6 @@ class CustomBackgroundService {
 
   final Future<Directory> Function() _baseDirProvider;
 
-  String _sanitizeSegment(String raw) {
-    final cleaned = raw.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-    return cleaned.isEmpty ? 'default' : cleaned;
-  }
-
   /// Validates that [source] does not exceed [kMaxCustomBackgroundBytes] and
   /// copies it as-is (without compression) into app-private storage.
   Future<CustomBackground> savePickedImage(
@@ -77,7 +74,11 @@ class CustomBackgroundService {
 
     final baseDir = await _baseDirProvider();
     final targetDir = Directory(
-      p.join(baseDir.path, 'custom_backgrounds', _sanitizeSegment(accountKey)),
+      p.join(
+        baseDir.path,
+        'custom_backgrounds',
+        sanitizePathSegment(accountKey),
+      ),
     );
     await targetDir.create(recursive: true);
 

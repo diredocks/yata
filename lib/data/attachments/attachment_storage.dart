@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/fs/path_segment.dart';
 import '../../core/logging/app_logger.dart';
 
 final _log = appLogFor('Attachments');
@@ -26,19 +27,14 @@ class AttachmentStorage {
     return cleaned.isEmpty ? 'attachment' : cleaned;
   }
 
-  static String _sanitizeSegment(String raw, String fallback) {
-    final cleaned = raw.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-    return cleaned.isEmpty ? fallback : cleaned;
-  }
-
   Future<String> resolveTargetPath({
     required String accountId,
     required String attachmentId,
     required String fileName,
   }) async {
     final root = await _storageRootProvider();
-    final safeAccountId = _sanitizeSegment(accountId, 'default');
-    final safeId = _sanitizeSegment(attachmentId, 'att');
+    final safeAccountId = sanitizePathSegment(accountId);
+    final safeId = sanitizePathSegment(attachmentId, fallback: 'att');
     final safeName = sanitizeFileName(fileName);
     final dir = Directory(
       p.join(root.path, 'attachments', safeAccountId, safeId),
@@ -89,7 +85,7 @@ class AttachmentStorage {
   Future<void> deleteAccountAttachments(String accountId) async {
     try {
       final root = await _storageRootProvider();
-      final safeAccountId = _sanitizeSegment(accountId, 'default');
+      final safeAccountId = sanitizePathSegment(accountId);
       final accountDir = Directory(
         p.join(root.path, 'attachments', safeAccountId),
       );
