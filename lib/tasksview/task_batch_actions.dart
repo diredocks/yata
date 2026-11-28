@@ -60,7 +60,7 @@ class TaskBatchActions {
     batchSetMyDay(taskIds, true);
   }
 
-  void batchSetImportant(Set<String> taskIds, bool value) {
+  void batchMarkImportant(Set<String> taskIds) {
     final movedToTop = <TaskItem>[];
     final rest = <TaskItem>[];
     final maxOrderByList = <String, DateTime>{};
@@ -87,8 +87,8 @@ class TaskBatchActions {
         rest.add(task);
         continue;
       }
-      var next = task.copyWith(isImportant: value);
-      if (value && _state.moveStarredTasksToTop && !task.isImportant) {
+      var next = task.copyWith(isImportant: true);
+      if (_state.moveStarredTasksToTop && !task.isImportant) {
         bumpIndex += 1;
         final existingListMax = maxOrderByList[task.listId];
         final bumpedOrder = computeNewOrderDateTime(
@@ -122,10 +122,6 @@ class TaskBatchActions {
       tasks: [...movedToTop, ...rest],
       touchedTaskIds: taskIds,
     );
-  }
-
-  void batchMarkImportant(Set<String> taskIds) {
-    batchSetImportant(taskIds, true);
   }
 
   void batchCopyToList(Set<String> taskIds, String targetListId) {
