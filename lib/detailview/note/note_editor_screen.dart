@@ -11,8 +11,11 @@ import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../sync/microsoft/todo_wire_codecs.dart';
 
-typedef RichNoteChangedCallback =
-    void Function(String plainText, String html, String contentType);
+typedef RichNoteChangedCallback = void Function(
+  String plainText,
+  String html,
+  String contentType,
+);
 
 class _EditorFormatState {
   const _EditorFormatState({
@@ -398,14 +401,6 @@ class _RichFormatBar extends StatelessWidget {
   final void Function(String cmd, [String? arg]) onExec;
   final VoidCallback onLinkTap;
 
-  String get _headingLabel {
-    return switch (state.headingLevel) {
-      1 => 'Title',
-      2 => 'Subhead',
-      _ => 'Body',
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -413,21 +408,34 @@ class _RichFormatBar extends StatelessWidget {
     final inactiveColor = theme.colorScheme.onSurfaceVariant;
 
     Widget formatButton({
-      required IconData icon,
+      IconData? icon,
+      Widget? iconWidget,
       required String tooltip,
       required bool active,
       VoidCallback? onPressed,
     }) {
+      final color = active ? activeColor : inactiveColor;
       return IconButton(
-        icon: Icon(icon, size: 20),
+        icon: iconWidget ?? Icon(icon, size: 20),
         tooltip: tooltip,
-        color: active ? activeColor : inactiveColor,
+        color: color,
         style: active
             ? IconButton.styleFrom(
                 backgroundColor: activeColor.withValues(alpha: 0.12),
               )
             : null,
         onPressed: onPressed,
+      );
+    }
+
+    Widget textIcon(String label, bool active) {
+      return Text(
+        label,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: active ? activeColor : inactiveColor,
+        ),
       );
     }
 
@@ -444,56 +452,23 @@ class _RichFormatBar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Row(
                 children: [
-                  PopupMenuButton<String>(
-                    tooltip: 'Text style',
-                    onSelected: (cmd) => onExec(cmd),
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'paragraph', child: Text('Body')),
-                      PopupMenuItem(
-                        value: 'heading2',
-                        child: Text(
-                          'Subhead',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: 'heading1',
-                        child: Text(
-                          'Title',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ],
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _headingLabel,
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              color: state.headingLevel > 0
-                                  ? activeColor
-                                  : inactiveColor,
-                            ),
-                          ),
-                          Icon(
-                            Icons.arrow_drop_down,
-                            size: 18,
-                            color: inactiveColor,
-                          ),
-                        ],
-                      ),
-                    ),
+                  formatButton(
+                    iconWidget: textIcon('H1', state.headingLevel == 1),
+                    tooltip: 'Title',
+                    active: state.headingLevel == 1,
+                    onPressed: () => onExec('heading1'),
+                  ),
+                  formatButton(
+                    iconWidget: textIcon('H2', state.headingLevel == 2),
+                    tooltip: 'Subhead',
+                    active: state.headingLevel == 2,
+                    onPressed: () => onExec('heading2'),
+                  ),
+                  formatButton(
+                    icon: Icons.text_fields,
+                    tooltip: 'Body',
+                    active: state.headingLevel == 0,
+                    onPressed: () => onExec('paragraph'),
                   ),
                   const VerticalDivider(width: 12, indent: 10, endIndent: 10),
                   formatButton(
