@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/task_item.dart';
 import '../data/ordering/order_date_time.dart';
 import '../data/state/todo_provider.dart';
+import '../core/time/calendar_day.dart';
+import '../data/tasks/due_date.dart';
+import '../data/tasks/my_day.dart';
 
 class TaskBatchActions {
   TaskBatchActions(this._ref);
@@ -35,7 +38,7 @@ class TaskBatchActions {
           )
         : null;
     _mapSelectedTasks(taskIds, (task) {
-      return TodoNotifier.syncMyDayFlag(
+      return syncMyDayFlag(
         task.copyWith(
           myDayDate: value ? now : null,
           committedOrder: committedOrder,
@@ -43,7 +46,7 @@ class TaskBatchActions {
               ? null
               : (!value &&
                         task.dueDate != null &&
-                        TodoNotifier.isSameDay(task.dueDate!, now)
+                        isSameCalendarDay(task.dueDate!, now)
                     ? now
                     : task.postponedDay),
         ),
@@ -178,7 +181,7 @@ class TaskBatchActions {
     final now = DateTime.now();
     _mapSelectedTasks(
       taskIds,
-      (task) => TodoNotifier.applyDueDate(
+      (task) => applyDueDate(
         task,
         dueDate,
         now: now,

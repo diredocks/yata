@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../data/state/todo_provider.dart';
 import '../models/todo_list.dart';
+import '../data/tasks/my_day.dart';
 
 /// Presenter for `settings/SettingsActivity`.
 class SettingsPresenter {
@@ -63,7 +64,7 @@ class SettingsPresenter {
     final updatedTasks = [
       for (final task in _state.tasks)
         () {
-          final synced = TodoNotifier.syncMyDayFlag(
+          final synced = syncMyDayFlag(
             task,
             now: now,
             showDueTodayInMyDay: value,

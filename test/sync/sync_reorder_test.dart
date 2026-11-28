@@ -12,6 +12,8 @@ import 'package:yata/tasksview/tasks_view_presenter.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
+import 'package:yata/core/time/calendar_day.dart';
+
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -376,7 +378,7 @@ void main() {
           .firstWhere((t) => t.remoteId == 'rt-tight-1');
       expect(tightAfterLocalReorder.myDayDate, isNotNull);
       expect(
-        TodoNotifier.isSameDay(tightAfterLocalReorder.myDayDate!, today),
+        isSameCalendarDay(tightAfterLocalReorder.myDayDate!, today),
         isTrue,
       );
 

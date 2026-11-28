@@ -6,6 +6,9 @@ import '../data/tasks/recurrence.dart';
 import '../data/tasks/task_mutations.dart';
 import '../data/state/todo_provider.dart';
 import '../models/task_item.dart';
+import '../core/time/calendar_day.dart';
+import '../data/tasks/due_date.dart';
+import '../data/tasks/my_day.dart';
 
 /// Presenter for `detailview/DetailViewFragment`, matching `detailview/DetailViewPresenter`.
 class DetailViewPresenter {
@@ -29,7 +32,7 @@ class DetailViewPresenter {
     _store.mutateTask(taskId, (task) {
       final adding = !task.isInMyDay;
       final dueToday =
-          task.dueDate != null && TodoNotifier.isSameDay(task.dueDate!, now);
+          task.dueDate != null && isSameCalendarDay(task.dueDate!, now);
       final committedOrder = adding
           ? computeNewOrderDateTime(
               existingOrders: _state.tasks
@@ -39,7 +42,7 @@ class DetailViewPresenter {
               fallbackNow: now,
             )
           : null;
-      return TodoNotifier.syncMyDayFlag(
+      return syncMyDayFlag(
         task.copyWith(
           myDayDate: adding ? now : null,
           committedOrder: committedOrder,
@@ -77,7 +80,7 @@ class DetailViewPresenter {
     final now = DateTime.now();
     _store.mutateTask(
       taskId,
-      (task) => TodoNotifier.applyDueDate(
+      (task) => applyDueDate(
         task,
         dueDate,
         now: now,
@@ -101,7 +104,7 @@ class DetailViewPresenter {
     final now = DateTime.now();
     _store.mutateTask(
       taskId,
-      (task) => TodoNotifier.applyRecurrence(
+      (task) => applyRecurrence(
         task,
         recurrence,
         now: now,

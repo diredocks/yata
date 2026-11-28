@@ -458,7 +458,7 @@ TaskItem taskFromRemote(
     createdAt: remote.createdDateTime ?? DateTime.now().toUtc(),
     isCompleted: remote.isCompleted,
     isImportant: remote.isImportant,
-    isInMyDay: false, // Recomputed by TodoNotifier.syncMyDayFlag
+    isInMyDay: false, // Recomputed by syncMyDayFlag
     myDayDate: remote.committedDay,
     postponedDay: remote.postponedDay,
     dueDate: remote.dueDate,

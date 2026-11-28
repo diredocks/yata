@@ -7,6 +7,7 @@ import '../data/tasks/task_mutations.dart';
 import '../data/ordering/list_ordering.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
+import '../core/time/calendar_day.dart';
 
 /// Presenter for `tasksview/TasksViewFragment`, matching `tasksview/TasksViewPresenter`.
 class TasksViewPresenter {
@@ -279,7 +280,7 @@ class TasksViewPresenter {
       if (isMyDayView) {
         final needsMyDayDate =
             current.myDayDate == null ||
-            !TodoNotifier.isSameDay(current.myDayDate!, now);
+            !isSameCalendarDay(current.myDayDate!, now);
         reorderedVisible[entry.key] = current.copyWith(
           committedOrder: entry.value,
           myDayDate: needsMyDayDate ? today : current.myDayDate,

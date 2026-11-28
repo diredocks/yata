@@ -13,49 +13,6 @@ bool isGroupSyncDirty(ListGroup prev, ListGroup next) =>
 bool isListSyncDirty(TodoList prev, TodoList next) =>
     diffListDirtyFields(prev, next).isNotEmpty;
 
-bool isSameCalendarDay(DateTime a, DateTime b) =>
-    a.year == b.year && a.month == b.month && a.day == b.day;
-
-/// Recomputes [TaskItem.isInMyDay] from [TaskItem.myDayDate],
-/// [TaskItem.dueDate], and [TaskItem.postponedDay], matching `MyDayContract.kt`.
-TaskItem computeTaskMyDayFlag(
-  TaskItem task, {
-  required DateTime now,
-  required bool showDueTodayInMyDay,
-}) {
-  final committedToday =
-      task.myDayDate != null && isSameCalendarDay(task.myDayDate!, now);
-  final postponedToday =
-      task.postponedDay != null && isSameCalendarDay(task.postponedDay!, now);
-  final dueToday =
-      showDueTodayInMyDay &&
-      task.dueDate != null &&
-      isSameCalendarDay(task.dueDate!, now);
-  final effectiveInMyDay = committedToday || (dueToday && !postponedToday);
-  if (task.isInMyDay == effectiveInMyDay) return task;
-  return task.copyWith(isInMyDay: effectiveInMyDay);
-}
-
-/// Applies [computeTaskMyDayFlag] across all [tasks] and reports whether any changed.
-({List<TaskItem> tasks, bool changed}) syncTasksMyDayFlags(
-  List<TaskItem> tasks, {
-  required DateTime now,
-  required bool showDueTodayInMyDay,
-}) {
-  var changed = false;
-  final synced = <TaskItem>[];
-  for (final task in tasks) {
-    final next = computeTaskMyDayFlag(
-      task,
-      now: now,
-      showDueTodayInMyDay: showDueTodayInMyDay,
-    );
-    changed |= !identical(next, task);
-    synced.add(next);
-  }
-  return (tasks: changed ? synced : tasks, changed: changed);
-}
-
 /// Recomputes per-list completed-section expansion from synced folder and smart-list settings.
 ({Map<String, bool> expanded, bool changed}) recomputeCompletedExpandedByList({
   required Map<String, bool> currentExpanded,

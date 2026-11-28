@@ -7,6 +7,8 @@ import '../../sync/microsoft/substrate_time_codecs.dart';
 import '../ordering/order_date_time.dart';
 import 'recurrence.dart';
 import '../state/todo_provider.dart';
+import '../account/account_provider.dart';
+import 'my_day.dart';
 
 class TaskMutations {
   TaskMutations(this._ref);
@@ -55,7 +57,7 @@ class TaskMutations {
             fallbackNow: now,
           )
         : null;
-    final newTask = TodoNotifier.syncMyDayFlag(
+    final newTask = syncMyDayFlag(
       TaskItem(
         id: _store.nextId('task'),
         listId: resolvedListId,
@@ -93,7 +95,10 @@ class TaskMutations {
     final willSpawn =
         completed &&
         target.hasRecurrence &&
-        _store.shouldSpawnRecurringLocally(target);
+        shouldSpawnRecurringLocally(
+          target,
+          activeAccount: _ref.read(accountProvider).activeAccount,
+        );
     if (!willSpawn) {
       _store.mutateTask(
         taskId,
@@ -182,7 +187,7 @@ class TaskMutations {
         localReminder.minute,
       ).toUtc();
     }
-    return TodoNotifier.syncMyDayFlag(
+    return syncMyDayFlag(
       TaskItem(
         id: _store.nextId('task'),
         listId: task.listId,

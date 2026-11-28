@@ -15,6 +15,7 @@ import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../theme/todo_theme.dart';
+import '../core/time/calendar_day.dart';
 
 final _log = appLogFor('NotificationTransport');
 
@@ -714,7 +715,7 @@ class NotificationService {
         .where((t) {
           return !t.isCompleted &&
               t.dueDate != null &&
-              TodoNotifier.isSameDay(t.dueDate!, now);
+              isSameCalendarDay(t.dueDate!, now);
         })
         .toList(growable: false);
 

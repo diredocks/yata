@@ -1,5 +1,7 @@
+import '../../models/account.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
+import 'my_day.dart';
 
 /// Computes the default due date when setting [recurrence] with no due date,
 /// matching `RecurrenceUtils.java` (`yp.v1.a`) in `mstodo.apk`.
@@ -191,3 +193,38 @@ DateTime computeNextDueDate(
       );
   }
 }
+
+/// Updates [task]'s recurrence preset or custom rule.
+TaskItem applyRecurrence(
+  TaskItem task,
+  RecurrenceType recurrence, {
+  required DateTime now,
+  required bool showDueTodayInMyDay,
+  DateTime? fallbackDueDate,
+  Map<String, dynamic>? rawRecurrence,
+}) {
+  final hasRecurrence =
+      recurrence != RecurrenceType.none ||
+      (rawRecurrence != null && rawRecurrence.isNotEmpty);
+  final nextDue = (hasRecurrence && task.dueDate == null)
+      ? fallbackDueDate
+      : task.dueDate;
+  return syncMyDayFlag(
+    task.copyWith(
+      recurrence: recurrence,
+      rawRecurrence: recurrence == RecurrenceType.none ? null : rawRecurrence,
+      dueDate: nextDue,
+    ),
+    now: now,
+    showDueTodayInMyDay: showDueTodayInMyDay,
+  );
+}
+
+/// Whether completing [task] should immediately spawn the next local occurrence.
+///
+/// For synced Microsoft account tasks (`remoteId != null`), Exchange/Substrate
+/// spawns the next instance on completion PATCH.
+bool shouldSpawnRecurringLocally(
+  TaskItem task, {
+  required Account? activeAccount,
+}) => task.remoteId == null || activeAccount is! MicrosoftAccount;

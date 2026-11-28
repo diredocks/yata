@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../account/account_provider.dart';
-import '../../models/account.dart';
 import '../../models/default_lists.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
@@ -20,9 +19,10 @@ import '../db/todo_repository.dart';
 import '../lists/todo_settings_store.dart';
 import '../lists/todo_settings_sync.dart';
 import 'todo_state.dart';
-import '../sync/todo_sync_reconciler.dart';
+import '../tasks/my_day.dart';
 
 export 'todo_state.dart';
+import '../sync/todo_sync_reconciler.dart';
 
 final todoDatabaseProvider = Provider<TodoDatabase?>((ref) {
   if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
@@ -65,87 +65,13 @@ class TodoNotifier extends Notifier<TodoState> {
 
   TodoSettingsStore get settings => ref.read(todoSettingsStoreProvider);
 
-  String _todayKey(DateTime dt) => dt.toIso8601String().substring(0, 10);
-
-  static bool isSameDay(DateTime a, DateTime b) => isSameCalendarDay(a, b);
-
-  /// Recomputes [TaskItem.isInMyDay] from [TaskItem.myDayDate],
-  /// [TaskItem.dueDate], and [TaskItem.postponedDay], matching `MyDayContract.kt`.
-  static TaskItem syncMyDayFlag(
-    TaskItem task, {
-    required DateTime now,
-    required bool showDueTodayInMyDay,
-  }) => computeTaskMyDayFlag(
-    task,
-    now: now,
-    showDueTodayInMyDay: showDueTodayInMyDay,
-  );
-
-  /// Whether completing [task] should immediately spawn the next local occurrence.
-  ///
-  /// For synced Microsoft account tasks (`remoteId != null`), Exchange/Substrate
-  /// spawns the next instance on completion PATCH.
-  bool shouldSpawnRecurringLocally(TaskItem task) =>
-      task.remoteId == null ||
-      ref.read(accountProvider).activeAccount is! MicrosoftAccount;
-
-  /// Updates [task]'s due date, clearing recurrence if removed and updating My Day.
-  static TaskItem applyDueDate(
-    TaskItem task,
-    DateTime? dueDate, {
-    required DateTime now,
-    required bool showDueTodayInMyDay,
-  }) {
-    final clearPostponed =
-        dueDate != null &&
-        showDueTodayInMyDay &&
-        task.postponedDay != null &&
-        isSameDay(dueDate, task.postponedDay!);
-    return syncMyDayFlag(
-      task.copyWith(
-        dueDate: dueDate,
-        recurrence: dueDate == null ? RecurrenceType.none : task.recurrence,
-        rawRecurrence: dueDate == null ? null : task.rawRecurrence,
-        postponedDay: clearPostponed ? null : task.postponedDay,
-      ),
-      now: now,
-      showDueTodayInMyDay: showDueTodayInMyDay,
-    );
-  }
-
-  /// Updates [task]'s recurrence preset or custom rule.
-  static TaskItem applyRecurrence(
-    TaskItem task,
-    RecurrenceType recurrence, {
-    required DateTime now,
-    required bool showDueTodayInMyDay,
-    DateTime? fallbackDueDate,
-    Map<String, dynamic>? rawRecurrence,
-  }) {
-    final hasRecurrence =
-        recurrence != RecurrenceType.none ||
-        (rawRecurrence != null && rawRecurrence.isNotEmpty);
-    final nextDue = (hasRecurrence && task.dueDate == null)
-        ? fallbackDueDate
-        : task.dueDate;
-    return syncMyDayFlag(
-      task.copyWith(
-        recurrence: recurrence,
-        rawRecurrence: recurrence == RecurrenceType.none ? null : rawRecurrence,
-        dueDate: nextDue,
-      ),
-      now: now,
-      showDueTodayInMyDay: showDueTodayInMyDay,
-    );
-  }
-
   @override
   TodoState build() {
     final repository = ref.watch(todoRepositoryProvider);
     final settingsStore = ref.watch(todoSettingsStoreProvider);
     final settings = settingsStore.load();
     final now = DateTime.now();
-    final todayKey = _todayKey(now);
+    final todayKey = myDayResetDateKey(now);
     final synced = syncTasksMyDayFlags(
       repository.readCachedTasks(),
       now: now,
