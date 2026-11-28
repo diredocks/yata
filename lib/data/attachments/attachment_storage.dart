@@ -13,11 +13,6 @@ final attachmentStorageProvider = Provider<AttachmentStorage>((ref) {
   return AttachmentStorage();
 });
 
-/// App-private, per-account attachment layout on disk.
-///
-/// Owned by the data layer because deleting an account must remove exactly the
-/// bytes written here. The detail view borrows it to stage and open files, but
-/// does not own the layout.
 class AttachmentStorage {
   AttachmentStorage({Future<Directory> Function()? storageRootProvider})
     : _storageRootProvider =

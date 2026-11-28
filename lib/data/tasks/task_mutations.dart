@@ -8,12 +8,6 @@ import '../ordering/order_date_time.dart';
 import 'recurrence.dart';
 import '../state/todo_provider.dart';
 
-/// Task-level mutations shared by every surface that edits tasks (tasks view,
-/// detail view, search, notifications and the home widget).
-///
-/// This is deliberately not a presenter: it owns business rules (recurrence
-/// spawning, My Day flags, important-to-top ordering) so no feature has to
-/// reach into another feature's presenter to mutate a task.
 class TaskMutations {
   TaskMutations(this._ref);
 

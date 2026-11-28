@@ -85,7 +85,6 @@ RecurrenceType decodeSubstrateRecurrence(Map<String, dynamic>? map) {
   }
 }
 
-/// Parses the Substrate `WeekDays` wire list into ISO weekday numbers.
 Set<int> parseRecurrenceWeekDays(Map<String, dynamic>? raw) {
   final list = raw?['WeekDays'] as List<dynamic>?;
   if (list == null) return const <int>{};

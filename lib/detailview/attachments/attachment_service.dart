@@ -24,11 +24,6 @@ final attachmentServiceProvider = Provider<AttachmentService>((ref) {
   return AttachmentService(ref);
 });
 
-/// Detail-view attachment operations: size validation, staging picked files,
-/// downloading remote attachments and opening them via `open_file`/
-/// `url_launcher`.
-///
-/// The on-disk layout itself is owned by [AttachmentStorage] in the data layer.
 class AttachmentService {
   AttachmentService(
     Ref ref, {

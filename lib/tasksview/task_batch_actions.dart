@@ -4,7 +4,6 @@ import '../models/task_item.dart';
 import '../data/ordering/order_date_time.dart';
 import '../data/state/todo_provider.dart';
 
-/// Batch mutations applied to a selection of tasks (multi-select actions).
 class TaskBatchActions {
   TaskBatchActions(this._ref);
 
