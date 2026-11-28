@@ -508,7 +508,7 @@ void main() {
   );
 
   testWidgets(
-    'Multi-select batch delete fades out deleted tasks and smoothly repositions remaining items',
+    'Multi-select batch delete fades out deleted tasks, keeps items above stationary, and repositions items below',
     (WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({
         'yata.accounts': '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
@@ -539,12 +539,14 @@ void main() {
       await tester.pumpAndSettle();
 
       final tasks = container.read(todoProvider).tasks;
-      final task4Id = tasks.firstWhere((t) => t.title == 'Task 4').id;
+      final task3Id = tasks.firstWhere((t) => t.title == 'Task 3').id;
       final task2Id = tasks.firstWhere((t) => t.title == 'Task 2').id;
+      final beforeTask4Center = tester.getCenter(find.text('Task 4'));
       final beforeTask1Y = tester.getTopLeft(find.text('Task 1')).dy;
 
-      // Enter multi-select via long-press on Task 4, then tap Task 2.
-      await tester.longPress(find.text('Task 4'));
+      // Enter multi-select via long-press on Task 3, then tap Task 2.
+      // Task 4 remains above the deleted items; Task 1 remains below.
+      await tester.longPress(find.text('Task 3'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Task 2'));
       await tester.pumpAndSettle();
@@ -558,8 +560,17 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 90));
 
+      // Surviving item above the deleted items must not get a spurious FLIP offset.
+      expect(tester.getCenter(find.text('Task 4')).dy, beforeTask4Center.dy);
+      final hitResult = tester.hitTestOnBinding(beforeTask4Center);
+      final task4RenderObject = tester.renderObject(find.text('Task 4'));
+      expect(
+        hitResult.path.any((entry) => entry.target == task4RenderObject),
+        isTrue,
+      );
+
       // Both deleted tasks are fading out and collapsing instead of vanishing immediately.
-      for (final deletedId in [task4Id, task2Id]) {
+      for (final deletedId in [task3Id, task2Id]) {
         final removingFinder = find.byKey(ValueKey('removing_$deletedId'));
         expect(removingFinder, findsOneWidget);
         final fadeFinder = find.descendant(
@@ -586,10 +597,11 @@ void main() {
       expect(midTask1Y, lessThan(beforeTask1Y));
 
       await tester.pumpAndSettle();
-      expect(find.text('Task 4'), findsNothing);
+      expect(find.text('Task 3'), findsNothing);
       expect(find.text('Task 2'), findsNothing);
-      expect(find.text('Task 3'), findsOneWidget);
+      expect(find.text('Task 4'), findsOneWidget);
       expect(find.text('Task 1'), findsOneWidget);
+      expect(tester.getCenter(find.text('Task 4')).dy, beforeTask4Center.dy);
       final afterTask1Y = tester.getTopLeft(find.text('Task 1')).dy;
       expect(afterTask1Y, lessThan(midTask1Y));
     },

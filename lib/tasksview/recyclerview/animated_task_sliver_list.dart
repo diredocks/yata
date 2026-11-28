@@ -39,8 +39,7 @@ class _AnimatedTaskSliverListState extends State<AnimatedTaskSliverList>
     _items = List<TaskItem>.of(widget.tasks);
     _flipCoordinator = _FlipCoordinator(
       vsync: this,
-      ancestorProvider: () =>
-          Scrollable.maybeOf(context)?.context.findRenderObject() as RenderBox?,
+      ancestorProvider: () => _flipAncestorFor(context),
     );
   }
 
@@ -51,7 +50,9 @@ class _AnimatedTaskSliverListState extends State<AnimatedTaskSliverList>
       _items = List<TaskItem>.of(widget.tasks);
       return;
     }
-    _flipCoordinator.capturePositions();
+    if (_didSurvivingOrderChange(_items, widget.tasks)) {
+      _flipCoordinator.capturePositions();
+    }
     _syncDiff(widget.tasks);
   }
 
@@ -349,15 +350,14 @@ class _AnimatedReorderableTaskSliverState
     ];
     _flipCoordinator = _FlipCoordinator(
       vsync: this,
-      ancestorProvider: () =>
-          Scrollable.maybeOf(context)?.context.findRenderObject() as RenderBox?,
+      ancestorProvider: () => _flipAncestorFor(context),
     );
   }
 
   @override
   void didUpdateWidget(covariant AnimatedReorderableTaskSliver oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_haveSameIdsInOrder(oldWidget.tasks, widget.tasks)) {
+    if (_didSurvivingOrderChange(oldWidget.tasks, widget.tasks)) {
       _flipCoordinator.capturePositions();
     }
     _syncTasks(widget.tasks);
@@ -606,12 +606,37 @@ class _AnimatedReorderableTaskSliverState
   }
 }
 
+RenderBox? _flipAncestorFor(BuildContext context) {
+  final scaffoldBox =
+      Scaffold.maybeOf(context)?.context.findRenderObject() as RenderBox?;
+  if (scaffoldBox != null) return scaffoldBox;
+  return Scrollable.maybeOf(context)?.context.findRenderObject() as RenderBox?;
+}
+
 bool _haveSameIdsInOrder(List<TaskItem> a, List<TaskItem> b) =>
     identical(a, b) ||
     const IterableEquality<String>().equals(
       a.map((task) => task.id),
       b.map((task) => task.id),
     );
+
+bool _didSurvivingOrderChange(
+  List<TaskItem> oldTasks,
+  List<TaskItem> nextTasks,
+) {
+  final nextIds = {for (final t in nextTasks) t.id};
+  final oldSurviving = [
+    for (final t in oldTasks)
+      if (nextIds.contains(t.id)) t.id,
+  ];
+  if (oldSurviving.length <= 1) return false;
+  final oldIds = {for (final t in oldTasks) t.id};
+  final nextSurviving = [
+    for (final t in nextTasks)
+      if (oldIds.contains(t.id)) t.id,
+  ];
+  return !const ListEquality<String>().equals(oldSurviving, nextSurviving);
+}
 
 class _CapturedPosition {
   const _CapturedPosition({required this.laidOutY, required this.visualY});
