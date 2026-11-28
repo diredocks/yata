@@ -129,18 +129,24 @@ function emitFormatState() {
   });
 }
 
+function emitContentChangedNow() {
+  if (changeTimer !== null) {
+    window.clearTimeout(changeTimer);
+    changeTimer = null;
+  }
+  if (!editor) return;
+  postToFlutter({
+    type: 'contentChanged',
+    html: editor.getHTML(),
+    plainText: editor.getText({ blockSeparator: '\n' }),
+  });
+}
+
 function scheduleContentChanged() {
   if (changeTimer !== null) {
     window.clearTimeout(changeTimer);
   }
-  changeTimer = window.setTimeout(() => {
-    if (!editor) return;
-    postToFlutter({
-      type: 'contentChanged',
-      html: editor.getHTML(),
-      plainText: editor.getText({ blockSeparator: '\n' }),
-    });
-  }, 250);
+  changeTimer = window.setTimeout(emitContentChangedNow, 50);
 }
 
 function ensureEditor(placeholder: string) {
@@ -274,6 +280,9 @@ const YataEditor = {
         break;
     }
     emitFormatState();
+    if (cmd !== 'focus') {
+      emitContentChangedNow();
+    }
   },
 
   getContent() {

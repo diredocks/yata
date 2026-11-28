@@ -87,6 +87,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
   bool _editorReady = false;
   bool _hasEdited = false;
   bool _closing = false;
+  String _initialHtml = '';
   String _latestHtml = '';
 
   bool get _useWebView => isRichEditorWebViewSupported;
@@ -95,9 +96,10 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _latestHtml = widget.task.isHtmlNote
+    _initialHtml = widget.task.isHtmlNote
         ? widget.task.noteHtml
         : _escapePlainTextToHtml(widget.task.note);
+    _latestHtml = _initialHtml;
 
     if (_useWebView) {
       unawaited(_initWebView());
@@ -198,7 +200,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
         'accent': _cssColor(theme.colorScheme.primary),
         'isDark': theme.brightness == Brightness.dark,
       },
-    });
+    }).replaceAll('\u2028', r'\u2028').replaceAll('\u2029', r'\u2029');
     controller.runJavaScript('window.YataEditor?.init($payload);');
   }
 
@@ -260,6 +262,35 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
     _execCommand('setLink', normalized);
   }
 
+  Future<void> _pullLatestContentFromWebView() async {
+    final controller = _webController;
+    if (controller == null || !_editorReady) return;
+    try {
+      final raw = await controller
+          .runJavaScriptReturningResult(
+            'JSON.stringify(window.YataEditor?.getContent() ?? null)',
+          )
+          .timeout(const Duration(milliseconds: 150));
+      Object? decoded = raw;
+      if (decoded is String) {
+        decoded = jsonDecode(decoded);
+      }
+      if (decoded is String) {
+        decoded = jsonDecode(decoded);
+      }
+      if (decoded is Map) {
+        final html = decoded['html'] as String?;
+        if (html != null && html != _initialHtml) {
+          _hasEdited = true;
+          _latestHtml = html;
+        }
+      }
+    } catch (_) {
+      // Fall back to the latest debounced bridge update if JS evaluation is
+      // unsupported or times out.
+    }
+  }
+
   void _flushSave() {
     if (_plainController != null) {
       final text = _plainController!.text;
@@ -279,13 +310,18 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
     widget.onNoteSaved(plain, normalizedDoc, 'HTML');
   }
 
-  void _closeEditor() {
+  Future<void> _closeEditor() async {
     if (_closing || !mounted) return;
     _closing = true;
+    await _pullLatestContentFromWebView();
     _flushSave();
     final controller = _webController;
     if (controller != null) {
-      setState(() => _webController = null);
+      if (mounted) {
+        setState(() => _webController = null);
+      } else {
+        _webController = null;
+      }
       unawaited(controller.platform.closeWebViewSession().catchError((_) {}));
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -306,12 +342,12 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _closeEditor();
+        if (!didPop) unawaited(_closeEditor());
       },
       child: Scaffold(
         backgroundColor: transparentHole ? Colors.transparent : null,
         appBar: AppBar(
-          leading: BackButton(onPressed: _closeEditor),
+          leading: BackButton(onPressed: () => unawaited(_closeEditor())),
           title: Text(
             widget.task.title,
             maxLines: 1,
