@@ -41,6 +41,7 @@ class _NoteCardViewState extends State<NoteCardView> {
   bool _previewReady = false;
   String? _loadedTaskId;
   String? _loadedHtml;
+  String? _lastThemeJson;
   double _previewHeight = 84;
   bool _isPreviewOverflowing = false;
 
@@ -54,6 +55,12 @@ class _NoteCardViewState extends State<NoteCardView> {
       !Platform.isLinux &&
       widget.task.isHtmlNote &&
       widget.task.noteHtml.trim().isNotEmpty;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncPreviewTheme();
+  }
 
   @override
   void didUpdateWidget(covariant NoteCardView oldWidget) {
@@ -126,23 +133,35 @@ class _NoteCardViewState extends State<NoteCardView> {
     }
   }
 
+  Map<String, dynamic> _buildPreviewThemeMap(ThemeData theme) => {
+    'bg': 'transparent',
+    'fg': _cssColor(theme.colorScheme.onSurface),
+    'muted': _cssColor(theme.colorScheme.onSurfaceVariant),
+    'accent': _cssColor(theme.colorScheme.primary),
+    'isDark': theme.brightness == Brightness.dark,
+  };
+
+  void _syncPreviewTheme() {
+    final controller = _previewController;
+    if (controller == null || !_previewReady || !mounted) return;
+    final themeJson = jsonEncode(_buildPreviewThemeMap(Theme.of(context)));
+    if (themeJson == _lastThemeJson) return;
+    _lastThemeJson = themeJson;
+    controller.runJavaScript('window.YataEditor?.setTheme($themeJson);');
+  }
+
   void _syncPreviewContent() {
     final controller = _previewController;
     if (controller == null || !_previewReady || !mounted) return;
     _loadedTaskId = widget.task.id;
     _loadedHtml = widget.task.noteHtml;
 
-    final theme = Theme.of(context);
+    final themeMap = _buildPreviewThemeMap(Theme.of(context));
+    _lastThemeJson = jsonEncode(themeMap);
     final payload = jsonEncode({
       'html': widget.task.noteHtml,
       'editable': false,
-      'theme': {
-        'bg': 'transparent',
-        'fg': _cssColor(theme.colorScheme.onSurface),
-        'muted': _cssColor(theme.colorScheme.onSurfaceVariant),
-        'accent': _cssColor(theme.colorScheme.primary),
-        'isDark': theme.brightness == Brightness.dark,
-      },
+      'theme': themeMap,
     });
     controller.runJavaScript('window.YataEditor?.init($payload);');
   }

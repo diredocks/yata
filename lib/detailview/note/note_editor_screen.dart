@@ -89,6 +89,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
   bool _closing = false;
   String _initialHtml = '';
   String _latestHtml = '';
+  String? _lastThemeJson;
 
   bool get _useWebView => isRichEditorWebViewSupported;
 
@@ -119,6 +120,12 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
     }
     _plainController?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncThemeToEditor();
   }
 
   @override
@@ -183,23 +190,35 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
     }
   }
 
+  Map<String, dynamic> _buildThemeMap(ThemeData theme) => {
+    'bg': _cssColor(theme.scaffoldBackgroundColor),
+    'fg': _cssColor(theme.colorScheme.onSurface),
+    'muted': _cssColor(theme.colorScheme.onSurfaceVariant),
+    'accent': _cssColor(theme.colorScheme.primary),
+    'isDark': theme.brightness == Brightness.dark,
+  };
+
+  void _syncThemeToEditor() {
+    final controller = _webController;
+    if (controller == null || !_editorReady || !mounted || _closing) return;
+    final themeJson = jsonEncode(_buildThemeMap(Theme.of(context)));
+    if (themeJson == _lastThemeJson) return;
+    _lastThemeJson = themeJson;
+    controller.runJavaScript('window.YataEditor?.setTheme($themeJson);');
+  }
+
   void _sendInitToEditor() {
     final controller = _webController;
     if (controller == null || !_editorReady || !mounted || _closing) return;
 
-    final theme = Theme.of(context);
+    final themeMap = _buildThemeMap(Theme.of(context));
+    _lastThemeJson = jsonEncode(themeMap);
     final l10n = AppLocalizations.of(context);
     final payload = jsonEncode({
       'html': _latestHtml,
       'editable': true,
       'placeholder': l10n.addNotePlaceholder,
-      'theme': {
-        'bg': _cssColor(theme.scaffoldBackgroundColor),
-        'fg': _cssColor(theme.colorScheme.onSurface),
-        'muted': _cssColor(theme.colorScheme.onSurfaceVariant),
-        'accent': _cssColor(theme.colorScheme.primary),
-        'isDark': theme.brightness == Brightness.dark,
-      },
+      'theme': themeMap,
     }).replaceAll('\u2028', r'\u2028').replaceAll('\u2029', r'\u2029');
     controller.runJavaScript('window.YataEditor?.init($payload);');
   }
