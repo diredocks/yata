@@ -598,7 +598,7 @@ as bool,
 /// @nodoc
 mixin _$TaskItem {
 
- String get id; String get listId; String get title;@JsonKey(fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson) DateTime get createdAt; bool get isCompleted; bool get isImportant; bool get isInMyDay; DateTime? get myDayDate; DateTime? get postponedDay; DateTime? get dueDate;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get reminderAt;@JsonKey(unknownEnumValue: RecurrenceType.none) RecurrenceType get recurrence; Map<String, dynamic>? get rawRecurrence; String get note;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get noteUpdatedAt;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get completedAt; List<TaskStep> get steps; List<TaskAttachment> get attachments; String? get remoteId; String? get remoteParentFolderId;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get orderDateTime;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get committedOrder; String? get changeKey;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get updatedAt;
+ String get id; String get listId; String get title;@JsonKey(fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson) DateTime get createdAt; bool get isCompleted; bool get isImportant; bool get isInMyDay; DateTime? get myDayDate; DateTime? get postponedDay; DateTime? get dueDate;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get reminderAt;@JsonKey(unknownEnumValue: RecurrenceType.none) RecurrenceType get recurrence; Map<String, dynamic>? get rawRecurrence; String get note; String get noteHtml; String? get noteContentType;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get noteUpdatedAt;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get completedAt; List<TaskStep> get steps; List<TaskAttachment> get attachments; String? get remoteId; String? get remoteParentFolderId;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get orderDateTime;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get committedOrder; String? get changeKey;@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? get updatedAt;
 /// Create a copy of TaskItem
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -612,20 +612,20 @@ $TaskItemCopyWith<TaskItem> get copyWith => _$TaskItemCopyWithImpl<TaskItem>(thi
 @override
 bool operator ==(Object other) {
   final _this = this as TaskItem;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is TaskItem&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.listId, _this.listId) || other.listId == _this.listId)&&(identical(other.title, _this.title) || other.title == _this.title)&&(identical(other.createdAt, _this.createdAt) || other.createdAt == _this.createdAt)&&(identical(other.isCompleted, _this.isCompleted) || other.isCompleted == _this.isCompleted)&&(identical(other.isImportant, _this.isImportant) || other.isImportant == _this.isImportant)&&(identical(other.isInMyDay, _this.isInMyDay) || other.isInMyDay == _this.isInMyDay)&&(identical(other.myDayDate, _this.myDayDate) || other.myDayDate == _this.myDayDate)&&(identical(other.postponedDay, _this.postponedDay) || other.postponedDay == _this.postponedDay)&&(identical(other.dueDate, _this.dueDate) || other.dueDate == _this.dueDate)&&(identical(other.reminderAt, _this.reminderAt) || other.reminderAt == _this.reminderAt)&&(identical(other.recurrence, _this.recurrence) || other.recurrence == _this.recurrence)&&const DeepCollectionEquality().equals(other.rawRecurrence, _this.rawRecurrence)&&(identical(other.note, _this.note) || other.note == _this.note)&&(identical(other.noteUpdatedAt, _this.noteUpdatedAt) || other.noteUpdatedAt == _this.noteUpdatedAt)&&(identical(other.completedAt, _this.completedAt) || other.completedAt == _this.completedAt)&&const DeepCollectionEquality().equals(other.steps, _this.steps)&&const DeepCollectionEquality().equals(other.attachments, _this.attachments)&&(identical(other.remoteId, _this.remoteId) || other.remoteId == _this.remoteId)&&(identical(other.remoteParentFolderId, _this.remoteParentFolderId) || other.remoteParentFolderId == _this.remoteParentFolderId)&&(identical(other.orderDateTime, _this.orderDateTime) || other.orderDateTime == _this.orderDateTime)&&(identical(other.committedOrder, _this.committedOrder) || other.committedOrder == _this.committedOrder)&&(identical(other.changeKey, _this.changeKey) || other.changeKey == _this.changeKey)&&(identical(other.updatedAt, _this.updatedAt) || other.updatedAt == _this.updatedAt));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is TaskItem&&(identical(other.id, _this.id) || other.id == _this.id)&&(identical(other.listId, _this.listId) || other.listId == _this.listId)&&(identical(other.title, _this.title) || other.title == _this.title)&&(identical(other.createdAt, _this.createdAt) || other.createdAt == _this.createdAt)&&(identical(other.isCompleted, _this.isCompleted) || other.isCompleted == _this.isCompleted)&&(identical(other.isImportant, _this.isImportant) || other.isImportant == _this.isImportant)&&(identical(other.isInMyDay, _this.isInMyDay) || other.isInMyDay == _this.isInMyDay)&&(identical(other.myDayDate, _this.myDayDate) || other.myDayDate == _this.myDayDate)&&(identical(other.postponedDay, _this.postponedDay) || other.postponedDay == _this.postponedDay)&&(identical(other.dueDate, _this.dueDate) || other.dueDate == _this.dueDate)&&(identical(other.reminderAt, _this.reminderAt) || other.reminderAt == _this.reminderAt)&&(identical(other.recurrence, _this.recurrence) || other.recurrence == _this.recurrence)&&const DeepCollectionEquality().equals(other.rawRecurrence, _this.rawRecurrence)&&(identical(other.note, _this.note) || other.note == _this.note)&&(identical(other.noteHtml, _this.noteHtml) || other.noteHtml == _this.noteHtml)&&(identical(other.noteContentType, _this.noteContentType) || other.noteContentType == _this.noteContentType)&&(identical(other.noteUpdatedAt, _this.noteUpdatedAt) || other.noteUpdatedAt == _this.noteUpdatedAt)&&(identical(other.completedAt, _this.completedAt) || other.completedAt == _this.completedAt)&&const DeepCollectionEquality().equals(other.steps, _this.steps)&&const DeepCollectionEquality().equals(other.attachments, _this.attachments)&&(identical(other.remoteId, _this.remoteId) || other.remoteId == _this.remoteId)&&(identical(other.remoteParentFolderId, _this.remoteParentFolderId) || other.remoteParentFolderId == _this.remoteParentFolderId)&&(identical(other.orderDateTime, _this.orderDateTime) || other.orderDateTime == _this.orderDateTime)&&(identical(other.committedOrder, _this.committedOrder) || other.committedOrder == _this.committedOrder)&&(identical(other.changeKey, _this.changeKey) || other.changeKey == _this.changeKey)&&(identical(other.updatedAt, _this.updatedAt) || other.updatedAt == _this.updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as TaskItem;
-  return Object.hashAll([runtimeType,_this.id,_this.listId,_this.title,_this.createdAt,_this.isCompleted,_this.isImportant,_this.isInMyDay,_this.myDayDate,_this.postponedDay,_this.dueDate,_this.reminderAt,_this.recurrence,const DeepCollectionEquality().hash(_this.rawRecurrence),_this.note,_this.noteUpdatedAt,_this.completedAt,const DeepCollectionEquality().hash(_this.steps),const DeepCollectionEquality().hash(_this.attachments),_this.remoteId,_this.remoteParentFolderId,_this.orderDateTime,_this.committedOrder,_this.changeKey,_this.updatedAt]);
+  return Object.hashAll([runtimeType,_this.id,_this.listId,_this.title,_this.createdAt,_this.isCompleted,_this.isImportant,_this.isInMyDay,_this.myDayDate,_this.postponedDay,_this.dueDate,_this.reminderAt,_this.recurrence,const DeepCollectionEquality().hash(_this.rawRecurrence),_this.note,_this.noteHtml,_this.noteContentType,_this.noteUpdatedAt,_this.completedAt,const DeepCollectionEquality().hash(_this.steps),const DeepCollectionEquality().hash(_this.attachments),_this.remoteId,_this.remoteParentFolderId,_this.orderDateTime,_this.committedOrder,_this.changeKey,_this.updatedAt]);
 }
 
 @override
 String toString() {
   final _this = this as TaskItem;
-  return 'TaskItem(id: ${_this.id}, listId: ${_this.listId}, title: ${_this.title}, createdAt: ${_this.createdAt}, isCompleted: ${_this.isCompleted}, isImportant: ${_this.isImportant}, isInMyDay: ${_this.isInMyDay}, myDayDate: ${_this.myDayDate}, postponedDay: ${_this.postponedDay}, dueDate: ${_this.dueDate}, reminderAt: ${_this.reminderAt}, recurrence: ${_this.recurrence}, rawRecurrence: ${_this.rawRecurrence}, note: ${_this.note}, noteUpdatedAt: ${_this.noteUpdatedAt}, completedAt: ${_this.completedAt}, steps: ${_this.steps}, attachments: ${_this.attachments}, remoteId: ${_this.remoteId}, remoteParentFolderId: ${_this.remoteParentFolderId}, orderDateTime: ${_this.orderDateTime}, committedOrder: ${_this.committedOrder}, changeKey: ${_this.changeKey}, updatedAt: ${_this.updatedAt})';
+  return 'TaskItem(id: ${_this.id}, listId: ${_this.listId}, title: ${_this.title}, createdAt: ${_this.createdAt}, isCompleted: ${_this.isCompleted}, isImportant: ${_this.isImportant}, isInMyDay: ${_this.isInMyDay}, myDayDate: ${_this.myDayDate}, postponedDay: ${_this.postponedDay}, dueDate: ${_this.dueDate}, reminderAt: ${_this.reminderAt}, recurrence: ${_this.recurrence}, rawRecurrence: ${_this.rawRecurrence}, note: ${_this.note}, noteHtml: ${_this.noteHtml}, noteContentType: ${_this.noteContentType}, noteUpdatedAt: ${_this.noteUpdatedAt}, completedAt: ${_this.completedAt}, steps: ${_this.steps}, attachments: ${_this.attachments}, remoteId: ${_this.remoteId}, remoteParentFolderId: ${_this.remoteParentFolderId}, orderDateTime: ${_this.orderDateTime}, committedOrder: ${_this.committedOrder}, changeKey: ${_this.changeKey}, updatedAt: ${_this.updatedAt})';
 }
 
 
@@ -636,7 +636,7 @@ abstract mixin class $TaskItemCopyWith<$Res>  {
   factory $TaskItemCopyWith(TaskItem value, $Res Function(TaskItem) _then) = _$TaskItemCopyWithImpl;
 @useResult
 $Res call({
- String id, String listId, String title,@JsonKey(fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson) DateTime createdAt, bool isCompleted, bool isImportant, bool isInMyDay, DateTime? myDayDate, DateTime? postponedDay, DateTime? dueDate,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? reminderAt,@JsonKey(unknownEnumValue: RecurrenceType.none) RecurrenceType recurrence, Map<String, dynamic>? rawRecurrence, String note,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? noteUpdatedAt,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? completedAt, List<TaskStep> steps, List<TaskAttachment> attachments, String? remoteId, String? remoteParentFolderId,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? orderDateTime,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? committedOrder, String? changeKey,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? updatedAt
+ String id, String listId, String title,@JsonKey(fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson) DateTime createdAt, bool isCompleted, bool isImportant, bool isInMyDay, DateTime? myDayDate, DateTime? postponedDay, DateTime? dueDate,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? reminderAt,@JsonKey(unknownEnumValue: RecurrenceType.none) RecurrenceType recurrence, Map<String, dynamic>? rawRecurrence, String note, String noteHtml, String? noteContentType,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? noteUpdatedAt,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? completedAt, List<TaskStep> steps, List<TaskAttachment> attachments, String? remoteId, String? remoteParentFolderId,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? orderDateTime,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? committedOrder, String? changeKey,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? updatedAt
 });
 
 
@@ -653,7 +653,7 @@ class _$TaskItemCopyWithImpl<$Res>
 
 /// Create a copy of TaskItem
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? listId = null,Object? title = null,Object? createdAt = null,Object? isCompleted = null,Object? isImportant = null,Object? isInMyDay = null,Object? myDayDate = freezed,Object? postponedDay = freezed,Object? dueDate = freezed,Object? reminderAt = freezed,Object? recurrence = null,Object? rawRecurrence = freezed,Object? note = null,Object? noteUpdatedAt = freezed,Object? completedAt = freezed,Object? steps = null,Object? attachments = null,Object? remoteId = freezed,Object? remoteParentFolderId = freezed,Object? orderDateTime = freezed,Object? committedOrder = freezed,Object? changeKey = freezed,Object? updatedAt = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? id = null,Object? listId = null,Object? title = null,Object? createdAt = null,Object? isCompleted = null,Object? isImportant = null,Object? isInMyDay = null,Object? myDayDate = freezed,Object? postponedDay = freezed,Object? dueDate = freezed,Object? reminderAt = freezed,Object? recurrence = null,Object? rawRecurrence = freezed,Object? note = null,Object? noteHtml = null,Object? noteContentType = freezed,Object? noteUpdatedAt = freezed,Object? completedAt = freezed,Object? steps = null,Object? attachments = null,Object? remoteId = freezed,Object? remoteParentFolderId = freezed,Object? orderDateTime = freezed,Object? committedOrder = freezed,Object? changeKey = freezed,Object? updatedAt = freezed,}) {
   return _then(TaskItem(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,listId: null == listId ? _self.listId : listId // ignore: cast_nullable_to_non_nullable
@@ -667,12 +667,14 @@ as DateTime?,postponedDay: freezed == postponedDay ? _self.postponedDay : postpo
 as DateTime?,dueDate: freezed == dueDate ? _self.dueDate : dueDate // ignore: cast_nullable_to_non_nullable
 as DateTime?,reminderAt: freezed == reminderAt ? _self.reminderAt : reminderAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,recurrence: null == recurrence ? _self.recurrence : recurrence // ignore: cast_nullable_to_non_nullable
-as RecurrenceType,rawRecurrence: freezed == rawRecurrence ? _self.rawRecurrence : rawRecurrence // ignore: cast_nullable_to_non_nullable
+as RecurrenceType,rawRecurrence: freezed == rawRecurrence ? _self._rawRecurrence : rawRecurrence // ignore: cast_nullable_to_non_nullable
 as Map<String, dynamic>?,note: null == note ? _self.note : note // ignore: cast_nullable_to_non_nullable
-as String,noteUpdatedAt: freezed == noteUpdatedAt ? _self.noteUpdatedAt : noteUpdatedAt // ignore: cast_nullable_to_non_nullable
+as String,noteHtml: null == noteHtml ? _self.noteHtml : noteHtml // ignore: cast_nullable_to_non_nullable
+as String,noteContentType: freezed == noteContentType ? _self.noteContentType : noteContentType // ignore: cast_nullable_to_non_nullable
+as String?,noteUpdatedAt: freezed == noteUpdatedAt ? _self.noteUpdatedAt : noteUpdatedAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,completedAt: freezed == completedAt ? _self.completedAt : completedAt // ignore: cast_nullable_to_non_nullable
-as DateTime?,steps: null == steps ? _self.steps : steps // ignore: cast_nullable_to_non_nullable
-as List<TaskStep>,attachments: null == attachments ? _self.attachments : attachments // ignore: cast_nullable_to_non_nullable
+as DateTime?,steps: null == steps ? _self._steps : steps // ignore: cast_nullable_to_non_nullable
+as List<TaskStep>,attachments: null == attachments ? _self._attachments : attachments // ignore: cast_nullable_to_non_nullable
 as List<TaskAttachment>,remoteId: freezed == remoteId ? _self.remoteId : remoteId // ignore: cast_nullable_to_non_nullable
 as String?,remoteParentFolderId: freezed == remoteParentFolderId ? _self.remoteParentFolderId : remoteParentFolderId // ignore: cast_nullable_to_non_nullable
 as String?,orderDateTime: freezed == orderDateTime ? _self.orderDateTime : orderDateTime // ignore: cast_nullable_to_non_nullable
@@ -686,141 +688,11 @@ as DateTime?,
 }
 
 
-/// Adds pattern-matching-related methods to [TaskItem].
-extension TaskItemPatterns on TaskItem {
-/// A variant of `map` that fallback to returning `orElse`.
-///
-/// It is equivalent to doing:
-/// ```dart
-/// switch (sealedClass) {
-///   case final Subclass value:
-///     return ...;
-///   case _:
-///     return orElse();
-/// }
-/// ```
-
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _TaskItem value)?  $default,{required TResult orElse(),}){
-final _that = this;
-switch (_that) {
-case _TaskItem() when $default != null:
-return $default(_that);case _:
-  return orElse();
-
-}
-}
-/// A `switch`-like method, using callbacks.
-///
-/// Callbacks receives the raw object, upcasted.
-/// It is equivalent to doing:
-/// ```dart
-/// switch (sealedClass) {
-///   case final Subclass value:
-///     return ...;
-///   case final Subclass2 value:
-///     return ...;
-/// }
-/// ```
-
-@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _TaskItem value)  $default,){
-final _that = this;
-switch (_that) {
-case _TaskItem():
-return $default(_that);case _:
-  throw StateError('Unexpected subclass');
-
-}
-}
-/// A variant of `map` that fallback to returning `null`.
-///
-/// It is equivalent to doing:
-/// ```dart
-/// switch (sealedClass) {
-///   case final Subclass value:
-///     return ...;
-///   case _:
-///     return null;
-/// }
-/// ```
-
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _TaskItem value)?  $default,){
-final _that = this;
-switch (_that) {
-case _TaskItem() when $default != null:
-return $default(_that);case _:
-  return null;
-
-}
-}
-/// A variant of `when` that fallback to an `orElse` callback.
-///
-/// It is equivalent to doing:
-/// ```dart
-/// switch (sealedClass) {
-///   case Subclass(:final field):
-///     return ...;
-///   case _:
-///     return orElse();
-/// }
-/// ```
-
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String listId,  String title, @JsonKey(fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson)  DateTime createdAt,  bool isCompleted,  bool isImportant,  bool isInMyDay,  DateTime? myDayDate,  DateTime? postponedDay,  DateTime? dueDate, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? reminderAt, @JsonKey(unknownEnumValue: RecurrenceType.none)  RecurrenceType recurrence,  Map<String, dynamic>? rawRecurrence,  String note, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? noteUpdatedAt, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? completedAt,  List<TaskStep> steps,  List<TaskAttachment> attachments,  String? remoteId,  String? remoteParentFolderId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? committedOrder,  String? changeKey, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
-switch (_that) {
-case _TaskItem() when $default != null:
-return $default(_that.id,_that.listId,_that.title,_that.createdAt,_that.isCompleted,_that.isImportant,_that.isInMyDay,_that.myDayDate,_that.postponedDay,_that.dueDate,_that.reminderAt,_that.recurrence,_that.rawRecurrence,_that.note,_that.noteUpdatedAt,_that.completedAt,_that.steps,_that.attachments,_that.remoteId,_that.remoteParentFolderId,_that.orderDateTime,_that.committedOrder,_that.changeKey,_that.updatedAt);case _:
-  return orElse();
-
-}
-}
-/// A `switch`-like method, using callbacks.
-///
-/// As opposed to `map`, this offers destructuring.
-/// It is equivalent to doing:
-/// ```dart
-/// switch (sealedClass) {
-///   case Subclass(:final field):
-///     return ...;
-///   case Subclass2(:final field2):
-///     return ...;
-/// }
-/// ```
-
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String listId,  String title, @JsonKey(fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson)  DateTime createdAt,  bool isCompleted,  bool isImportant,  bool isInMyDay,  DateTime? myDayDate,  DateTime? postponedDay,  DateTime? dueDate, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? reminderAt, @JsonKey(unknownEnumValue: RecurrenceType.none)  RecurrenceType recurrence,  Map<String, dynamic>? rawRecurrence,  String note, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? noteUpdatedAt, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? completedAt,  List<TaskStep> steps,  List<TaskAttachment> attachments,  String? remoteId,  String? remoteParentFolderId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? committedOrder,  String? changeKey, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)  $default,) {final _that = this;
-switch (_that) {
-case _TaskItem():
-return $default(_that.id,_that.listId,_that.title,_that.createdAt,_that.isCompleted,_that.isImportant,_that.isInMyDay,_that.myDayDate,_that.postponedDay,_that.dueDate,_that.reminderAt,_that.recurrence,_that.rawRecurrence,_that.note,_that.noteUpdatedAt,_that.completedAt,_that.steps,_that.attachments,_that.remoteId,_that.remoteParentFolderId,_that.orderDateTime,_that.committedOrder,_that.changeKey,_that.updatedAt);case _:
-  throw StateError('Unexpected subclass');
-
-}
-}
-/// A variant of `when` that fallback to returning `null`
-///
-/// It is equivalent to doing:
-/// ```dart
-/// switch (sealedClass) {
-///   case Subclass(:final field):
-///     return ...;
-///   case _:
-///     return null;
-/// }
-/// ```
-
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String listId,  String title, @JsonKey(fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson)  DateTime createdAt,  bool isCompleted,  bool isImportant,  bool isInMyDay,  DateTime? myDayDate,  DateTime? postponedDay,  DateTime? dueDate, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? reminderAt, @JsonKey(unknownEnumValue: RecurrenceType.none)  RecurrenceType recurrence,  Map<String, dynamic>? rawRecurrence,  String note, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? noteUpdatedAt, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? completedAt,  List<TaskStep> steps,  List<TaskAttachment> attachments,  String? remoteId,  String? remoteParentFolderId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? committedOrder,  String? changeKey, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)?  $default,) {final _that = this;
-switch (_that) {
-case _TaskItem() when $default != null:
-return $default(_that.id,_that.listId,_that.title,_that.createdAt,_that.isCompleted,_that.isImportant,_that.isInMyDay,_that.myDayDate,_that.postponedDay,_that.dueDate,_that.reminderAt,_that.recurrence,_that.rawRecurrence,_that.note,_that.noteUpdatedAt,_that.completedAt,_that.steps,_that.attachments,_that.remoteId,_that.remoteParentFolderId,_that.orderDateTime,_that.committedOrder,_that.changeKey,_that.updatedAt);case _:
-  return null;
-
-}
-}
-
-}
-
 /// @nodoc
 @JsonSerializable()
 
 class _TaskItem extends TaskItem {
-  const _TaskItem({required this.id, required this.listId, required this.title, @JsonKey(fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson) required this.createdAt, this.isCompleted = false, this.isImportant = false, this.isInMyDay = false, this.myDayDate, this.postponedDay, this.dueDate, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.reminderAt, @JsonKey(unknownEnumValue: RecurrenceType.none) this.recurrence = RecurrenceType.none,  Map<String, dynamic>? rawRecurrence, this.note = '', @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.noteUpdatedAt, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.completedAt,  List<TaskStep> steps = const <TaskStep>[],  List<TaskAttachment> attachments = const <TaskAttachment>[], this.remoteId, this.remoteParentFolderId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.committedOrder, this.changeKey, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.updatedAt}): _rawRecurrence = rawRecurrence,_steps = steps,_attachments = attachments,super._();
+  const _TaskItem({required this.id, required this.listId, required this.title, @JsonKey(fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson) required this.createdAt, this.isCompleted = false, this.isImportant = false, this.isInMyDay = false, this.myDayDate, this.postponedDay, this.dueDate, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.reminderAt, @JsonKey(unknownEnumValue: RecurrenceType.none) this.recurrence = RecurrenceType.none,  Map<String, dynamic>? rawRecurrence, this.note = '', this.noteHtml = '', this.noteContentType, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.noteUpdatedAt, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.completedAt,  List<TaskStep> steps = const <TaskStep>[],  List<TaskAttachment> attachments = const <TaskAttachment>[], this.remoteId, this.remoteParentFolderId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.committedOrder, this.changeKey, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) this.updatedAt}): _rawRecurrence = rawRecurrence,_steps = steps,_attachments = attachments,super._();
   factory _TaskItem.fromJson(Map<String, dynamic> json) => _$TaskItemFromJson(json);
 
 @override final  String id;
@@ -845,6 +717,8 @@ class _TaskItem extends TaskItem {
 }
 
 @override@JsonKey() final  String note;
+@override@JsonKey() final  String noteHtml;
+@override final  String? noteContentType;
 @override@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) final  DateTime? noteUpdatedAt;
 @override@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) final  DateTime? completedAt;
  final  List<TaskStep> _steps;
@@ -881,18 +755,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _TaskItem&&(identical(other.id, id) || other.id == id)&&(identical(other.listId, listId) || other.listId == listId)&&(identical(other.title, title) || other.title == title)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.isCompleted, isCompleted) || other.isCompleted == isCompleted)&&(identical(other.isImportant, isImportant) || other.isImportant == isImportant)&&(identical(other.isInMyDay, isInMyDay) || other.isInMyDay == isInMyDay)&&(identical(other.myDayDate, myDayDate) || other.myDayDate == myDayDate)&&(identical(other.postponedDay, postponedDay) || other.postponedDay == postponedDay)&&(identical(other.dueDate, dueDate) || other.dueDate == dueDate)&&(identical(other.reminderAt, reminderAt) || other.reminderAt == reminderAt)&&(identical(other.recurrence, recurrence) || other.recurrence == recurrence)&&const DeepCollectionEquality().equals(other.rawRecurrence, _rawRecurrence)&&(identical(other.note, note) || other.note == note)&&(identical(other.noteUpdatedAt, noteUpdatedAt) || other.noteUpdatedAt == noteUpdatedAt)&&(identical(other.completedAt, completedAt) || other.completedAt == completedAt)&&const DeepCollectionEquality().equals(other.steps, _steps)&&const DeepCollectionEquality().equals(other.attachments, _attachments)&&(identical(other.remoteId, remoteId) || other.remoteId == remoteId)&&(identical(other.remoteParentFolderId, remoteParentFolderId) || other.remoteParentFolderId == remoteParentFolderId)&&(identical(other.orderDateTime, orderDateTime) || other.orderDateTime == orderDateTime)&&(identical(other.committedOrder, committedOrder) || other.committedOrder == committedOrder)&&(identical(other.changeKey, changeKey) || other.changeKey == changeKey)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _TaskItem&&(identical(other.id, id) || other.id == id)&&(identical(other.listId, listId) || other.listId == listId)&&(identical(other.title, title) || other.title == title)&&(identical(other.createdAt, createdAt) || other.createdAt == createdAt)&&(identical(other.isCompleted, isCompleted) || other.isCompleted == isCompleted)&&(identical(other.isImportant, isImportant) || other.isImportant == isImportant)&&(identical(other.isInMyDay, isInMyDay) || other.isInMyDay == isInMyDay)&&(identical(other.myDayDate, myDayDate) || other.myDayDate == myDayDate)&&(identical(other.postponedDay, postponedDay) || other.postponedDay == postponedDay)&&(identical(other.dueDate, dueDate) || other.dueDate == dueDate)&&(identical(other.reminderAt, reminderAt) || other.reminderAt == reminderAt)&&(identical(other.recurrence, recurrence) || other.recurrence == recurrence)&&const DeepCollectionEquality().equals(other.rawRecurrence, _rawRecurrence)&&(identical(other.note, note) || other.note == note)&&(identical(other.noteHtml, noteHtml) || other.noteHtml == noteHtml)&&(identical(other.noteContentType, noteContentType) || other.noteContentType == noteContentType)&&(identical(other.noteUpdatedAt, noteUpdatedAt) || other.noteUpdatedAt == noteUpdatedAt)&&(identical(other.completedAt, completedAt) || other.completedAt == completedAt)&&const DeepCollectionEquality().equals(other.steps, _steps)&&const DeepCollectionEquality().equals(other.attachments, _attachments)&&(identical(other.remoteId, remoteId) || other.remoteId == remoteId)&&(identical(other.remoteParentFolderId, remoteParentFolderId) || other.remoteParentFolderId == remoteParentFolderId)&&(identical(other.orderDateTime, orderDateTime) || other.orderDateTime == orderDateTime)&&(identical(other.committedOrder, committedOrder) || other.committedOrder == committedOrder)&&(identical(other.changeKey, changeKey) || other.changeKey == changeKey)&&(identical(other.updatedAt, updatedAt) || other.updatedAt == updatedAt));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hashAll([runtimeType,id,listId,title,createdAt,isCompleted,isImportant,isInMyDay,myDayDate,postponedDay,dueDate,reminderAt,recurrence,const DeepCollectionEquality().hash(_rawRecurrence),note,noteUpdatedAt,completedAt,const DeepCollectionEquality().hash(_steps),const DeepCollectionEquality().hash(_attachments),remoteId,remoteParentFolderId,orderDateTime,committedOrder,changeKey,updatedAt]);
+    return Object.hashAll([runtimeType,id,listId,title,createdAt,isCompleted,isImportant,isInMyDay,myDayDate,postponedDay,dueDate,reminderAt,recurrence,const DeepCollectionEquality().hash(_rawRecurrence),note,noteHtml,noteContentType,noteUpdatedAt,completedAt,const DeepCollectionEquality().hash(_steps),const DeepCollectionEquality().hash(_attachments),remoteId,remoteParentFolderId,orderDateTime,committedOrder,changeKey,updatedAt]);
 }
 
 @override
 String toString() {
-    return 'TaskItem(id: $id, listId: $listId, title: $title, createdAt: $createdAt, isCompleted: $isCompleted, isImportant: $isImportant, isInMyDay: $isInMyDay, myDayDate: $myDayDate, postponedDay: $postponedDay, dueDate: $dueDate, reminderAt: $reminderAt, recurrence: $recurrence, rawRecurrence: $rawRecurrence, note: $note, noteUpdatedAt: $noteUpdatedAt, completedAt: $completedAt, steps: $steps, attachments: $attachments, remoteId: $remoteId, remoteParentFolderId: $remoteParentFolderId, orderDateTime: $orderDateTime, committedOrder: $committedOrder, changeKey: $changeKey, updatedAt: $updatedAt)';
+    return 'TaskItem(id: $id, listId: $listId, title: $title, createdAt: $createdAt, isCompleted: $isCompleted, isImportant: $isImportant, isInMyDay: $isInMyDay, myDayDate: $myDayDate, postponedDay: $postponedDay, dueDate: $dueDate, reminderAt: $reminderAt, recurrence: $recurrence, rawRecurrence: $rawRecurrence, note: $note, noteHtml: $noteHtml, noteContentType: $noteContentType, noteUpdatedAt: $noteUpdatedAt, completedAt: $completedAt, steps: $steps, attachments: $attachments, remoteId: $remoteId, remoteParentFolderId: $remoteParentFolderId, orderDateTime: $orderDateTime, committedOrder: $committedOrder, changeKey: $changeKey, updatedAt: $updatedAt)';
 }
 
 
@@ -903,7 +777,7 @@ abstract mixin class _$TaskItemCopyWith<$Res> implements $TaskItemCopyWith<$Res>
   factory _$TaskItemCopyWith(_TaskItem value, $Res Function(_TaskItem) _then) = __$TaskItemCopyWithImpl;
 @override @useResult
 $Res call({
- String id, String listId, String title,@JsonKey(fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson) DateTime createdAt, bool isCompleted, bool isImportant, bool isInMyDay, DateTime? myDayDate, DateTime? postponedDay, DateTime? dueDate,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? reminderAt,@JsonKey(unknownEnumValue: RecurrenceType.none) RecurrenceType recurrence, Map<String, dynamic>? rawRecurrence, String note,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? noteUpdatedAt,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? completedAt, List<TaskStep> steps, List<TaskAttachment> attachments, String? remoteId, String? remoteParentFolderId,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? orderDateTime,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? committedOrder, String? changeKey,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? updatedAt
+ String id, String listId, String title,@JsonKey(fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson) DateTime createdAt, bool isCompleted, bool isImportant, bool isInMyDay, DateTime? myDayDate, DateTime? postponedDay, DateTime? dueDate,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? reminderAt,@JsonKey(unknownEnumValue: RecurrenceType.none) RecurrenceType recurrence, Map<String, dynamic>? rawRecurrence, String note, String noteHtml, String? noteContentType,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? noteUpdatedAt,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? completedAt, List<TaskStep> steps, List<TaskAttachment> attachments, String? remoteId, String? remoteParentFolderId,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? orderDateTime,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? committedOrder, String? changeKey,@JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson) DateTime? updatedAt
 });
 
 
@@ -920,7 +794,7 @@ class __$TaskItemCopyWithImpl<$Res>
 
 /// Create a copy of TaskItem
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? listId = null,Object? title = null,Object? createdAt = null,Object? isCompleted = null,Object? isImportant = null,Object? isInMyDay = null,Object? myDayDate = freezed,Object? postponedDay = freezed,Object? dueDate = freezed,Object? reminderAt = freezed,Object? recurrence = null,Object? rawRecurrence = freezed,Object? note = null,Object? noteUpdatedAt = freezed,Object? completedAt = freezed,Object? steps = null,Object? attachments = null,Object? remoteId = freezed,Object? remoteParentFolderId = freezed,Object? orderDateTime = freezed,Object? committedOrder = freezed,Object? changeKey = freezed,Object? updatedAt = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? id = null,Object? listId = null,Object? title = null,Object? createdAt = null,Object? isCompleted = null,Object? isImportant = null,Object? isInMyDay = null,Object? myDayDate = freezed,Object? postponedDay = freezed,Object? dueDate = freezed,Object? reminderAt = freezed,Object? recurrence = null,Object? rawRecurrence = freezed,Object? note = null,Object? noteHtml = null,Object? noteContentType = freezed,Object? noteUpdatedAt = freezed,Object? completedAt = freezed,Object? steps = null,Object? attachments = null,Object? remoteId = freezed,Object? remoteParentFolderId = freezed,Object? orderDateTime = freezed,Object? committedOrder = freezed,Object? changeKey = freezed,Object? updatedAt = freezed,}) {
   return _then(_TaskItem(
 id: null == id ? _self.id : id // ignore: cast_nullable_to_non_nullable
 as String,listId: null == listId ? _self.listId : listId // ignore: cast_nullable_to_non_nullable
@@ -936,7 +810,9 @@ as DateTime?,reminderAt: freezed == reminderAt ? _self.reminderAt : reminderAt /
 as DateTime?,recurrence: null == recurrence ? _self.recurrence : recurrence // ignore: cast_nullable_to_non_nullable
 as RecurrenceType,rawRecurrence: freezed == rawRecurrence ? _self._rawRecurrence : rawRecurrence // ignore: cast_nullable_to_non_nullable
 as Map<String, dynamic>?,note: null == note ? _self.note : note // ignore: cast_nullable_to_non_nullable
-as String,noteUpdatedAt: freezed == noteUpdatedAt ? _self.noteUpdatedAt : noteUpdatedAt // ignore: cast_nullable_to_non_nullable
+as String,noteHtml: null == noteHtml ? _self.noteHtml : noteHtml // ignore: cast_nullable_to_non_nullable
+as String,noteContentType: freezed == noteContentType ? _self.noteContentType : noteContentType // ignore: cast_nullable_to_non_nullable
+as String?,noteUpdatedAt: freezed == noteUpdatedAt ? _self.noteUpdatedAt : noteUpdatedAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,completedAt: freezed == completedAt ? _self.completedAt : completedAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,steps: null == steps ? _self._steps : steps // ignore: cast_nullable_to_non_nullable
 as List<TaskStep>,attachments: null == attachments ? _self._attachments : attachments // ignore: cast_nullable_to_non_nullable
