@@ -1,5 +1,4 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:material_ui/material_ui.dart';
 
 import 'utc_date_time_json.dart';
 
@@ -129,21 +128,6 @@ abstract class TodoList with _$TodoList {
       _$TodoListFromJson(json);
 
   bool get isSmartList => smartType != null;
-
-  /// Icon derived from [smartType]; plain lists fall back to a generic icon.
-  IconData get icon => iconForSmartType(smartType);
-
-  static IconData iconForSmartType(SmartListType? type) {
-    return switch (type) {
-      SmartListType.myDay => Icons.wb_sunny_outlined,
-      SmartListType.important => Icons.star_outline,
-      SmartListType.planned => Icons.calendar_today_outlined,
-      SmartListType.all => Icons.all_inclusive,
-      SmartListType.completed => Icons.check_circle_outline,
-      SmartListType.tasks => Icons.home_outlined,
-      null => Icons.format_list_bulleted,
-    };
-  }
 }
 
 @freezed

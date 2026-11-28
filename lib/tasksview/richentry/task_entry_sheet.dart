@@ -10,6 +10,7 @@ import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
 import '../../theme/todo_theme.dart';
 import '../../ui/widgets/task_pickers.dart';
+import '../../ui/list_icons.dart';
 
 final Stream<void> _windowFocusGained = MethodChannelEvents<void>(
   channel: const MethodChannel('top.clickfling.yata/window_focus'),
@@ -206,7 +207,7 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
     Widget buildListTile(BuildContext ctx, TodoList list) {
       return ListTile(
         leading: Icon(
-          list.icon,
+          iconForSmartList(list.smartType),
           color: TodoColors.listAccentFor(
             list,
             brightness: Theme.of(ctx).brightness,
@@ -321,7 +322,7 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
                   if (_showListPicker) ...[
                     ActionChip(
                       avatar: Icon(
-                        targetList.icon,
+                        iconForSmartList(targetList.smartType),
                         size: 16,
                         color: TodoColors.listAccentFor(
                           targetList,

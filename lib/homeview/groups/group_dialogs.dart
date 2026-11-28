@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/todo_list.dart';
 import '../../theme/todo_theme.dart';
+import '../../ui/list_icons.dart';
 
 /// Dialogs for list groups matching `homeview/groups/BaseGroupDialog`.
 Future<void> showCreateGroupDialog({
@@ -108,7 +109,7 @@ class _GroupListsDialogState extends State<_GroupListsDialog> {
                 secondary: list.emoji != null
                     ? Text(list.emoji!, style: const TextStyle(fontSize: 20))
                     : Icon(
-                        list.icon,
+                        iconForSmartList(list.smartType),
                         color: TodoColors.listAccentFor(
                           list,
                           brightness: Theme.of(context).brightness,

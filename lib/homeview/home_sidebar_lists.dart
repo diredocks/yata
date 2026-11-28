@@ -9,6 +9,7 @@ import 'groups/home_group_entry_tile.dart';
 import 'home_list_tile.dart';
 import '../data/ordering/list_ordering.dart';
 import 'home_view_presenter.dart';
+import '../ui/list_icons.dart';
 
 /// Scrollable smart lists and reorderable custom lists/groups in [HomeViewScreen].
 class HomeSidebarListsView extends StatelessWidget {
@@ -43,7 +44,7 @@ class HomeSidebarListsView extends StatelessWidget {
             final list = smartLists[index];
             return HomeListTile(
               title: localizedListTitle(l10n, list),
-              icon: list.icon,
+              icon: iconForSmartList(list.smartType),
               iconColor: TodoColors.listAccentFor(
                 list,
                 brightness: theme.brightness,
@@ -81,7 +82,7 @@ class HomeSidebarListsView extends StatelessWidget {
                     child: HomeListTile(
                       title: list.title,
                       emoji: list.emoji,
-                      icon: list.icon,
+                      icon: iconForSmartList(list.smartType),
                       iconColor: TodoColors.listAccentFor(
                         list,
                         brightness: theme.brightness,

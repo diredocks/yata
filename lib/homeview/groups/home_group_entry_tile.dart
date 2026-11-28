@@ -6,6 +6,7 @@ import '../../theme/todo_theme.dart';
 import '../home_list_tile.dart';
 import 'group_dialogs.dart';
 import 'group_header_tile.dart';
+import '../../ui/list_icons.dart';
 
 /// Collapsible, reorderable group entry in the home sidebar/drawer.
 class HomeGroupEntryTile extends StatelessWidget {
@@ -117,7 +118,7 @@ class HomeGroupEntryTile extends StatelessWidget {
     return HomeListTile(
       title: list.title,
       emoji: list.emoji,
-      icon: list.icon,
+      icon: iconForSmartList(list.smartType),
       iconColor: TodoColors.listAccentFor(list, brightness: theme.brightness),
       count: state.activeCountForList(list),
       isSelected: isSidebar && state.selectedListId == list.id,

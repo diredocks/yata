@@ -6,6 +6,7 @@ import '../l10n/app_localizations.dart';
 import '../models/todo_list.dart';
 import '../theme/todo_theme.dart';
 import '../ui/task_grouping.dart';
+import '../ui/list_icons.dart';
 
 String sortOptionLabel(AppLocalizations l10n, TaskSortOption option) {
   return switch (option) {
@@ -300,7 +301,7 @@ Future<String?> pickTargetListSheet({
                 for (final list in selectableLists)
                   ListTile(
                     leading: Icon(
-                      list.icon,
+                      iconForSmartList(list.smartType),
                       color: TodoColors.listAccentFor(
                         list,
                         brightness: Theme.of(ctx).brightness,
