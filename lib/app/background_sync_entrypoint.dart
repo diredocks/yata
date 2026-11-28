@@ -233,8 +233,8 @@ TodoState _buildSnapshotState(
   final loaded = settings.load();
   return TodoState(
     lists: normalizeSmartLists(repository.readCachedLists()),
-    groups: [...repository.readCachedGroups()],
-    tasks: [...repository.readCachedTasks()],
+    groups: repository.readCachedGroups(),
+    tasks: repository.readCachedTasks(),
     selectedListId: loaded.selectedListId,
     startOfWeek: loaded.startOfWeek,
     showDueTodayInMyDay: loaded.showDueTodayInMyDay,

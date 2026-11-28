@@ -160,8 +160,8 @@ class TodoNotifier extends Notifier<TodoState> {
 
     return TodoState(
       lists: normalizeSmartLists(repository.readCachedLists()),
-      groups: [...repository.readCachedGroups()],
-      tasks: [...synced.tasks],
+      groups: repository.readCachedGroups(),
+      tasks: synced.tasks,
       selectedListId: settings.selectedListId,
       themeMode: settings.themeMode,
       addNewTasksOnTop: settings.addNewTasksOnTop,
