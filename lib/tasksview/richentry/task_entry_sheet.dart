@@ -3,12 +3,21 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../../ui/widgets/task_pickers.dart';
+import '../../core/platform/method_channel_events.dart';
 import '../../data/tasks/recurrence.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
 import '../../theme/todo_theme.dart';
+import '../../ui/widgets/task_pickers.dart';
+
+/// Android reports `windowFocusGained` after the IME was hidden, letting the
+/// sheet re-show the keyboard; the channel is process-wide, so is the stream.
+final Stream<void> _windowFocusGained = MethodChannelEvents<void>(
+  channel: const MethodChannel('top.clickfling.yata/window_focus'),
+  method: 'windowFocusGained',
+  decode: (_) {},
+).stream;
 
 class TaskEntrySheet extends StatefulWidget {
   const TaskEntrySheet({
@@ -38,23 +47,6 @@ class TaskEntrySheet extends StatefulWidget {
 
 class _TaskEntrySheetState extends State<TaskEntrySheet>
     with WidgetsBindingObserver {
-  static const _windowFocusChannel = MethodChannel(
-    'top.clickfling.yata/window_focus',
-  );
-  static final StreamController<void> _windowFocusGainedController =
-      StreamController<void>.broadcast();
-  static bool _windowFocusHandlerRegistered = false;
-
-  static void _ensureWindowFocusHandler() {
-    if (_windowFocusHandlerRegistered) return;
-    _windowFocusHandlerRegistered = true;
-    _windowFocusChannel.setMethodCallHandler((call) async {
-      if (call.method == 'windowFocusGained') {
-        _windowFocusGainedController.add(null);
-      }
-    });
-  }
-
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   Animation<double>? _routeAnimation;
@@ -81,8 +73,7 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _ensureWindowFocusHandler();
-    _windowFocusSub = _windowFocusGainedController.stream.listen((_) {
+    _windowFocusSub = _windowFocusGained.listen((_) {
       if (!mounted) return;
       if (_routeAnimation?.status == AnimationStatus.completed &&
           MediaQuery.viewInsetsOf(context).bottom == 0) {
