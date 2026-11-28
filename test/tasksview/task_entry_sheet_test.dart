@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:yata/detailview/recurrence/task_pickers.dart';
+import 'package:yata/ui/widgets/task_pickers.dart';
 import 'package:yata/l10n/app_localizations.dart';
 import 'package:yata/l10n/app_localizations_en.dart';
 import 'package:yata/models/default_lists.dart';

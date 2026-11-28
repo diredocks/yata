@@ -15,7 +15,7 @@ import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../data/todo_provider.dart';
-import '../tasksview/completion_sound_service.dart';
+import '../ui/completion_sound_service.dart';
 import '../theme/todo_theme.dart';
 import 'attachments/attachment_service.dart';
 import 'attachments/attachments_card_view.dart';
@@ -23,7 +23,7 @@ import 'detail_view_presenter.dart';
 import 'details/detail_cards.dart';
 import 'header/details_header_view.dart';
 import 'note/note_card_view.dart';
-import 'recurrence/task_pickers.dart';
+import '../ui/widgets/task_pickers.dart';
 import 'steps/steps_section.dart';
 
 /// Task detail view matching `detailview/DetailViewFragment`.

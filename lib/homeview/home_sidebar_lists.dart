@@ -3,7 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../data/todo_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/todo_list.dart';
-import '../tasksview/tasks_view_grouping.dart';
+import '../ui/task_grouping.dart';
 import '../theme/todo_theme.dart';
 import 'groups/home_group_entry_tile.dart';
 import 'home_list_tile.dart';

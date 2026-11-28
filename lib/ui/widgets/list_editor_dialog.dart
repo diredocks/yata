@@ -5,7 +5,7 @@ import '../../data/todo_provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/todo_list.dart';
 import '../../theme/custom_background_service.dart';
-import '../../theme/theme_picker_sheet.dart';
+import 'theme_picker_sheet.dart';
 import '../../theme/todo_theme.dart';
 
 const List<String> _defaultListEmojis = [

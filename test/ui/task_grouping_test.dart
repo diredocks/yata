@@ -5,7 +5,7 @@ import 'package:yata/l10n/app_localizations_en.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/tasksview/tasks_view_dialogs.dart';
-import 'package:yata/tasksview/tasks_view_grouping.dart';
+import 'package:yata/ui/task_grouping.dart';
 
 TaskItem _task({
   required String id,

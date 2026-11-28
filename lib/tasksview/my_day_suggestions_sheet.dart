@@ -11,7 +11,7 @@ import '../ui/widgets/task_checkbox.dart';
 import 'my_day_suggestions.dart';
 import 'recyclerview/animated_task_sliver_list.dart';
 import 'tasks_action_presenter.dart';
-import 'tasks_view_grouping.dart';
+import '../ui/task_grouping.dart';
 import 'tasks_view_presenter.dart';
 
 /// Bottom-center floating pill button matching `suggestions_entry_point`

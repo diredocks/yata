@@ -8,7 +8,7 @@ import '../data/todo_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/todo_list.dart';
 import '../onboarding/landing_screen.dart';
-import '../tasksview/renamelist/list_editor_dialog.dart';
+import '../ui/widgets/list_editor_dialog.dart';
 import '../theme/todo_theme.dart';
 import 'groups/group_dialogs.dart';
 import 'home_account_header.dart';

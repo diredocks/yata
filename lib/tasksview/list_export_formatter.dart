@@ -3,12 +3,12 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 
 import '../data/todo_state.dart';
-import '../detailview/recurrence/task_pickers.dart';
+import '../ui/widgets/task_pickers.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import 'tasks_view_dialogs.dart';
-import 'tasks_view_grouping.dart';
+import '../ui/task_grouping.dart';
 
 typedef ExportTaskGroup = ({
   String? header,

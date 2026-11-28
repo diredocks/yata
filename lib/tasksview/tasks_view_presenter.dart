@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/order_date_time.dart';
 import '../data/todo_provider.dart';
-import '../detailview/recurrence/task_pickers.dart';
+import '../ui/widgets/task_pickers.dart';
 import '../homeview/home_view_ordering.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';

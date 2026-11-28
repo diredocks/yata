@@ -8,10 +8,10 @@ import '../models/todo_list.dart';
 import '../ui/widgets/delayed_task_completion.dart';
 import 'recyclerview/animated_task_sliver_list.dart';
 import 'recyclerview/swipeable_task_card.dart';
-import 'recyclerview/task_list_tile.dart';
+import '../ui/widgets/task_list_tile.dart';
 import 'tasks_view_bars.dart';
 import 'tasks_view_dialogs.dart';
-import 'tasks_view_grouping.dart';
+import '../ui/task_grouping.dart';
 import 'tasks_view_widgets.dart';
 
 /// Builds the task slivers (active, grouped, reorderable, completed) for [TasksViewScreen].

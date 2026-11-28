@@ -21,7 +21,7 @@ import 'package:yata/models/todo_list.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_models.dart';
 import 'package:yata/sync/microsoft/substrate_push_engine.dart';
 import 'package:yata/sync/microsoft/substrate_sync_mappers.dart';
-import 'package:yata/tasksview/recyclerview/task_list_tile.dart';
+import 'package:yata/ui/widgets/task_list_tile.dart';
 import 'package:yata/tasksview/tasks_action_presenter.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 

@@ -15,7 +15,7 @@ import 'package:yata/sync/microsoft/substrate_push_engine.dart';
 import 'package:yata/sync/microsoft/todo_wire_codecs.dart';
 import 'package:yata/sync/sync_dispatcher.dart';
 import 'package:yata/sync/sync_provider.dart';
-import 'package:yata/tasksview/tasks_view_grouping.dart';
+import 'package:yata/ui/task_grouping.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 

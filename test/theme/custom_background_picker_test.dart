@@ -11,7 +11,7 @@ import 'package:yata/data/todo_provider.dart';
 import 'package:yata/l10n/app_localizations.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 import 'package:yata/theme/custom_background_service.dart';
-import 'package:yata/theme/theme_picker_sheet.dart';
+import 'package:yata/ui/widgets/theme_picker_sheet.dart';
 
 // Valid 1x1 transparent PNG.
 final _tinyPngBytes = base64Decode(

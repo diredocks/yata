@@ -1,7 +1,7 @@
 import 'package:collection/collection.dart';
 
 import '../data/todo_sorting.dart';
-import '../detailview/recurrence/task_pickers.dart';
+import 'widgets/task_pickers.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';

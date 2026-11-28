@@ -5,7 +5,7 @@ import '../data/order_date_time.dart';
 import '../data/todo_provider.dart';
 import '../models/task_item.dart';
 import '../tasksview/tasks_view_presenter.dart';
-import 'recurrence/task_pickers.dart';
+import '../ui/widgets/task_pickers.dart';
 
 /// Presenter for `detailview/DetailViewFragment`, matching `detailview/DetailViewPresenter`.
 class DetailViewPresenter {

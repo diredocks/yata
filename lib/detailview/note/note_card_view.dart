@@ -3,7 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../theme/todo_theme.dart';
-import '../recurrence/task_pickers.dart';
+import '../../ui/widgets/task_pickers.dart';
 
 /// Note editor card matching `detailview/note/NoteCardView` (`detailview_note.xml`).
 class NoteCardView extends StatefulWidget {

@@ -5,7 +5,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/main.dart';
 import 'package:yata/data/todo_provider.dart';
-import 'package:yata/tasksview/completion_sound_service.dart';
+import 'package:yata/ui/completion_sound_service.dart';
 import 'package:yata/settings/settings_presenter.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 import 'package:yata/ui/widgets/task_checkbox.dart';
