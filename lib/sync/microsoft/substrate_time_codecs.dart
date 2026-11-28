@@ -2,18 +2,12 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 
 import '../../core/time/local_timezone.dart';
+import '../../data/recurrence.dart' show kIsoWeekdayNames;
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
 
-const List<String> kIsoWeekdayNames = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
-];
+export '../../data/recurrence.dart'
+    show decodeSubstrateRecurrence, kIsoWeekdayNames;
 
 /// Formats [dt] as a 7-fractional-digit UTC ISO-8601 string for Substrate.
 String formatSubstrateUtcTimestamp(DateTime dt) {
@@ -237,47 +231,6 @@ Map<String, dynamic>? encodeSubstrateRecurrence(
       'FirstDayOfWeek': firstDay,
     },
   };
-}
-
-/// Decodes Substrate `Recurrence` JSON object into [RecurrenceType].
-RecurrenceType decodeSubstrateRecurrence(Map<String, dynamic>? map) {
-  if (map == null || map.isEmpty) return RecurrenceType.none;
-  final type = (map['RecurrenceType'] as String?)?.trim().toLowerCase();
-  final intervalType = (map['IntervalType'] as String?)?.trim().toLowerCase();
-  final weekDaysRaw = map['WeekDays'] as List<dynamic>?;
-  final weekDays =
-      weekDaysRaw?.map((e) => e.toString().trim().toLowerCase()).toSet() ??
-      const <String>{};
-  const monToFri = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday'};
-
-  switch (type) {
-    case 'daily':
-      return RecurrenceType.daily;
-    case 'weekdays':
-      return RecurrenceType.weekdays;
-    case 'weekly':
-      if (weekDays.length == 5 && weekDays.containsAll(monToFri)) {
-        return RecurrenceType.weekdays;
-      }
-      return RecurrenceType.weekly;
-    case 'monthly':
-      return RecurrenceType.monthly;
-    case 'yearly':
-      return RecurrenceType.yearly;
-    case 'custom':
-      return switch (intervalType) {
-        'days' => RecurrenceType.daily,
-        'weeks' =>
-          weekDays.length == 5 && weekDays.containsAll(monToFri)
-              ? RecurrenceType.weekdays
-              : RecurrenceType.weekly,
-        'months' => RecurrenceType.monthly,
-        'years' => RecurrenceType.yearly,
-        _ => RecurrenceType.weekly,
-      };
-    default:
-      return RecurrenceType.none;
-  }
 }
 
 /// Returns a shallow defensive copy of a raw Substrate `Recurrence` map, or

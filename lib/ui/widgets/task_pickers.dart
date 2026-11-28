@@ -6,7 +6,6 @@ import '../../data/recurrence.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
-import '../../sync/microsoft/substrate_time_codecs.dart';
 
 /// Formats a date relative to today (`Today`, `Tomorrow`, `Yesterday`, or `MMMd`/`yMMMd`),
 /// matching `yp.r.D` in `mstodo.apk`.

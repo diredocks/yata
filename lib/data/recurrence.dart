@@ -1,6 +1,5 @@
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
-import '../sync/microsoft/substrate_time_codecs.dart';
 
 /// Computes the default due date when setting [recurrence] with no due date,
 /// matching `RecurrenceUtils.java` (`yp.v1.a`) in `mstodo.apk`.
@@ -33,6 +32,57 @@ DateTime computeNextWeekDate(DateTime from, WeekStart startOfWeek) {
   var daysAhead = (targetWeekday - today.weekday + 7) % 7;
   if (daysAhead == 0) daysAhead = 7;
   return today.add(Duration(days: daysAhead));
+}
+
+const List<String> kIsoWeekdayNames = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+/// Decodes Substrate `Recurrence` JSON object into [RecurrenceType].
+RecurrenceType decodeSubstrateRecurrence(Map<String, dynamic>? map) {
+  if (map == null || map.isEmpty) return RecurrenceType.none;
+  final type = (map['RecurrenceType'] as String?)?.trim().toLowerCase();
+  final intervalType = (map['IntervalType'] as String?)?.trim().toLowerCase();
+  final weekDaysRaw = map['WeekDays'] as List<dynamic>?;
+  final weekDays =
+      weekDaysRaw?.map((e) => e.toString().trim().toLowerCase()).toSet() ??
+      const <String>{};
+  const monToFri = {'monday', 'tuesday', 'wednesday', 'thursday', 'friday'};
+
+  switch (type) {
+    case 'daily':
+      return RecurrenceType.daily;
+    case 'weekdays':
+      return RecurrenceType.weekdays;
+    case 'weekly':
+      if (weekDays.length == 5 && weekDays.containsAll(monToFri)) {
+        return RecurrenceType.weekdays;
+      }
+      return RecurrenceType.weekly;
+    case 'monthly':
+      return RecurrenceType.monthly;
+    case 'yearly':
+      return RecurrenceType.yearly;
+    case 'custom':
+      return switch (intervalType) {
+        'days' => RecurrenceType.daily,
+        'weeks' =>
+          weekDays.length == 5 && weekDays.containsAll(monToFri)
+              ? RecurrenceType.weekdays
+              : RecurrenceType.weekly,
+        'months' => RecurrenceType.monthly,
+        'years' => RecurrenceType.yearly,
+        _ => RecurrenceType.weekly,
+      };
+    default:
+      return RecurrenceType.none;
+  }
 }
 
 /// Parses the Substrate `WeekDays` wire list into ISO weekday numbers.
