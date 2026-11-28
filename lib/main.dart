@@ -13,7 +13,7 @@ import 'sync/background_sync_bridge.dart';
 import 'sync/background_sync_entrypoint.dart';
 import 'theme/system_font_loader.dart';
 import 'theme/todo_theme.dart';
-import 'view/main_shell_screen.dart';
+import 'app/main_shell_screen.dart';
 import 'widget/home_widget_sync.dart';
 
 Future<void> main() async {

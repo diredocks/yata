@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:material_ui/material_ui.dart';
 
-import '../theme/todo_theme.dart';
+import '../../theme/todo_theme.dart';
 
 class PersonaAvatar extends StatelessWidget {
   const PersonaAvatar({

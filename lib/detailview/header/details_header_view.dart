@@ -2,7 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../models/task_item.dart';
 import '../../theme/todo_theme.dart';
-import '../../view/task_checkbox.dart';
+import '../../ui/widgets/task_checkbox.dart';
 
 /// Header section matching `detailview/header/DetailsHeaderView` (`detailview_header.xml`).
 class DetailsHeaderView extends StatefulWidget {

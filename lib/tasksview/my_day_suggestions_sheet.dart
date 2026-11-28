@@ -7,7 +7,7 @@ import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../theme/todo_theme.dart';
-import '../view/task_checkbox.dart';
+import '../ui/widgets/task_checkbox.dart';
 import 'my_day_suggestions.dart';
 import 'recyclerview/animated_task_sliver_list.dart';
 import 'tasks_action_presenter.dart';

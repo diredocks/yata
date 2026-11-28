@@ -1,8 +1,8 @@
 import 'package:intl/intl.dart';
 
-import '../l10n/app_localizations.dart';
-import '../models/account.dart';
-import '../sync/sync_provider.dart';
+import '../../l10n/app_localizations.dart';
+import '../../models/account.dart';
+import '../../sync/sync_provider.dart';
 
 String formatAccountSyncStatus({
   required AppLocalizations l10n,

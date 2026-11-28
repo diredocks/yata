@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
-import '../models/task_item.dart';
+import '../../models/task_item.dart';
 
 typedef TaskCompletionCommit = void Function(
   String taskId, {

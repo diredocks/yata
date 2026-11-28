@@ -398,8 +398,7 @@ class SyncOutboxQueue {
   Set<String> deletedRemoteIdsSince(SyncEntityType type, int sinceSeq) => {
     ...pendingDeletedRemoteIds(type),
     for (final entry in _deletedRemoteSeq.entries)
-      if (entry.value > sinceSeq && entry.key.type == type)
-        entry.key.remoteId,
+      if (entry.value > sinceSeq && entry.key.type == type) entry.key.remoteId,
   };
 
   /// Drops pending non-delete ops for entities that no longer exist in local
@@ -423,9 +422,7 @@ class SyncOutboxQueue {
           ? op.parentLocalId
           : op.localId;
       final orphaned =
-          validIds != null &&
-          targetId != null &&
-          !validIds.contains(targetId);
+          validIds != null && targetId != null && !validIds.contains(targetId);
       if (orphaned) {
         _markDelete(op.seq);
         changed = true;

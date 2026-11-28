@@ -5,7 +5,7 @@ import '../data/todo_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
-import '../view/delayed_task_completion.dart';
+import '../ui/widgets/delayed_task_completion.dart';
 import 'recyclerview/animated_task_sliver_list.dart';
 import 'recyclerview/swipeable_task_card.dart';
 import 'recyclerview/task_list_tile.dart';

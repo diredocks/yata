@@ -1,7 +1,7 @@
 import 'package:lottie/lottie.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../theme/todo_theme.dart';
+import '../../theme/todo_theme.dart';
 
 /// Mode matching `AnimatableCheckBox.b` (`COMPLETE` vs `SELECT`).
 enum CheckboxMode { complete, select }

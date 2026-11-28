@@ -85,48 +85,45 @@ void main() {
       },
     );
 
-    test(
-      'tracks ackedEntitySeq and deletedRemoteSeq via SyncEntityKey/SyncRemoteKey',
-      () {
-        final queue = SyncOutboxQueue();
-        queue.enqueueUpsert(entityType: SyncEntityType.task, localId: 't1');
-        queue.enqueueDelete(
-          entityType: SyncEntityType.task,
-          localId: 't2',
-          remoteId: 'rt-2',
-        );
-        final pullStartSeq = queue.lastSeq;
+    test('tracks ackedEntitySeq and deletedRemoteSeq via SyncEntityKey/SyncRemoteKey', () {
+      final queue = SyncOutboxQueue();
+      queue.enqueueUpsert(entityType: SyncEntityType.task, localId: 't1');
+      queue.enqueueDelete(
+        entityType: SyncEntityType.task,
+        localId: 't2',
+        remoteId: 'rt-2',
+      );
+      final pullStartSeq = queue.lastSeq;
 
-        queue.enqueueUpsert(entityType: SyncEntityType.group, localId: 'g1');
-        queue.ackBatch([1, 2]);
+      queue.enqueueUpsert(entityType: SyncEntityType.group, localId: 'g1');
+      queue.ackBatch([1, 2]);
 
-        expect(queue.modifiedLocalIdsSince(SyncEntityType.task, pullStartSeq), {
-          't1',
-          't2',
-        });
-        expect(
-          queue.modifiedLocalIdsSince(
-            SyncEntityType.group,
-            pullStartSeq,
-            includePriorPending: false,
-          ),
-          {'g1'},
-        );
-        expect(queue.deletedRemoteIdsSince(SyncEntityType.task, pullStartSeq), {
-          'rt-2',
-        });
+      expect(queue.modifiedLocalIdsSince(SyncEntityType.task, pullStartSeq), {
+        't1',
+        't2',
+      });
+      expect(
+        queue.modifiedLocalIdsSince(
+          SyncEntityType.group,
+          pullStartSeq,
+          includePriorPending: false,
+        ),
+        {'g1'},
+      );
+      expect(queue.deletedRemoteIdsSince(SyncEntityType.task, pullStartSeq), {
+        'rt-2',
+      });
 
-        final protection = queue.capturePullProtection(
-          pullStartSeq: pullStartSeq,
-          pruneProtectSinceSeq: pullStartSeq,
-        );
-        expect(protection.dirtyIds(SyncEntityType.task), {'t1', 't2'});
-        expect(protection.dirtyIds(SyncEntityType.group), {'g1'});
-        expect(protection.pruneKeepIds(SyncEntityType.group), {'g1'});
-        expect(protection.deletedRemotes(SyncEntityType.task), {'rt-2'});
-        expect(protection.dirtyIds(SyncEntityType.list), isEmpty);
-      },
-    );
+      final protection = queue.capturePullProtection(
+        pullStartSeq: pullStartSeq,
+        pruneProtectSinceSeq: pullStartSeq,
+      );
+      expect(protection.dirtyIds(SyncEntityType.task), {'t1', 't2'});
+      expect(protection.dirtyIds(SyncEntityType.group), {'g1'});
+      expect(protection.pruneKeepIds(SyncEntityType.group), {'g1'});
+      expect(protection.deletedRemotes(SyncEntityType.task), {'rt-2'});
+      expect(protection.dirtyIds(SyncEntityType.list), isEmpty);
+    });
 
     test('captureCurrentProtection captures only current pending state', () {
       final queue = SyncOutboxQueue();

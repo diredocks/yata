@@ -8,7 +8,7 @@ import 'package:yata/data/todo_provider.dart';
 import 'package:yata/tasksview/completion_sound_service.dart';
 import 'package:yata/settings/settings_presenter.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
-import 'package:yata/view/task_checkbox.dart';
+import 'package:yata/ui/widgets/task_checkbox.dart';
 
 class _FakeCompletionSoundService extends CompletionSoundService {
   _FakeCompletionSoundService(super.ref);

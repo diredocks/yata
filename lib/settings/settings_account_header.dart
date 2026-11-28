@@ -4,8 +4,8 @@ import '../l10n/app_localizations.dart';
 import '../models/account.dart';
 import '../sync/sync_provider.dart';
 import '../theme/todo_theme.dart';
-import '../view/persona_avatar.dart';
-import '../view/sync_status_label.dart';
+import '../ui/widgets/persona_avatar.dart';
+import '../ui/widgets/sync_status_label.dart';
 
 /// Account summary card at the top of [SettingsScreen] with sync, manage, and sign-out actions.
 class SettingsAccountHeader extends StatelessWidget {

@@ -14,7 +14,7 @@ import '../models/todo_list.dart';
 import '../sync/sync_provider.dart';
 import '../theme/theme_picker_sheet.dart';
 import '../theme/todo_theme.dart';
-import '../view/delayed_task_completion.dart';
+import '../ui/widgets/delayed_task_completion.dart';
 import 'completion_sound_service.dart';
 import 'list_actions_service.dart';
 import 'list_export_formatter.dart';

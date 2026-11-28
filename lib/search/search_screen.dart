@@ -8,7 +8,7 @@ import '../tasksview/completion_sound_service.dart';
 import '../tasksview/recyclerview/task_list_tile.dart';
 import '../tasksview/tasks_view_grouping.dart';
 import '../theme/todo_theme.dart';
-import '../view/delayed_task_completion.dart';
+import '../ui/widgets/delayed_task_completion.dart';
 import 'search_presenter.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {

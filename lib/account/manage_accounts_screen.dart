@@ -6,7 +6,7 @@ import '../models/account.dart';
 import '../onboarding/landing_screen.dart';
 import 'account_provider.dart';
 import '../theme/todo_theme.dart';
-import '../view/persona_avatar.dart';
+import '../ui/widgets/persona_avatar.dart';
 
 class ManageAccountsScreen extends ConsumerWidget {
   const ManageAccountsScreen({super.key});

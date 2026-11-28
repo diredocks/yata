@@ -5,7 +5,7 @@ import '../../detailview/recurrence/task_pickers.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../theme/todo_theme.dart';
-import '../../view/task_checkbox.dart';
+import '../../ui/widgets/task_checkbox.dart';
 
 class TaskListTile extends StatelessWidget {
   const TaskListTile({
