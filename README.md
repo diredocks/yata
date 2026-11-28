@@ -6,11 +6,13 @@ Yet Another Todo App
 
 ## Codegen
 
-Run manually after editing `.arb` or `@freezed` / `@JsonSerializable` / `@DriftDatabase` files:
+Run manually after editing `.arb` or `@freezed` / `@JsonSerializable` / `@DriftDatabase` files, and build the rich-text editor asset (`assets/editor/index.html`, gitignored) from `editor_web/` before running or packaging:
 
 ```bash
 flutter gen-l10n
 flutter pub run build_runner build
+npm --prefix editor_web ci
+npm --prefix editor_web run build
 ```
 
 ## Storage
@@ -25,14 +27,5 @@ flutter pub run build_runner build
 flutter analyze
 flutter test
 dart format lib test
-```
-
-## Rich Text Editor (Frontend Assets)
-
-The rich-text note editor (`assets/editor/index.html`) is built from `editor_web/` (Tiptap + DOMPurify bundled via Vite as a single offline HTML file). Build artifacts are not committed to the repository, so build them before running or packaging the Flutter app:
-
-```bash
-cd editor_web
-npm ci
-npm run build
+npm --prefix editor_web run build
 ```
