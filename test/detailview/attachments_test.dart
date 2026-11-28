@@ -22,7 +22,7 @@ import 'package:yata/sync/microsoft/microsoft_todo_models.dart';
 import 'package:yata/sync/microsoft/substrate_push_engine.dart';
 import 'package:yata/sync/microsoft/substrate_sync_mappers.dart';
 import 'package:yata/ui/widgets/task_list_tile.dart';
-import 'package:yata/tasksview/tasks_action_presenter.dart';
+import 'package:yata/data/task_batch_actions.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
@@ -548,10 +548,7 @@ void main() {
       );
 
       // 1. batchDeleteTasks deletes unreferenced t-1 file, keeps shared t-2 file.
-      container.read(tasksActionPresenterProvider).batchDeleteTasks({
-        't-1',
-        't-2',
-      });
+      container.read(taskBatchActionsProvider).batchDeleteTasks({'t-1', 't-2'});
       await todoNotifier.repository.flushPendingWrites();
       expect(await File(stagedA1.localPath).exists(), isFalse);
       expect(await File(stagedA2.localPath).exists(), isTrue);

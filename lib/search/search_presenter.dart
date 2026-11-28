@@ -2,8 +2,8 @@ import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/task_item.dart';
+import '../data/task_mutations.dart';
 import '../data/todo_provider.dart';
-import '../tasksview/tasks_view_presenter.dart';
 
 /// Presenter for `search/SearchFragment`.
 class SearchPresenter {
@@ -44,17 +44,17 @@ class SearchPresenter {
   }
 
   void toggleTaskCompleted(String taskId) {
-    _ref.read(tasksViewPresenterProvider).toggleTaskCompleted(taskId);
+    _ref.read(taskMutationsProvider).toggleTaskCompleted(taskId);
   }
 
   void setTaskCompleted(String taskId, {required bool completed}) {
     _ref
-        .read(tasksViewPresenterProvider)
+        .read(taskMutationsProvider)
         .setTaskCompleted(taskId, completed: completed);
   }
 
   void toggleTaskImportant(String taskId) {
-    _ref.read(tasksViewPresenterProvider).toggleTaskImportant(taskId);
+    _ref.read(taskMutationsProvider).toggleTaskImportant(taskId);
   }
 }
 

@@ -18,7 +18,7 @@ import '../search/search_screen.dart';
 import '../settings/settings_screen.dart';
 import '../sync/sync_provider.dart';
 import '../tasksview/richentry/task_entry_sheet.dart';
-import '../tasksview/tasks_view_presenter.dart';
+import '../data/task_mutations.dart';
 import '../tasksview/tasks_view_screen.dart';
 import '../widget/home_widget_sync.dart';
 
@@ -155,7 +155,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
               Map<String, dynamic>? rawRecurrence,
             }) {
               ref
-                  .read(tasksViewPresenterProvider)
+                  .read(taskMutationsProvider)
                   .addTask(
                     title: title,
                     targetListId: targetListId,
@@ -188,7 +188,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
         final taskId = event.taskId;
         if (taskId != null) {
           ref
-              .read(tasksViewPresenterProvider)
+              .read(taskMutationsProvider)
               .setTaskCompleted(taskId, completed: true);
         }
       case NotificationActionType.snoozeTask:

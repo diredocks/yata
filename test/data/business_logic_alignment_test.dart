@@ -8,7 +8,7 @@ import 'package:yata/models/todo_list.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/search/search_presenter.dart';
 import 'package:yata/settings/settings_presenter.dart';
-import 'package:yata/tasksview/tasks_action_presenter.dart';
+import 'package:yata/data/task_batch_actions.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 import 'package:yata/data/preferences.dart';
 
@@ -269,7 +269,7 @@ void main() {
       addTearDown(container.dispose);
 
       final tasksPresenter = container.read(tasksViewPresenterProvider);
-      final actionPresenter = container.read(tasksActionPresenterProvider);
+      final actionPresenter = container.read(taskBatchActionsProvider);
       final detailPresenter = container.read(detailViewPresenterProvider);
       final searchPresenter = container.read(searchPresenterProvider);
 

@@ -12,7 +12,7 @@ import '../data/todo_provider.dart';
 import '../models/account.dart';
 import '../sync/sync_dispatcher.dart';
 import '../sync/sync_provider.dart';
-import '../tasksview/tasks_view_presenter.dart';
+import '../data/task_mutations.dart';
 import 'home_widget_service.dart';
 
 typedef ProviderReader = T Function<T>(ProviderListenable<T> provider);
@@ -131,7 +131,7 @@ class WidgetEventProcessor {
         .firstWhereOrNull((t) => t.id == op.taskId);
     if (target == null) return;
 
-    final presenter = _read(tasksViewPresenterProvider);
+    final presenter = _read(taskMutationsProvider);
     switch (op.type) {
       case WidgetPendingOpType.toggleComplete
           when target.isCompleted != op.value:

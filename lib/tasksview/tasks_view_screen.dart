@@ -21,7 +21,7 @@ import 'list_export_formatter.dart';
 import 'my_day_suggestions_sheet.dart';
 import '../ui/widgets/list_editor_dialog.dart';
 import 'richentry/task_entry_sheet.dart';
-import 'tasks_action_presenter.dart';
+import '../data/task_batch_actions.dart';
 import 'tasks_view_bars.dart';
 import 'tasks_view_dialogs.dart';
 import '../ui/task_grouping.dart';
@@ -276,7 +276,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   }
 
   Future<void> _batchPickDueDate(WeekStart startOfWeek) async {
-    final notifier = ref.read(tasksActionPresenterProvider);
+    final notifier = ref.read(taskBatchActionsProvider);
     final result = await showDueDatePickerSheet(
       context,
       startOfWeek: startOfWeek,
@@ -303,7 +303,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     );
     if (picked == null || !mounted) return;
     ref
-        .read(tasksActionPresenterProvider)
+        .read(taskBatchActionsProvider)
         .batchCopyToList(_multiSelectedIds, picked);
     _clearSelection();
   }
@@ -317,7 +317,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     );
     if (picked == null || !mounted) return;
     ref
-        .read(tasksActionPresenterProvider)
+        .read(taskBatchActionsProvider)
         .batchMoveToList(_multiSelectedIds, picked);
     _clearSelection();
   }
@@ -358,7 +358,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       );
       if (!confirmed) return;
     }
-    ref.read(tasksActionPresenterProvider).batchDeleteTasks(_multiSelectedIds);
+    ref.read(taskBatchActionsProvider).batchDeleteTasks(_multiSelectedIds);
     _clearSelection();
   }
 
@@ -513,7 +513,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     TodoState state,
     List<TaskItem> allTasks,
   ) {
-    final actionPresenter = ref.read(tasksActionPresenterProvider);
+    final actionPresenter = ref.read(taskBatchActionsProvider);
     switch (action) {
       case MultiSelectAction.selectOrClearAll:
         final allSelected =
@@ -544,7 +544,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _swipedDeleteIds.remove(task.id);
     });
-    ref.read(tasksActionPresenterProvider).batchDeleteTasks({task.id});
+    ref.read(taskBatchActionsProvider).batchDeleteTasks({task.id});
     final messenger = _scaffoldMessengerKey.currentState;
     messenger?.clearSnackBars();
     messenger?.showSnackBar(
@@ -656,9 +656,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         overlayStyle: overlayStyle,
         onClearSelection: _clearSelection,
         onBatchAddToMyDay: () {
-          ref
-              .read(tasksActionPresenterProvider)
-              .batchAddToMyDay(_multiSelectedIds);
+          ref.read(taskBatchActionsProvider).batchAddToMyDay(_multiSelectedIds);
           _clearSelection();
         },
         onBatchPickDueDate: () => _batchPickDueDate(state.startOfWeek),
@@ -687,7 +685,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         ref.watch(shortcutPinnedProvider(shortcutId)).value ?? false;
     final showPrint = ref.watch(listPrintSupportedProvider).value ?? false;
     final notifier = ref.read(tasksViewPresenterProvider);
-    final actionPresenter = ref.read(tasksActionPresenterProvider);
+    final actionPresenter = ref.read(taskBatchActionsProvider);
 
     final baseTitle = localizedListTitle(l10n, currentList);
     final listTitle =

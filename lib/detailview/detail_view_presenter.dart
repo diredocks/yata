@@ -2,10 +2,10 @@ import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/order_date_time.dart';
+import '../data/recurrence.dart';
+import '../data/task_mutations.dart';
 import '../data/todo_provider.dart';
 import '../models/task_item.dart';
-import '../tasksview/tasks_view_presenter.dart';
-import '../ui/widgets/task_pickers.dart';
 
 /// Presenter for `detailview/DetailViewFragment`, matching `detailview/DetailViewPresenter`.
 class DetailViewPresenter {
@@ -17,11 +17,11 @@ class DetailViewPresenter {
   TodoState get _state => _ref.read(todoProvider);
 
   void toggleTaskCompleted(String taskId) {
-    _ref.read(tasksViewPresenterProvider).toggleTaskCompleted(taskId);
+    _ref.read(taskMutationsProvider).toggleTaskCompleted(taskId);
   }
 
   void toggleTaskImportant(String taskId) {
-    _ref.read(tasksViewPresenterProvider).toggleTaskImportant(taskId);
+    _ref.read(taskMutationsProvider).toggleTaskImportant(taskId);
   }
 
   void toggleTaskMyDay(String taskId) {

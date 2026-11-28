@@ -24,7 +24,7 @@ import 'package:yata/sync/microsoft/substrate_push_engine.dart';
 import 'package:yata/sync/microsoft/substrate_sync_mappers.dart';
 import 'package:yata/sync/microsoft/todo_wire_codecs.dart';
 import 'package:yata/sync/sync_provider.dart';
-import 'package:yata/tasksview/tasks_action_presenter.dart';
+import 'package:yata/data/task_batch_actions.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
@@ -470,7 +470,7 @@ void main() {
           ],
         );
         h.container.read(todoProvider.notifier).addTask(originalTask);
-        h.container.read(tasksActionPresenterProvider).batchCopyToList({
+        h.container.read(taskBatchActionsProvider).batchCopyToList({
           't_src',
         }, 'tasks');
         final copied = h.container

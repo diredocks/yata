@@ -1,12 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../data/order_date_time.dart';
-import '../data/todo_provider.dart';
 import '../models/task_item.dart';
+import 'order_date_time.dart';
+import 'todo_provider.dart';
 
-/// Batch action presenter matching `tasksview/TasksActionPresenter`.
-class TasksActionPresenter {
-  TasksActionPresenter(this._ref);
+/// Batch mutations applied to a selection of tasks (multi-select actions).
+class TaskBatchActions {
+  TaskBatchActions(this._ref);
 
   final Ref _ref;
 
@@ -197,6 +197,6 @@ class TasksActionPresenter {
   }
 }
 
-final tasksActionPresenterProvider = Provider<TasksActionPresenter>((ref) {
-  return TasksActionPresenter(ref);
+final taskBatchActionsProvider = Provider<TaskBatchActions>((ref) {
+  return TaskBatchActions(ref);
 });
