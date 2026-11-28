@@ -105,7 +105,7 @@ class _NoteCardViewState extends State<NoteCardView> {
 
     switch (decoded['type']) {
       case 'ready':
-        _previewReady = true;
+        setState(() => _previewReady = true);
         _syncPreviewContent();
       case 'heightChanged':
         final h = (decoded['height'] as num?)?.toDouble();
@@ -258,11 +258,27 @@ class _NoteCardViewState extends State<NoteCardView> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 if (_shouldUseHtmlPreview && _previewController != null)
-                  SizedBox(
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOutCubic,
                     height: _previewHeight,
                     child: Stack(
                       children: [
                         WebViewWidget(controller: _previewController!),
+                        if (!_previewReady)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: ColoredBox(
+                                color: widget.cardColor,
+                                child: Text(
+                                  widget.task.note,
+                                  maxLines: 6,
+                                  overflow: TextOverflow.fade,
+                                  style: theme.textTheme.bodyLarge,
+                                ),
+                              ),
+                            ),
+                          ),
                         if (_isPreviewOverflowing)
                           Positioned(
                             left: 0,
