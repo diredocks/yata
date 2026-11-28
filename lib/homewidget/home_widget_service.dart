@@ -11,6 +11,7 @@ import 'package:home_widget/home_widget.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import '../core/logging/app_logger.dart';
+import '../core/platform/method_channel_events.dart';
 import '../core/result/app_result.dart';
 import '../data/state/todo_state.dart';
 import 'home_widget_models.dart';
@@ -45,25 +46,19 @@ class FlutterHomeWidgetTransport implements HomeWidgetTransport {
   const FlutterHomeWidgetTransport();
 
   static const MethodChannel _channel = MethodChannel(kWidgetSyncChannelName);
-  static final StreamController<String> _syncRequestsController =
-      StreamController<String>.broadcast();
-  static bool _handlerInstalled = false;
+
+  /// Android requests a widget refresh via `syncWidget`; the handler is
+  /// installed the first time a listener subscribes.
+  static final Stream<String> _syncRequests = MethodChannelEvents<String>(
+    channel: _channel,
+    method: 'syncWidget',
+    decode: (arguments) => arguments as String? ?? '',
+  ).stream;
 
   static bool get isSupportedPlatform {
     if (kIsWeb) return false;
     if (Platform.environment.containsKey('FLUTTER_TEST')) return false;
     return Platform.isAndroid;
-  }
-
-  static void _ensureSyncHandlerInstalled() {
-    if (_handlerInstalled) return;
-    _handlerInstalled = true;
-    _channel.setMethodCallHandler((call) async {
-      if (call.method == 'syncWidget') {
-        _syncRequestsController.add(call.arguments as String? ?? '');
-      }
-      return null;
-    });
   }
 
   Future<T?> _guardPlatform<T>(
@@ -112,11 +107,8 @@ class FlutterHomeWidgetTransport implements HomeWidgetTransport {
       : const Stream<Uri?>.empty();
 
   @override
-  Stream<String> get widgetSyncRequests {
-    if (!isSupportedPlatform) return const Stream<String>.empty();
-    _ensureSyncHandlerInstalled();
-    return _syncRequestsController.stream;
-  }
+  Stream<String> get widgetSyncRequests =>
+      isSupportedPlatform ? _syncRequests : const Stream<String>.empty();
 }
 
 final homeWidgetServiceProvider = Provider<HomeWidgetService>((ref) {
