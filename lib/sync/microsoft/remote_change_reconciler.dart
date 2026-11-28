@@ -252,7 +252,7 @@ ReconciledRemoteDelta reconcileRemoteDelta({
   if (delta.remoteSettings != null) {
     final filteredSettings = {
       for (final entry in delta.remoteSettings!.entries)
-        if (!protection.dirtySettings.contains(entry.key))
+        if (!protection.dirtyIds(SyncEntityType.setting).contains(entry.key))
           entry.key: entry.value,
     };
     if (!returnOnlyChanged || filteredSettings.isNotEmpty) {
@@ -264,13 +264,15 @@ ReconciledRemoteDelta reconcileRemoteDelta({
   List<ListGroup>? outGroups;
   if (delta.groups.isNotEmpty || delta.pruneGroups) {
     final filteredGroups = delta.groups
-        .whereNot((g) => protection.deletedGroupRemotes.contains(g.id))
+        .whereNot(
+          (g) => protection.deletedRemotes(SyncEntityType.group).contains(g.id),
+        )
         .toList();
     if (filteredGroups.isNotEmpty || delta.pruneGroups) {
       var mergedGroups = mergeFolderGroupsDelta(
         localGroups: liveGroups,
         remoteDelta: filteredGroups,
-        dirtyGroupIds: protection.dirtyGroups,
+        dirtyGroupIds: protection.dirtyIds(SyncEntityType.group),
         idGenerator: idGenerator,
       );
       if (delta.pruneGroups) {
@@ -282,7 +284,7 @@ ReconciledRemoteDelta reconcileRemoteDelta({
           for (final g in mergedGroups)
             if (g.remoteId == null ||
                 seenGroupRemoteIds.contains(g.remoteId) ||
-                protection.pruneKeepGroups.contains(g.id))
+                protection.pruneKeepIds(SyncEntityType.group).contains(g.id))
               g,
         ];
       }
@@ -309,7 +311,7 @@ ReconciledRemoteDelta reconcileRemoteDelta({
         .whereNot(
           (f) =>
               f.isIgnoredSpecialFolder ||
-              protection.deletedListRemotes.contains(f.id),
+              protection.deletedRemotes(SyncEntityType.list).contains(f.id),
         )
         .toList();
     final applicableFolders = <RemoteTodoFolder>[];
@@ -328,7 +330,7 @@ ReconciledRemoteDelta reconcileRemoteDelta({
       var mergedLists = mergeFoldersDelta(
         localLists: liveLists,
         remoteDelta: applicableFolders,
-        dirtyListIds: protection.dirtyLists,
+        dirtyListIds: protection.dirtyIds(SyncEntityType.list),
         groupLocalIdByRemoteId: groupLocalIdByRemoteId,
         idGenerator: idGenerator,
       );
@@ -344,7 +346,7 @@ ReconciledRemoteDelta reconcileRemoteDelta({
               if (l.isSmartList ||
                   l.remoteId == null ||
                   seenFolderRemoteIds.contains(l.remoteId) ||
-                  protection.pruneKeepLists.contains(l.id))
+                  protection.pruneKeepIds(SyncEntityType.list).contains(l.id))
                 l,
           ];
         }
@@ -380,8 +382,10 @@ ReconciledRemoteDelta reconcileRemoteDelta({
       lists: effectiveLists,
       currentTasks: tasksInValidLists,
       changes: delta.tasks,
-      dirtyTaskIds: protection.dirtyTasks,
-      pendingDeletedTaskRemoteIds: protection.deletedTaskRemotes,
+      dirtyTaskIds: protection.dirtyIds(SyncEntityType.task),
+      pendingDeletedTaskRemoteIds: protection.deletedRemotes(
+        SyncEntityType.task,
+      ),
       idGenerator: idGenerator,
       deferDirtyDeletes: deferDirtyDeletes,
     );
@@ -403,7 +407,7 @@ ReconciledRemoteDelta reconcileRemoteDelta({
           if (task.remoteId == null ||
               !fullSyncedListIds.contains(task.listId) ||
               reconciled.seenActiveRemoteIds.contains(task.remoteId) ||
-              protection.pruneKeepTasks.contains(task.id))
+              protection.pruneKeepIds(SyncEntityType.task).contains(task.id))
             task,
       ];
     }

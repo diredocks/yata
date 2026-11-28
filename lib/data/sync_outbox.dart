@@ -3,6 +3,7 @@ enum SyncEntityType { group, list, task, step, attachment, setting }
 enum SyncOpKind { upsert, delete }
 
 typedef SyncEntityKey = ({SyncEntityType type, String localId});
+typedef SyncRemoteKey = ({SyncEntityType type, String remoteId});
 
 /// A single ordered local mutation queued for push to Substrate.
 class SyncOutboxOp {
@@ -30,7 +31,10 @@ class SyncOutboxOp {
   final Set<String> stepIds;
   final String? baseNote;
 
-  String get key => '${entityType.name}::$localId';
+  SyncEntityKey get entityKey => (type: entityType, localId: localId);
+
+  SyncRemoteKey? get remoteKey =>
+      remoteId == null ? null : (type: entityType, remoteId: remoteId!);
 
   bool get isAttachmentUpload =>
       entityType == SyncEntityType.attachment && kind == SyncOpKind.upsert;
@@ -115,9 +119,22 @@ class SyncOutboxQueue {
     }
   }
 
+  static const _dirtyProtectionTypes = [
+    SyncEntityType.setting,
+    SyncEntityType.group,
+    SyncEntityType.list,
+    SyncEntityType.task,
+  ];
+
+  static const _entityProtectionTypes = [
+    SyncEntityType.group,
+    SyncEntityType.list,
+    SyncEntityType.task,
+  ];
+
   final List<SyncOutboxOp> _ops = [];
-  final Map<String, int> _ackedEntitySeq = {};
-  final Map<String, int> _deletedRemoteSeq = {};
+  final Map<SyncEntityKey, int> _ackedEntitySeq = {};
+  final Map<SyncRemoteKey, int> _deletedRemoteSeq = {};
   final Set<int> _dirtyUpsertSeqs = <int>{};
   final Set<int> _dirtyDeleteSeqs = <int>{};
   int _lastSeq = 0;
@@ -127,9 +144,6 @@ class SyncOutboxQueue {
   bool get isNotEmpty => _ops.isNotEmpty;
   int get lastSeq => _lastSeq;
   List<SyncOutboxOp> get ops => List<SyncOutboxOp>.unmodifiable(_ops);
-
-  static String remoteKey(SyncEntityType type, String id) =>
-      '${type.name}::$id';
 
   void _markUpsert(int seq) {
     _dirtyUpsertSeqs.add(seq);
@@ -159,11 +173,11 @@ class SyncOutboxQueue {
   /// reference [localId] directly or as their parent task (e.g., a delete or
   /// attachment op queued while the entity's create POST was still in flight).
   bool backfillRemoteId(SyncEntityType type, String localId, String remoteId) {
+    final targetKey = (type: type, localId: localId);
     var changed = false;
     for (var i = 0; i < _ops.length; i++) {
       final op = _ops[i];
-      final needsSelf =
-          op.entityType == type && op.localId == localId && op.remoteId == null;
+      final needsSelf = op.entityKey == targetKey && op.remoteId == null;
       final needsParent =
           type == SyncEntityType.task &&
           op.parentLocalId == localId &&
@@ -210,9 +224,9 @@ class SyncOutboxQueue {
     final op = _ops.removeAt(idx);
     _markDelete(seq);
     final commitSeq = _nextSeq();
-    _ackedEntitySeq[op.key] = commitSeq;
-    if (op.kind == SyncOpKind.delete && op.remoteId != null) {
-      _deletedRemoteSeq[remoteKey(op.entityType, op.remoteId!)] = commitSeq;
+    _ackedEntitySeq[op.entityKey] = commitSeq;
+    if (op.remoteKey case final rKey? when op.kind == SyncOpKind.delete) {
+      _deletedRemoteSeq[rKey] = commitSeq;
     }
   }
 
@@ -227,11 +241,11 @@ class SyncOutboxQueue {
     Set<String> stepIds = const <String>{},
     String? baseNote,
   }) {
+    final targetKey = (type: entityType, localId: localId);
     final idx = _ops.lastIndexWhere(
       (op) =>
           op.seq > _inFlightUpToSeq &&
-          op.entityType == entityType &&
-          op.localId == localId &&
+          op.entityKey == targetKey &&
           op.kind == SyncOpKind.upsert,
     );
     if (idx >= 0) {
@@ -262,30 +276,21 @@ class SyncOutboxQueue {
 
   /// Cancels any non-in-flight pending upsert ops for [entityType]/[localId].
   /// Returns true if at least one op was removed.
-  bool cancelPendingUpserts(SyncEntityType entityType, String localId) {
-    final before = _ops.length;
-    _ops.removeWhere((op) {
-      final match =
-          op.seq > _inFlightUpToSeq &&
-          op.entityType == entityType &&
-          op.localId == localId &&
-          op.kind == SyncOpKind.upsert;
-      if (match) _markDelete(op.seq);
-      return match;
-    });
-    return _ops.length != before;
-  }
+  bool cancelPendingUpserts(SyncEntityType entityType, String localId) =>
+      _cancelPending((type: entityType, localId: localId), SyncOpKind.upsert);
 
   /// Cancels any non-in-flight pending delete ops for [entityType]/[localId].
   /// Returns true if at least one op was removed.
-  bool cancelPendingDeletes(SyncEntityType entityType, String localId) {
+  bool cancelPendingDeletes(SyncEntityType entityType, String localId) =>
+      _cancelPending((type: entityType, localId: localId), SyncOpKind.delete);
+
+  bool _cancelPending(SyncEntityKey targetKey, SyncOpKind kind) {
     final before = _ops.length;
     _ops.removeWhere((op) {
       final match =
           op.seq > _inFlightUpToSeq &&
-          op.entityType == entityType &&
-          op.localId == localId &&
-          op.kind == SyncOpKind.delete;
+          op.entityKey == targetKey &&
+          op.kind == kind;
       if (match) _markDelete(op.seq);
       return match;
     });
@@ -301,11 +306,11 @@ class SyncOutboxQueue {
     String? parentLocalId,
     String? parentRemoteId,
   }) {
+    final targetKey = (type: entityType, localId: localId);
     var cancelledUncreatedUpsert = false;
     _ops.removeWhere((op) {
       if (op.seq > _inFlightUpToSeq &&
-          op.entityType == entityType &&
-          op.localId == localId &&
+          op.entityKey == targetKey &&
           op.kind == SyncOpKind.upsert) {
         if (remoteId == null) {
           cancelledUncreatedUpsert = true;
@@ -317,18 +322,14 @@ class SyncOutboxQueue {
     });
     if (cancelledUncreatedUpsert &&
         !_ops.any(
-          (op) =>
-              op.entityType == entityType &&
-              op.localId == localId &&
-              op.kind == SyncOpKind.upsert,
+          (op) => op.entityKey == targetKey && op.kind == SyncOpKind.upsert,
         )) {
       return;
     }
     final alreadyQueued = _ops.any(
       (op) =>
           op.seq > _inFlightUpToSeq &&
-          op.entityType == entityType &&
-          op.localId == localId &&
+          op.entityKey == targetKey &&
           op.kind == SyncOpKind.delete,
     );
     if (alreadyQueued) return;
@@ -346,11 +347,9 @@ class SyncOutboxQueue {
   }
 
   void enqueueSetting(String key) {
+    final targetKey = (type: SyncEntityType.setting, localId: key);
     final exists = _ops.any(
-      (op) =>
-          op.seq > _inFlightUpToSeq &&
-          op.entityType == SyncEntityType.setting &&
-          op.localId == key,
+      (op) => op.seq > _inFlightUpToSeq && op.entityKey == targetKey,
     );
     if (exists) return;
     final newOp = SyncOutboxOp(
@@ -363,8 +362,10 @@ class SyncOutboxQueue {
     _markUpsert(newOp.seq);
   }
 
-  bool hasPending(SyncEntityType type, String localId) =>
-      _ops.any((op) => op.entityType == type && op.localId == localId);
+  bool hasPending(SyncEntityType type, String localId) {
+    final targetKey = (type: type, localId: localId);
+    return _ops.any((op) => op.entityKey == targetKey);
+  }
 
   Set<String> pendingLocalIds(SyncEntityType type) => {
     for (final op in _ops)
@@ -385,28 +386,21 @@ class SyncOutboxQueue {
     SyncEntityType type,
     int sinceSeq, {
     bool includePriorPending = true,
-  }) {
-    final prefix = '${type.name}::';
-    return {
-      for (final op in _ops)
-        if (op.entityType == type && (includePriorPending || op.seq > sinceSeq))
-          op.localId,
-      for (final entry in _ackedEntitySeq.entries)
-        if (entry.value > sinceSeq && entry.key.startsWith(prefix))
-          entry.key.substring(prefix.length),
-    };
-  }
+  }) => {
+    for (final op in _ops)
+      if (op.entityType == type && (includePriorPending || op.seq > sinceSeq))
+        op.localId,
+    for (final entry in _ackedEntitySeq.entries)
+      if (entry.value > sinceSeq && entry.key.type == type) entry.key.localId,
+  };
 
   /// Remote IDs with pending deletes or acknowledged deletes strictly after [sinceSeq].
-  Set<String> deletedRemoteIdsSince(SyncEntityType type, int sinceSeq) {
-    final prefix = '${type.name}::';
-    return {
-      ...pendingDeletedRemoteIds(type),
-      for (final entry in _deletedRemoteSeq.entries)
-        if (entry.value > sinceSeq && entry.key.startsWith(prefix))
-          entry.key.substring(prefix.length),
-    };
-  }
+  Set<String> deletedRemoteIdsSince(SyncEntityType type, int sinceSeq) => {
+    ...pendingDeletedRemoteIds(type),
+    for (final entry in _deletedRemoteSeq.entries)
+      if (entry.value > sinceSeq && entry.key.type == type)
+        entry.key.remoteId,
+  };
 
   /// Drops pending non-delete ops for entities that no longer exist in local
   /// state. Returns `true` if any op was removed.
@@ -415,18 +409,23 @@ class SyncOutboxQueue {
     required Set<String>? validListIds,
     required Set<String> validTaskIds,
   }) {
+    final validIdsByType = <SyncEntityType, Set<String>?>{
+      SyncEntityType.group: validGroupIds,
+      SyncEntityType.list: validListIds,
+      SyncEntityType.task: validTaskIds,
+      SyncEntityType.attachment: validTaskIds,
+    };
     var changed = false;
     _ops.removeWhere((op) {
       if (op.kind == SyncOpKind.delete) return false;
-      final orphaned = switch (op.entityType) {
-        SyncEntityType.group => !validGroupIds.contains(op.localId),
-        SyncEntityType.list =>
-          validListIds != null && !validListIds.contains(op.localId),
-        SyncEntityType.task => !validTaskIds.contains(op.localId),
-        SyncEntityType.attachment =>
-          op.parentLocalId != null && !validTaskIds.contains(op.parentLocalId!),
-        SyncEntityType.step || SyncEntityType.setting => false,
-      };
+      final validIds = validIdsByType[op.entityType];
+      final targetId = op.entityType == SyncEntityType.attachment
+          ? op.parentLocalId
+          : op.localId;
+      final orphaned =
+          validIds != null &&
+          targetId != null &&
+          !validIds.contains(targetId);
       if (orphaned) {
         _markDelete(op.seq);
         changed = true;
@@ -443,52 +442,34 @@ class SyncOutboxQueue {
     required int pullStartSeq,
     required int pruneProtectSinceSeq,
   }) => OutboxPullProtection(
-    dirtySettings: modifiedLocalIdsSince(SyncEntityType.setting, pullStartSeq),
-    dirtyGroups: modifiedLocalIdsSince(SyncEntityType.group, pullStartSeq),
-    dirtyLists: modifiedLocalIdsSince(SyncEntityType.list, pullStartSeq),
-    dirtyTasks: modifiedLocalIdsSince(SyncEntityType.task, pullStartSeq),
-    pruneKeepGroups: modifiedLocalIdsSince(
-      SyncEntityType.group,
-      pruneProtectSinceSeq,
-      includePriorPending: false,
-    ),
-    pruneKeepLists: modifiedLocalIdsSince(
-      SyncEntityType.list,
-      pruneProtectSinceSeq,
-      includePriorPending: false,
-    ),
-    pruneKeepTasks: modifiedLocalIdsSince(
-      SyncEntityType.task,
-      pruneProtectSinceSeq,
-      includePriorPending: false,
-    ),
-    deletedGroupRemotes: deletedRemoteIdsSince(
-      SyncEntityType.group,
-      pullStartSeq,
-    ),
-    deletedListRemotes: deletedRemoteIdsSince(
-      SyncEntityType.list,
-      pullStartSeq,
-    ),
-    deletedTaskRemotes: deletedRemoteIdsSince(
-      SyncEntityType.task,
-      pullStartSeq,
-    ),
+    dirtyIdsByType: {
+      for (final type in _dirtyProtectionTypes)
+        type: modifiedLocalIdsSince(type, pullStartSeq),
+    },
+    pruneKeepIdsByType: {
+      for (final type in _entityProtectionTypes)
+        type: modifiedLocalIdsSince(
+          type,
+          pruneProtectSinceSeq,
+          includePriorPending: false,
+        ),
+    },
+    deletedRemotesByType: {
+      for (final type in _entityProtectionTypes)
+        type: deletedRemoteIdsSince(type, pullStartSeq),
+    },
   );
 
   /// Captures current pending local IDs and pending delete tombstones without
   /// prune-protection sets (used for immediate realtime event reconciliation).
   OutboxPullProtection captureCurrentProtection() => OutboxPullProtection(
-    dirtySettings: pendingLocalIds(SyncEntityType.setting),
-    dirtyGroups: pendingLocalIds(SyncEntityType.group),
-    dirtyLists: pendingLocalIds(SyncEntityType.list),
-    dirtyTasks: pendingLocalIds(SyncEntityType.task),
-    pruneKeepGroups: const {},
-    pruneKeepLists: const {},
-    pruneKeepTasks: const {},
-    deletedGroupRemotes: pendingDeletedRemoteIds(SyncEntityType.group),
-    deletedListRemotes: pendingDeletedRemoteIds(SyncEntityType.list),
-    deletedTaskRemotes: pendingDeletedRemoteIds(SyncEntityType.task),
+    dirtyIdsByType: {
+      for (final type in _dirtyProtectionTypes) type: pendingLocalIds(type),
+    },
+    deletedRemotesByType: {
+      for (final type in _entityProtectionTypes)
+        type: pendingDeletedRemoteIds(type),
+    },
   );
 }
 
@@ -496,26 +477,20 @@ class SyncOutboxQueue {
 /// reconciliation to protect concurrent local edits and delete tombstones.
 class OutboxPullProtection {
   const OutboxPullProtection({
-    required this.dirtySettings,
-    required this.dirtyGroups,
-    required this.dirtyLists,
-    required this.dirtyTasks,
-    required this.pruneKeepGroups,
-    required this.pruneKeepLists,
-    required this.pruneKeepTasks,
-    required this.deletedGroupRemotes,
-    required this.deletedListRemotes,
-    required this.deletedTaskRemotes,
+    this.dirtyIdsByType = const {},
+    this.pruneKeepIdsByType = const {},
+    this.deletedRemotesByType = const {},
   });
 
-  final Set<String> dirtySettings;
-  final Set<String> dirtyGroups;
-  final Set<String> dirtyLists;
-  final Set<String> dirtyTasks;
-  final Set<String> pruneKeepGroups;
-  final Set<String> pruneKeepLists;
-  final Set<String> pruneKeepTasks;
-  final Set<String> deletedGroupRemotes;
-  final Set<String> deletedListRemotes;
-  final Set<String> deletedTaskRemotes;
+  final Map<SyncEntityType, Set<String>> dirtyIdsByType;
+  final Map<SyncEntityType, Set<String>> pruneKeepIdsByType;
+  final Map<SyncEntityType, Set<String>> deletedRemotesByType;
+
+  Set<String> dirtyIds(SyncEntityType type) => dirtyIdsByType[type] ?? const {};
+
+  Set<String> pruneKeepIds(SyncEntityType type) =>
+      pruneKeepIdsByType[type] ?? const {};
+
+  Set<String> deletedRemotes(SyncEntityType type) =>
+      deletedRemotesByType[type] ?? const {};
 }
