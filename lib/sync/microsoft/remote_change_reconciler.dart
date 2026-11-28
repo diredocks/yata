@@ -1,13 +1,10 @@
 import 'package:collection/collection.dart';
 
-import '../../core/logging/app_logger.dart';
 import '../../data/sync/sync_outbox.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
 import 'microsoft_todo_models.dart';
 import 'substrate_sync_mappers.dart';
-
-final _log = appLogFor('SyncReconciler');
 
 /// A remote task change paired with optional fallback folder context (from
 /// folder-scoped delta pulls) and whether missing `Subtasks`/`LinkedEntities`
@@ -119,15 +116,6 @@ _reconcileRemoteTaskChanges({
         continue;
       }
 
-      if (remote.bodyContent.isNotEmpty || existing.noteHtml.isNotEmpty) {
-        _log.info(
-          'reconcileTaskBody local=${existing.id} '
-          'remoteType=${remote.bodyContentType} '
-          'remoteLen=${remote.bodyContent.length} '
-          'prevType=${existing.noteContentType} '
-          'prevHtmlLen=${existing.noteHtml.length}',
-        );
-      }
       var mapped = taskFromRemote(
         remote,
         localId: existing.id,

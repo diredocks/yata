@@ -164,15 +164,6 @@ class TaskPushHandler {
       ),
       followUpFolderRemoteId: needsFollowUpPull ? folderRemoteId : null,
     );
-    if (payload.containsKey('Body')) {
-      final sentBody = payload['Body'] as Map<String, dynamic>;
-      _log.info(
-        'pushTaskBody local=${task.id} sentType=${sentBody['ContentType']} '
-        'sentLen=${(sentBody['Content'] as String?)?.length ?? 0} '
-        'respType=${remoteTask.bodyContentType} '
-        'respLen=${remoteTask.bodyContent.length}',
-      );
-    }
     _log.fine(
       'push ${isCreate ? "CREATE" : "PATCH"} local=${task.id} '
       'remote=${shortSyncId(remoteTask.id)} title="${task.title}" '
