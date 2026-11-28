@@ -11,11 +11,8 @@ import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../sync/microsoft/todo_wire_codecs.dart';
 
-typedef RichNoteChangedCallback = void Function(
-  String plainText,
-  String html,
-  String contentType,
-);
+typedef RichNoteChangedCallback =
+    void Function(String plainText, String html, String contentType);
 
 class _EditorFormatState {
   const _EditorFormatState({
@@ -434,127 +431,129 @@ class _RichFormatBar extends StatelessWidget {
       );
     }
 
-    return Material(
-      elevation: 4,
-      color: theme.colorScheme.surfaceContainer,
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 48,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Row(
-              children: [
-                PopupMenuButton<String>(
-                  tooltip: 'Text style',
-                  onSelected: (cmd) => onExec(cmd),
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(value: 'paragraph', child: Text('Body')),
-                    PopupMenuItem(
-                      value: 'heading2',
-                      child: Text(
-                        'Subhead',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    PopupMenuItem(
-                      value: 'heading1',
-                      child: Text(
-                        'Title',
-                        style: TextStyle(
-                          fontSize: 19,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _headingLabel,
-                          style: theme.textTheme.labelLarge?.copyWith(
-                            color: state.headingLevel > 0
-                                ? activeColor
-                                : inactiveColor,
+    return ExcludeFocus(
+      child: Material(
+        elevation: 4,
+        color: theme.colorScheme.surfaceContainer,
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 48,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                children: [
+                  PopupMenuButton<String>(
+                    tooltip: 'Text style',
+                    onSelected: (cmd) => onExec(cmd),
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'paragraph', child: Text('Body')),
+                      PopupMenuItem(
+                        value: 'heading2',
+                        child: Text(
+                          'Subhead',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        Icon(
-                          Icons.arrow_drop_down,
-                          size: 18,
-                          color: inactiveColor,
+                      ),
+                      PopupMenuItem(
+                        value: 'heading1',
+                        child: Text(
+                          'Title',
+                          style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ],
+                      ),
+                    ],
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _headingLabel,
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: state.headingLevel > 0
+                                  ? activeColor
+                                  : inactiveColor,
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_drop_down,
+                            size: 18,
+                            color: inactiveColor,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                const VerticalDivider(width: 12, indent: 10, endIndent: 10),
-                formatButton(
-                  icon: Icons.format_bold,
-                  tooltip: 'Bold',
-                  active: state.bold,
-                  onPressed: () => onExec('bold'),
-                ),
-                formatButton(
-                  icon: Icons.format_italic,
-                  tooltip: 'Italic',
-                  active: state.italic,
-                  onPressed: () => onExec('italic'),
-                ),
-                formatButton(
-                  icon: Icons.format_underlined,
-                  tooltip: 'Underline',
-                  active: state.underline,
-                  onPressed: () => onExec('underline'),
-                ),
-                formatButton(
-                  icon: Icons.format_strikethrough,
-                  tooltip: 'Strikethrough',
-                  active: state.strike,
-                  onPressed: () => onExec('strike'),
-                ),
-                const VerticalDivider(width: 12, indent: 10, endIndent: 10),
-                formatButton(
-                  icon: Icons.undo,
-                  tooltip: 'Undo',
-                  active: false,
-                  onPressed: state.canUndo ? () => onExec('undo') : null,
-                ),
-                formatButton(
-                  icon: Icons.redo,
-                  tooltip: 'Redo',
-                  active: false,
-                  onPressed: state.canRedo ? () => onExec('redo') : null,
-                ),
-                const VerticalDivider(width: 12, indent: 10, endIndent: 10),
-                formatButton(
-                  icon: Icons.format_list_bulleted,
-                  tooltip: 'Bulleted list',
-                  active: state.bulletList,
-                  onPressed: () => onExec('bulletList'),
-                ),
-                formatButton(
-                  icon: Icons.format_list_numbered,
-                  tooltip: 'Numbered list',
-                  active: state.orderedList,
-                  onPressed: () => onExec('orderedList'),
-                ),
-                formatButton(
-                  icon: state.canUnlink ? Icons.link_off : Icons.link,
-                  tooltip: state.canUnlink ? 'Remove link' : 'Insert link',
-                  active: state.canUnlink,
-                  onPressed: onLinkTap,
-                ),
-              ],
+                  const VerticalDivider(width: 12, indent: 10, endIndent: 10),
+                  formatButton(
+                    icon: Icons.format_bold,
+                    tooltip: 'Bold',
+                    active: state.bold,
+                    onPressed: () => onExec('bold'),
+                  ),
+                  formatButton(
+                    icon: Icons.format_italic,
+                    tooltip: 'Italic',
+                    active: state.italic,
+                    onPressed: () => onExec('italic'),
+                  ),
+                  formatButton(
+                    icon: Icons.format_underlined,
+                    tooltip: 'Underline',
+                    active: state.underline,
+                    onPressed: () => onExec('underline'),
+                  ),
+                  formatButton(
+                    icon: Icons.format_strikethrough,
+                    tooltip: 'Strikethrough',
+                    active: state.strike,
+                    onPressed: () => onExec('strike'),
+                  ),
+                  const VerticalDivider(width: 12, indent: 10, endIndent: 10),
+                  formatButton(
+                    icon: Icons.undo,
+                    tooltip: 'Undo',
+                    active: false,
+                    onPressed: state.canUndo ? () => onExec('undo') : null,
+                  ),
+                  formatButton(
+                    icon: Icons.redo,
+                    tooltip: 'Redo',
+                    active: false,
+                    onPressed: state.canRedo ? () => onExec('redo') : null,
+                  ),
+                  const VerticalDivider(width: 12, indent: 10, endIndent: 10),
+                  formatButton(
+                    icon: Icons.format_list_bulleted,
+                    tooltip: 'Bulleted list',
+                    active: state.bulletList,
+                    onPressed: () => onExec('bulletList'),
+                  ),
+                  formatButton(
+                    icon: Icons.format_list_numbered,
+                    tooltip: 'Numbered list',
+                    active: state.orderedList,
+                    onPressed: () => onExec('orderedList'),
+                  ),
+                  formatButton(
+                    icon: state.canUnlink ? Icons.link_off : Icons.link,
+                    tooltip: state.canUnlink ? 'Remove link' : 'Insert link',
+                    active: state.canUnlink,
+                    onPressed: onLinkTap,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

@@ -76,6 +76,7 @@ const editorEl = document.getElementById('editor') as HTMLDivElement;
 let editor: Editor | null = null;
 let suppressChange = false;
 let changeTimer: number | null = null;
+let lastSelection: { from: number; to: number } | null = null;
 
 function postToFlutter(payload: Record<string, unknown>) {
   const bridge = (window as unknown as { YataBridge?: { postMessage: (msg: string) => void } }).YataBridge;
@@ -103,6 +104,12 @@ function extractBodyContent(raw: string): string {
   if (!raw) return '';
   const match = raw.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
   return match ? match[1] : raw;
+}
+
+function captureSelection() {
+  if (!editor) return;
+  const { from, to } = editor.state.selection;
+  lastSelection = { from, to };
 }
 
 function emitFormatState() {
@@ -168,10 +175,14 @@ function ensureEditor(placeholder: string) {
     ],
     onUpdate: () => {
       if (suppressChange) return;
+      captureSelection();
       emitFormatState();
       scheduleContentChanged();
     },
     onSelectionUpdate: () => {
+      if (editor?.isFocused) {
+        captureSelection();
+      }
       emitFormatState();
     },
   });
@@ -212,6 +223,7 @@ const YataEditor = {
       suppressChange = true;
       ed.commands.setContent(sanitizeHtml(bodyHtml), false);
       suppressChange = false;
+      captureSelection();
       emitFormatState();
     } else {
       editorEl.hidden = true;
@@ -234,7 +246,14 @@ const YataEditor = {
 
   exec(cmd: string, arg?: string) {
     if (!editor) return;
-    const chain = editor.chain().focus();
+    const maxPos = editor.state.doc.content.size;
+    let chain = editor.chain();
+    if (lastSelection) {
+      const from = Math.max(0, Math.min(lastSelection.from, maxPos));
+      const to = Math.max(0, Math.min(lastSelection.to, maxPos));
+      chain = chain.setTextSelection({ from, to });
+    }
+    chain = chain.focus();
     switch (cmd) {
       case 'bold':
         chain.toggleBold().run();
@@ -279,6 +298,7 @@ const YataEditor = {
         editor.commands.focus('end');
         break;
     }
+    captureSelection();
     emitFormatState();
     if (cmd !== 'focus') {
       emitContentChangedNow();
