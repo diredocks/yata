@@ -5,7 +5,7 @@ import '../../data/sync_outbox.dart';
 import '../../data/todo_state.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
-import '../sync_guard.dart';
+import '../../core/network/http_guard.dart';
 import 'microsoft_todo_api.dart';
 
 final _log = appLogFor('SyncEngine');

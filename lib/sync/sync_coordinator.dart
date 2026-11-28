@@ -18,7 +18,7 @@ import 'microsoft/substrate_pull_engine.dart';
 import 'microsoft/substrate_push_engine.dart';
 import 'realtime_sync_controller.dart';
 import 'sync_dispatcher.dart';
-import 'sync_guard.dart';
+import '../core/network/http_guard.dart';
 
 final _log = appLogFor('Sync');
 final _realtimeLog = appLogFor('SyncRealtime');

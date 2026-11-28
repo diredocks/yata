@@ -6,7 +6,7 @@ import '../../core/logging/app_logger.dart';
 import '../../core/result/app_result.dart';
 import '../../data/sync_outbox.dart';
 import '../../data/todo_state.dart';
-import '../sync_guard.dart';
+import '../../core/network/http_guard.dart';
 import 'microsoft_todo_api.dart';
 import 'push_entity_handlers.dart';
 import 'push_task_handler.dart';

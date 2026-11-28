@@ -21,7 +21,7 @@ import 'package:yata/models/default_lists.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
-import 'package:yata/sync/sync_guard.dart';
+import 'package:yata/core/network/http_guard.dart';
 import 'package:yata/sync/sync_provider.dart';
 import 'package:yata/data/preferences.dart';
 

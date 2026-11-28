@@ -6,7 +6,7 @@ import '../../core/result/app_result.dart';
 import '../../data/sync_dirty_fields.dart';
 import '../../data/sync_outbox.dart';
 import '../../models/task_item.dart';
-import '../sync_guard.dart';
+import '../../core/network/http_guard.dart';
 import '../text_merge.dart';
 import 'microsoft_todo_api.dart';
 import 'substrate_push_context.dart';

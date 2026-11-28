@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:result_dart/result_dart.dart';
 
-import '../core/error/app_error.dart';
-import '../core/result/app_result.dart';
+import '../error/app_error.dart';
+import '../result/app_result.dart';
 
 /// Formats long Substrate / Exchange IDs compactly for diagnostic logs.
 String shortSyncId(String? id) {

@@ -10,7 +10,7 @@ import '../../data/sync_dirty_fields.dart';
 import '../../data/sync_outbox.dart';
 import '../../data/todo_settings_sync.dart';
 import '../../models/todo_list.dart';
-import '../sync_guard.dart';
+import '../../core/network/http_guard.dart';
 import 'microsoft_todo_api.dart';
 import 'substrate_push_context.dart';
 import 'substrate_sync_mappers.dart';

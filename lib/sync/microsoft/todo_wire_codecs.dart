@@ -2,18 +2,13 @@ import 'dart:collection';
 
 import 'package:characters/characters.dart';
 import 'package:material_ui/material_ui.dart' show TimeOfDay;
-import 'package:uuid/uuid.dart';
 
 import '../../models/todo_list.dart';
 import 'substrate_time_codecs.dart';
 
+export '../../core/uuid.dart' show generateUuidV4;
 export '../../data/order_date_time.dart';
 export 'substrate_time_codecs.dart' hide kIsoWeekdayNames;
-
-const Uuid _uuid = Uuid();
-
-/// Generates a random RFC-4122 version 4 UUID string.
-String generateUuidV4() => _uuid.v4();
 
 /// Substrate `/settings` keys synchronized for personal Microsoft To Do accounts.
 abstract final class TodoSettingKeys {

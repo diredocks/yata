@@ -3,7 +3,7 @@ import 'dart:async';
 import '../core/logging/app_logger.dart';
 import '../models/account.dart';
 import 'microsoft/microsoft_todo_api.dart';
-import 'sync_guard.dart';
+import '../core/network/http_guard.dart';
 
 final _log = appLogFor('SyncRealtime');
 
