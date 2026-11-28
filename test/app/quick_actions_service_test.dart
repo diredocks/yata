@@ -8,6 +8,7 @@ import 'package:yata/data/preferences.dart';
 import 'package:yata/main.dart';
 import 'package:yata/search/search_screen.dart';
 import 'package:yata/tasksview/richentry/task_entry_sheet.dart';
+import 'package:yata/tasksview/tasks_view_screen.dart';
 
 class _FakeQuickActionsTransport implements QuickActionsTransport {
   _FakeQuickActionsTransport({this.supported = true, this.throwOnSet = false});
@@ -151,8 +152,7 @@ void main() {
       WidgetTester tester,
     ) async {
       SharedPreferences.setMockInitialValues({
-        'yata.accounts':
-            '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+        'yata.accounts': '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
         'yata.active_account_id': 'test',
       });
       final prefs = await SharedPreferences.getInstance();
@@ -203,6 +203,52 @@ void main() {
       await tester.enterText(find.byType(TextField), 'Quick action task');
       await tester.pumpAndSettle();
       expect(find.text('Quick action task'), findsWidgets);
+    });
+
+    testWidgets('new_task action adds into the last entered list', (
+      WidgetTester tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({
+        'yata.accounts': '[{"id":"acct_a","displayName":"Alice","email":"alice@example.com","createdAt":"2026-01-01T00:00:00.000"}]',
+        'yata.active_account_id': 'acct_a',
+        'yata.acct.acct_a.last_entered_list_id': 'tasks',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final transport = _FakeQuickActionsTransport();
+
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            quickActionsTransportProvider.overrideWithValue(transport),
+          ],
+          child: const YataApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TasksViewScreen), findsOneWidget);
+
+      transport.trigger('new_task');
+      await tester.pumpAndSettle();
+      expect(find.byType(TaskEntrySheet), findsOneWidget);
+      expect(find.byType(TasksViewScreen), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'Task from shortcut');
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+      await tester.pumpAndSettle();
+
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TasksViewScreen), findsOneWidget);
+      expect(find.text('Task from shortcut'), findsOneWidget);
+      expect(prefs.getString('yata.acct.acct_a.last_entered_list_id'), 'tasks');
     });
   });
 }

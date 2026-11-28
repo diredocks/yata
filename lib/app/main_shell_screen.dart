@@ -86,7 +86,13 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
 
   void _handleQuickAction(QuickActionType action) {
     if (!mounted) return;
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    // Popping the list route clears the stored id, so read it beforehand.
+    final lastListId = ref
+        .read(todoSettingsStoreProvider)
+        .loadLastEnteredListId();
+    Navigator.of(context).popUntil(
+      (route) => route.isFirst || _isLastEnteredList(route, lastListId),
+    );
     switch (action) {
       case QuickActionType.search:
         _openSearch();
@@ -95,6 +101,11 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
         _openQuickAddSheet(state, state.selectedList);
     }
   }
+
+  bool _isLastEnteredList(Route<dynamic> route, String? lastListId) =>
+      lastListId != null &&
+      identical(route, _activeTasksRoute) &&
+      _activeTasksListId == lastListId;
 
   Future<void> _bootstrapAndStartSync() async {
     final initialAction = await ref.read(homeWidgetSyncProvider).bootstrap();
