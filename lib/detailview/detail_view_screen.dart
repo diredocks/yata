@@ -560,6 +560,14 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                                   cardColor: cardBg,
                                   onNoteChanged: (val) =>
                                       notifier.updateTaskNote(task.id, val),
+                                  onRichNoteChanged:
+                                      (plainText, html, contentType) =>
+                                          notifier.updateTaskNote(
+                                            task.id,
+                                            plainText,
+                                            noteHtml: html,
+                                            noteContentType: contentType,
+                                          ),
                                 ),
                               ],
                             ),

@@ -64,3 +64,4 @@ flutter:
     - assets/images/empty_state/
     - assets/sounds/
     - assets/themes/
+    - assets/editor/

@@ -52,3 +52,7 @@ app.*.map.json
 
 # References
 references/
+
+# Rich text editor frontend build artifacts
+editor_web/node_modules/
+assets/editor/

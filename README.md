@@ -6,11 +6,13 @@ Yet Another Todo App
 
 ## Codegen
 
-Run manually after editing `.arb` or `@freezed` / `@JsonSerializable` / `@DriftDatabase` files:
+Run manually after editing `.arb` or `@freezed` / `@JsonSerializable` / `@DriftDatabase` files, and build the rich-text editor from `editor_web/` before running or packaging:
 
 ```bash
 flutter gen-l10n
 flutter pub run build_runner build
+npm --prefix editor_web ci
+npm --prefix editor_web run build
 ```
 
 ## Storage
@@ -25,4 +27,5 @@ flutter pub run build_runner build
 flutter analyze
 flutter test
 dart format lib test
+npm --prefix editor_web run build
 ```

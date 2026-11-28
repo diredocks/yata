@@ -152,7 +152,7 @@ class TaskListTile extends StatelessWidget {
       }
     }
 
-    if (task.note.trim().isNotEmpty) {
+    if (task.hasNote) {
       trailingIconItems.add(
         Icon(Icons.sticky_note_2_outlined, size: 13, color: secondaryColor),
       );

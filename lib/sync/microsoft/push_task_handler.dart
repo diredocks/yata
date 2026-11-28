@@ -18,6 +18,8 @@ final _log = appLogFor('SyncEngine');
 typedef _TaskPatchOutcome = ({
   RemoteTodoTask remoteTask,
   String? mergedNote,
+  String? mergedNoteHtml,
+  String? mergedNoteContentType,
   bool preservedRemoteStatus,
 });
 
@@ -99,6 +101,8 @@ class TaskPushHandler {
             (remoteTask) => (
               remoteTask: remoteTask,
               mergedNote: null as String?,
+              mergedNoteHtml: null as String?,
+              mergedNoteContentType: null as String?,
               preservedRemoteStatus: false,
             ),
           )
@@ -143,6 +147,9 @@ class TaskPushHandler {
         orderDateTime: remoteTask.orderDateTime ?? task.orderDateTime,
         committedOrder: remoteTask.committedOrder ?? task.committedOrder,
         note: patchOutcome.mergedNote ?? task.note,
+        noteHtml: patchOutcome.mergedNoteHtml ?? task.noteHtml,
+        noteContentType:
+            patchOutcome.mergedNoteContentType ?? task.noteContentType,
         isCompleted: patchOutcome.preservedRemoteStatus
             ? remoteTask.isCompleted
             : task.isCompleted,
@@ -197,6 +204,8 @@ class TaskPushHandler {
   }) async {
     const maxConflictRetries = 3;
     String? mergedNote;
+    String? mergedNoteHtml;
+    String? mergedNoteContentType;
     var preservedRemoteStatus = false;
     final isReorderOnlyPatch = _isReorderOnlyTaskPatch(
       dirtyFields,
@@ -227,13 +236,55 @@ class TaskPushHandler {
       final retryPayload = Map<String, dynamic>.of(payload);
 
       if (bodyDirty) {
-        final resolvedNote = mergeThreeWayNoteText(
-          base: baseNote,
-          local: task.note,
-          remote: latest.plainTextNote,
-        );
-        mergedNote = resolvedNote;
-        retryPayload['Body'] = {'Content': resolvedNote, 'ContentType': 'Text'};
+        final remoteIsHtml =
+            latest.bodyContentType?.trim().toLowerCase() == 'html';
+        if (task.isHtmlNote || remoteIsHtml) {
+          final remoteTime = latest.bodyLastModifiedTime;
+          final localTime = task.noteUpdatedAt;
+          final remoteNewer =
+              remoteTime != null &&
+              (localTime == null || localTime.isBefore(remoteTime));
+          if (remoteNewer) {
+            mergedNote = latest.plainTextNote;
+            mergedNoteHtml =
+                remoteIsHtml && !isHtmlBodyEmpty(latest.bodyContent)
+                ? latest.bodyContent
+                : '';
+            mergedNoteContentType = latest.bodyContentType;
+            retryPayload['Body'] = {
+              'Content': remoteIsHtml
+                  ? normalizeHtmlBodyDocument(latest.bodyContent)
+                  : truncatePlainTextBody(latest.plainTextNote),
+              'ContentType': latest.bodyContentType ?? 'Text',
+            };
+          } else {
+            mergedNote = task.note;
+            mergedNoteHtml = task.noteHtml;
+            mergedNoteContentType = task.noteContentType;
+            retryPayload['Body'] = task.isHtmlNote
+                ? {
+                    'Content': normalizeHtmlBodyDocument(task.noteHtml),
+                    'ContentType': 'HTML',
+                  }
+                : {
+                    'Content': truncatePlainTextBody(task.note),
+                    'ContentType': 'Text',
+                  };
+          }
+        } else {
+          final resolvedNote = mergeThreeWayNoteText(
+            base: baseNote,
+            local: task.note,
+            remote: latest.plainTextNote,
+          );
+          mergedNote = resolvedNote;
+          mergedNoteHtml = '';
+          mergedNoteContentType = 'Text';
+          retryPayload['Body'] = {
+            'Content': truncatePlainTextBody(resolvedNote),
+            'ContentType': 'Text',
+          };
+        }
       }
 
       if (statusDirty &&
@@ -263,6 +314,8 @@ class TaskPushHandler {
       (remoteTask) => (
         remoteTask: remoteTask,
         mergedNote: mergedNote,
+        mergedNoteHtml: mergedNoteHtml,
+        mergedNoteContentType: mergedNoteContentType,
         preservedRemoteStatus: preservedRemoteStatus,
       ),
     );

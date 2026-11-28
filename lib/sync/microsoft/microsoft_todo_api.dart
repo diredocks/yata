@@ -280,8 +280,8 @@ class HttpMicrosoftTodoApi implements MicrosoftTodoApi {
       'MS-CV': _nextMsCv(),
       'X-FlaggedListEnabled': 'false',
       'Prefer': trackChanges
-          ? 'outlook.timezone=UTC, odata.track-changes'
-          : 'outlook.timezone=UTC',
+          ? 'outlook.timezone=UTC, outlook.body-content-type="html", odata.track-changes'
+          : 'outlook.timezone=UTC, outlook.body-content-type="html"',
       'Accept': 'application/json',
       'Content-Type': 'application/json',
     };

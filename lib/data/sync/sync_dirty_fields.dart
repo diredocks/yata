@@ -81,7 +81,11 @@ Set<TaskDirtyField> diffTaskDirtyFields(TaskItem? prev, TaskItem next) {
   if (prev == null) return TaskDirtyField.values.toSet();
   final fields = <TaskDirtyField>{};
   if (prev.title != next.title) fields.add(TaskDirtyField.subject);
-  if (prev.note != next.note) fields.add(TaskDirtyField.body);
+  if (prev.note != next.note ||
+      prev.noteHtml != next.noteHtml ||
+      prev.noteContentType != next.noteContentType) {
+    fields.add(TaskDirtyField.body);
+  }
   if (prev.isCompleted != next.isCompleted ||
       prev.completedAt != next.completedAt) {
     fields.add(TaskDirtyField.status);

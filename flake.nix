@@ -65,6 +65,7 @@
           pkgs.gst_all_1.gst-plugins-base.dev
           pkgs.gst_all_1.gst-plugins-good
           pkgs.gst_all_1.gst-plugins-ugly
+          pkgs.nodejs
         ];
 
         JAVA_HOME = "${jdk}";
