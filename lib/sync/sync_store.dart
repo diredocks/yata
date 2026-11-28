@@ -3,7 +3,6 @@ import '../data/db/todo_repository.dart';
 import '../data/lists/todo_settings_store.dart';
 import '../data/lists/todo_settings_sync.dart';
 import '../data/state/todo_state.dart';
-import '../data/sync/todo_sync_reconciler.dart';
 import '../data/ordering/list_ordering.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';

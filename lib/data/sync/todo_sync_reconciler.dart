@@ -4,47 +4,11 @@ import 'sync_dirty_fields.dart';
 import 'sync_outbox.dart';
 import '../lists/todo_settings_sync.dart';
 
-bool isSyncableFolderList(TodoList list) =>
-    !list.isSmartList || list.smartType == SmartListType.tasks;
-
 bool isGroupSyncDirty(ListGroup prev, ListGroup next) =>
     diffGroupDirtyFields(prev, next).isNotEmpty;
 
 bool isListSyncDirty(TodoList prev, TodoList next) =>
     diffListDirtyFields(prev, next).isNotEmpty;
-
-/// Recomputes per-list completed-section expansion from synced folder and smart-list settings.
-({Map<String, bool> expanded, bool changed}) recomputeCompletedExpandedByList({
-  required Map<String, bool> currentExpanded,
-  required List<TodoList> lists,
-  Set<String> dirtyListIds = const {},
-  Set<String> updatedShowCompletedSmartListIds = const {},
-  bool includeSyncableFolders = true,
-}) {
-  final nextExpanded = Map<String, bool>.from(currentExpanded);
-  var changed = false;
-  for (final list in lists) {
-    if (list.smartType == SmartListType.all ||
-        list.smartType == SmartListType.completed ||
-        list.smartType == SmartListType.important) {
-      continue;
-    }
-    if (isSyncableFolderList(list)) {
-      if (includeSyncableFolders &&
-          list.remoteId != null &&
-          !dirtyListIds.contains(list.id) &&
-          nextExpanded[list.id] != list.showCompleted) {
-        nextExpanded[list.id] = list.showCompleted;
-        changed = true;
-      }
-    } else if (updatedShowCompletedSmartListIds.contains(list.id) &&
-        nextExpanded[list.id] != list.showCompleted) {
-      nextExpanded[list.id] = list.showCompleted;
-      changed = true;
-    }
-  }
-  return (expanded: nextExpanded, changed: changed);
-}
 
 /// Enqueues sync mutations for a single created or modified [ListGroup].
 ({ListGroup group, bool syncNeeded}) enqueueGroupUpsertToOutbox({
