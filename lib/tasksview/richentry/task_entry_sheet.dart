@@ -11,8 +11,6 @@ import '../../models/todo_list.dart';
 import '../../theme/todo_theme.dart';
 import '../../ui/widgets/task_pickers.dart';
 
-/// Android reports `windowFocusGained` after the IME was hidden, letting the
-/// sheet re-show the keyboard; the channel is process-wide, so is the stream.
 final Stream<void> _windowFocusGained = MethodChannelEvents<void>(
   channel: const MethodChannel('top.clickfling.yata/window_focus'),
   method: 'windowFocusGained',

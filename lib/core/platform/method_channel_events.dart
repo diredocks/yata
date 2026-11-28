@@ -2,10 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
-/// Broadcasts platform-to-Dart calls of a single [method] on [channel].
-///
-/// The method call handler is installed on first access to [stream], so hosts
-/// that never listen (desktop, tests without the plugin) install nothing.
 class MethodChannelEvents<T> {
   MethodChannelEvents({
     required this.channel,

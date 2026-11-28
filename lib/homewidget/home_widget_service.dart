@@ -47,8 +47,6 @@ class FlutterHomeWidgetTransport implements HomeWidgetTransport {
 
   static const MethodChannel _channel = MethodChannel(kWidgetSyncChannelName);
 
-  /// Android requests a widget refresh via `syncWidget`; the handler is
-  /// installed the first time a listener subscribes.
   static final Stream<String> _syncRequests = MethodChannelEvents<String>(
     channel: _channel,
     method: 'syncWidget',
