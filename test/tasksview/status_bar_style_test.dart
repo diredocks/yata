@@ -8,6 +8,7 @@ import 'package:yata/main.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/settings/settings_presenter.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
+import 'package:yata/data/preferences.dart';
 
 void main() {
   testWidgets(

@@ -7,8 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/main.dart';
 import 'package:yata/account/account_provider.dart';
 import 'package:yata/data/todo_provider.dart';
-import 'package:yata/detailview/attachments/attachment_service.dart';
+import 'package:yata/data/attachment_service.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
+import 'package:yata/data/preferences.dart';
 
 void main() {
   testWidgets(

@@ -9,6 +9,7 @@ import 'package:yata/detailview/steps/steps_section.dart';
 import 'package:yata/l10n/app_localizations.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
+import 'package:yata/data/preferences.dart';
 
 TaskItem _makeTask(String id, List<TaskStep> steps) {
   return TaskItem(

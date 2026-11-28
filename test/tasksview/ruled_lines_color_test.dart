@@ -9,6 +9,7 @@ import 'package:yata/settings/settings_presenter.dart';
 import 'package:yata/tasksview/recyclerview/ruled_lines_painter.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 import 'package:yata/theme/todo_theme.dart';
+import 'package:yata/data/preferences.dart';
 
 void main() {
   RuledLinesPainter findRuledLinesPainter(WidgetTester tester) {

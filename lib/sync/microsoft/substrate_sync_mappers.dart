@@ -1,5 +1,5 @@
 import '../../data/sync_dirty_fields.dart';
-import '../../homeview/home_view_ordering.dart';
+import '../../data/list_ordering.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
 import 'microsoft_todo_models.dart';

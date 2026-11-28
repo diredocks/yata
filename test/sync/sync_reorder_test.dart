@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/core/error/app_error.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/detailview/detail_view_presenter.dart';
-import 'package:yata/homeview/home_view_ordering.dart';
+import 'package:yata/data/list_ordering.dart';
 import 'package:yata/homeview/home_view_presenter.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
 import 'package:yata/sync/sync_provider.dart';

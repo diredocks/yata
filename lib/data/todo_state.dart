@@ -4,7 +4,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
-import '../theme/custom_background_service.dart';
+import 'custom_background_service.dart';
 import 'todo_sorting.dart';
 
 part 'todo_state.freezed.dart';

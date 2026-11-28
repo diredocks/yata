@@ -6,7 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../account/account_local_storage.dart';
+import '../data/account_local_storage.dart';
 import '../account/account_provider.dart';
 import '../core/error/app_error.dart';
 import '../core/logging/app_logger.dart';
@@ -22,6 +22,7 @@ import 'microsoft/microsoft_todo_api.dart';
 import 'microsoft/substrate_push_engine.dart';
 import 'sync_provider.dart';
 import 'sync_store.dart';
+import '../data/preferences.dart';
 
 final _log = appLogFor('BackgroundEntrypoint');
 

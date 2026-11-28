@@ -8,6 +8,7 @@ import 'package:yata/detailview/detail_view_screen.dart';
 import 'package:yata/main.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 import 'package:yata/tasksview/tasks_view_screen.dart';
+import 'package:yata/data/preferences.dart';
 
 Future<ProviderContainer> _openTaskDetail(
   WidgetTester tester, {

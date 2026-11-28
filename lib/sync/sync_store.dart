@@ -4,7 +4,7 @@ import '../data/todo_settings_store.dart';
 import '../data/todo_settings_sync.dart';
 import '../data/todo_state.dart';
 import '../data/todo_sync_reconciler.dart';
-import '../homeview/home_view_ordering.dart';
+import '../data/list_ordering.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import 'microsoft/substrate_push_engine.dart';

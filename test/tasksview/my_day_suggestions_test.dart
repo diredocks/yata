@@ -7,6 +7,7 @@ import 'package:yata/l10n/app_localizations.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/tasksview/my_day_suggestions.dart';
 import 'package:yata/tasksview/tasks_view_screen.dart';
+import 'package:yata/data/preferences.dart';
 
 Future<ProviderContainer> _pumpTasksView(
   WidgetTester tester, {

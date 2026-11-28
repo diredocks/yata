@@ -17,7 +17,7 @@ import '../models/todo_list.dart';
 import '../data/todo_provider.dart';
 import '../ui/completion_sound_service.dart';
 import '../theme/todo_theme.dart';
-import 'attachments/attachment_service.dart';
+import '../data/attachment_service.dart';
 import 'attachments/attachments_card_view.dart';
 import 'detail_view_presenter.dart';
 import 'details/detail_cards.dart';

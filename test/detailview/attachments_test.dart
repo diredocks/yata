@@ -12,7 +12,7 @@ import 'package:yata/data/sync_outbox.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/data/todo_repository.dart';
 import 'package:yata/data/todo_sync_reconciler.dart';
-import 'package:yata/detailview/attachments/attachment_service.dart';
+import 'package:yata/data/attachment_service.dart';
 import 'package:yata/detailview/attachments/attachments_card_view.dart';
 import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/l10n/app_localizations.dart';
@@ -26,6 +26,8 @@ import 'package:yata/tasksview/tasks_action_presenter.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
+
+import 'package:yata/data/preferences.dart';
 
 void main() {
   group('TaskAttachment model & remote mapping', () {

@@ -7,6 +7,7 @@ import 'package:yata/data/todo_provider.dart';
 import 'package:yata/main.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
+import 'package:yata/data/preferences.dart';
 
 void main() {
   Future<ProviderContainer> pumpAppWithTasks(WidgetTester tester) async {

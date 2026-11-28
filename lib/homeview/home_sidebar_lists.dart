@@ -7,7 +7,7 @@ import '../ui/task_grouping.dart';
 import '../theme/todo_theme.dart';
 import 'groups/home_group_entry_tile.dart';
 import 'home_list_tile.dart';
-import 'home_view_ordering.dart';
+import '../data/list_ordering.dart';
 import 'home_view_presenter.dart';
 
 /// Scrollable smart lists and reorderable custom lists/groups in [HomeViewScreen].

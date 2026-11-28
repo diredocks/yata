@@ -6,7 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:yata/account/account_local_storage.dart';
+import 'package:yata/data/account_local_storage.dart';
 import 'package:yata/account/account_provider.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/core/error/app_error.dart';
@@ -27,6 +27,8 @@ import 'package:yata/sync/microsoft/substrate_push_engine.dart';
 import 'package:yata/sync/sync_provider.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
+
+import 'package:yata/data/preferences.dart';
 
 Future<SyncTestHarness> _createSqliteSyncHarness({
   required String accountId,

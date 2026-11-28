@@ -5,11 +5,11 @@ import 'dart:convert';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../account/account_local_storage.dart';
+import 'account_local_storage.dart';
 import '../core/logging/app_logger.dart';
 import '../models/todo_list.dart';
 import '../sync/microsoft/todo_wire_codecs.dart';
-import '../theme/custom_background_service.dart';
+import 'custom_background_service.dart';
 
 final _log = appLogFor('TodoSettingsStore');
 

@@ -1,24 +1,20 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:result_dart/result_dart.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-import 'account_local_storage.dart';
 import '../auth/browser_launcher.dart';
 import '../auth/microsoft_auth_service.dart';
 import '../auth/msa_webview_launcher.dart';
 import '../core/error/app_error.dart';
+import '../data/account_local_storage.dart';
+import '../data/attachment_service.dart';
+import '../data/preferences.dart';
 import '../data/todo_provider.dart';
 import '../data/todo_repository.dart';
-import '../detailview/attachments/attachment_service.dart';
 import '../models/account.dart';
 import '../sync/microsoft/microsoft_todo_api.dart';
 
 part 'account_provider.freezed.dart';
-
-final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
-  throw UnimplementedError('sharedPreferencesProvider must be overridden');
-});
 
 final accountLocalStorageProvider = Provider<AccountLocalStorage>((ref) {
   return AccountLocalStorage(ref.watch(sharedPreferencesProvider));

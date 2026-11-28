@@ -13,7 +13,7 @@ import '../theme/todo_theme.dart';
 import 'groups/group_dialogs.dart';
 import 'home_account_header.dart';
 import 'home_sidebar_lists.dart';
-import 'home_view_ordering.dart';
+import '../data/list_ordering.dart';
 import 'home_view_presenter.dart';
 
 class HomeViewScreen extends ConsumerStatefulWidget {

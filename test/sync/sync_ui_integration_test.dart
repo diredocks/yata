@@ -18,6 +18,8 @@ import 'package:yata/widget/home_widget_sync.dart';
 import '../helpers/home_widget_fakes.dart';
 import '../helpers/microsoft_sync_fakes.dart';
 
+import 'package:yata/data/preferences.dart';
+
 Future<void> _pumpYataApp(
   WidgetTester tester, {
   required SharedPreferences prefs,

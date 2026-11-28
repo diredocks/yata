@@ -12,6 +12,8 @@ import 'package:yata/tasksview/tasks_view_presenter.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
+import 'package:yata/data/preferences.dart';
+
 void main() {
   testWidgets(
     'Pulling down while header is collapsed expands header before dragging RefreshIndicator',

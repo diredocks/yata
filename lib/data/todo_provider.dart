@@ -12,7 +12,8 @@ import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../sync/microsoft/substrate_push_engine.dart';
 import '../sync/sync_store.dart';
-import '../theme/custom_background_service.dart';
+import 'custom_background_service.dart';
+import 'preferences.dart';
 import 'sync_outbox.dart';
 import 'todo_database.dart';
 import 'todo_repository.dart';
@@ -21,7 +22,6 @@ import 'todo_settings_sync.dart';
 import 'todo_state.dart';
 import 'todo_sync_reconciler.dart';
 
-export '../account/account_provider.dart' show sharedPreferencesProvider;
 export 'todo_database.dart';
 export 'todo_settings_sync.dart';
 export 'todo_state.dart';

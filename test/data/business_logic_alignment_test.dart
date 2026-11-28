@@ -10,6 +10,7 @@ import 'package:yata/search/search_presenter.dart';
 import 'package:yata/settings/settings_presenter.dart';
 import 'package:yata/tasksview/tasks_action_presenter.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
+import 'package:yata/data/preferences.dart';
 
 Future<ProviderContainer> _createContainer() async {
   SharedPreferences.setMockInitialValues({});

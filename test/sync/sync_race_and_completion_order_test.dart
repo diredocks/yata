@@ -19,6 +19,8 @@ import 'package:yata/ui/task_grouping.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
+import 'package:yata/data/preferences.dart';
+
 void main() {
   test('applyPulledState preserves local task edit made while persisting settings patch', () async {
     SharedPreferences.setMockInitialValues({});
