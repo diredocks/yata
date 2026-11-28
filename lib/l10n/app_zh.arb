@@ -133,7 +133,6 @@
   "suggestionsBucketOverdue": "已过期",
   "suggestionsBucketUpcoming": "即将到来",
   "suggestionsBucketRecentlyAdded": "最近添加",
-  "addToMyDay": "添加到“我的一天”",
   "removeEmoji": "移除表情符号",
   "yesterday": "昨天",
   "dueOn": "{date} 到期",
@@ -249,5 +248,7 @@
   "deleteFileConfirm": "确定要删除“{name}”吗？",
   "attachmentTotalTooLarge": "每个任务的附件总大小不能超过 25 MB",
   "attachmentOpenError": "无法打开文件",
-  "attachmentDownloadError": "无法下载文件"
+  "attachmentDownloadError": "无法下载文件",
+  "quickActionSearch": "搜索任务",
+  "quickActionNewTask": "添加新任务"
 }

@@ -36,33 +36,45 @@
   "stepsProgress": "{completed} of {total}",
   "@stepsProgress": {
     "placeholders": {
-      "completed": {"type": "int"},
-      "total": {"type": "int"}
+      "completed": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
     }
   },
   "createdOn": "Created on {date}",
   "@createdOn": {
     "placeholders": {
-      "date": {"type": "String"}
+      "date": {
+        "type": "String"
+      }
     }
   },
   "createdAgo": "Created {time}",
   "@createdAgo": {
     "placeholders": {
-      "time": {"type": "String"}
+      "time": {
+        "type": "String"
+      }
     }
   },
   "createdMomentsAgo": "a few moments ago",
   "createdMinutesAgo": "{count, plural, =1{1 minute ago} other{{count} minutes ago}}",
   "@createdMinutesAgo": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "createdHoursAgo": "{count, plural, =1{1 hour ago} other{{count} hours ago}}",
   "@createdHoursAgo": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "createdYesterday": "yesterday",
@@ -106,7 +118,9 @@
   "deleteSelectedConfirm": "Delete {count} selected tasks permanently?",
   "@deleteSelectedConfirm": {
     "placeholders": {
-      "count": {"type": "int"}
+      "count": {
+        "type": "int"
+      }
     }
   },
   "repeatDaily": "Daily",
@@ -118,7 +132,9 @@
   "deleteTaskConfirm": "\"{title}\" will be permanently deleted.",
   "@deleteTaskConfirm": {
     "placeholders": {
-      "title": {"type": "String"}
+      "title": {
+        "type": "String"
+      }
     }
   },
   "userName": "Local Account",
@@ -133,7 +149,9 @@
   "deleteListConfirm": "\"{title}\" and all its tasks will be permanently deleted.",
   "@deleteListConfirm": {
     "placeholders": {
-      "title": {"type": "String"}
+      "title": {
+        "type": "String"
+      }
     }
   },
   "laterToday": "Later today",
@@ -143,7 +161,9 @@
   "sortedBy": "Sorted by {criteria}",
   "@sortedBy": {
     "placeholders": {
-      "criteria": {"type": "String"}
+      "criteria": {
+        "type": "String"
+      }
     }
   },
   "promoteStepToTask": "Promote to task",
@@ -151,13 +171,17 @@
   "updatedOn": "Updated on {date}",
   "@updatedOn": {
     "placeholders": {
-      "date": {"type": "String"}
+      "date": {
+        "type": "String"
+      }
     }
   },
   "updatedAgo": "Updated {time}",
   "@updatedAgo": {
     "placeholders": {
-      "time": {"type": "String"}
+      "time": {
+        "type": "String"
+      }
     }
   },
   "removeDueDate": "Remove due date",
@@ -189,19 +213,22 @@
   "suggestionsBucketOverdue": "Overdue",
   "suggestionsBucketUpcoming": "Upcoming",
   "suggestionsBucketRecentlyAdded": "Recently added",
-  "addToMyDay": "Add to My Day",
   "removeEmoji": "Remove emoji",
   "yesterday": "Yesterday",
   "dueOn": "Due {date}",
   "@dueOn": {
     "placeholders": {
-      "date": {"type": "String"}
+      "date": {
+        "type": "String"
+      }
     }
   },
   "remindMeAt": "Remind me at {time}",
   "@remindMeAt": {
     "placeholders": {
-      "time": {"type": "String"}
+      "time": {
+        "type": "String"
+      }
     }
   },
   "clearAll": "Clear all",
@@ -211,7 +238,9 @@
   "welcomeToApp": "Welcome to {app}",
   "@welcomeToApp": {
     "placeholders": {
-      "app": {"type": "String"}
+      "app": {
+        "type": "String"
+      }
     }
   },
   "landingSubtitle": "Your tasks, stored locally on this device.",
@@ -232,7 +261,9 @@
   "lastSyncedAt": "Synced {time}",
   "@lastSyncedAt": {
     "placeholders": {
-      "time": {"type": "String"}
+      "time": {
+        "type": "String"
+      }
     }
   },
   "notYetSynced": "Not yet synced",
@@ -241,7 +272,9 @@
   "signInFailed": "Sign-in failed: {error}",
   "@signInFailed": {
     "placeholders": {
-      "error": {"type": "String"}
+      "error": {
+        "type": "String"
+      }
     }
   },
   "notificationsSection": "Notifications",
@@ -261,7 +294,9 @@
   "snoozeMinutes": "{minutes} minutes",
   "@snoozeMinutes": {
     "placeholders": {
-      "minutes": {"type": "int"}
+      "minutes": {
+        "type": "int"
+      }
     }
   },
   "snoozeOneHour": "1 hour",
@@ -433,5 +468,7 @@
   },
   "attachmentTotalTooLarge": "Total attachment size per task cannot exceed 25 MB",
   "attachmentOpenError": "Unable to open file",
-  "attachmentDownloadError": "Unable to download file"
+  "attachmentDownloadError": "Unable to download file",
+  "quickActionSearch": "Search tasks",
+  "quickActionNewTask": "New task"
 }

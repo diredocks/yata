@@ -21,6 +21,7 @@ import '../tasksview/richentry/task_entry_sheet.dart';
 import '../data/tasks/task_mutations.dart';
 import '../tasksview/tasks_view_screen.dart';
 import '../homewidget/home_widget_sync.dart';
+import 'quick_actions_service.dart';
 
 class MainShellScreen extends ConsumerStatefulWidget {
   const MainShellScreen({super.key});
@@ -33,6 +34,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
     with WidgetsBindingObserver {
   StreamSubscription<NotificationActionEvent>? _notificationSub;
   StreamSubscription<HomeWidgetAction>? _widgetActionSub;
+  StreamSubscription<QuickActionType>? _quickActionsSub;
   ModalRoute<void>? _activeTasksRoute;
 
   @override
@@ -48,6 +50,10 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
         .read(homeWidgetSyncProvider)
         .actions
         .listen(_handleWidgetAction);
+    _quickActionsSub = ref
+        .read(quickActionsServiceProvider)
+        .actions
+        .listen(_handleQuickAction);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -57,7 +63,34 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
       unawaited(notificationService.syncWithState(state, strings: strings));
       _restoreLastEnteredListIfNeeded();
       unawaited(_bootstrapAndStartSync());
+      unawaited(_initQuickActions());
     });
+  }
+
+  Future<void> _initQuickActions() async {
+    final l10n = AppLocalizations.of(context);
+    final quickActions = ref.read(quickActionsServiceProvider);
+    await quickActions.initialize(
+      searchLabel: l10n.quickActionSearch,
+      newTaskLabel: l10n.quickActionNewTask,
+    );
+    if (!mounted) return;
+    final pending = quickActions.consumePendingAction();
+    if (pending != null) {
+      _handleQuickAction(pending);
+    }
+  }
+
+  void _handleQuickAction(QuickActionType action) {
+    if (!mounted) return;
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    switch (action) {
+      case QuickActionType.search:
+        _openSearch();
+      case QuickActionType.newTask:
+        final state = ref.read(todoProvider);
+        _openQuickAddSheet(state, state.selectedList);
+    }
   }
 
   Future<void> _bootstrapAndStartSync() async {
@@ -174,6 +207,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_notificationSub?.cancel());
     unawaited(_widgetActionSub?.cancel());
+    unawaited(_quickActionsSub?.cancel());
     super.dispose();
   }
 
