@@ -29,6 +29,21 @@ void main() {
       },
     );
 
+    test(
+      'stripHtmlToPlainText collapses Exchange/To Do HTML formatting newlines',
+      () {
+        const prettyHtml =
+            '<html>\n<head><meta charset="utf-8"></head>\n<body>\n'
+            '  <div>\n    <div>Line 1</div>\n    <div>Line 2</div>\n'
+            '  </div>\n  <p><br></p>\n  <p>Line 3</p>\n'
+            '</body>\n</html>';
+        expect(
+          stripHtmlToPlainText(prettyHtml, contentType: 'HTML'),
+          'Line 1\nLine 2\n\nLine 3',
+        );
+      },
+    );
+
     test('normalizeHtmlBodyDocument wraps fragments and clears empty HTML', () {
       expect(normalizeHtmlBodyDocument('<p><br></p>'), '');
       final wrapped = normalizeHtmlBodyDocument('<p><strong>Hi</strong></p>');

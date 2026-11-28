@@ -262,6 +262,7 @@ const Set<String> _htmlBlockTags = {
   'h4',
   'h5',
   'h6',
+  'blockquote',
 };
 
 /// Strips HTML task body markup to plain text when [contentType] is `"HTML"`
@@ -277,27 +278,50 @@ String stripHtmlToPlainText(String raw, {String? contentType}) {
     el.remove();
   }
   final buffer = StringBuffer();
-  void walk(dom.Node node) {
+  var endsWithNewline = true;
+  var endsWithSpace = false;
+
+  void writeRaw(String text) {
+    if (text.isEmpty) return;
+    buffer.write(text);
+    final last = text.codeUnitAt(text.length - 1);
+    endsWithNewline = last == 0x0A;
+    endsWithSpace = last == 0x20;
+  }
+
+  void walk(dom.Node node, {bool inPre = false}) {
     if (node is dom.Text) {
-      buffer.write(node.text.replaceAll('\u00A0', ' '));
+      if (inPre) {
+        writeRaw(node.text.replaceAll('\r\n', '\n').replaceAll('\r', '\n'));
+        return;
+      }
+      var collapsed = node.text.replaceAll(RegExp(r'[\r\n\t ]+'), ' ');
+      if ((endsWithNewline || endsWithSpace) && collapsed.startsWith(' ')) {
+        collapsed = collapsed.substring(1);
+      }
+      collapsed = collapsed.replaceAll('\u00A0', ' ');
+      writeRaw(collapsed);
       return;
     }
     if (node is dom.Element) {
       final tag = node.localName?.toLowerCase();
       if (tag == 'br') {
-        buffer.write('\n');
+        writeRaw('\n');
         return;
       }
+      final nextPre = inPre || tag == 'pre';
+      final isBlock = tag != null && _htmlBlockTags.contains(tag);
+      final lenBefore = buffer.length;
       for (final child in node.nodes) {
-        walk(child);
+        walk(child, inPre: nextPre);
       }
-      if (tag != null && _htmlBlockTags.contains(tag)) {
-        buffer.write('\n');
+      if (isBlock && buffer.length > lenBefore && !endsWithNewline) {
+        writeRaw('\n');
       }
       return;
     }
     for (final child in node.nodes) {
-      walk(child);
+      walk(child, inPre: inPre);
     }
   }
 
