@@ -20,7 +20,7 @@ import '../sync/sync_provider.dart';
 import '../tasksview/richentry/task_entry_sheet.dart';
 import '../data/task_mutations.dart';
 import '../tasksview/tasks_view_screen.dart';
-import '../widget/home_widget_sync.dart';
+import '../homewidget/home_widget_sync.dart';
 
 class MainShellScreen extends ConsumerStatefulWidget {
   const MainShellScreen({super.key});

@@ -7,7 +7,7 @@ import 'package:yata/models/default_lists.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/theme/todo_theme.dart';
-import 'package:yata/widget/home_widget_service.dart';
+import 'package:yata/homewidget/home_widget_service.dart';
 
 import '../helpers/home_widget_fakes.dart';
 

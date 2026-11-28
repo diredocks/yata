@@ -6,23 +6,23 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../data/account_local_storage.dart';
-import '../data/account_provider.dart';
 import '../core/error/app_error.dart';
 import '../core/logging/app_logger.dart';
 import '../core/result/app_result.dart';
+import '../data/account_local_storage.dart';
+import '../data/account_provider.dart';
+import '../data/preferences.dart';
 import '../data/todo_provider.dart';
 import '../data/todo_repository.dart';
 import '../data/todo_settings_store.dart';
+import '../homewidget/home_widget_service.dart';
 import '../models/account.dart';
 import '../models/default_lists.dart';
-import '../widget/home_widget_service.dart';
-import 'background_sync_bridge.dart';
-import 'microsoft/microsoft_todo_api.dart';
-import 'microsoft/substrate_push_engine.dart';
-import 'sync_provider.dart';
-import 'sync_store.dart';
-import '../data/preferences.dart';
+import '../sync/background_sync_bridge.dart';
+import '../sync/microsoft/microsoft_todo_api.dart';
+import '../sync/microsoft/substrate_push_engine.dart';
+import '../sync/sync_provider.dart';
+import '../sync/sync_store.dart';
 
 final _log = appLogFor('BackgroundEntrypoint');
 

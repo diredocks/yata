@@ -13,7 +13,7 @@ import 'package:yata/models/task_item.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
 import 'package:yata/sync/sync_provider.dart';
 import 'package:yata/sync/microsoft/todo_wire_codecs.dart';
-import 'package:yata/widget/home_widget_sync.dart';
+import 'package:yata/homewidget/home_widget_sync.dart';
 
 import '../helpers/home_widget_fakes.dart';
 import '../helpers/microsoft_sync_fakes.dart';

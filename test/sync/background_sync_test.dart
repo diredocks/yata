@@ -12,7 +12,7 @@ import 'package:yata/data/todo_settings_store.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/sync/background_sync_bridge.dart';
-import 'package:yata/sync/background_sync_entrypoint.dart';
+import 'package:yata/app/background_sync_entrypoint.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
 import 'package:yata/sync/microsoft/substrate_push_engine.dart';
 import 'package:yata/sync/sync_provider.dart';
