@@ -76,6 +76,12 @@ class _NoteCardViewState extends State<NoteCardView> {
       );
     _previewController = controller;
     try {
+      if (await controller.supportsSetScrollBarsEnabled()) {
+        await controller.setVerticalScrollBarEnabled(false);
+        await controller.setHorizontalScrollBarEnabled(false);
+      }
+    } catch (_) {}
+    try {
       final htmlAsset = await rootBundle.loadString('assets/editor/index.html');
       if (!mounted) return;
       await controller.loadHtmlString(htmlAsset);
