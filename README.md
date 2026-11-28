@@ -4,6 +4,28 @@ Yet Another Todo App
 
 [Microsoft is killing Microsoft To Do on June 30, 2027](https://support.microsoft.com/en-au/planner/to-do-to-planner)
 
+## Layout
+
+Every folder under `lib/` is either a feature or a shared module. A feature owns
+everything only it uses; anything used by two or more features belongs to a
+shared module.
+
+| Kind | Folders |
+| --- | --- |
+| Shared modules | `core/` (errors, logging, result, time, network guard, uuid), `models/` (domain types), `data/` (state, persistence, task/list mutations, ordering and recurrence math), `sync/` (Microsoft Graph/Substrate engine), `auth/` (token acquisition), `theme/`, `l10n/`, `ui/` (shared widgets plus cross-view presentation helpers) |
+| Features | `account/`, `onboarding/`, `homeview/`, `tasksview/`, `detailview/`, `search/`, `settings/`, `notifications/`, `homewidget/` |
+| Composition roots | `main.dart`, `app/` (app shell and the headless background entrypoint) |
+
+Rules of thumb:
+
+- Features may depend on shared modules and, for navigation, on another feature's
+  screens. They must not reach into another feature's presenter or internals.
+- Mutating tasks (create/complete/important/recurrence) goes through
+  `data/task_mutations.dart`; batch multi-select actions through
+  `data/task_batch_actions.dart`.
+- Shared UI used by more than one feature (task tiles, pickers, checkboxes) lives
+  in `ui/`, not inside the feature that happened to need it first.
+
 ## Codegen
 
 Run manually after editing `.arb` or `@freezed` / `@JsonSerializable` / `@DriftDatabase` files:
