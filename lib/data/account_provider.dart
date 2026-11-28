@@ -6,11 +6,11 @@ import '../auth/browser_launcher.dart';
 import '../auth/microsoft_auth_service.dart';
 import '../auth/msa_webview_launcher.dart';
 import '../core/error/app_error.dart';
-import '../data/account_local_storage.dart';
-import '../data/attachment_service.dart';
-import '../data/preferences.dart';
-import '../data/todo_provider.dart';
-import '../data/todo_repository.dart';
+import 'account_local_storage.dart';
+import 'attachment_service.dart';
+import 'preferences.dart';
+import 'todo_provider.dart';
+import 'todo_repository.dart';
 import '../models/account.dart';
 import '../sync/microsoft/microsoft_todo_api.dart';
 

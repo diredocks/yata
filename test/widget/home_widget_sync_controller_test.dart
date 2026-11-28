@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:yata/account/account_provider.dart';
+import 'package:yata/data/account_provider.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/data/todo_repository.dart';
 import 'package:yata/models/account.dart';

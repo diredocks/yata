@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../account/account_provider.dart';
+import '../data/account_provider.dart';
 import '../auth/microsoft_auth_service.dart';
 import '../core/error/app_error.dart';
 import '../core/result/app_result.dart';

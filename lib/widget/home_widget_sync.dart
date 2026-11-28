@@ -4,7 +4,7 @@ import 'dart:ui' show PlatformDispatcher;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../account/account_provider.dart';
+import '../data/account_provider.dart';
 import '../core/result/app_result.dart';
 import '../data/todo_provider.dart';
 import 'home_widget_service.dart';

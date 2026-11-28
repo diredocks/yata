@@ -7,7 +7,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:yata/account/account_provider.dart';
+import 'package:yata/data/account_provider.dart';
 import 'package:yata/data/sync_outbox.dart';
 import 'package:yata/data/todo_provider.dart';
 import 'package:yata/data/todo_repository.dart';

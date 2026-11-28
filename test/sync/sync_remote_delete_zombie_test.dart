@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/data/account_local_storage.dart';
-import 'package:yata/account/account_provider.dart';
+import 'package:yata/data/account_provider.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/core/error/app_error.dart';
 import 'package:yata/data/sync_outbox.dart';

@@ -5,7 +5,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../account/account_provider.dart';
+import 'account_provider.dart';
 import '../models/account.dart';
 import '../models/default_lists.dart';
 import '../models/task_item.dart';

@@ -4,7 +4,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../account/account_provider.dart';
+import '../data/account_provider.dart';
 import '../data/todo_provider.dart';
 import '../detailview/detail_view_presenter.dart';
 import '../detailview/detail_view_screen.dart';

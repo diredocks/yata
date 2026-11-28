@@ -6,7 +6,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/misc.dart' show ProviderListenable;
 
-import '../account/account_provider.dart';
+import '../data/account_provider.dart';
 import '../core/result/app_result.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';

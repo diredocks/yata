@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:result_dart/result_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/data/account_local_storage.dart';
-import 'package:yata/account/account_provider.dart';
+import 'package:yata/data/account_provider.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/auth/msa_webview_launcher.dart';
 import 'package:yata/core/error/app_error.dart';

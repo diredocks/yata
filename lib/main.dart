@@ -4,7 +4,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'data/account_local_storage.dart';
-import 'account/account_provider.dart';
+import 'data/account_provider.dart';
 import 'data/todo_provider.dart';
 import 'data/todo_repository.dart';
 import 'l10n/app_localizations.dart';

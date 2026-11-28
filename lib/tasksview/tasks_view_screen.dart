@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../account/account_provider.dart';
+import '../data/account_provider.dart';
 import '../data/todo_provider.dart';
 import '../ui/widgets/task_pickers.dart';
 import '../l10n/app_localizations.dart';

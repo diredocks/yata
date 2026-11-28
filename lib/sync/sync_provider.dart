@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../account/account_profile_refresher.dart';
-import '../account/account_provider.dart';
+import '../data/account_profile_refresher.dart';
+import '../data/account_provider.dart';
 import '../data/todo_provider.dart';
 import '../models/account.dart';
 import 'background_sync_bridge.dart';
