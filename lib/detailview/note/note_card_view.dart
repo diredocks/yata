@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -13,8 +15,9 @@ import 'note_editor_screen.dart';
 
 /// Read-only note preview card matching `detailview/note/NoteCardView`.
 ///
-/// Renders HTML notes in a bounded read-only WebView when available (falling back
-/// to plain text otherwise) and opens [NoteEditorScreen] on tap.
+/// Renders HTML notes in a bounded read-only WebView on Android (falling back
+/// to plain text on Linux/desktop where `webview_all` requires a full-screen
+/// transparent scaffold) and opens [NoteEditorScreen] on tap.
 class NoteCardView extends StatefulWidget {
   const NoteCardView({
     super.key,
@@ -40,8 +43,14 @@ class _NoteCardViewState extends State<NoteCardView> {
   String? _loadedHtml;
   double _previewHeight = 84;
 
+  // On Linux, webview_all renders behind an opaque Flutter window, so inline
+  // card previews inside DetailViewScreen would be occluded or punch through
+  // surrounding cards. Keep Linux card preview as plain text and use WebView
+  // in full-screen NoteEditorScreen.
   bool get _shouldUseHtmlPreview =>
       isRichEditorWebViewSupported &&
+      !kIsWeb &&
+      !Platform.isLinux &&
       widget.task.isHtmlNote &&
       widget.task.noteHtml.trim().isNotEmpty;
 

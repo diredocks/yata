@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -85,6 +86,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
   _EditorFormatState _formatState = const _EditorFormatState();
   bool _editorReady = false;
   bool _hasEdited = false;
+  bool _closing = false;
   String _latestHtml = '';
 
   bool get _useWebView => isRichEditorWebViewSupported;
@@ -98,7 +100,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
         : _escapePlainTextToHtml(widget.task.note);
 
     if (_useWebView) {
-      _initWebView();
+      unawaited(_initWebView());
     } else {
       _plainController = TextEditingController(text: widget.task.note);
     }
@@ -108,6 +110,11 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _flushSave();
+    final controller = _webController;
+    _webController = null;
+    if (controller != null) {
+      unawaited(controller.platform.closeWebViewSession().catchError((_) {}));
+    }
     _plainController?.dispose();
     super.dispose();
   }
@@ -126,21 +133,25 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
   }
 
   Future<void> _initWebView() async {
-    final controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.transparent)
-      ..addJavaScriptChannel(
+    try {
+      final controller = WebViewController();
+      await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+      try {
+        await controller.setBackgroundColor(Colors.transparent);
+      } catch (_) {}
+      await controller.addJavaScriptChannel(
         'YataBridge',
         onMessageReceived: (message) => _handleBridgeMessage(message.message),
       );
-    _webController = controller;
-
-    try {
       final htmlAsset = await rootBundle.loadString('assets/editor/index.html');
-      if (!mounted) return;
+      if (!mounted || _closing) {
+        unawaited(controller.platform.closeWebViewSession().catchError((_) {}));
+        return;
+      }
+      setState(() => _webController = controller);
       await controller.loadHtmlString(htmlAsset);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || _closing) return;
       setState(() {
         _webController = null;
         _plainController ??= TextEditingController(text: widget.task.note);
@@ -149,7 +160,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
   }
 
   void _handleBridgeMessage(String raw) {
-    if (!mounted) return;
+    if (!mounted || _closing) return;
     final decoded = jsonDecode(raw);
     if (decoded is! Map<String, dynamic>) return;
 
@@ -172,7 +183,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
 
   void _sendInitToEditor() {
     final controller = _webController;
-    if (controller == null || !_editorReady || !mounted) return;
+    if (controller == null || !_editorReady || !mounted || _closing) return;
 
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
@@ -201,7 +212,7 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
 
   void _execCommand(String cmd, [String? arg]) {
     final controller = _webController;
-    if (controller == null || !_editorReady) return;
+    if (controller == null || !_editorReady || _closing) return;
     final encodedCmd = jsonEncode(cmd);
     final encodedArg = arg == null ? 'undefined' : jsonEncode(arg);
     controller.runJavaScript(
@@ -268,17 +279,39 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
     widget.onNoteSaved(plain, normalizedDoc, 'HTML');
   }
 
+  void _closeEditor() {
+    if (_closing || !mounted) return;
+    _closing = true;
+    _flushSave();
+    final controller = _webController;
+    if (controller != null) {
+      setState(() => _webController = null);
+      unawaited(controller.platform.closeWebViewSession().catchError((_) {}));
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final controller = _webController;
+    final showWebView = controller != null && !_closing;
+    final transparentHole = !kIsWeb && Platform.isLinux && showWebView;
 
     return PopScope(
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (didPop) _flushSave();
+        if (!didPop) _closeEditor();
       },
       child: Scaffold(
+        backgroundColor: transparentHole ? Colors.transparent : null,
         appBar: AppBar(
+          leading: BackButton(onPressed: _closeEditor),
           title: Text(
             widget.task.title,
             maxLines: 1,
@@ -288,9 +321,10 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
         body: Column(
           children: [
             Expanded(
-              child: _webController != null
-                  ? WebViewWidget(controller: _webController!)
-                  : Padding(
+              child: showWebView
+                  ? WebViewWidget(controller: controller)
+                  : _plainController != null
+                  ? Padding(
                       padding: const EdgeInsets.all(16),
                       child: TextField(
                         controller: _plainController,
@@ -304,9 +338,10 @@ class _NoteEditorScreenState extends State<NoteEditorScreen>
                           border: InputBorder.none,
                         ),
                       ),
-                    ),
+                    )
+                  : const Center(child: CircularProgressIndicator()),
             ),
-            if (_webController != null)
+            if (showWebView)
               _RichFormatBar(
                 state: _formatState,
                 onExec: _execCommand,
