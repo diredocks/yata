@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:collection/collection.dart';
 import 'package:result_dart/result_dart.dart';
@@ -10,6 +9,7 @@ import '../../core/logging/app_logger.dart';
 import '../../core/result/app_result.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
+import '../attachments/attachment_cleanup.dart';
 import '../sync/sync_outbox.dart';
 import 'todo_database.dart';
 import '../lists/todo_settings_store.dart';
@@ -338,40 +338,6 @@ class TodoRepository {
     }, operation: operation);
   }
 
-  static Iterable<String> _attachmentLocalPaths(Iterable<TaskItem> tasks) =>
-      tasks
-          .expand((t) => t.attachments)
-          .map((a) => a.localPath)
-          .nonNulls
-          .where((p) => p.isNotEmpty);
-
-  static List<String> _unreferencedAttachmentPaths(
-    List<TaskItem> previousTasks,
-    List<TaskItem> nextTasks,
-  ) {
-    final orphaned = _attachmentLocalPaths(previousTasks).toSet();
-    if (orphaned.isEmpty) return const [];
-    orphaned.removeAll(_attachmentLocalPaths(nextTasks));
-    return orphaned.toList(growable: false);
-  }
-
-  static Future<void> _deleteAttachmentFiles(List<String> paths) async {
-    for (final localPath in paths) {
-      try {
-        final file = File(localPath);
-        if (await file.exists()) {
-          await file.delete();
-        }
-        final parent = file.parent;
-        if (await parent.exists() && await parent.list().isEmpty) {
-          await parent.delete();
-        }
-      } on Object catch (e) {
-        _log.warning('Failed to delete local attachment cache: $e');
-      }
-    }
-  }
-
   void _scheduleAttachmentCleanup(List<String> orphanedPaths) {
     if (orphanedPaths.isEmpty) return;
     final cache = _cache;
@@ -385,13 +351,13 @@ class TodoRepository {
               growable: false,
             );
             cache.pendingOrphanedAttachments.clear();
-            final stillReferenced = _attachmentLocalPaths(cache.tasks).toSet();
+            final stillReferenced = attachmentLocalPaths(cache.tasks).toSet();
             final toDelete = [
               for (final path in batch)
                 if (!stillReferenced.contains(path)) path,
             ];
             if (toDelete.isNotEmpty) {
-              await _deleteAttachmentFiles(toDelete);
+              await deleteAttachmentFiles(toDelete);
             }
           }
         }).whenComplete(() {
@@ -519,7 +485,7 @@ class TodoRepository {
     final snapshot = List<TaskItem>.unmodifiable(nextTasks);
     _cache.tasks = snapshot;
     _scheduleAttachmentCleanup(
-      _unreferencedAttachmentPaths(previousTasks, snapshot),
+      unreferencedAttachmentPaths(previousTasks, snapshot),
     );
     return _persistWrite(operation, write);
   }
@@ -670,7 +636,7 @@ class TodoRepository {
         : const OutboxPersistenceDelta();
 
     final orphanedPaths = nextTasks != null
-        ? _unreferencedAttachmentPaths(prevTasks, nextTasks)
+        ? unreferencedAttachmentPaths(prevTasks, nextTasks)
         : const <String>[];
     if (nextTasks != null) {
       _cache.tasks = nextTasks;
