@@ -43,6 +43,7 @@ dependencies:
   image_picker: ^1.2.4
   share_plus: ^13.3.1
   printing: ^5.15.1
+  quick_actions: ^1.1.1
 
 dev_dependencies:
   flutter_test:
