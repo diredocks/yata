@@ -48,7 +48,7 @@ styleEl.textContent = `
   }
   .ProseMirror {
     min-height: 200px;
-    padding: 16px;
+    padding: 10px 16px 16px;
     outline: none;
   }
   .ProseMirror p.is-editor-empty:first-child::before {
@@ -60,8 +60,10 @@ styleEl.textContent = `
   }
   .note-surface p { margin: 0 0 0.5em 0; }
   .note-surface p:last-child { margin-bottom: 0; }
-  .note-surface h1 { font-size: 20pt; font-weight: 700; margin: 0.4em 0; }
-  .note-surface h2 { font-size: 17pt; font-weight: 600; margin: 0.35em 0; }
+  .note-surface h1 { font-size: 20pt; font-weight: 700; line-height: 1.25; margin: 0.15em 0 0.25em 0; }
+  .note-surface h2 { font-size: 17pt; font-weight: 600; line-height: 1.3; margin: 0.15em 0 0.2em 0; }
+  .note-surface h1:first-child, .note-surface h2:first-child { margin-top: 0; }
+  .note-surface h1:last-child, .note-surface h2:last-child { margin-bottom: 0; }
   .note-surface ul, .note-surface ol { padding-left: 1.4em; margin: 0.3em 0; }
   .note-surface a { color: var(--accent); text-decoration: underline; }
   .note-surface table { border-collapse: collapse; max-width: 100%; }
