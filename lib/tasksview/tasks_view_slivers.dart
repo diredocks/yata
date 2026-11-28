@@ -27,6 +27,7 @@ class TasksSliverBuilder {
     required this.multiSelectedIds,
     required this.selectionNotifier,
     required this.draggingTaskId,
+    this.swipedTaskIds = const {},
     required this.collapsedPlannedBuckets,
     required this.collapsedCompletedListBuckets,
     required this.completionController,
@@ -54,6 +55,7 @@ class TasksSliverBuilder {
   final Set<String> multiSelectedIds;
   final ValueListenable<Set<String>> selectionNotifier;
   final String? draggingTaskId;
+  final Set<String> swipedTaskIds;
   final Set<String> collapsedPlannedBuckets;
   final Set<String> collapsedCompletedListBuckets;
   final DelayedTaskCompletionController completionController;
@@ -88,21 +90,21 @@ class TasksSliverBuilder {
     required List<TaskItem> activeTasks,
     required List<TaskItem> completedTasks,
   }) {
-    if (activeTasks.isEmpty && completedTasks.isEmpty) {
-      if (hasSmartListEmptyState(currentList.smartType)) {
-        return [
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: SmartListEmptyState(
-              l10n: l10n,
-              currentList: currentList,
-              textColor: headerFg,
-              isDark: isDark,
-            ),
+    if (activeTasks.isEmpty &&
+        completedTasks.isEmpty &&
+        hasSmartListEmptyState(currentList.smartType)) {
+      return [
+        ..._buildActiveSlivers(activeTasks),
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: SmartListEmptyState(
+            l10n: l10n,
+            currentList: currentList,
+            textColor: headerFg,
+            isDark: isDark,
           ),
-        ];
-      }
-      return const [SliverToBoxAdapter(child: SizedBox.shrink())];
+        ),
+      ];
     }
 
     return [
@@ -218,6 +220,7 @@ class TasksSliverBuilder {
           key: ValueKey('planned_${group.bucket.name}'),
           isExpanded: !collapsedPlannedBuckets.contains(group.bucket.name),
           tasks: group.tasks,
+          swipedTaskIds: swipedTaskIds,
           padding: const EdgeInsets.symmetric(horizontal: 8),
           itemBuilder: (context, task) => _buildTaskTile(
             task,
@@ -247,6 +250,7 @@ class TasksSliverBuilder {
           key: ValueKey('bucket_${currentList.id}_${group.listId}'),
           isExpanded: !collapsedCompletedListBuckets.contains(group.listId),
           tasks: group.tasks,
+          swipedTaskIds: swipedTaskIds,
           padding: const EdgeInsets.symmetric(horizontal: 8),
           itemBuilder: (context, task) => _buildTaskTile(task),
         ),
@@ -255,16 +259,13 @@ class TasksSliverBuilder {
   }
 
   Widget _buildFlatTaskSliver(List<TaskItem> activeTasks) {
-    final canDragReorder =
-        supportsTaskReordering(currentList, activeTasks.length) &&
-        (mode == TasksViewMode.browsing || draggingTaskId != null);
-
-    if (!canDragReorder) {
+    if (!supportsListReordering(currentList)) {
       return SliverPadding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
         sliver: AnimatedTaskSliverList(
           key: ValueKey('flat_${currentList.id}'),
           tasks: activeTasks,
+          swipedTaskIds: swipedTaskIds,
           itemBuilder: (context, task) => _buildTaskTile(
             task,
             showMyDayBadge: _showMyDayBadge,
@@ -274,12 +275,16 @@ class TasksSliverBuilder {
       );
     }
 
+    final dragEnabled =
+        (mode == TasksViewMode.browsing || draggingTaskId != null) &&
+        activeTasks.length >= 2;
+
     Widget buildDragTile(TaskItem task, {Set<String>? selectedIds}) =>
         _buildTaskTile(
           task,
           showMyDayBadge: _showMyDayBadge,
           originListName: _originListNameFor(task),
-          enableLongPress: false,
+          enableLongPress: !dragEnabled,
           selectedIdsOverride: selectedIds,
         );
 
@@ -288,6 +293,7 @@ class TasksSliverBuilder {
       sliver: AnimatedReorderableTaskSliver(
         key: ValueKey('flat_reorder_${currentList.id}'),
         tasks: activeTasks,
+        swipedTaskIds: swipedTaskIds,
         proxyDecorator: (child, index, animation) {
           final task = activeTasks[index];
           return ValueListenableBuilder<Set<String>>(
@@ -312,6 +318,7 @@ class TasksSliverBuilder {
             ReorderableDelayedDragStartListener(
               key: ValueKey('drag_${task.id}'),
               index: index,
+              enabled: dragEnabled && index >= 0,
               child: buildDragTile(task),
             ),
       ),
@@ -352,6 +359,7 @@ class TasksSliverBuilder {
         key: ValueKey('completed_${currentList.id}'),
         isExpanded: showItems,
         tasks: completedTasks,
+        swipedTaskIds: swipedTaskIds,
         padding: const EdgeInsets.fromLTRB(8, 2, 8, 16),
         itemBuilder: (context, task) => _buildTaskTile(
           task,

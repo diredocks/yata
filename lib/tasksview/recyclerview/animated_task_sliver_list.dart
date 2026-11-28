@@ -13,10 +13,12 @@ class AnimatedTaskSliverList extends StatefulWidget {
     super.key,
     required this.tasks,
     required this.itemBuilder,
+    this.swipedTaskIds = const {},
   });
 
   final List<TaskItem> tasks;
   final Widget Function(BuildContext context, TaskItem task) itemBuilder;
+  final Set<String> swipedTaskIds;
 
   @override
   State<AnimatedTaskSliverList> createState() => _AnimatedTaskSliverListState();
@@ -37,8 +39,7 @@ class _AnimatedTaskSliverListState extends State<AnimatedTaskSliverList>
     _items = List<TaskItem>.of(widget.tasks);
     _flipCoordinator = _FlipCoordinator(
       vsync: this,
-      ancestorProvider: () =>
-          Scrollable.maybeOf(context)?.context.findRenderObject() as RenderBox?,
+      ancestorProvider: () => _flipAncestorFor(context),
     );
   }
 
@@ -49,7 +50,9 @@ class _AnimatedTaskSliverListState extends State<AnimatedTaskSliverList>
       _items = List<TaskItem>.of(widget.tasks);
       return;
     }
-    _flipCoordinator.capturePositions();
+    if (_didSurvivingOrderChange(_items, widget.tasks)) {
+      _flipCoordinator.capturePositions();
+    }
     _syncDiff(widget.tasks);
   }
 
@@ -74,10 +77,15 @@ class _AnimatedTaskSliverListState extends State<AnimatedTaskSliverList>
       if (!nextIds.contains(existing.id)) {
         _items.removeAt(i);
         _flipCoordinator.cancelAnimation(existing.id);
+        final isSwipedOut = widget.swipedTaskIds.contains(existing.id);
         listState.removeItem(
           i,
-          (context, animation) =>
-              _buildExitingItem(context, existing, animation),
+          (context, animation) => _buildExitingItem(
+            context,
+            existing,
+            animation,
+            isSwipedOut: isSwipedOut,
+          ),
           duration: _removeDuration,
         );
       }
@@ -102,28 +110,33 @@ class _AnimatedTaskSliverListState extends State<AnimatedTaskSliverList>
   Widget _buildExitingItem(
     BuildContext context,
     TaskItem task,
-    Animation<double> animation,
-  ) {
+    Animation<double> animation, {
+    bool isSwipedOut = false,
+  }) {
     // Fade out during the first ~130ms (matching DefaultItemAnimator.removeDuration)
     // as animation goes 1.0 -> 0.0, while row height collapses smoothly over 220ms.
+    // Swiped-out items already slid off-screen, so collapse their slot invisibly.
     final sizeCurve = CurvedAnimation(
       parent: animation,
       curve: Curves.easeInOutCubic,
     );
-    final fadeCurve = CurvedAnimation(
-      parent: animation,
-      curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
-    );
+    final child = widget.itemBuilder(context, task);
+    final content = isSwipedOut
+        ? Opacity(opacity: 0.0, child: child)
+        : FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
+            ),
+            child: child,
+          );
     return IgnorePointer(
       child: KeyedSubtree(
         key: ValueKey('removing_${task.id}'),
         child: SizeTransition(
           sizeFactor: sizeCurve,
           alignment: Alignment.topCenter,
-          child: FadeTransition(
-            opacity: fadeCurve,
-            child: widget.itemBuilder(context, task),
-          ),
+          child: content,
         ),
       ),
     );
@@ -182,12 +195,14 @@ class CollapsibleTaskBucketSliver extends StatefulWidget {
     required this.tasks,
     required this.padding,
     required this.itemBuilder,
+    this.swipedTaskIds = const {},
   });
 
   final bool isExpanded;
   final List<TaskItem> tasks;
   final EdgeInsetsGeometry padding;
   final Widget Function(BuildContext context, TaskItem task) itemBuilder;
+  final Set<String> swipedTaskIds;
 
   @override
   State<CollapsibleTaskBucketSliver> createState() =>
@@ -257,6 +272,7 @@ class _CollapsibleTaskBucketSliverState
         padding: widget.padding,
         sliver: AnimatedTaskSliverList(
           tasks: _renderedTasks,
+          swipedTaskIds: widget.swipedTaskIds,
           itemBuilder: widget.itemBuilder,
         ),
       ),
@@ -272,6 +288,7 @@ class AnimatedReorderableTaskSliver extends StatefulWidget {
     required this.tasks,
     required this.onReorder,
     required this.itemBuilder,
+    this.swipedTaskIds = const {},
     this.proxyDecorator,
     this.onReorderStart,
     this.onReorderEnd,
@@ -279,6 +296,7 @@ class AnimatedReorderableTaskSliver extends StatefulWidget {
 
   final List<TaskItem> tasks;
   final void Function(int oldIndex, int newIndex) onReorder;
+  final Set<String> swipedTaskIds;
   final ReorderItemProxyDecorator? proxyDecorator;
   final void Function(int index)? onReorderStart;
   final void Function(int index)? onReorderEnd;
@@ -295,33 +313,188 @@ class AnimatedReorderableTaskSliver extends StatefulWidget {
       _AnimatedReorderableTaskSliverState();
 }
 
+class _ReorderableItemEntry {
+  _ReorderableItemEntry.live(this.task)
+    : isExiting = false,
+      isSwipedOut = false,
+      exitController = null;
+
+  _ReorderableItemEntry.exiting(
+    this.task,
+    this.exitController, {
+    required this.isSwipedOut,
+  }) : isExiting = true;
+
+  TaskItem task;
+  final bool isExiting;
+  final bool isSwipedOut;
+  final AnimationController? exitController;
+}
+
 class _AnimatedReorderableTaskSliverState
     extends State<AnimatedReorderableTaskSliver>
     with TickerProviderStateMixin {
+  static const _insertDuration = Duration(milliseconds: 220);
+  static const _removeDuration = Duration(milliseconds: 220);
+
   late final _FlipCoordinator _flipCoordinator;
+  late List<_ReorderableItemEntry> _displayItems;
+  final Map<String, AnimationController> _insertControllers = {};
+  final Set<AnimationController> _retiredControllers = {};
 
   @override
   void initState() {
     super.initState();
+    _displayItems = [
+      for (final task in widget.tasks) _ReorderableItemEntry.live(task),
+    ];
     _flipCoordinator = _FlipCoordinator(
       vsync: this,
-      ancestorProvider: () =>
-          Scrollable.maybeOf(context)?.context.findRenderObject() as RenderBox?,
+      ancestorProvider: () => _flipAncestorFor(context),
     );
   }
 
   @override
   void didUpdateWidget(covariant AnimatedReorderableTaskSliver oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_haveSameIdsInOrder(oldWidget.tasks, widget.tasks)) {
+    if (_didSurvivingOrderChange(oldWidget.tasks, widget.tasks)) {
       _flipCoordinator.capturePositions();
     }
+    _syncTasks(widget.tasks);
   }
 
   @override
   void dispose() {
+    for (final controller in _insertControllers.values) {
+      controller.dispose();
+    }
+    _insertControllers.clear();
+    for (final controller in _retiredControllers) {
+      controller.dispose();
+    }
+    _retiredControllers.clear();
+    for (final entry in _displayItems) {
+      entry.exitController?.dispose();
+    }
     _flipCoordinator.dispose();
     super.dispose();
+  }
+
+  void _syncTasks(List<TaskItem> nextTasks) {
+    final nextIds = {for (final t in nextTasks) t.id};
+
+    // 1. Transition removed live items into exiting entries.
+    for (var i = 0; i < _displayItems.length; i++) {
+      final entry = _displayItems[i];
+      if (entry.isExiting || nextIds.contains(entry.task.id)) continue;
+
+      _insertControllers.remove(entry.task.id)?.dispose();
+      _flipCoordinator.cancelAnimation(entry.task.id);
+      final controller = AnimationController(
+        vsync: this,
+        duration: _removeDuration,
+        value: 1.0,
+      );
+      _displayItems[i] = _ReorderableItemEntry.exiting(
+        entry.task,
+        controller,
+        isSwipedOut: widget.swipedTaskIds.contains(entry.task.id),
+      );
+      controller.addStatusListener((status) {
+        if (status != AnimationStatus.dismissed) return;
+        _retiredControllers.add(controller);
+        if (mounted) {
+          setState(() {
+            _displayItems.removeWhere(
+              (item) => item.isExiting && item.exitController == controller,
+            );
+          });
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_retiredControllers.remove(controller)) {
+            controller.dispose();
+          }
+        });
+      });
+      controller.reverse();
+    }
+
+    // 2. Cancel exit if a removed item was re-added before finishing exit.
+    _displayItems.removeWhere((entry) {
+      if (!entry.isExiting || !nextIds.contains(entry.task.id)) return false;
+      entry.exitController?.dispose();
+      return true;
+    });
+
+    // 3. Insert new items and reorder/update existing live items.
+    for (var i = 0; i < nextTasks.length; i++) {
+      final target = nextTasks[i];
+      final existingDisplayIdx = _displayItems.indexWhere(
+        (e) => !e.isExiting && e.task.id == target.id,
+      );
+      if (existingDisplayIdx == -1) {
+        final insertIdx = _displayIndexForLiveSlot(i);
+        _displayItems.insert(insertIdx, _ReorderableItemEntry.live(target));
+        _startInsertAnimation(target.id);
+        continue;
+      }
+
+      final entry = _displayItems[existingDisplayIdx];
+      entry.task = target;
+      final currentLiveIdx = _liveIndexForDisplayIndex(existingDisplayIdx);
+      if (currentLiveIdx != i) {
+        _displayItems.removeAt(existingDisplayIdx);
+        final targetDisplayIdx = _displayIndexForLiveSlot(i);
+        _displayItems.insert(targetDisplayIdx, entry);
+      }
+    }
+  }
+
+  void _startInsertAnimation(String id) {
+    _insertControllers.remove(id)?.dispose();
+    final controller = AnimationController(
+      vsync: this,
+      duration: _insertDuration,
+    );
+    _insertControllers[id] = controller;
+    controller.addStatusListener((status) {
+      if (status != AnimationStatus.completed) return;
+      if (_insertControllers[id] == controller) {
+        _insertControllers.remove(id);
+      }
+      _retiredControllers.add(controller);
+      if (mounted) {
+        setState(() {});
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_retiredControllers.remove(controller)) {
+          controller.dispose();
+        }
+      });
+    });
+    controller.forward();
+  }
+
+  int _liveIndexForDisplayIndex(int displayIndex) {
+    var liveIndex = 0;
+    for (var i = 0; i < displayIndex && i < _displayItems.length; i++) {
+      if (!_displayItems[i].isExiting) {
+        liveIndex++;
+      }
+    }
+    return liveIndex;
+  }
+
+  int _displayIndexForLiveSlot(int liveSlot) {
+    if (liveSlot <= 0) return 0;
+    var seenLive = 0;
+    for (var i = 0; i < _displayItems.length; i++) {
+      if (!_displayItems[i].isExiting) {
+        if (seenLive == liveSlot) return i;
+        seenLive++;
+      }
+    }
+    return _displayItems.length;
   }
 
   void _handleAnimatedStep(int oldIndex, int newIndex) {
@@ -336,25 +509,108 @@ class _AnimatedReorderableTaskSliverState
     widget.onReorder(oldIndex, newIndex);
   }
 
+  void _handleReorderItem(int oldDisplayIndex, int newDisplayIndex) {
+    if (oldDisplayIndex < 0 || oldDisplayIndex >= _displayItems.length) return;
+    if (_displayItems[oldDisplayIndex].isExiting) return;
+    final oldLive = _liveIndexForDisplayIndex(oldDisplayIndex);
+    final newLive = _liveIndexForDisplayIndex(newDisplayIndex);
+    widget.onReorder(oldLive, newLive);
+  }
+
+  void _handleReorderStart(int displayIndex) {
+    final onStart = widget.onReorderStart;
+    if (onStart == null) return;
+    if (displayIndex < 0 || displayIndex >= _displayItems.length) return;
+    if (_displayItems[displayIndex].isExiting) return;
+    onStart(_liveIndexForDisplayIndex(displayIndex));
+  }
+
+  Widget _buildExitingItem(BuildContext context, _ReorderableItemEntry entry) {
+    final animation = entry.exitController!;
+    final sizeCurve = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeInOutCubic,
+    );
+    final child = widget.itemBuilder(context, -1, entry.task, (_, _) {});
+    final content = entry.isSwipedOut
+        ? Opacity(opacity: 0.0, child: child)
+        : FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: const Interval(0.4, 1.0, curve: Curves.easeOut),
+            ),
+            child: child,
+          );
+    return IgnorePointer(
+      key: ValueKey('removing_${entry.task.id}'),
+      child: SizeTransition(
+        sizeFactor: sizeCurve,
+        alignment: Alignment.topCenter,
+        child: content,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final proxyDecorator = widget.proxyDecorator;
     return SliverReorderableList(
-      itemCount: widget.tasks.length,
-      onReorderItem: widget.onReorder,
-      onReorderStart: widget.onReorderStart,
+      itemCount: _displayItems.length,
+      onReorderItem: _handleReorderItem,
+      onReorderStart: widget.onReorderStart == null
+          ? null
+          : _handleReorderStart,
       onReorderEnd: widget.onReorderEnd,
-      proxyDecorator: widget.proxyDecorator,
-      itemBuilder: (context, index) {
-        final task = widget.tasks[index];
-        return _FlipItem(
-          key: ValueKey(task.id),
-          id: task.id,
+      proxyDecorator: proxyDecorator == null || widget.tasks.isEmpty
+          ? null
+          : (child, displayIndex, animation) {
+              final liveIdx = _liveIndexForDisplayIndex(displayIndex)
+                  .clamp(0, widget.tasks.length - 1);
+              return proxyDecorator(child, liveIdx, animation);
+            },
+      itemBuilder: (context, displayIndex) {
+        final entry = _displayItems[displayIndex];
+        if (entry.isExiting) {
+          return _buildExitingItem(context, entry);
+        }
+        final liveIndex = _liveIndexForDisplayIndex(displayIndex);
+        Widget child = _FlipItem(
+          id: entry.task.id,
           coordinator: _flipCoordinator,
-          child: widget.itemBuilder(context, index, task, _handleAnimatedStep),
+          child: widget.itemBuilder(
+            context,
+            liveIndex,
+            entry.task,
+            _handleAnimatedStep,
+          ),
         );
+        final insertController = _insertControllers[entry.task.id];
+        if (insertController != null && !insertController.isCompleted) {
+          final sizeCurve = CurvedAnimation(
+            parent: insertController,
+            curve: Curves.easeOutCubic,
+          );
+          final fadeCurve = CurvedAnimation(
+            parent: insertController,
+            curve: const Interval(0.2, 1.0, curve: Curves.easeOut),
+          );
+          child = SizeTransition(
+            sizeFactor: sizeCurve,
+            alignment: Alignment.topCenter,
+            child: FadeTransition(opacity: fadeCurve, child: child),
+          );
+        }
+        return KeyedSubtree(key: ValueKey(entry.task.id), child: child);
       },
     );
   }
+}
+
+RenderBox? _flipAncestorFor(BuildContext context) {
+  final scaffoldBox =
+      Scaffold.maybeOf(context)?.context.findRenderObject() as RenderBox?;
+  if (scaffoldBox != null) return scaffoldBox;
+  return Scrollable.maybeOf(context)?.context.findRenderObject() as RenderBox?;
 }
 
 bool _haveSameIdsInOrder(List<TaskItem> a, List<TaskItem> b) =>
@@ -363,6 +619,24 @@ bool _haveSameIdsInOrder(List<TaskItem> a, List<TaskItem> b) =>
       a.map((task) => task.id),
       b.map((task) => task.id),
     );
+
+bool _didSurvivingOrderChange(
+  List<TaskItem> oldTasks,
+  List<TaskItem> nextTasks,
+) {
+  final nextIds = {for (final t in nextTasks) t.id};
+  final oldSurviving = [
+    for (final t in oldTasks)
+      if (nextIds.contains(t.id)) t.id,
+  ];
+  if (oldSurviving.length <= 1) return false;
+  final oldIds = {for (final t in oldTasks) t.id};
+  final nextSurviving = [
+    for (final t in nextTasks)
+      if (oldIds.contains(t.id)) t.id,
+  ];
+  return !const ListEquality<String>().equals(oldSurviving, nextSurviving);
+}
 
 class _CapturedPosition {
   const _CapturedPosition({required this.laidOutY, required this.visualY});

@@ -44,13 +44,16 @@ PopupMenuItem<T> buildTasksPopupMenuItem<T>({
   );
 }
 
-bool supportsTaskReordering(TodoList list, int activeTasksCount) {
+bool supportsListReordering(TodoList list) {
   final isCustom = !list.isSmartList;
   return (isCustom ||
           list.smartType == SmartListType.myDay ||
           list.smartType == SmartListType.tasks) &&
-      list.sortOption == TaskSortOption.defaultOrder &&
-      activeTasksCount >= 2;
+      list.sortOption == TaskSortOption.defaultOrder;
+}
+
+bool supportsTaskReordering(TodoList list, int activeTasksCount) {
+  return supportsListReordering(list) && activeTasksCount >= 2;
 }
 
 List<PopupMenuEntry<ListMenuAction>> buildListMenuItems(

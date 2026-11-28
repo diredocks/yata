@@ -60,6 +60,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
   double _dragVisibleTop = 0.0;
   Timer? _dragAutoScrollTimer;
   final Set<String> _collapsedPlannedBuckets = {};
+  final Set<String> _swipedDeleteIds = {};
   final Set<String> _collapsedCompletedListBuckets = {};
   late final DelayedTaskCompletionController _completionController;
   final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
@@ -539,6 +540,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
     final l10n = AppLocalizations.of(context);
     final presenter = ref.read(tasksViewPresenterProvider);
     final originalIndex = allStateTasks.indexWhere((t) => t.id == task.id);
+    _swipedDeleteIds.add(task.id);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _swipedDeleteIds.remove(task.id);
+    });
     ref.read(tasksActionPresenterProvider).batchDeleteTasks({task.id});
     final messenger = _scaffoldMessengerKey.currentState;
     messenger?.clearSnackBars();
@@ -549,7 +554,10 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
         duration: const Duration(seconds: 4),
         action: SnackBarAction(
           label: l10n.undo,
-          onPressed: () => presenter.restoreTask(task, index: originalIndex),
+          onPressed: () {
+            _swipedDeleteIds.remove(task.id);
+            presenter.restoreTask(task, index: originalIndex);
+          },
         ),
       ),
     );
@@ -737,6 +745,7 @@ class _TasksViewScreenState extends ConsumerState<TasksViewScreen> {
       multiSelectedIds: _multiSelectedIds,
       selectionNotifier: _selectionNotifier,
       draggingTaskId: _draggingTaskId,
+      swipedTaskIds: _swipedDeleteIds,
       collapsedPlannedBuckets: _collapsedPlannedBuckets,
       collapsedCompletedListBuckets: _collapsedCompletedListBuckets,
       completionController: _completionController,

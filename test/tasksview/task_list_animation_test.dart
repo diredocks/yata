@@ -291,4 +291,319 @@ void main() {
       expect(headerDecoration.color, bgDecoration.color);
     },
   );
+
+  testWidgets(
+    'Task list plays insert animations when task count grows 0 -> 1 -> 2',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({
+        'yata.accounts': '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+        'yata.active_account_id': 'test',
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      tester.view.physicalSize = const Size(1024, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+          child: const YataApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(YataApp)),
+      );
+      final presenter = container.read(tasksViewPresenterProvider);
+
+      // 0 -> 1: first task animates in with SizeTransition + FadeTransition.
+      presenter.addTask(title: 'First short-list task');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 110));
+
+      final firstSizeFinder = find.ancestor(
+        of: find.text('First short-list task'),
+        matching: find.byType(SizeTransition),
+      );
+      expect(firstSizeFinder, findsOneWidget);
+      final firstSize = tester
+          .widget<SizeTransition>(firstSizeFinder)
+          .sizeFactor
+          .value;
+      expect(firstSize, greaterThan(0.0));
+      expect(firstSize, lessThan(1.0));
+      await tester.pumpAndSettle();
+
+      // 1 -> 2: second task also animates in without unmounting the sliver.
+      presenter.addTask(title: 'Second short-list task');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 110));
+
+      final secondSizeFinder = find.ancestor(
+        of: find.text('Second short-list task'),
+        matching: find.byType(SizeTransition),
+      );
+      expect(secondSizeFinder, findsOneWidget);
+      final secondSize = tester
+          .widget<SizeTransition>(secondSizeFinder)
+          .sizeFactor
+          .value;
+      expect(secondSize, greaterThan(0.0));
+      expect(secondSize, lessThan(1.0));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'Task list plays remove animations when task count shrinks 2 -> 1 -> 0',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({
+        'yata.accounts': '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+        'yata.active_account_id': 'test',
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      tester.view.physicalSize = const Size(1024, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+          child: const YataApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(YataApp)),
+      );
+      final presenter = container.read(tasksViewPresenterProvider);
+      presenter.addTask(title: 'Alpha task');
+      presenter.addTask(title: 'Beta task');
+      await tester.pumpAndSettle();
+
+      final tasks = container.read(todoProvider).tasks;
+      final betaId = tasks.firstWhere((t) => t.title == 'Beta task').id;
+      final alphaId = tasks.firstWhere((t) => t.title == 'Alpha task').id;
+
+      // 2 -> 1: Beta task animates out before disappearing.
+      container.read(todoProvider.notifier).deleteTasks({betaId});
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 110));
+
+      expect(find.text('Beta task'), findsOneWidget);
+      final betaRemovingFinder = find.byKey(ValueKey('removing_$betaId'));
+      expect(betaRemovingFinder, findsOneWidget);
+      final betaSizeFinder = find.descendant(
+        of: betaRemovingFinder,
+        matching: find.byType(SizeTransition),
+      );
+      expect(
+        tester.widget<SizeTransition>(betaSizeFinder).sizeFactor.value,
+        allOf(greaterThan(0.0), lessThan(1.0)),
+      );
+
+      await tester.pumpAndSettle();
+      expect(find.text('Beta task'), findsNothing);
+      expect(find.text('Alpha task'), findsOneWidget);
+
+      // 1 -> 0: Alpha task also animates out before disappearing.
+      container.read(todoProvider.notifier).deleteTasks({alphaId});
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 110));
+
+      expect(find.text('Alpha task'), findsOneWidget);
+      final alphaRemovingFinder = find.byKey(ValueKey('removing_$alphaId'));
+      expect(alphaRemovingFinder, findsOneWidget);
+      final alphaSizeFinder = find.descendant(
+        of: alphaRemovingFinder,
+        matching: find.byType(SizeTransition),
+      );
+      expect(
+        tester.widget<SizeTransition>(alphaSizeFinder).sizeFactor.value,
+        allOf(greaterThan(0.0), lessThan(1.0)),
+      );
+
+      await tester.pumpAndSettle();
+      expect(find.text('Alpha task'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Swiping left to delete collapses slot invisibly without flashing card back',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({
+        'yata.accounts': '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+        'yata.active_account_id': 'test',
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      tester.view.physicalSize = const Size(1024, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+          child: const YataApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(YataApp)),
+      );
+      final presenter = container.read(tasksViewPresenterProvider);
+      presenter.addTask(title: 'Bottom task');
+      presenter.addTask(title: 'Top task');
+      await tester.pumpAndSettle();
+
+      final topId = container
+          .read(todoProvider)
+          .tasks
+          .firstWhere((t) => t.title == 'Top task')
+          .id;
+      final beforeBottomY = tester.getTopLeft(find.text('Bottom task')).dy;
+
+      // Swipe Top task left past the 40% threshold.
+      await tester.drag(find.text('Top task'), const Offset(-450, 0));
+      // Finish the 180ms fling-out animation so onSwipeLeft fires.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 190));
+      // Advance halfway through the 220ms slot collapse animation.
+      await tester.pump(const Duration(milliseconds: 110));
+
+      final removingFinder = find.byKey(ValueKey('removing_$topId'));
+      expect(removingFinder, findsOneWidget);
+
+      // The exiting slot collapses smoothly while kept completely invisible (opacity 0),
+      // so the swiped-off card never flashes back into view.
+      final opacityFinder = find.descendant(
+        of: removingFinder,
+        matching: find.byType(Opacity),
+      );
+      expect(opacityFinder, findsAtLeastNWidgets(1));
+      expect(tester.widget<Opacity>(opacityFinder.first).opacity, 0.0);
+
+      final sizeFinder = find.descendant(
+        of: removingFinder,
+        matching: find.byType(SizeTransition),
+      );
+      expect(
+        tester.widget<SizeTransition>(sizeFinder).sizeFactor.value,
+        allOf(greaterThan(0.0), lessThan(1.0)),
+      );
+
+      final midBottomY = tester.getTopLeft(find.text('Bottom task')).dy;
+      expect(midBottomY, lessThan(beforeBottomY));
+
+      await tester.pumpAndSettle();
+      expect(find.text('Top task'), findsNothing);
+      final afterBottomY = tester.getTopLeft(find.text('Bottom task')).dy;
+      expect(afterBottomY, lessThan(midBottomY));
+    },
+  );
+
+  testWidgets(
+    'Multi-select batch delete fades out deleted tasks, keeps items above stationary, and repositions items below',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({
+        'yata.accounts': '[{"id":"test","displayName":"Local User","email":"local@yata.app","createdAt":"2026-01-01T00:00:00.000"}]',
+        'yata.active_account_id': 'test',
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      tester.view.physicalSize = const Size(1024, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+          child: const YataApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(YataApp)),
+      );
+      final presenter = container.read(tasksViewPresenterProvider);
+      presenter.addTask(title: 'Task 1');
+      presenter.addTask(title: 'Task 2');
+      presenter.addTask(title: 'Task 3');
+      presenter.addTask(title: 'Task 4');
+      await tester.pumpAndSettle();
+
+      final tasks = container.read(todoProvider).tasks;
+      final task3Id = tasks.firstWhere((t) => t.title == 'Task 3').id;
+      final task2Id = tasks.firstWhere((t) => t.title == 'Task 2').id;
+      final beforeTask4Center = tester.getCenter(find.text('Task 4'));
+      final beforeTask1Y = tester.getTopLeft(find.text('Task 1')).dy;
+
+      // Enter multi-select via long-press on Task 3, then tap Task 2.
+      // Task 4 remains above the deleted items; Task 1 remains below.
+      await tester.longPress(find.text('Task 3'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Task 2'));
+      await tester.pumpAndSettle();
+
+      // Open multi-select overflow menu and trigger Delete -> Confirm.
+      await tester.tap(find.byIcon(Icons.more_vert).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete').last);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 90));
+
+      // Surviving item above the deleted items must not get a spurious FLIP offset.
+      expect(tester.getCenter(find.text('Task 4')).dy, beforeTask4Center.dy);
+      final hitResult = tester.hitTestOnBinding(beforeTask4Center);
+      final task4RenderObject = tester.renderObject(find.text('Task 4'));
+      expect(
+        hitResult.path.any((entry) => entry.target == task4RenderObject),
+        isTrue,
+      );
+
+      // Both deleted tasks are fading out and collapsing instead of vanishing immediately.
+      for (final deletedId in [task3Id, task2Id]) {
+        final removingFinder = find.byKey(ValueKey('removing_$deletedId'));
+        expect(removingFinder, findsOneWidget);
+        final fadeFinder = find.descendant(
+          of: removingFinder,
+          matching: find.byType(FadeTransition),
+        );
+        expect(fadeFinder, findsAtLeastNWidgets(1));
+        expect(
+          tester.widget<FadeTransition>(fadeFinder.first).opacity.value,
+          allOf(greaterThan(0.0), lessThan(1.0)),
+        );
+        final sizeFinder = find.descendant(
+          of: removingFinder,
+          matching: find.byType(SizeTransition),
+        );
+        expect(
+          tester.widget<SizeTransition>(sizeFinder).sizeFactor.value,
+          allOf(greaterThan(0.0), lessThan(1.0)),
+        );
+      }
+
+      // Remaining task below has started moving upward smoothly.
+      final midTask1Y = tester.getTopLeft(find.text('Task 1')).dy;
+      expect(midTask1Y, lessThan(beforeTask1Y));
+
+      await tester.pumpAndSettle();
+      expect(find.text('Task 3'), findsNothing);
+      expect(find.text('Task 2'), findsNothing);
+      expect(find.text('Task 4'), findsOneWidget);
+      expect(find.text('Task 1'), findsOneWidget);
+      expect(tester.getCenter(find.text('Task 4')).dy, beforeTask4Center.dy);
+      final afterTask1Y = tester.getTopLeft(find.text('Task 1')).dy;
+      expect(afterTask1Y, lessThan(midTask1Y));
+    },
+  );
 }
