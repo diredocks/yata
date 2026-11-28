@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../data/account/account_profile_refresher.dart';
+import 'account_profile_refresher.dart';
 import '../data/account/account_provider.dart';
 import '../data/state/todo_provider.dart';
 import '../models/account.dart';

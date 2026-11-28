@@ -4,7 +4,7 @@ import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../theme/todo_theme.dart';
 import '../details/detail_cards.dart';
-import '../../data/attachments/attachment_service.dart';
+import 'attachment_service.dart';
 
 enum AttachmentSourceChoice { camera, file }
 

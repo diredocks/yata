@@ -20,6 +20,7 @@ import 'package:yata/ui/task_grouping.dart';
 import '../helpers/microsoft_sync_fakes.dart';
 
 import 'package:yata/data/storage/preferences.dart';
+import 'package:yata/data/storage/todo_database.dart';
 
 void main() {
   test('applyPulledState preserves local task edit made while persisting settings patch', () async {

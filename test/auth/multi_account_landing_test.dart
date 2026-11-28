@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/main.dart';
 import 'package:yata/data/account/account_provider.dart';
 import 'package:yata/data/state/todo_provider.dart';
-import 'package:yata/data/attachments/attachment_service.dart';
+import 'package:yata/data/attachments/attachment_storage.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 import 'package:yata/data/storage/preferences.dart';
 
@@ -28,11 +28,8 @@ void main() {
         ProviderScope(
           overrides: [
             sharedPreferencesProvider.overrideWithValue(prefs),
-            attachmentServiceProvider.overrideWith(
-              (ref) => AttachmentService(
-                ref,
-                storageRootProvider: () async => tempDir,
-              ),
+            attachmentStorageProvider.overrideWithValue(
+              AttachmentStorage(storageRootProvider: () async => tempDir),
             ),
           ],
           child: const YataApp(),
@@ -140,11 +137,8 @@ void main() {
         ProviderScope(
           overrides: [
             sharedPreferencesProvider.overrideWithValue(prefs),
-            attachmentServiceProvider.overrideWith(
-              (ref) => AttachmentService(
-                ref,
-                storageRootProvider: () async => tempDir,
-              ),
+            attachmentStorageProvider.overrideWithValue(
+              AttachmentStorage(storageRootProvider: () async => tempDir),
             ),
           ],
           child: const YataApp(),

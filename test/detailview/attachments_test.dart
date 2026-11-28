@@ -12,7 +12,8 @@ import 'package:yata/data/sync/sync_outbox.dart';
 import 'package:yata/data/state/todo_provider.dart';
 import 'package:yata/data/storage/todo_repository.dart';
 import 'package:yata/data/sync/todo_sync_reconciler.dart';
-import 'package:yata/data/attachments/attachment_service.dart';
+import 'package:yata/data/attachments/attachment_storage.dart';
+import 'package:yata/detailview/attachments/attachment_service.dart';
 import 'package:yata/detailview/attachments/attachments_card_view.dart';
 import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/l10n/app_localizations.dart';
@@ -22,12 +23,13 @@ import 'package:yata/sync/microsoft/microsoft_todo_models.dart';
 import 'package:yata/sync/microsoft/substrate_push_engine.dart';
 import 'package:yata/sync/microsoft/substrate_sync_mappers.dart';
 import 'package:yata/ui/widgets/task_list_tile.dart';
-import 'package:yata/data/tasks/task_batch_actions.dart';
+import 'package:yata/tasksview/task_batch_actions.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
 import 'package:yata/data/storage/preferences.dart';
+import 'package:yata/data/storage/todo_database.dart';
 
 void main() {
   group('TaskAttachment model & remote mapping', () {
@@ -109,10 +111,12 @@ void main() {
         final overrideContainer = ProviderContainer(
           overrides: [
             sharedPreferencesProvider.overrideWithValue(prefs),
+            attachmentStorageProvider.overrideWithValue(
+              AttachmentStorage(storageRootProvider: () async => tempDir),
+            ),
             attachmentServiceProvider.overrideWith((ref) {
               service = AttachmentService(
                 ref,
-                storageRootProvider: () async => tempDir,
                 openFileFn: (path, {type}) async {
                   openedPath = path;
                   openedType = type;
@@ -395,11 +399,8 @@ void main() {
         overrides: [
           sharedPreferencesProvider.overrideWithValue(prefs),
           todoDatabaseProvider.overrideWithValue(db),
-          attachmentServiceProvider.overrideWith(
-            (ref) => AttachmentService(
-              ref,
-              storageRootProvider: () async => tempDir,
-            ),
+          attachmentStorageProvider.overrideWithValue(
+            AttachmentStorage(storageRootProvider: () async => tempDir),
           ),
         ],
       );

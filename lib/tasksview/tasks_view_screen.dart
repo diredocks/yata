@@ -21,7 +21,7 @@ import 'list_export_formatter.dart';
 import 'my_day_suggestions_sheet.dart';
 import '../ui/widgets/list_editor_dialog.dart';
 import 'richentry/task_entry_sheet.dart';
-import '../data/tasks/task_batch_actions.dart';
+import 'task_batch_actions.dart';
 import 'tasks_view_bars.dart';
 import 'tasks_view_dialogs.dart';
 import '../ui/task_grouping.dart';

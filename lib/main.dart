@@ -16,6 +16,7 @@ import 'theme/todo_theme.dart';
 import 'app/main_shell_screen.dart';
 import 'homewidget/home_widget_sync.dart';
 import 'data/storage/preferences.dart';
+import 'data/storage/todo_database.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

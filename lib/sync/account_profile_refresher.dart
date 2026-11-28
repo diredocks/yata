@@ -1,6 +1,6 @@
-import '../../auth/microsoft_auth_service.dart';
-import '../../models/account.dart';
-import '../../core/network/http_guard.dart';
+import '../auth/microsoft_auth_service.dart';
+import '../models/account.dart';
+import '../core/network/http_guard.dart';
 
 typedef UpdateMicrosoftProfileCallback = Future<void> Function(
   String accountId, {

@@ -4,14 +4,14 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:result_dart/result_dart.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../account/account_provider.dart';
 import '../../core/error/app_error.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/result/app_result.dart';
+import '../../data/account/account_provider.dart';
+import '../../data/attachments/attachment_storage.dart';
 import '../../models/account.dart';
 import '../../models/task_item.dart';
 
@@ -24,21 +24,24 @@ final attachmentServiceProvider = Provider<AttachmentService>((ref) {
   return AttachmentService(ref);
 });
 
-/// Handles local caching, size validation, remote download, and opening
-/// attachments via `open_file` or `url_launcher`.
+/// Detail-view attachment operations: size validation, staging picked files,
+/// downloading remote attachments and opening them via `open_file`/
+/// `url_launcher`.
+///
+/// The on-disk layout itself is owned by [AttachmentStorage] in the data layer.
 class AttachmentService {
   AttachmentService(
-    this._ref, {
-    Future<Directory> Function()? storageRootProvider,
+    Ref ref, {
+    AttachmentStorage? storage,
     Future<OpenResult> Function(String filePath, {String? type})? openFileFn,
     Future<bool> Function(Uri uri)? launchUrlFn,
-  }) : _storageRootProvider =
-           storageRootProvider ?? getApplicationSupportDirectory,
+  }) : _ref = ref,
+       _storage = storage ?? ref.read(attachmentStorageProvider),
        _openFileFn = openFileFn ?? _defaultOpenFile,
        _launchUrlFn = launchUrlFn ?? _defaultLaunchUrl;
 
   final Ref _ref;
-  final Future<Directory> Function() _storageRootProvider;
+  final AttachmentStorage _storage;
   final Future<OpenResult> Function(String filePath, {String? type})
   _openFileFn;
   final Future<bool> Function(Uri uri) _launchUrlFn;
@@ -51,11 +54,8 @@ class AttachmentService {
     return launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  static String sanitizeFileName(String raw) {
-    final base = p.basename(raw.trim());
-    final cleaned = base.replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_');
-    return cleaned.isEmpty ? 'attachment' : cleaned;
-  }
+  static String sanitizeFileName(String raw) =>
+      AttachmentStorage.sanitizeFileName(raw);
 
   static String formatFileSize(int bytes) {
     if (bytes <= 0) return '0 B';
@@ -98,6 +98,9 @@ class AttachmentService {
     };
   }
 
+  String get _accountId =>
+      _ref.read(accountProvider).activeAccountId ?? 'default';
+
   bool exceedsTaskSizeLimit(TaskItem task, int newFileBytes) {
     final existingTotal = task.attachments.fold<int>(
       0,
@@ -106,44 +109,19 @@ class AttachmentService {
     return existingTotal + newFileBytes > kMaxTaskAttachmentTotalBytes;
   }
 
-  static String _sanitizeSegment(String raw, String fallback) {
-    final cleaned = raw.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-    return cleaned.isEmpty ? fallback : cleaned;
-  }
-
-  Future<String> _resolveTargetPath({
-    required String attachmentId,
-    required String fileName,
-  }) async {
-    final root = await _storageRootProvider();
-    final accountId = _ref.read(accountProvider).activeAccountId ?? 'default';
-    final safeAccountId = _sanitizeSegment(accountId, 'default');
-    final safeId = _sanitizeSegment(attachmentId, 'att');
-    final safeName = sanitizeFileName(fileName);
-    final dir = Directory(
-      p.join(root.path, 'attachments', safeAccountId, safeId),
-    );
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    return p.join(dir.path, safeName);
-  }
-
   /// Copies [sourcePath] into app-private per-account attachment storage and
   /// returns the stored path and byte size.
   Future<({String localPath, int size})> stageLocalFile({
     required String attachmentId,
     required String sourcePath,
     required String fileName,
-  }) async {
-    final sourceFile = File(sourcePath);
-    final targetPath = await _resolveTargetPath(
+  }) {
+    return _storage.stageLocalFile(
+      accountId: _accountId,
       attachmentId: attachmentId,
+      sourcePath: sourcePath,
       fileName: fileName,
     );
-    await sourceFile.copy(targetPath);
-    final size = await File(targetPath).length();
-    return (localPath: targetPath, size: size);
   }
 
   /// Writes [bytes] into app-private per-account attachment storage and returns
@@ -152,29 +130,13 @@ class AttachmentService {
     required String attachmentId,
     required String fileName,
     required Uint8List bytes,
-  }) async {
-    final targetPath = await _resolveTargetPath(
+  }) {
+    return _storage.saveBytes(
+      accountId: _accountId,
       attachmentId: attachmentId,
       fileName: fileName,
+      bytes: bytes,
     );
-    await File(targetPath).writeAsBytes(bytes, flush: true);
-    return targetPath;
-  }
-
-  /// Deletes the entire local attachment directory for [accountId].
-  Future<void> deleteAccountAttachments(String accountId) async {
-    try {
-      final root = await _storageRootProvider();
-      final safeAccountId = _sanitizeSegment(accountId, 'default');
-      final accountDir = Directory(
-        p.join(root.path, 'attachments', safeAccountId),
-      );
-      if (accountDir.existsSync()) {
-        accountDir.deleteSync(recursive: true);
-      }
-    } catch (e) {
-      _log.warning('Failed to delete account attachments: $e');
-    }
   }
 
   /// Downloads a remote attachment using the active Microsoft account context

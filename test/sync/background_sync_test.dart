@@ -20,6 +20,8 @@ import 'package:yata/sync/sync_store.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
+import 'package:yata/data/storage/todo_database.dart';
+
 class _RecordingBackgroundScheduler implements BackgroundSyncScheduler {
   _RecordingBackgroundScheduler({this.handlesTransfersInBackground = false});
 

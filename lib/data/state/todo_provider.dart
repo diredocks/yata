@@ -22,8 +22,6 @@ import '../lists/todo_settings_sync.dart';
 import 'todo_state.dart';
 import '../sync/todo_sync_reconciler.dart';
 
-export '../storage/todo_database.dart';
-export '../lists/todo_settings_sync.dart';
 export 'todo_state.dart';
 
 final todoDatabaseProvider = Provider<TodoDatabase?>((ref) {

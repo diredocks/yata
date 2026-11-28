@@ -23,6 +23,7 @@ import '../sync/microsoft/microsoft_todo_api.dart';
 import '../sync/microsoft/substrate_push_engine.dart';
 import '../sync/sync_provider.dart';
 import '../sync/sync_store.dart';
+import '../data/storage/todo_database.dart';
 
 final _log = appLogFor('BackgroundEntrypoint');
 

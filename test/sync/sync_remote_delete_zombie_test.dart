@@ -29,6 +29,7 @@ import 'package:yata/sync/sync_provider.dart';
 import '../helpers/microsoft_sync_fakes.dart';
 
 import 'package:yata/data/storage/preferences.dart';
+import 'package:yata/data/storage/todo_database.dart';
 
 Future<SyncTestHarness> _createSqliteSyncHarness({
   required String accountId,
