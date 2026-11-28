@@ -26,3 +26,13 @@ flutter analyze
 flutter test
 dart format lib test
 ```
+
+## Rich Text Editor (Frontend Assets)
+
+The rich-text note editor (`assets/editor/index.html`) is built from `editor_web/` (Tiptap + DOMPurify bundled via Vite as a single offline HTML file). Build artifacts are not committed to the repository, so build them before running or packaging the Flutter app:
+
+```bash
+cd editor_web
+npm ci
+npm run build
+```
