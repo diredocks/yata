@@ -13,6 +13,7 @@ import 'package:yata/notifications/notification_service.dart';
 import 'package:yata/notifications/snooze_reminder_sheet.dart';
 import 'package:yata/settings/settings_screen.dart';
 import 'package:yata/data/preferences.dart';
+import 'package:yata/notifications/reminder_schedule.dart';
 
 class _FakeTransport implements NotificationTransport {
   _FakeTransport({
@@ -238,7 +239,7 @@ void main() {
         ),
       );
 
-      final task1Id = NotificationService.notificationIdForTask('task_1');
+      final task1Id = notificationIdForTask('task_1');
       expect(transport.scheduled.keys, [task1Id]);
       expect(transport.scheduled[task1Id]!.title, 'Buy milk');
       expect(transport.scheduled[task1Id]!.ongoing, isTrue);

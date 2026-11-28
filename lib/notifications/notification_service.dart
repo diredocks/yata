@@ -9,11 +9,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 import '../core/logging/app_logger.dart';
-import '../core/time/time_zone_database.dart';
+import 'reminder_schedule.dart';
 import '../data/state/todo_provider.dart';
 import '../l10n/app_localizations.dart';
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
 import '../theme/todo_theme.dart';
 import '../core/time/calendar_day.dart';
 
@@ -473,27 +471,10 @@ class NotificationService {
 
   Stream<NotificationActionEvent> get events => _eventsController.stream;
 
-  static int notificationIdForTask(String taskId) {
-    // Deterministic positive 31-bit ID >= 100000 to avoid colliding with fixed IDs.
-    var hash = 0;
-    for (var i = 0; i < taskId.length; i++) {
-      hash = (hash * 31 + taskId.codeUnitAt(i)) & 0x3FFFFFFF;
-    }
-    return 100000 + hash;
-  }
-
-  tz.Location _resolveLocalLocation() {
-    final offset = _clock().timeZoneOffset;
-    for (final loc in timeZoneDatabase.locations.values) {
-      if (loc.currentTimeZone.offset == offset) return loc;
-    }
-    return tz.UTC;
-  }
-
   Future<void> ensureInitialized() async {
     if (_initialized) return;
     _initialized = true;
-    _localLocation = _resolveLocalLocation();
+    _localLocation = resolveLocalLocation(_clock().timeZoneOffset);
     await _transport.initialize(onResponse: handleNotificationResponse);
   }
 
@@ -585,46 +566,6 @@ class NotificationService {
     });
   }
 
-  DateTime _nextDailyOccurrence(int hour, int minute, DateTime now) {
-    var candidate = DateTime(now.year, now.month, now.day, hour, minute);
-    if (!candidate.isAfter(now)) {
-      candidate = candidate.add(const Duration(days: 1));
-    }
-    return candidate;
-  }
-
-  DateTime _nextWeeklyOccurrence(
-    int weekday,
-    int hour,
-    int minute,
-    DateTime now,
-  ) {
-    final daysUntil = (weekday - now.weekday + 7) % 7;
-    var candidate = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      hour,
-      minute,
-    ).add(Duration(days: daysUntil));
-    if (!candidate.isAfter(now)) {
-      candidate = candidate.add(const Duration(days: 7));
-    }
-    return candidate;
-  }
-
-  String _resolveListName(
-    TaskItem task,
-    List<TodoList> lists,
-    String defaultTasksName,
-  ) {
-    if (task.listId == 'tasks') return defaultTasksName;
-    for (final list in lists) {
-      if (list.id == task.listId) return list.title;
-    }
-    return defaultTasksName;
-  }
-
   Future<void> syncWithState(
     TodoState state, {
     NotificationStrings? strings,
@@ -645,7 +586,7 @@ class NotificationService {
         }
         final id = notificationIdForTask(task.id);
         nextTaskIds.add(id);
-        final listName = _resolveListName(
+        final listName = resolveListName(
           task,
           state.lists,
           l10n.defaultTasksListName,
@@ -720,7 +661,7 @@ class NotificationService {
         .toList(growable: false);
 
     if (state.dueTodayNotificationsEnabled && dueTodayTasks.isNotEmpty) {
-      final target = _nextDailyOccurrence(
+      final target = nextDailyOccurrence(
         state.dueTodayNotificationHour,
         state.dueTodayNotificationMinute,
         now,
@@ -777,7 +718,7 @@ class NotificationService {
           for (var d = DateTime.monday; d <= DateTime.sunday; d++) {
             await _transport.cancel(routineWeekdayBaseId + d);
           }
-          final target = _nextDailyOccurrence(
+          final target = nextDailyOccurrence(
             state.routineNotificationHour,
             state.routineNotificationMinute,
             now,
@@ -798,7 +739,7 @@ class NotificationService {
           for (var d = DateTime.monday; d <= DateTime.sunday; d++) {
             final weekdayId = routineWeekdayBaseId + d;
             if (selectedDays.contains(d)) {
-              final target = _nextWeeklyOccurrence(
+              final target = nextWeeklyOccurrence(
                 d,
                 state.routineNotificationHour,
                 state.routineNotificationMinute,
@@ -823,7 +764,7 @@ class NotificationService {
       } else {
         DateTime? nextTarget;
         for (final d in selectedDays) {
-          final candidate = _nextWeeklyOccurrence(
+          final candidate = nextWeeklyOccurrence(
             d,
             state.routineNotificationHour,
             state.routineNotificationMinute,
