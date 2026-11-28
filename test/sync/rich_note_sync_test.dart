@@ -100,11 +100,7 @@ void main() {
         Map<String, dynamic>? retriedPatch;
         TaskItem? committedTask;
 
-        final localList = TodoList(
-          id: 'l1',
-          title: 'Tasks',
-          remoteId: 'rf-1',
-        );
+        final localList = TodoList(id: 'l1', title: 'Tasks', remoteId: 'rf-1');
         final localTask = TaskItem(
           id: 't1',
           listId: 'l1',

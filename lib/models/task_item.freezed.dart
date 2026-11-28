@@ -667,14 +667,14 @@ as DateTime?,postponedDay: freezed == postponedDay ? _self.postponedDay : postpo
 as DateTime?,dueDate: freezed == dueDate ? _self.dueDate : dueDate // ignore: cast_nullable_to_non_nullable
 as DateTime?,reminderAt: freezed == reminderAt ? _self.reminderAt : reminderAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,recurrence: null == recurrence ? _self.recurrence : recurrence // ignore: cast_nullable_to_non_nullable
-as RecurrenceType,rawRecurrence: freezed == rawRecurrence ? _self._rawRecurrence : rawRecurrence // ignore: cast_nullable_to_non_nullable
+as RecurrenceType,rawRecurrence: freezed == rawRecurrence ? _self.rawRecurrence : rawRecurrence // ignore: cast_nullable_to_non_nullable
 as Map<String, dynamic>?,note: null == note ? _self.note : note // ignore: cast_nullable_to_non_nullable
 as String,noteHtml: null == noteHtml ? _self.noteHtml : noteHtml // ignore: cast_nullable_to_non_nullable
 as String,noteContentType: freezed == noteContentType ? _self.noteContentType : noteContentType // ignore: cast_nullable_to_non_nullable
 as String?,noteUpdatedAt: freezed == noteUpdatedAt ? _self.noteUpdatedAt : noteUpdatedAt // ignore: cast_nullable_to_non_nullable
 as DateTime?,completedAt: freezed == completedAt ? _self.completedAt : completedAt // ignore: cast_nullable_to_non_nullable
-as DateTime?,steps: null == steps ? _self._steps : steps // ignore: cast_nullable_to_non_nullable
-as List<TaskStep>,attachments: null == attachments ? _self._attachments : attachments // ignore: cast_nullable_to_non_nullable
+as DateTime?,steps: null == steps ? _self.steps : steps // ignore: cast_nullable_to_non_nullable
+as List<TaskStep>,attachments: null == attachments ? _self.attachments : attachments // ignore: cast_nullable_to_non_nullable
 as List<TaskAttachment>,remoteId: freezed == remoteId ? _self.remoteId : remoteId // ignore: cast_nullable_to_non_nullable
 as String?,remoteParentFolderId: freezed == remoteParentFolderId ? _self.remoteParentFolderId : remoteParentFolderId // ignore: cast_nullable_to_non_nullable
 as String?,orderDateTime: freezed == orderDateTime ? _self.orderDateTime : orderDateTime // ignore: cast_nullable_to_non_nullable
@@ -687,6 +687,136 @@ as DateTime?,
 
 }
 
+
+/// Adds pattern-matching-related methods to [TaskItem].
+extension TaskItemPatterns on TaskItem {
+/// A variant of `map` that fallback to returning `orElse`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>(TResult Function( _TaskItem value)?  $default,{required TResult orElse(),}){
+final _that = this;
+switch (_that) {
+case _TaskItem() when $default != null:
+return $default(_that);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// Callbacks receives the raw object, upcasted.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case final Subclass2 value:
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult map<TResult extends Object?>(TResult Function( _TaskItem value)  $default,){
+final _that = this;
+switch (_that) {
+case _TaskItem():
+return $default(_that);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `map` that fallback to returning `null`.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case final Subclass value:
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>(TResult? Function( _TaskItem value)?  $default,){
+final _that = this;
+switch (_that) {
+case _TaskItem() when $default != null:
+return $default(_that);case _:
+  return null;
+
+}
+}
+/// A variant of `when` that fallback to an `orElse` callback.
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return orElse();
+/// }
+/// ```
+
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String id,  String listId,  String title, @JsonKey(fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson)  DateTime createdAt,  bool isCompleted,  bool isImportant,  bool isInMyDay,  DateTime? myDayDate,  DateTime? postponedDay,  DateTime? dueDate, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? reminderAt, @JsonKey(unknownEnumValue: RecurrenceType.none)  RecurrenceType recurrence,  Map<String, dynamic>? rawRecurrence,  String note,  String noteHtml,  String? noteContentType, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? noteUpdatedAt, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? completedAt,  List<TaskStep> steps,  List<TaskAttachment> attachments,  String? remoteId,  String? remoteParentFolderId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? committedOrder,  String? changeKey, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)?  $default,{required TResult orElse(),}) {final _that = this;
+switch (_that) {
+case _TaskItem() when $default != null:
+return $default(_that.id,_that.listId,_that.title,_that.createdAt,_that.isCompleted,_that.isImportant,_that.isInMyDay,_that.myDayDate,_that.postponedDay,_that.dueDate,_that.reminderAt,_that.recurrence,_that.rawRecurrence,_that.note,_that.noteHtml,_that.noteContentType,_that.noteUpdatedAt,_that.completedAt,_that.steps,_that.attachments,_that.remoteId,_that.remoteParentFolderId,_that.orderDateTime,_that.committedOrder,_that.changeKey,_that.updatedAt);case _:
+  return orElse();
+
+}
+}
+/// A `switch`-like method, using callbacks.
+///
+/// As opposed to `map`, this offers destructuring.
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case Subclass2(:final field2):
+///     return ...;
+/// }
+/// ```
+
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String id,  String listId,  String title, @JsonKey(fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson)  DateTime createdAt,  bool isCompleted,  bool isImportant,  bool isInMyDay,  DateTime? myDayDate,  DateTime? postponedDay,  DateTime? dueDate, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? reminderAt, @JsonKey(unknownEnumValue: RecurrenceType.none)  RecurrenceType recurrence,  Map<String, dynamic>? rawRecurrence,  String note,  String noteHtml,  String? noteContentType, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? noteUpdatedAt, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? completedAt,  List<TaskStep> steps,  List<TaskAttachment> attachments,  String? remoteId,  String? remoteParentFolderId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? committedOrder,  String? changeKey, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)  $default,) {final _that = this;
+switch (_that) {
+case _TaskItem():
+return $default(_that.id,_that.listId,_that.title,_that.createdAt,_that.isCompleted,_that.isImportant,_that.isInMyDay,_that.myDayDate,_that.postponedDay,_that.dueDate,_that.reminderAt,_that.recurrence,_that.rawRecurrence,_that.note,_that.noteHtml,_that.noteContentType,_that.noteUpdatedAt,_that.completedAt,_that.steps,_that.attachments,_that.remoteId,_that.remoteParentFolderId,_that.orderDateTime,_that.committedOrder,_that.changeKey,_that.updatedAt);case _:
+  throw StateError('Unexpected subclass');
+
+}
+}
+/// A variant of `when` that fallback to returning `null`
+///
+/// It is equivalent to doing:
+/// ```dart
+/// switch (sealedClass) {
+///   case Subclass(:final field):
+///     return ...;
+///   case _:
+///     return null;
+/// }
+/// ```
+
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String id,  String listId,  String title, @JsonKey(fromJson: utcDateTimeFromJson, toJson: utcDateTimeToJson)  DateTime createdAt,  bool isCompleted,  bool isImportant,  bool isInMyDay,  DateTime? myDayDate,  DateTime? postponedDay,  DateTime? dueDate, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? reminderAt, @JsonKey(unknownEnumValue: RecurrenceType.none)  RecurrenceType recurrence,  Map<String, dynamic>? rawRecurrence,  String note,  String noteHtml,  String? noteContentType, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? noteUpdatedAt, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? completedAt,  List<TaskStep> steps,  List<TaskAttachment> attachments,  String? remoteId,  String? remoteParentFolderId, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? orderDateTime, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? committedOrder,  String? changeKey, @JsonKey(fromJson: nullableUtcDateTimeFromJson, toJson: nullableUtcDateTimeToJson)  DateTime? updatedAt)?  $default,) {final _that = this;
+switch (_that) {
+case _TaskItem() when $default != null:
+return $default(_that.id,_that.listId,_that.title,_that.createdAt,_that.isCompleted,_that.isImportant,_that.isInMyDay,_that.myDayDate,_that.postponedDay,_that.dueDate,_that.reminderAt,_that.recurrence,_that.rawRecurrence,_that.note,_that.noteHtml,_that.noteContentType,_that.noteUpdatedAt,_that.completedAt,_that.steps,_that.attachments,_that.remoteId,_that.remoteParentFolderId,_that.orderDateTime,_that.committedOrder,_that.changeKey,_that.updatedAt);case _:
+  return null;
+
+}
+}
+
+}
 
 /// @nodoc
 @JsonSerializable()

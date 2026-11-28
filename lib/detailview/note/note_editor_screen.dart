@@ -10,8 +10,11 @@ import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../sync/microsoft/todo_wire_codecs.dart';
 
-typedef RichNoteChangedCallback =
-    void Function(String plainText, String html, String contentType);
+typedef RichNoteChangedCallback = void Function(
+  String plainText,
+  String html,
+  String contentType,
+);
 
 class _EditorFormatState {
   const _EditorFormatState({
