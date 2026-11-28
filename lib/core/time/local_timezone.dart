@@ -1,13 +1,6 @@
-import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
-bool _tzInitialized = false;
-
-void _ensureTimeZonesInitialized() {
-  if (_tzInitialized) return;
-  tz_data.initializeTimeZones();
-  _tzInitialized = true;
-}
+import 'time_zone_database.dart';
 
 const Map<String, String> _windowsToIana = {
   'utc': 'UTC',
@@ -62,9 +55,8 @@ const List<String> _preferredCanonicalIanaZones = [
 /// Resolves the device's current local timezone as an IANA identifier
 /// (e.g. `Asia/Shanghai`, `America/Los_Angeles`, or `UTC`).
 String resolveLocalIanaTimeZone({DateTime? reference}) {
-  _ensureTimeZonesInitialized();
   final now = reference ?? DateTime.now();
-  final locations = tz.timeZoneDatabase.locations;
+  final locations = timeZoneDatabase.locations;
   final rawName = now.timeZoneName.trim();
   if (rawName.isNotEmpty) {
     if (locations.containsKey(rawName)) {
@@ -123,10 +115,9 @@ String resolveLocalIanaTimeZone({DateTime? reference}) {
 }
 
 tz.Location? _lookupLocation(String timeZoneId) {
-  _ensureTimeZonesInitialized();
   final trimmed = timeZoneId.trim();
   if (trimmed.isEmpty) return null;
-  final locations = tz.timeZoneDatabase.locations;
+  final locations = timeZoneDatabase.locations;
   final direct = locations[trimmed];
   if (direct != null) return direct;
 

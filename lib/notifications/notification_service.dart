@@ -6,10 +6,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../core/logging/app_logger.dart';
+import '../core/time/time_zone_database.dart';
 import '../data/state/todo_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
@@ -467,8 +467,7 @@ class NotificationService {
   final Set<int> _scheduledTaskIds = {};
   final Map<int, Timer> _fallbackTimers = {};
   bool _initialized = false;
-  bool _tzInitialized = false;
-  late tz.Location _localLocation;
+  late final tz.Location _localLocation;
   bool _quickAddShown = false;
 
   Stream<NotificationActionEvent> get events => _eventsController.stream;
@@ -482,25 +481,18 @@ class NotificationService {
     return 100000 + hash;
   }
 
-  void _ensureTimeZone() {
-    if (_tzInitialized) return;
-    _tzInitialized = true;
-    tz_data.initializeTimeZones();
+  tz.Location _resolveLocalLocation() {
     final offset = _clock().timeZoneOffset;
-    tz.Location? matched;
-    for (final loc in tz.timeZoneDatabase.locations.values) {
-      if (loc.currentTimeZone.offset == offset) {
-        matched = loc;
-        break;
-      }
+    for (final loc in timeZoneDatabase.locations.values) {
+      if (loc.currentTimeZone.offset == offset) return loc;
     }
-    _localLocation = matched ?? tz.UTC;
+    return tz.UTC;
   }
 
   Future<void> ensureInitialized() async {
     if (_initialized) return;
     _initialized = true;
-    _ensureTimeZone();
+    _localLocation = _resolveLocalLocation();
     await _transport.initialize(onResponse: handleNotificationResponse);
   }
 
