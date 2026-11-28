@@ -15,8 +15,6 @@ import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../data/state/todo_provider.dart';
-import '../sync/remote_deletion_provider.dart';
-import '../ui/app_toast.dart';
 import '../ui/completion_sound_service.dart';
 import '../theme/todo_theme.dart';
 import 'attachments/attachment_service.dart';
@@ -397,16 +395,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
         (state) => state.tasks.any((task) => task.id == widget.taskId),
       ),
       (_, exists) {
-        if (exists) return;
-        if (ref
-            .read(remoteDeletionProvider.notifier)
-            .wasTaskRemoved(widget.taskId)) {
-          showAppToast(
-            context,
-            AppLocalizations.of(context).taskNoLongerExists,
-          );
-        }
-        _close();
+        if (!exists) _close();
       },
     );
     final state = ref.watch(todoProvider);
@@ -560,6 +549,14 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
                                   cardColor: cardBg,
                                   onNoteChanged: (val) =>
                                       notifier.updateTaskNote(task.id, val),
+                                  onRichNoteChanged:
+                                      (plainText, html, contentType) =>
+                                          notifier.updateTaskNote(
+                                            task.id,
+                                            plainText,
+                                            noteHtml: html,
+                                            noteContentType: contentType,
+                                          ),
                                 ),
                               ],
                             ),
