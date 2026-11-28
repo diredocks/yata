@@ -106,42 +106,6 @@ function extractBodyContent(raw: string): string {
   return match ? match[1] : raw;
 }
 
-function normalizeIncomingHtmlForEditor(sanitizedBody: string): string {
-  if (!sanitizedBody) return '';
-  const container = document.createElement('div');
-  container.innerHTML = sanitizedBody;
-
-  const parseFontSizePt = (el: HTMLElement): number | null => {
-    const fs = el.style?.fontSize;
-    if (!fs) return null;
-    const m = fs.trim().match(/^([\d.]+)\s*(pt|px)$/i);
-    if (!m) return null;
-    const val = parseFloat(m[1]);
-    return m[2].toLowerCase() === 'px' ? val * 0.75 : val;
-  };
-
-  // Convert Microsoft To Do / Exchange Title (20pt) and Subhead (17pt) spans
-  // into semantic h1/h2 blocks so Tiptap preserves them across syncs.
-  const blocks = Array.from(container.querySelectorAll('p, div'));
-  for (const block of blocks) {
-    if (block.closest('h1, h2, h3, li, td, th')) continue;
-    const styled = block.querySelector('span[style*="font-size"], font[size]');
-    const targetEl = (styled as HTMLElement | null) ?? (block as HTMLElement);
-    let pt = parseFontSizePt(targetEl);
-    if (pt === null && targetEl.tagName === 'FONT') {
-      const sizeAttr = parseInt(targetEl.getAttribute('size') || '', 10);
-      if (sizeAttr >= 5) pt = 20;
-      else if (sizeAttr === 4) pt = 17;
-    }
-    if (pt !== null && pt >= 16) {
-      const heading = document.createElement(pt >= 19 ? 'h1' : 'h2');
-      heading.innerHTML = block.innerHTML;
-      block.replaceWith(heading);
-    }
-  }
-  return container.innerHTML;
-}
-
 function captureSelection() {
   if (!editor) return;
   const { from, to } = editor.state.selection;
@@ -257,8 +221,7 @@ const YataEditor = {
       editorEl.hidden = false;
       const ed = ensureEditor(opts.placeholder || 'Add note');
       suppressChange = true;
-      const clean = normalizeIncomingHtmlForEditor(sanitizeHtml(bodyHtml));
-      ed.commands.setContent(clean, false);
+      ed.commands.setContent(sanitizeHtml(bodyHtml), false);
       suppressChange = false;
       captureSelection();
       emitFormatState();
