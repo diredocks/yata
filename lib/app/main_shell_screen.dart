@@ -149,6 +149,9 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
           if (!mounted) return;
           _openQuickAddSheet(ref.read(todoProvider), targetList);
         });
+        // Navigating only schedules a frame when it changes the stack, but the
+        // post-frame callback above needs one to run.
+        WidgetsBinding.instance.ensureVisualUpdate();
       case HomeWidgetActionType.openList:
         final targetList = state.lists.firstWhere(
           (l) => l.id == action.listId,
