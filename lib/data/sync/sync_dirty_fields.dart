@@ -1,7 +1,7 @@
 import 'package:collection/collection.dart';
 
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
+import '../../models/task_item.dart';
+import '../../models/todo_list.dart';
 
 /// Per-field dirty markers for [ListGroup] pushed incrementally in Phase 4.
 enum GroupDirtyField { name, orderDateTime }

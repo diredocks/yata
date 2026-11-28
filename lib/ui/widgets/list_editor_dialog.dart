@@ -1,10 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../../data/todo_provider.dart';
+import '../../data/state/todo_provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/todo_list.dart';
-import '../../data/custom_background_service.dart';
+import '../../data/lists/custom_background_service.dart';
 import 'theme_picker_sheet.dart';
 import '../../theme/todo_theme.dart';
 

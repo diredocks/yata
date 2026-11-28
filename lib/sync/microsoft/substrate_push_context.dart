@@ -1,8 +1,8 @@
 import 'package:collection/collection.dart';
 
 import '../../core/logging/app_logger.dart';
-import '../../data/sync_outbox.dart';
-import '../../data/todo_state.dart';
+import '../../data/sync/sync_outbox.dart';
+import '../../data/state/todo_state.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
 import '../../core/network/http_guard.dart';

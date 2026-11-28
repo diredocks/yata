@@ -6,13 +6,13 @@ import 'package:collection/collection.dart';
 import 'package:result_dart/result_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../core/logging/app_logger.dart';
-import '../core/result/app_result.dart';
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
-import 'sync_outbox.dart';
+import '../../core/logging/app_logger.dart';
+import '../../core/result/app_result.dart';
+import '../../models/task_item.dart';
+import '../../models/todo_list.dart';
+import '../sync/sync_outbox.dart';
 import 'todo_database.dart';
-import 'todo_settings_store.dart';
+import '../lists/todo_settings_store.dart';
 
 final _log = appLogFor('TodoRepository');
 

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:yata/data/todo_provider.dart';
+import 'package:yata/data/state/todo_provider.dart';
 import 'package:yata/models/default_lists.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';

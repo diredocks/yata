@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:yata/data/todo_provider.dart';
+import 'package:yata/data/state/todo_provider.dart';
 import 'package:yata/models/account.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/homewidget/home_widget_sync.dart';

@@ -2,9 +2,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../data/account_provider.dart';
+import '../data/account/account_provider.dart';
 import '../account/manage_accounts_screen.dart';
-import '../data/todo_provider.dart';
+import '../data/state/todo_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/todo_list.dart';
 import '../onboarding/landing_screen.dart';
@@ -13,7 +13,7 @@ import '../theme/todo_theme.dart';
 import 'groups/group_dialogs.dart';
 import 'home_account_header.dart';
 import 'home_sidebar_lists.dart';
-import '../data/list_ordering.dart';
+import '../data/ordering/list_ordering.dart';
 import 'home_view_presenter.dart';
 
 class HomeViewScreen extends ConsumerStatefulWidget {

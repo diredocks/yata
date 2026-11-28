@@ -1,9 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../data/order_date_time.dart';
-import '../data/todo_provider.dart';
+import '../data/ordering/order_date_time.dart';
+import '../data/state/todo_provider.dart';
 import '../models/todo_list.dart';
-import '../data/list_ordering.dart';
+import '../data/ordering/list_ordering.dart';
 
 /// Presenter for `homeview/HomeViewFragment`, matching `homeview/HomeViewPresenter`.
 class HomeViewPresenter {

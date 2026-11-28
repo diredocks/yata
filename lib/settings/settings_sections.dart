@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-import '../data/todo_provider.dart';
+import '../data/state/todo_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/todo_list.dart';
 import '../notifications/notification_service.dart';

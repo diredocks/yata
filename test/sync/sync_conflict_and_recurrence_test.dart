@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/core/error/app_error.dart';
-import 'package:yata/data/todo_provider.dart';
+import 'package:yata/data/state/todo_provider.dart';
 import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';

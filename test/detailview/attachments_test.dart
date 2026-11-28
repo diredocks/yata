@@ -7,12 +7,12 @@ import 'package:material_ui/material_ui.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:yata/data/account_provider.dart';
-import 'package:yata/data/sync_outbox.dart';
-import 'package:yata/data/todo_provider.dart';
-import 'package:yata/data/todo_repository.dart';
-import 'package:yata/data/todo_sync_reconciler.dart';
-import 'package:yata/data/attachment_service.dart';
+import 'package:yata/data/account/account_provider.dart';
+import 'package:yata/data/sync/sync_outbox.dart';
+import 'package:yata/data/state/todo_provider.dart';
+import 'package:yata/data/storage/todo_repository.dart';
+import 'package:yata/data/sync/todo_sync_reconciler.dart';
+import 'package:yata/data/attachments/attachment_service.dart';
 import 'package:yata/detailview/attachments/attachments_card_view.dart';
 import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/l10n/app_localizations.dart';
@@ -22,12 +22,12 @@ import 'package:yata/sync/microsoft/microsoft_todo_models.dart';
 import 'package:yata/sync/microsoft/substrate_push_engine.dart';
 import 'package:yata/sync/microsoft/substrate_sync_mappers.dart';
 import 'package:yata/ui/widgets/task_list_tile.dart';
-import 'package:yata/data/task_batch_actions.dart';
+import 'package:yata/data/tasks/task_batch_actions.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
-import 'package:yata/data/preferences.dart';
+import 'package:yata/data/storage/preferences.dart';
 
 void main() {
   group('TaskAttachment model & remote mapping', () {

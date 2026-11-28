@@ -7,12 +7,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:yata/data/todo_provider.dart';
+import 'package:yata/data/state/todo_provider.dart';
 import 'package:yata/l10n/app_localizations.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
-import 'package:yata/data/custom_background_service.dart';
+import 'package:yata/data/lists/custom_background_service.dart';
 import 'package:yata/ui/widgets/theme_picker_sheet.dart';
-import 'package:yata/data/preferences.dart';
+import 'package:yata/data/storage/preferences.dart';
 
 // Valid 1x1 transparent PNG.
 final _tinyPngBytes = base64Decode(

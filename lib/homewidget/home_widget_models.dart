@@ -1,8 +1,8 @@
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../data/todo_sorting.dart';
-import '../data/todo_state.dart';
+import '../data/ordering/todo_sorting.dart';
+import '../data/state/todo_state.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';

@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:intl/intl.dart';
 
-import '../data/todo_state.dart';
+import '../data/state/todo_state.dart';
 import '../ui/widgets/task_pickers.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';

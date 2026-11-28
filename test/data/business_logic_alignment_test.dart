@@ -5,12 +5,12 @@ import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/homeview/home_view_presenter.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/models/todo_list.dart';
-import 'package:yata/data/todo_provider.dart';
+import 'package:yata/data/state/todo_provider.dart';
 import 'package:yata/search/search_presenter.dart';
 import 'package:yata/settings/settings_presenter.dart';
-import 'package:yata/data/task_batch_actions.dart';
+import 'package:yata/data/tasks/task_batch_actions.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
-import 'package:yata/data/preferences.dart';
+import 'package:yata/data/storage/preferences.dart';
 
 Future<ProviderContainer> _createContainer() async {
   SharedPreferences.setMockInitialValues({});

@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../data/todo_provider.dart';
+import '../data/state/todo_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../notifications/notification_service.dart';
 import '../theme/todo_theme.dart';

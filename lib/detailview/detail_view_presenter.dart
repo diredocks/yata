@@ -1,10 +1,10 @@
 import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../data/order_date_time.dart';
-import '../data/recurrence.dart';
-import '../data/task_mutations.dart';
-import '../data/todo_provider.dart';
+import '../data/ordering/order_date_time.dart';
+import '../data/tasks/recurrence.dart';
+import '../data/tasks/task_mutations.dart';
+import '../data/state/todo_provider.dart';
 import '../models/task_item.dart';
 
 /// Presenter for `detailview/DetailViewFragment`, matching `detailview/DetailViewPresenter`.

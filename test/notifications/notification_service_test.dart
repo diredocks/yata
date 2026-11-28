@@ -4,15 +4,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
-import 'package:yata/data/todo_settings_store.dart';
+import 'package:yata/data/lists/todo_settings_store.dart';
 import 'package:yata/models/default_lists.dart';
-import 'package:yata/data/todo_provider.dart';
+import 'package:yata/data/state/todo_provider.dart';
 import 'package:yata/l10n/app_localizations.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/notifications/notification_service.dart';
 import 'package:yata/notifications/snooze_reminder_sheet.dart';
 import 'package:yata/settings/settings_screen.dart';
-import 'package:yata/data/preferences.dart';
+import 'package:yata/data/storage/preferences.dart';
 
 class _FakeTransport implements NotificationTransport {
   _FakeTransport({

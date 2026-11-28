@@ -7,12 +7,12 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:result_dart/result_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:yata/data/account_provider.dart';
+import 'package:yata/data/account/account_provider.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/core/error/app_error.dart';
-import 'package:yata/data/sync_dirty_fields.dart';
-import 'package:yata/data/sync_outbox.dart';
-import 'package:yata/data/todo_provider.dart';
+import 'package:yata/data/sync/sync_dirty_fields.dart';
+import 'package:yata/data/sync/sync_outbox.dart';
+import 'package:yata/data/state/todo_provider.dart';
 import 'package:yata/homeview/home_view_presenter.dart';
 import 'package:yata/models/account.dart';
 import 'package:yata/models/task_item.dart';
@@ -24,12 +24,12 @@ import 'package:yata/sync/microsoft/substrate_push_engine.dart';
 import 'package:yata/sync/microsoft/substrate_sync_mappers.dart';
 import 'package:yata/sync/microsoft/todo_wire_codecs.dart';
 import 'package:yata/sync/sync_provider.dart';
-import 'package:yata/data/task_batch_actions.dart';
+import 'package:yata/data/tasks/task_batch_actions.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
-import 'package:yata/data/preferences.dart';
+import 'package:yata/data/storage/preferences.dart';
 
 void main() {
   setUp(() {

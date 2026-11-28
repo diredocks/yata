@@ -6,9 +6,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/main.dart';
 import 'package:yata/models/task_item.dart';
-import 'package:yata/data/todo_provider.dart';
+import 'package:yata/data/state/todo_provider.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
-import 'package:yata/data/preferences.dart';
+import 'package:yata/data/storage/preferences.dart';
 
 void main() {
   testWidgets(

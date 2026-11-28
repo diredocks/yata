@@ -2,7 +2,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../data/todo_provider.dart';
+import '../data/state/todo_provider.dart';
 
 /// Plays `assets/sounds/wl_completion_sound.mp3` when a task is completed
 /// and `playCompletionSound` (`sound_checkoff_enabled`) is enabled, matching

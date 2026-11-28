@@ -1,5 +1,5 @@
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
+import '../../models/task_item.dart';
+import '../../models/todo_list.dart';
 
 /// Computes the default due date when setting [recurrence] with no due date,
 /// matching `RecurrenceUtils.java` (`yp.v1.a`) in `mstodo.apk`.

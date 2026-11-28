@@ -2,11 +2,11 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 
 import '../../core/time/local_timezone.dart';
-import '../../data/recurrence.dart' show kIsoWeekdayNames;
+import '../../data/tasks/recurrence.dart' show kIsoWeekdayNames;
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
 
-export '../../data/recurrence.dart'
+export '../../data/tasks/recurrence.dart'
     show decodeSubstrateRecurrence, kIsoWeekdayNames;
 
 /// Formats [dt] as a 7-fractional-digit UTC ISO-8601 string for Substrate.

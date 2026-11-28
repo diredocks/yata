@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
-import 'package:yata/data/custom_background_service.dart';
+import 'package:yata/data/lists/custom_background_service.dart';
 
 void main() {
   late Directory tempDir;

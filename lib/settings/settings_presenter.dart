@@ -3,7 +3,7 @@ import 'dart:collection';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../data/todo_provider.dart';
+import '../data/state/todo_provider.dart';
 import '../models/todo_list.dart';
 
 /// Presenter for `settings/SettingsActivity`.

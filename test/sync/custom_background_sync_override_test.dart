@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:yata/data/todo_settings_store.dart';
-import 'package:yata/data/todo_settings_sync.dart';
-import 'package:yata/data/todo_state.dart';
+import 'package:yata/data/lists/todo_settings_store.dart';
+import 'package:yata/data/lists/todo_settings_sync.dart';
+import 'package:yata/data/state/todo_state.dart';
 import 'package:yata/models/todo_list.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_models.dart';
 import 'package:yata/sync/microsoft/substrate_sync_mappers.dart';

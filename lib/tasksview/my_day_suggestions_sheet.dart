@@ -2,7 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../data/todo_provider.dart';
+import '../data/state/todo_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
@@ -10,7 +10,7 @@ import '../theme/todo_theme.dart';
 import '../ui/widgets/task_checkbox.dart';
 import 'my_day_suggestions.dart';
 import 'recyclerview/animated_task_sliver_list.dart';
-import '../data/task_batch_actions.dart';
+import '../data/tasks/task_batch_actions.dart';
 import '../ui/task_grouping.dart';
 import 'tasks_view_presenter.dart';
 

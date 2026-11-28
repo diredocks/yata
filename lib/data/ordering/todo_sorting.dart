@@ -1,6 +1,6 @@
 import 'package:collection/collection.dart';
 
-import '../models/task_item.dart';
+import '../../models/task_item.dart';
 
 DateTime _completionDayUtc(TaskItem task) {
   final dt = (task.completedAt ?? task.createdAt).toUtc();

@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:yata/data/account_provider.dart';
+import 'package:yata/data/account/account_provider.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/auth/msa_webview_launcher.dart';
 import 'package:yata/core/error/app_error.dart';
@@ -18,7 +18,7 @@ import 'package:yata/sync/sync_provider.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
-import 'package:yata/data/preferences.dart';
+import 'package:yata/data/storage/preferences.dart';
 
 void main() {
   setUp(() {

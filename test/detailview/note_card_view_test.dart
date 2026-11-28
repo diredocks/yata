@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:yata/data/todo_provider.dart';
+import 'package:yata/data/state/todo_provider.dart';
 import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/detailview/note/note_card_view.dart';
 import 'package:yata/ui/widgets/task_pickers.dart';
@@ -21,7 +21,7 @@ import 'package:yata/ui/task_grouping.dart';
 import 'package:yata/tasksview/tasks_view_presenter.dart';
 import 'package:yata/theme/todo_theme.dart';
 import 'package:yata/homewidget/home_widget_service.dart';
-import 'package:yata/data/preferences.dart';
+import 'package:yata/data/storage/preferences.dart';
 
 const _testLocalizationDelegates = <LocalizationsDelegate<dynamic>>[
   AppLocalizations.delegate,

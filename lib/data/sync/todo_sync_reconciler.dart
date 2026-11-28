@@ -1,8 +1,8 @@
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
+import '../../models/task_item.dart';
+import '../../models/todo_list.dart';
 import 'sync_dirty_fields.dart';
 import 'sync_outbox.dart';
-import 'todo_settings_sync.dart';
+import '../lists/todo_settings_sync.dart';
 
 bool isSyncableFolderList(TodoList list) =>
     !list.isSmartList || list.smartType == SmartListType.tasks;

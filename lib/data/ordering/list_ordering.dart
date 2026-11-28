@@ -1,6 +1,6 @@
 import 'package:collection/collection.dart';
 
-import '../models/todo_list.dart';
+import '../../models/todo_list.dart';
 
 /// Top-level sidebar entry shown below the smart lists divider in `HomeViewScreen`.
 sealed class HomeSidebarEntry {

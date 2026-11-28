@@ -1,12 +1,12 @@
 import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
-import '../sync/microsoft/substrate_time_codecs.dart';
-import 'order_date_time.dart';
+import '../../models/task_item.dart';
+import '../../models/todo_list.dart';
+import '../../sync/microsoft/substrate_time_codecs.dart';
+import '../ordering/order_date_time.dart';
 import 'recurrence.dart';
-import 'todo_provider.dart';
+import '../state/todo_provider.dart';
 
 /// Task-level mutations shared by every surface that edits tasks (tasks view,
 /// detail view, search, notifications and the home widget).

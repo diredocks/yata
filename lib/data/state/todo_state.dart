@@ -2,10 +2,10 @@ import 'package:collection/collection.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../models/task_item.dart';
-import '../models/todo_list.dart';
-import 'custom_background_service.dart';
-import 'todo_sorting.dart';
+import '../../models/task_item.dart';
+import '../../models/todo_list.dart';
+import '../lists/custom_background_service.dart';
+import '../ordering/todo_sorting.dart';
 
 part 'todo_state.freezed.dart';
 

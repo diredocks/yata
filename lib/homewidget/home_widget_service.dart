@@ -12,7 +12,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import '../core/logging/app_logger.dart';
 import '../core/result/app_result.dart';
-import '../data/todo_state.dart';
+import '../data/state/todo_state.dart';
 import 'home_widget_models.dart';
 
 export 'home_widget_event_processor.dart';

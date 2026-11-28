@@ -2,17 +2,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:result_dart/result_dart.dart';
 
-import '../auth/browser_launcher.dart';
-import '../auth/microsoft_auth_service.dart';
-import '../auth/msa_webview_launcher.dart';
-import '../core/error/app_error.dart';
+import '../../auth/browser_launcher.dart';
+import '../../auth/microsoft_auth_service.dart';
+import '../../auth/msa_webview_launcher.dart';
+import '../../core/error/app_error.dart';
 import 'account_local_storage.dart';
-import 'attachment_service.dart';
-import 'preferences.dart';
-import 'todo_provider.dart';
-import 'todo_repository.dart';
-import '../models/account.dart';
-import '../sync/microsoft/microsoft_todo_api.dart';
+import '../attachments/attachment_service.dart';
+import '../storage/preferences.dart';
+import '../state/todo_provider.dart';
+import '../storage/todo_repository.dart';
+import '../../models/account.dart';
+import '../../sync/microsoft/microsoft_todo_api.dart';
 
 part 'account_provider.freezed.dart';
 

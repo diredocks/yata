@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../models/account.dart';
+import '../../models/account.dart';
 
 class AccountSnapshot {
   const AccountSnapshot({

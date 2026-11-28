@@ -4,8 +4,8 @@ import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../data/account_provider.dart';
-import '../data/todo_provider.dart';
+import '../data/account/account_provider.dart';
+import '../data/state/todo_provider.dart';
 import '../detailview/detail_view_presenter.dart';
 import '../detailview/detail_view_screen.dart';
 import '../homeview/home_view_screen.dart';
@@ -18,7 +18,7 @@ import '../search/search_screen.dart';
 import '../settings/settings_screen.dart';
 import '../sync/sync_provider.dart';
 import '../tasksview/richentry/task_entry_sheet.dart';
-import '../data/task_mutations.dart';
+import '../data/tasks/task_mutations.dart';
 import '../tasksview/tasks_view_screen.dart';
 import '../homewidget/home_widget_sync.dart';
 

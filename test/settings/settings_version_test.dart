@@ -5,7 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yata/l10n/app_localizations.dart';
 import 'package:yata/settings/settings_screen.dart';
-import 'package:yata/data/preferences.dart';
+import 'package:yata/data/storage/preferences.dart';
 
 void main() {
   testWidgets('SettingsScreen displays version from PackageInfo', (

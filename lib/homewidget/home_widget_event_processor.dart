@@ -6,13 +6,13 @@ import 'package:collection/collection.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/misc.dart' show ProviderListenable;
 
-import '../data/account_provider.dart';
+import '../data/account/account_provider.dart';
 import '../core/result/app_result.dart';
-import '../data/todo_provider.dart';
+import '../data/state/todo_provider.dart';
 import '../models/account.dart';
 import '../sync/sync_dispatcher.dart';
 import '../sync/sync_provider.dart';
-import '../data/task_mutations.dart';
+import '../data/tasks/task_mutations.dart';
 import 'home_widget_service.dart';
 
 typedef ProviderReader = T Function<T>(ProviderListenable<T> provider);

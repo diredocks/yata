@@ -5,12 +5,12 @@ import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:yata/data/todo_provider.dart';
-import 'package:yata/data/todo_repository.dart';
+import 'package:yata/data/state/todo_provider.dart';
+import 'package:yata/data/storage/todo_repository.dart';
 import 'package:yata/models/account.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/homewidget/home_widget_sync.dart';
-import 'package:yata/data/preferences.dart';
+import 'package:yata/data/storage/preferences.dart';
 
 class CommittedSnapshotRecord {
   const CommittedSnapshotRecord({

@@ -5,8 +5,8 @@ import 'package:result_dart/result_dart.dart';
 import 'package:yata/core/error/app_error.dart';
 import 'package:yata/core/logging/app_logger.dart';
 import 'package:yata/core/result/app_result.dart';
-import 'package:yata/data/todo_database.dart';
-import 'package:yata/data/todo_repository.dart';
+import 'package:yata/data/storage/todo_database.dart';
+import 'package:yata/data/storage/todo_repository.dart';
 import 'package:yata/models/todo_list.dart';
 
 void main() {

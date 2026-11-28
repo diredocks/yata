@@ -1,10 +1,10 @@
 import 'package:collection/collection.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../models/todo_list.dart';
-import '../sync/microsoft/todo_wire_codecs.dart';
+import '../../models/todo_list.dart';
+import '../../sync/microsoft/todo_wire_codecs.dart';
 import 'todo_settings_store.dart';
-import 'todo_state.dart';
+import '../state/todo_state.dart';
 
 class SmartListSettingKeys {
   const SmartListSettingKeys({

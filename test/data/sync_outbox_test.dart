@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:yata/data/sync_outbox.dart';
+import 'package:yata/data/sync/sync_outbox.dart';
 
 void main() {
   group('SyncOutboxOp & SyncEntityKey', () {

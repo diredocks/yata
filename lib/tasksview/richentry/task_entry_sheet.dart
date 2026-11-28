@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../ui/widgets/task_pickers.dart';
-import '../../data/recurrence.dart';
+import '../../data/tasks/recurrence.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';

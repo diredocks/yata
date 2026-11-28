@@ -5,9 +5,9 @@ import 'package:collection/collection.dart';
 
 import '../core/error/app_error.dart';
 import '../core/logging/app_logger.dart';
-import '../data/sync_outbox.dart';
-import '../data/todo_repository.dart';
-import '../data/todo_state.dart';
+import '../data/sync/sync_outbox.dart';
+import '../data/storage/todo_repository.dart';
+import '../data/state/todo_state.dart';
 import '../models/account.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';

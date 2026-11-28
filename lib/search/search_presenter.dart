@@ -2,8 +2,8 @@ import 'package:collection/collection.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/task_item.dart';
-import '../data/task_mutations.dart';
-import '../data/todo_provider.dart';
+import '../data/tasks/task_mutations.dart';
+import '../data/state/todo_provider.dart';
 
 /// Presenter for `search/SearchFragment`.
 class SearchPresenter {

@@ -8,12 +8,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:result_dart/result_dart.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'account_provider.dart';
-import '../core/error/app_error.dart';
-import '../core/logging/app_logger.dart';
-import '../core/result/app_result.dart';
-import '../models/account.dart';
-import '../models/task_item.dart';
+import '../account/account_provider.dart';
+import '../../core/error/app_error.dart';
+import '../../core/logging/app_logger.dart';
+import '../../core/result/app_result.dart';
+import '../../models/account.dart';
+import '../../models/task_item.dart';
 
 final _log = appLogFor('Attachments');
 

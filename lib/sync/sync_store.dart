@@ -1,10 +1,10 @@
-import '../data/sync_outbox.dart';
-import '../data/todo_repository.dart';
-import '../data/todo_settings_store.dart';
-import '../data/todo_settings_sync.dart';
-import '../data/todo_state.dart';
-import '../data/todo_sync_reconciler.dart';
-import '../data/list_ordering.dart';
+import '../data/sync/sync_outbox.dart';
+import '../data/storage/todo_repository.dart';
+import '../data/lists/todo_settings_store.dart';
+import '../data/lists/todo_settings_sync.dart';
+import '../data/state/todo_state.dart';
+import '../data/sync/todo_sync_reconciler.dart';
+import '../data/ordering/list_ordering.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import 'microsoft/substrate_push_engine.dart';

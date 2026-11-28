@@ -6,14 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:yata/data/account_local_storage.dart';
-import 'package:yata/data/account_provider.dart';
+import 'package:yata/data/account/account_local_storage.dart';
+import 'package:yata/data/account/account_provider.dart';
 import 'package:yata/auth/microsoft_auth_service.dart';
 import 'package:yata/core/error/app_error.dart';
-import 'package:yata/data/sync_outbox.dart';
-import 'package:yata/data/todo_provider.dart';
-import 'package:yata/data/todo_repository.dart';
-import 'package:yata/data/todo_settings_store.dart';
+import 'package:yata/data/sync/sync_outbox.dart';
+import 'package:yata/data/state/todo_provider.dart';
+import 'package:yata/data/storage/todo_repository.dart';
+import 'package:yata/data/lists/todo_settings_store.dart';
 import 'package:yata/detailview/detail_view_presenter.dart';
 import 'package:yata/models/account.dart';
 import 'package:yata/models/default_lists.dart';
@@ -28,7 +28,7 @@ import 'package:yata/sync/sync_provider.dart';
 
 import '../helpers/microsoft_sync_fakes.dart';
 
-import 'package:yata/data/preferences.dart';
+import 'package:yata/data/storage/preferences.dart';
 
 Future<SyncTestHarness> _createSqliteSyncHarness({
   required String accountId,

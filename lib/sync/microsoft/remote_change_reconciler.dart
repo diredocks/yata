@@ -1,6 +1,6 @@
 import 'package:collection/collection.dart';
 
-import '../../data/sync_outbox.dart';
+import '../../data/sync/sync_outbox.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
 import 'microsoft_todo_models.dart';

@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yata/core/error/app_error.dart';
-import 'package:yata/data/sync_outbox.dart';
-import 'package:yata/data/todo_provider.dart';
+import 'package:yata/data/sync/sync_outbox.dart';
+import 'package:yata/data/state/todo_provider.dart';
 import 'package:yata/models/task_item.dart';
 import 'package:yata/sync/microsoft/microsoft_todo_api.dart';
 import 'package:yata/sync/sync_provider.dart';
