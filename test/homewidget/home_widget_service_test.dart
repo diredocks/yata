@@ -61,7 +61,7 @@ void main() {
     });
   });
 
-  group('HomeWidgetSnapshotSerializer & HomeWidgetService', () {
+  group('Home widget payload & service', () {
     test(
       'serializes atomic snapshot with photo accent, sortOption, and metadata',
       () async {
@@ -340,7 +340,7 @@ void main() {
         selectedListId: 'my_day',
       );
 
-      final payload = HomeWidgetSnapshotSerializer.buildCanonicalPayload(
+      final payload = buildCanonicalPayload(
         state,
         accountId: 'a',
         accountName: 'Test',

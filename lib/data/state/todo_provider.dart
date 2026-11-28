@@ -19,6 +19,7 @@ import '../db/todo_repository.dart';
 import '../lists/todo_settings_store.dart';
 import '../lists/todo_settings_sync.dart';
 import 'todo_state.dart';
+import '../../core/time/calendar_day.dart';
 import '../tasks/my_day.dart';
 
 export 'todo_state.dart';
@@ -71,7 +72,7 @@ class TodoNotifier extends Notifier<TodoState> {
     final settingsStore = ref.watch(todoSettingsStoreProvider);
     final settings = settingsStore.load();
     final now = DateTime.now();
-    final todayKey = myDayResetDateKey(now);
+    final todayKey = localDateKey(now);
     final synced = syncTasksMyDayFlags(
       repository.readCachedTasks(),
       now: now,

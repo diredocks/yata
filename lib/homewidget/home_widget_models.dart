@@ -7,6 +7,7 @@ import '../l10n/app_localizations.dart';
 import '../models/task_item.dart';
 import '../models/todo_list.dart';
 import '../theme/todo_theme.dart';
+import '../core/time/calendar_day.dart';
 
 enum HomeWidgetActionType { quickAdd, openList, openTask }
 
@@ -202,182 +203,171 @@ class WidgetPendingOp {
   }
 }
 
-class HomeWidgetSnapshotSerializer {
-  HomeWidgetSnapshotSerializer._();
+Map<String, dynamic> buildCanonicalPayload(
+  TodoState state, {
+  required String? accountId,
+  required String accountName,
+  required HomeWidgetStrings strings,
+  DateTime? now,
+}) {
+  final effectiveNow = now ?? DateTime.now();
+  final dateLocale = _resolveDateLocale(strings.localeName);
+  final listById = {for (final l in state.lists) l.id: l};
+  final listTaskIds = <String, List<String>>{};
+  final serializedLists = <Map<String, dynamic>>[];
 
-  static String formatDateYmd(DateTime date) {
-    final year = date.year.toString().padLeft(4, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final day = date.day.toString().padLeft(2, '0');
-    return '$year-$month-$day';
-  }
-
-  static Map<String, dynamic> buildCanonicalPayload(
-    TodoState state, {
-    required String? accountId,
-    required String accountName,
-    required HomeWidgetStrings strings,
-    DateTime? now,
-  }) {
-    final effectiveNow = now ?? DateTime.now();
-    final dateLocale = _resolveDateLocale(strings.localeName);
-    final listById = {for (final l in state.lists) l.id: l};
-    final listTaskIds = <String, List<String>>{};
-    final serializedLists = <Map<String, dynamic>>[];
-
-    for (final list in state.lists) {
-      final tasksInList = state.tasksForList(list);
-      final List<TaskItem> orderedTasks;
-      if (list.smartType == SmartListType.completed) {
-        orderedTasks = tasksInList;
-      } else {
-        final active = tasksInList.where((t) => !t.isCompleted).toList();
-        final completed = tasksInList.where((t) => t.isCompleted).toList();
-        if (list.sortOption == TaskSortOption.defaultOrder) {
-          completed.sort(compareCompletedTasksDesc);
-        }
-        orderedTasks = [...active, ...completed];
+  for (final list in state.lists) {
+    final tasksInList = state.tasksForList(list);
+    final List<TaskItem> orderedTasks;
+    if (list.smartType == SmartListType.completed) {
+      orderedTasks = tasksInList;
+    } else {
+      final active = tasksInList.where((t) => !t.isCompleted).toList();
+      final completed = tasksInList.where((t) => t.isCompleted).toList();
+      if (list.sortOption == TaskSortOption.defaultOrder) {
+        completed.sort(compareCompletedTasksDesc);
       }
-      listTaskIds[list.id] = [for (final t in orderedTasks) t.id];
-      final activeCount = list.smartType == SmartListType.completed
-          ? tasksInList.length
-          : tasksInList.where((t) => !t.isCompleted).length;
-      serializedLists.add({
-        'id': list.id,
-        'title': strings.titleForList(list),
-        'smartType': list.smartType?.name,
-        'emoji': list.emoji,
-        'activeCount': activeCount,
-        'sortOption': list.sortOption.name,
-        'accentColorLight': TodoColors.listAccentFor(
-          list,
-          brightness: Brightness.light,
-        ).toARGB32(),
-        'accentColorDark': TodoColors.listAccentFor(
-          list,
-          brightness: Brightness.dark,
-        ).toARGB32(),
-      });
+      orderedTasks = [...active, ...completed];
     }
-
-    final serializedTasks = <Map<String, dynamic>>[
-      for (final task in state.tasks)
-        _serializeTask(
-          task,
-          list: listById[task.listId],
-          strings: strings,
-          now: effectiveNow,
-          dateLocale: dateLocale,
-        ),
-    ];
-
-    return {
-      'version': 1,
-      'accountId': accountId,
-      'accountName': accountName,
-      'dateKey': formatDateYmd(effectiveNow),
-      'locale': strings.localeName,
-      'emptyMessage': strings.emptyListMessage,
-      'myDayLabel': strings.myDay,
-      'todayLabel': strings.today,
-      'tomorrowLabel': strings.tomorrow,
-      'yesterdayLabel': strings.yesterday,
-      'moveStarredToTop': state.moveStarredTasksToTop,
-      'lists': serializedLists,
-      'tasks': serializedTasks,
-      'listTaskIds': listTaskIds,
-    };
+    listTaskIds[list.id] = [for (final t in orderedTasks) t.id];
+    final activeCount = list.smartType == SmartListType.completed
+        ? tasksInList.length
+        : tasksInList.where((t) => !t.isCompleted).length;
+    serializedLists.add({
+      'id': list.id,
+      'title': strings.titleForList(list),
+      'smartType': list.smartType?.name,
+      'emoji': list.emoji,
+      'activeCount': activeCount,
+      'sortOption': list.sortOption.name,
+      'accentColorLight': TodoColors.listAccentFor(
+        list,
+        brightness: Brightness.light,
+      ).toARGB32(),
+      'accentColorDark': TodoColors.listAccentFor(
+        list,
+        brightness: Brightness.dark,
+      ).toARGB32(),
+    });
   }
 
-  static String? _resolveDateLocale(String localeName) {
-    try {
-      if (DateFormat.localeExists(localeName)) {
-        return localeName;
-      }
-    } catch (_) {
-      // Locale symbols may be uninitialized in headless or pure Dart tests.
-    }
-    return null;
-  }
-
-  static Map<String, dynamic> _serializeTask(
-    TaskItem task, {
-    required TodoList? list,
-    required HomeWidgetStrings strings,
-    required DateTime now,
-    required String? dateLocale,
-  }) {
-    final listTitle = list == null ? '' : strings.titleForList(list);
-    final dueDate = task.dueDate;
-    final todayDay = DateTime(now.year, now.month, now.day);
-    final isOverdue =
-        dueDate != null &&
-        !task.isCompleted &&
-        DateTime(dueDate.year, dueDate.month, dueDate.day).isBefore(todayDay);
-    return {
-      'id': task.id,
-      'listId': task.listId,
-      'listTitle': listTitle,
-      'title': task.title,
-      'isCompleted': task.isCompleted,
-      'isImportant': task.isImportant,
-      'isInMyDay': task.isInMyDay,
-      'hasDueDate': dueDate != null,
-      'dueDateYmd': dueDate == null ? null : formatDateYmd(dueDate),
-      'hasReminder': task.reminderAt != null,
-      'reminderAtMs': task.reminderAt?.toUtc().millisecondsSinceEpoch,
-      'isRecurring': task.hasRecurrence,
-      'isOverdue': isOverdue,
-      'dueLabel': _formatDueDate(
-        dueDate,
+  final serializedTasks = <Map<String, dynamic>>[
+    for (final task in state.tasks)
+      _serializeTask(
+        task,
+        list: listById[task.listId],
         strings: strings,
-        now: now,
+        now: effectiveNow,
         dateLocale: dateLocale,
       ),
-      'reminderLabel': _formatReminder(
-        task.reminderAt,
-        strings: strings,
-        now: now,
-        dateLocale: dateLocale,
-      ),
-    };
-  }
+  ];
 
-  static String _formatDueDate(
-    DateTime? date, {
-    required HomeWidgetStrings strings,
-    required DateTime now,
-    required String? dateLocale,
-  }) {
-    if (date == null) return '';
-    final today = DateTime.utc(now.year, now.month, now.day);
-    final target = DateTime.utc(date.year, date.month, date.day);
-    final diff = target.difference(today).inDays;
-    if (diff == 0) return strings.today;
-    if (diff == 1) return strings.tomorrow;
-    if (diff == -1) return strings.yesterday;
-    return DateFormat.MMMd(dateLocale).format(date);
-  }
+  return {
+    'version': 1,
+    'accountId': accountId,
+    'accountName': accountName,
+    'dateKey': localDateKey(effectiveNow),
+    'locale': strings.localeName,
+    'emptyMessage': strings.emptyListMessage,
+    'myDayLabel': strings.myDay,
+    'todayLabel': strings.today,
+    'tomorrowLabel': strings.tomorrow,
+    'yesterdayLabel': strings.yesterday,
+    'moveStarredToTop': state.moveStarredTasksToTop,
+    'lists': serializedLists,
+    'tasks': serializedTasks,
+    'listTaskIds': listTaskIds,
+  };
+}
 
-  static String _formatReminder(
-    DateTime? reminder, {
-    required HomeWidgetStrings strings,
-    required DateTime now,
-    required String? dateLocale,
-  }) {
-    if (reminder == null) return '';
-    final localReminder = reminder.toLocal();
-    final localNow = now.toLocal();
-    final timeStr = DateFormat.Hm(dateLocale).format(localReminder);
-    final today = DateTime.utc(localNow.year, localNow.month, localNow.day);
-    final target = DateTime.utc(
-      localReminder.year,
-      localReminder.month,
-      localReminder.day,
-    );
-    final diff = target.difference(today).inDays;
-    if (diff == 0) return timeStr;
-    if (diff == 1) return '${strings.tomorrow} $timeStr';
-    return '${DateFormat.MMMd(dateLocale).format(localReminder)} $timeStr';
+String? _resolveDateLocale(String localeName) {
+  try {
+    if (DateFormat.localeExists(localeName)) {
+      return localeName;
+    }
+  } catch (_) {
+    // Locale symbols may be uninitialized in headless or pure Dart tests.
   }
+  return null;
+}
+
+Map<String, dynamic> _serializeTask(
+  TaskItem task, {
+  required TodoList? list,
+  required HomeWidgetStrings strings,
+  required DateTime now,
+  required String? dateLocale,
+}) {
+  final listTitle = list == null ? '' : strings.titleForList(list);
+  final dueDate = task.dueDate;
+  final todayDay = DateTime(now.year, now.month, now.day);
+  final isOverdue =
+      dueDate != null &&
+      !task.isCompleted &&
+      DateTime(dueDate.year, dueDate.month, dueDate.day).isBefore(todayDay);
+  return {
+    'id': task.id,
+    'listId': task.listId,
+    'listTitle': listTitle,
+    'title': task.title,
+    'isCompleted': task.isCompleted,
+    'isImportant': task.isImportant,
+    'isInMyDay': task.isInMyDay,
+    'hasDueDate': dueDate != null,
+    'dueDateYmd': dueDate == null ? null : localDateKey(dueDate),
+    'hasReminder': task.reminderAt != null,
+    'reminderAtMs': task.reminderAt?.toUtc().millisecondsSinceEpoch,
+    'isRecurring': task.hasRecurrence,
+    'isOverdue': isOverdue,
+    'dueLabel': _formatDueDate(
+      dueDate,
+      strings: strings,
+      now: now,
+      dateLocale: dateLocale,
+    ),
+    'reminderLabel': _formatReminder(
+      task.reminderAt,
+      strings: strings,
+      now: now,
+      dateLocale: dateLocale,
+    ),
+  };
+}
+
+String _formatDueDate(
+  DateTime? date, {
+  required HomeWidgetStrings strings,
+  required DateTime now,
+  required String? dateLocale,
+}) {
+  if (date == null) return '';
+  final today = DateTime.utc(now.year, now.month, now.day);
+  final target = DateTime.utc(date.year, date.month, date.day);
+  final diff = target.difference(today).inDays;
+  if (diff == 0) return strings.today;
+  if (diff == 1) return strings.tomorrow;
+  if (diff == -1) return strings.yesterday;
+  return DateFormat.MMMd(dateLocale).format(date);
+}
+
+String _formatReminder(
+  DateTime? reminder, {
+  required HomeWidgetStrings strings,
+  required DateTime now,
+  required String? dateLocale,
+}) {
+  if (reminder == null) return '';
+  final localReminder = reminder.toLocal();
+  final localNow = now.toLocal();
+  final timeStr = DateFormat.Hm(dateLocale).format(localReminder);
+  final today = DateTime.utc(localNow.year, localNow.month, localNow.day);
+  final target = DateTime.utc(
+    localReminder.year,
+    localReminder.month,
+    localReminder.day,
+  );
+  final diff = target.difference(today).inDays;
+  if (diff == 0) return timeStr;
+  if (diff == 1) return '${strings.tomorrow} $timeStr';
+  return '${DateFormat.MMMd(dateLocale).format(localReminder)} $timeStr';
 }

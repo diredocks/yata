@@ -191,7 +191,7 @@ class HomeWidgetService {
     bool notifyWidget = true,
     DateTime? now,
   }) {
-    final canonicalPayload = HomeWidgetSnapshotSerializer.buildCanonicalPayload(
+    final canonicalPayload = buildCanonicalPayload(
       state,
       accountId: accountId,
       accountName: accountName,

@@ -40,7 +40,3 @@ TaskItem syncMyDayFlag(
   }
   return (tasks: changed ? synced : tasks, changed: changed);
 }
-
-/// Local date key (`yyyy-MM-dd`) stored as the last My Day reset marker.
-String myDayResetDateKey(DateTime now) =>
-    now.toIso8601String().substring(0, 10);
