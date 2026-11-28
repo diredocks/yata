@@ -389,9 +389,8 @@ ReconciledRemoteDelta reconcileRemoteDelta({
       idGenerator: idGenerator,
       deferDirtyDeletes: deferDirtyDeletes,
     );
-    if (strictParentResolution && reconciled.hasUnresolvedParent) {
-      hasUnhandledEntity = true;
-    }
+    hasUnhandledEntity |=
+        strictParentResolution && reconciled.hasUnresolvedParent;
     deferredDeleteFolderRemoteIds = {
       for (final listId in reconciled.deferredDirtyDeleteListIds)
         ?folderRemoteIdByLocalListId[listId],

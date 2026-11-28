@@ -68,9 +68,7 @@ class SettingsPresenter {
             now: now,
             showDueTodayInMyDay: value,
           );
-          if (!identical(synced, task)) {
-            changed = true;
-          }
+          changed |= !identical(synced, task);
           return synced;
         }(),
     ];

@@ -396,9 +396,7 @@ applyRemoteSettingsWire({
         updated = updated.copyWith(sortAscending: asc);
       }
     }
-    if (!identical(updated, list)) {
-      anyListChanged = true;
-    }
+    anyListChanged |= !identical(updated, list);
     updatedLists.add(updated);
   }
 

@@ -312,9 +312,7 @@ class SyncOutboxQueue {
       if (op.seq > _inFlightUpToSeq &&
           op.entityKey == targetKey &&
           op.kind == SyncOpKind.upsert) {
-        if (remoteId == null) {
-          cancelledUncreatedUpsert = true;
-        }
+        cancelledUncreatedUpsert |= remoteId == null;
         _markDelete(op.seq);
         return true;
       }

@@ -576,9 +576,10 @@ class TodoNotifier extends Notifier<TodoState> {
         for (final prev in state.tasks) {
           if (!nextTaskIdSet.contains(prev.id) &&
               deletedListIds.contains(prev.listId)) {
-            if (outbox.cancelPendingUpserts(SyncEntityType.task, prev.id)) {
-              syncNeeded = true;
-            }
+            syncNeeded |= outbox.cancelPendingUpserts(
+              SyncEntityType.task,
+              prev.id,
+            );
           }
         }
       }

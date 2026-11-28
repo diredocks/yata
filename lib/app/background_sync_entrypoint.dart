@@ -100,7 +100,7 @@ Future<BackgroundPassOutcome> runBackgroundOutboxPass({
     outbox: repository.outbox,
     nowUtc: DateTime.now().toUtc(),
     onItemCommitted: (itemOutcome) async {
-      if (itemOutcome.didWork) didCommitAny = true;
+      didCommitAny |= itemOutcome.didWork;
       await store.commitPushHeadless(itemOutcome);
     },
     laneFilter: laneFilter,

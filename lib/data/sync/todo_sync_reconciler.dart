@@ -50,7 +50,7 @@ TaskItem computeTaskMyDayFlag(
       now: now,
       showDueTodayInMyDay: showDueTodayInMyDay,
     );
-    if (!identical(next, task)) changed = true;
+    changed |= !identical(next, task);
     synced.add(next);
   }
   return (tasks: changed ? synced : tasks, changed: changed);
