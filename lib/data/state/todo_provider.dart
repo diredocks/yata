@@ -65,8 +65,7 @@ class TodoNotifier extends Notifier<TodoState> {
 
   TodoSettingsStore get settings => ref.read(todoSettingsStoreProvider);
 
-  String _todayKey(DateTime dt) =>
-      '${dt.year.toString().padLeft(4, '0')}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+  String _todayKey(DateTime dt) => dt.toIso8601String().substring(0, 10);
 
   static bool isSameDay(DateTime a, DateTime b) => isSameCalendarDay(a, b);
 
