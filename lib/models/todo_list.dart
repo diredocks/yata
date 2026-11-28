@@ -128,6 +128,8 @@ abstract class TodoList with _$TodoList {
       _$TodoListFromJson(json);
 
   bool get isSmartList => smartType != null;
+
+  bool get canHoldTasks => !isSmartList || smartType == SmartListType.tasks;
 }
 
 @freezed

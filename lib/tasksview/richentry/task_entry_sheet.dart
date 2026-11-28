@@ -25,13 +25,13 @@ class TaskEntrySheet extends StatefulWidget {
     required this.currentList,
     required this.onSubmit,
     this.startOfWeek = WeekStart.system,
-    this.showListPicker,
+    this.alwaysShowListPicker = false,
   });
 
   final List<TodoList> lists;
   final TodoList currentList;
   final WeekStart startOfWeek;
-  final bool? showListPicker;
+  final bool alwaysShowListPicker;
   final void Function({
     required String title,
     String? targetListId,
@@ -58,12 +58,8 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
   RecurrenceType _recurrence = RecurrenceType.none;
   Map<String, dynamic>? _rawRecurrence;
 
-  bool get _showListPicker {
-    final forced = widget.showListPicker;
-    if (forced != null) return forced;
-    return widget.currentList.isSmartList &&
-        widget.currentList.smartType != SmartListType.tasks;
-  }
+  bool get _showListPicker =>
+      widget.alwaysShowListPicker || !widget.currentList.canHoldTasks;
 
   DateTime? _defaultDueDate() {
     if (widget.currentList.smartType == SmartListType.planned) {
@@ -203,9 +199,7 @@ class _TaskEntrySheetState extends State<TaskEntrySheet>
   }
 
   Future<void> _pickList() async {
-    final selectableLists = widget.lists
-        .where((l) => !l.isSmartList || l.smartType == SmartListType.tasks)
-        .toList();
+    final selectableLists = widget.lists.where((l) => l.canHoldTasks).toList();
     final smartLists = selectableLists.where((l) => l.isSmartList).toList();
     final customLists = selectableLists.where((l) => !l.isSmartList).toList();
 

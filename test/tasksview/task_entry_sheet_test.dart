@@ -56,7 +56,7 @@ void main() {
     expect(find.text('Add due date'), findsOneWidget);
   });
 
-  testWidgets('showListPicker forces the target chip for a custom list', (
+  testWidgets('alwaysShowListPicker forces the target chip for a custom list', (
     WidgetTester tester,
   ) async {
     final customList = lists.firstWhere((l) => l.id == 'custom_1');
@@ -67,7 +67,7 @@ void main() {
         TaskEntrySheet(
           lists: lists,
           currentList: customList,
-          showListPicker: true,
+          alwaysShowListPicker: true,
           onSubmit:
               ({
                 required title,
