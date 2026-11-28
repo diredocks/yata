@@ -250,5 +250,7 @@
   "attachmentOpenError": "无法打开文件",
   "attachmentDownloadError": "无法下载文件",
   "quickActionSearch": "搜索任务",
-  "quickActionNewTask": "添加新任务"
+  "quickActionNewTask": "添加新任务",
+  "taskNoLongerExists": "很抱歉，正在查找的任务似乎已经不再存在",
+  "listNoLongerExists": "很抱歉，正在查找的列表似乎已经不再存在"
 }

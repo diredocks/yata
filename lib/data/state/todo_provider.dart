@@ -10,6 +10,7 @@ import '../../models/default_lists.dart';
 import '../../models/task_item.dart';
 import '../../models/todo_list.dart';
 import '../../sync/microsoft/substrate_push_engine.dart';
+import '../../sync/remote_deletion_provider.dart';
 import '../../sync/sync_store.dart';
 import '../lists/custom_background_service.dart';
 import '../preferences.dart';
@@ -276,6 +277,7 @@ class TodoNotifier extends Notifier<TodoState> {
     bool forceSaveOutbox = false,
   }) {
     if (state.tasks.any((t) => t.id == task.id)) return;
+    ref.read(remoteDeletionProvider.notifier).forgetTask(task.id);
     final tracked = enqueueTaskUpsertToOutbox(
       prev: null,
       next: task,
@@ -572,8 +574,29 @@ class TodoNotifier extends Notifier<TodoState> {
       currentState: state,
       outcome: outcome,
     );
+    _publishSyncRemovals(result.nextState);
     state = result.nextState;
     await result.persisted;
+  }
+
+  /// Tasks that disappear together with their list are only reported as a
+  /// removed list, so the screen closing on it shows a single toast.
+  void _publishSyncRemovals(TodoState next) {
+    final nextListIds = {for (final list in next.lists) list.id};
+    final removedListIds = {
+      for (final list in state.lists)
+        if (!nextListIds.contains(list.id)) list.id,
+    };
+    final nextTaskIds = {for (final task in next.tasks) task.id};
+    final removedTaskIds = {
+      for (final task in state.tasks)
+        if (!nextTaskIds.contains(task.id) &&
+            !removedListIds.contains(task.listId))
+          task.id,
+    };
+    ref
+        .read(remoteDeletionProvider.notifier)
+        .publish(taskIds: removedTaskIds, listIds: removedListIds);
   }
 
   /// Applies pulled or realtime remote snapshots/patches without bumping
@@ -591,6 +614,9 @@ class TodoNotifier extends Notifier<TodoState> {
       tasks: tasks,
       remoteSettings: remoteSettings,
     );
+    // Published before the state change so listeners still see the pre-removal
+    // selection.
+    _publishSyncRemovals(result.nextState);
     state = result.nextState;
     await result.persisted;
   }

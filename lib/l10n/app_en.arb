@@ -470,5 +470,7 @@
   "attachmentOpenError": "Unable to open file",
   "attachmentDownloadError": "Unable to download file",
   "quickActionSearch": "Search tasks",
-  "quickActionNewTask": "New task"
+  "quickActionNewTask": "New task",
+  "taskNoLongerExists": "Sorry, it looks like the task you're looking for no longer exists",
+  "listNoLongerExists": "Sorry, it looks like the list you're looking for no longer exists"
 }

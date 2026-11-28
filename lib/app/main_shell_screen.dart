@@ -16,10 +16,12 @@ import '../notifications/notification_service.dart';
 import '../notifications/snooze_reminder_sheet.dart';
 import '../search/search_screen.dart';
 import '../settings/settings_screen.dart';
+import '../sync/remote_deletion_provider.dart';
 import '../sync/sync_provider.dart';
 import '../tasksview/richentry/task_entry_sheet.dart';
 import '../data/tasks/task_mutations.dart';
 import '../tasksview/tasks_view_screen.dart';
+import '../ui/app_toast.dart';
 import '../homewidget/home_widget_sync.dart';
 import 'quick_actions_service.dart';
 
@@ -36,6 +38,7 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
   StreamSubscription<HomeWidgetAction>? _widgetActionSub;
   StreamSubscription<QuickActionType>? _quickActionsSub;
   ModalRoute<void>? _activeTasksRoute;
+  String? _activeTasksListId;
 
   @override
   void initState() {
@@ -339,12 +342,22 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
         ? MaterialPageRoute<void>(builder: buildScreen)
         : _InstantEnterMaterialPageRoute<void>(builder: buildScreen);
     _activeTasksRoute = route;
+    _activeTasksListId = list.id;
     Navigator.of(context).push(route).then((_) {
       if (mounted && identical(_activeTasksRoute, route)) {
         _activeTasksRoute = null;
+        _activeTasksListId = null;
         ref.read(todoProvider.notifier).setLastEnteredListId(null);
       }
     });
+  }
+
+  /// Pops the list screen and anything above it.
+  void _closeActiveTasksView() {
+    final route = _activeTasksRoute;
+    if (route == null || !route.isActive) return;
+    Navigator.of(context).popUntil((candidate) => candidate == route);
+    Navigator.of(context).pop();
   }
 
   void _handleSelectList(TodoList list, bool isWide, {bool animated = true}) {
@@ -388,6 +401,19 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
               strings: NotificationStrings.fromLocalizations(l10n),
             ),
       );
+    });
+    ref.listen<RemoteDeletionNotice?>(remoteDeletionProvider, (_, notice) {
+      if (notice == null || notice.listIds.isEmpty || !mounted) return;
+      // The notice arrives before the state change, so this is still the list
+      // that was on screen.
+      final viewedListId = MediaQuery.sizeOf(context).width >= 600
+          ? ref.read(todoProvider).selectedListId
+          : _activeTasksListId;
+      if (viewedListId == null || !notice.listIds.contains(viewedListId)) {
+        return;
+      }
+      showAppToast(context, l10n.listNoLongerExists);
+      _closeActiveTasksView();
     });
     final state = ref.watch(todoProvider);
     final width = MediaQuery.sizeOf(context).width;
