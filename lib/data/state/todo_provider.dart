@@ -520,7 +520,7 @@ class TodoNotifier extends Notifier<TodoState> {
                   nowUtc: nowUtc,
                   outbox: outbox,
                 );
-                if (res.syncNeeded) syncNeeded = true;
+                syncNeeded |= res.syncNeeded;
                 return res.group;
               }()
             else
@@ -556,7 +556,7 @@ class TodoNotifier extends Notifier<TodoState> {
                   nowUtc: nowUtc,
                   outbox: outbox,
                 );
-                if (res.syncNeeded) syncNeeded = true;
+                syncNeeded |= res.syncNeeded;
                 return res.list;
               }()
             else
@@ -605,7 +605,7 @@ class TodoNotifier extends Notifier<TodoState> {
                   outbox: outbox,
                   prevListRemoteById: prevListRemoteById,
                 );
-                if (res.syncNeeded) syncNeeded = true;
+                syncNeeded |= res.syncNeeded;
                 return res.task;
               }()
             else
