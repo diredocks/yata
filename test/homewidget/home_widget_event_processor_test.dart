@@ -90,7 +90,7 @@ void main() {
       final result = await WidgetEventProcessor(
         widgetService: h.container.read(homeWidgetServiceProvider),
         read: h.container.read,
-        strings: const HomeWidgetStrings(),
+        strings: HomeWidgetStrings.fallbackEnglish(),
         isBackground: false,
         runCloudSync: () async {},
         scheduleBackgroundedAppCloudSync: () {},
@@ -122,7 +122,7 @@ void main() {
       await WidgetEventProcessor(
         widgetService: h.container.read(homeWidgetServiceProvider),
         read: h.container.read,
-        strings: const HomeWidgetStrings(),
+        strings: HomeWidgetStrings.fallbackEnglish(),
         isBackground: false,
         runCloudSync: () async {},
         scheduleBackgroundedAppCloudSync: () {},
@@ -147,7 +147,7 @@ void main() {
         final result = await WidgetEventProcessor(
           widgetService: h.container.read(homeWidgetServiceProvider),
           read: h.container.read,
-          strings: const HomeWidgetStrings(),
+          strings: HomeWidgetStrings.fallbackEnglish(),
           isBackground: true,
           runCloudSync: () async {
             throw StateError('network down');
@@ -188,7 +188,7 @@ void main() {
       await WidgetEventProcessor(
         widgetService: hBg.container.read(homeWidgetServiceProvider),
         read: hBg.container.read,
-        strings: const HomeWidgetStrings(),
+        strings: HomeWidgetStrings.fallbackEnglish(),
         isBackground: true,
         runCloudSync: () async {
           bgCloudSyncCalls += 1;
@@ -216,7 +216,7 @@ void main() {
       await WidgetEventProcessor(
         widgetService: hFgPaused.container.read(homeWidgetServiceProvider),
         read: hFgPaused.container.read,
-        strings: const HomeWidgetStrings(),
+        strings: HomeWidgetStrings.fallbackEnglish(),
         isBackground: false,
         isAppForeground: false,
         runCloudSync: () async {

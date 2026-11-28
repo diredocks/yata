@@ -113,12 +113,7 @@ void main() {
           state,
           accountId: 'acct_1',
           accountName: 'leo@example.com',
-          strings: const HomeWidgetStrings(
-            localeName: 'zh',
-            myDay: '我的一天',
-            today: '今天',
-            yesterday: '昨天',
-          ),
+          strings: HomeWidgetStrings.fromLocale(const Locale('zh')),
           now: now,
         );
 
@@ -344,7 +339,7 @@ void main() {
         state,
         accountId: 'a',
         accountName: 'Test',
-        strings: const HomeWidgetStrings(),
+        strings: HomeWidgetStrings.fallbackEnglish(),
         now: now,
       );
       final listTaskIds = payload['listTaskIds'] as Map<String, dynamic>;

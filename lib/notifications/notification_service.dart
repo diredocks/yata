@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show Locale;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -62,19 +63,10 @@ class NotificationStrings {
     );
   }
 
-  static NotificationStrings fallbackEnglish() {
-    return const NotificationStrings(
-      completeActionLabel: 'Complete',
-      snoozeActionLabel: 'Snooze',
-      dueTodaySingleTitle: 'You have a task due today',
-      dueTodayMultipleTitle: 'You have tasks due today',
-      routineTitle: 'What will you do today?',
-      routineBody: 'What do you want to accomplish today? Plan it with Yata.',
-      quickAddTitle: 'Yata Quick Add',
-      quickAddBody: 'Tap to add a task',
-      defaultTasksListName: 'Tasks',
-    );
-  }
+  static NotificationStrings fallbackEnglish() =>
+      NotificationStrings.fromLocalizations(
+        lookupAppLocalizations(const Locale('en')),
+      );
 
   final String completeActionLabel;
   final String snoozeActionLabel;

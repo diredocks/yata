@@ -45,17 +45,17 @@ class HomeWidgetAction {
 @immutable
 class HomeWidgetStrings {
   const HomeWidgetStrings({
-    this.localeName = 'en',
-    this.myDay = 'My Day',
-    this.important = 'Important',
-    this.planned = 'Planned',
-    this.all = 'All',
-    this.completedList = 'Completed',
-    this.tasks = 'Tasks',
-    this.today = 'Today',
-    this.tomorrow = 'Tomorrow',
-    this.yesterday = 'Yesterday',
-    this.emptyListMessage = 'No tasks in this list',
+    required this.localeName,
+    required this.myDay,
+    required this.important,
+    required this.planned,
+    required this.all,
+    required this.completedList,
+    required this.tasks,
+    required this.today,
+    required this.tomorrow,
+    required this.yesterday,
+    required this.emptyListMessage,
   });
 
   factory HomeWidgetStrings.fromLocalizations(AppLocalizations l10n) {
@@ -73,6 +73,9 @@ class HomeWidgetStrings {
       emptyListMessage: l10n.emptyListTitle,
     );
   }
+
+  factory HomeWidgetStrings.fallbackEnglish() =>
+      HomeWidgetStrings.fromLocale(const Locale('en'));
 
   factory HomeWidgetStrings.fromLocale(Locale locale) {
     final supported = AppLocalizations.delegate.isSupported(locale)
