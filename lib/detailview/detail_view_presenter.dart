@@ -62,14 +62,31 @@ class DetailViewPresenter {
     _store.mutateTask(taskId, (task) => task.copyWith(title: trimmed));
   }
 
-  void updateTaskNote(String taskId, String note) {
+  void updateTaskNote(
+    String taskId,
+    String note, {
+    String? noteHtml,
+    String? noteContentType,
+  }) {
     final nowUtc = DateTime.now().toUtc();
-    _store.mutateTask(
-      taskId,
-      (task) => task.note == note
-          ? task
-          : task.copyWith(note: note, noteUpdatedAt: nowUtc),
-    );
+    final resolvedType =
+        noteContentType ?? (noteHtml != null ? 'HTML' : 'Text');
+    final resolvedHtml = resolvedType.toLowerCase() == 'html'
+        ? (noteHtml ?? '')
+        : '';
+    _store.mutateTask(taskId, (task) {
+      if (task.note == note &&
+          task.noteHtml == resolvedHtml &&
+          task.noteContentType == resolvedType) {
+        return task;
+      }
+      return task.copyWith(
+        note: note,
+        noteHtml: resolvedHtml,
+        noteContentType: resolvedType,
+        noteUpdatedAt: nowUtc,
+      );
+    });
   }
 
   void moveTaskToList(String taskId, String targetListId) {

@@ -280,7 +280,12 @@ Map<String, dynamic> buildTaskWritePayload(
     payload['CreatedWithLocalId'] = task.id;
   }
   if (include(TaskDirtyField.body)) {
-    payload['Body'] = {'Content': task.note, 'ContentType': 'Text'};
+    payload['Body'] = task.isHtmlNote
+        ? {
+            'Content': normalizeHtmlBodyDocument(task.noteHtml),
+            'ContentType': 'HTML',
+          }
+        : {'Content': truncatePlainTextBody(task.note), 'ContentType': 'Text'};
     if (task.noteUpdatedAt != null) {
       payload['BodyLastModifiedTime'] = formatSubstrateUtcTimestamp(
         task.noteUpdatedAt!,
@@ -466,6 +471,12 @@ TaskItem taskFromRemote(
     recurrence: remote.recurrence,
     rawRecurrence: normalizeRawRecurrence(remote.rawRecurrence),
     note: remote.plainTextNote,
+    noteHtml:
+        remote.bodyContentType?.trim().toLowerCase() == 'html' &&
+            !isHtmlBodyEmpty(remote.bodyContent)
+        ? remote.bodyContent
+        : '',
+    noteContentType: remote.bodyContentType,
     noteUpdatedAt: remote.bodyLastModifiedTime,
     completedAt: _resolveSyncedCompletedAt(
       existingCompletedAt: existingCompletedAt,
