@@ -30,6 +30,7 @@ import '../helpers/microsoft_sync_fakes.dart';
 
 import 'package:yata/data/preferences.dart';
 import 'package:yata/data/db/todo_database.dart';
+import 'package:yata/detailview/attachments/attachment_format.dart';
 
 void main() {
   group('TaskAttachment model & remote mapping', () {
@@ -150,11 +151,11 @@ void main() {
           attachments: const [existingAtt],
         );
 
-        expect(service.exceedsTaskSizeLimit(task, 10), isFalse);
-        expect(service.exceedsTaskSizeLimit(task, 11), isTrue);
+        expect(exceedsTaskSizeLimit(task, 10), isFalse);
+        expect(exceedsTaskSizeLimit(task, 11), isTrue);
 
         expect(
-          AttachmentService.sanitizeFileName('../../evil:name?.pdf'),
+          AttachmentStorage.sanitizeFileName('../../evil:name?.pdf'),
           'evil_name_.pdf',
         );
 

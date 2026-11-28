@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:open_file/open_file.dart';
-import 'package:path/path.dart' as p;
 import 'package:result_dart/result_dart.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -12,13 +11,10 @@ import '../../core/logging/app_logger.dart';
 import '../../core/result/app_result.dart';
 import '../../data/account/account_provider.dart';
 import '../../data/attachments/attachment_storage.dart';
-import '../../models/account.dart';
 import '../../models/task_item.dart';
+import '../../models/account.dart';
 
 final _log = appLogFor('Attachments');
-
-/// 25 MB cumulative limit per task, matching `FileHelper.l` (`26214400` bytes).
-const int kMaxTaskAttachmentTotalBytes = 25 * 1024 * 1024;
 
 final attachmentServiceProvider = Provider<AttachmentService>((ref) {
   return AttachmentService(ref);
@@ -49,60 +45,8 @@ class AttachmentService {
     return launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  static String sanitizeFileName(String raw) =>
-      AttachmentStorage.sanitizeFileName(raw);
-
-  static String formatFileSize(int bytes) {
-    if (bytes <= 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    var value = bytes.toDouble();
-    var unitIndex = 0;
-    while (value >= 1024 && unitIndex < units.length - 1) {
-      value /= 1024;
-      unitIndex++;
-    }
-    final formatted = value >= 10 || unitIndex == 0
-        ? value.toStringAsFixed(0)
-        : value.toStringAsFixed(1);
-    return '$formatted ${units[unitIndex]}';
-  }
-
-  static String? guessContentType(String fileName) {
-    final ext = p.extension(fileName).toLowerCase();
-    return switch (ext) {
-      '.jpg' || '.jpeg' => 'image/jpeg',
-      '.png' => 'image/png',
-      '.gif' => 'image/gif',
-      '.webp' => 'image/webp',
-      '.bmp' => 'image/bmp',
-      '.pdf' => 'application/pdf',
-      '.txt' => 'text/plain',
-      '.csv' => 'text/csv',
-      '.json' => 'application/json',
-      '.doc' => 'application/msword',
-      '.docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      '.xls' => 'application/vnd.ms-excel',
-      '.xlsx' =>
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      '.ppt' => 'application/vnd.ms-powerpoint',
-      '.pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      '.zip' => 'application/zip',
-      '.mp3' => 'audio/mpeg',
-      '.mp4' => 'video/mp4',
-      _ => null,
-    };
-  }
-
   String get _accountId =>
       _ref.read(accountProvider).activeAccountId ?? 'default';
-
-  bool exceedsTaskSizeLimit(TaskItem task, int newFileBytes) {
-    final existingTotal = task.attachments.fold<int>(
-      0,
-      (sum, a) => sum + a.size,
-    );
-    return existingTotal + newFileBytes > kMaxTaskAttachmentTotalBytes;
-  }
 
   /// Copies [sourcePath] into app-private per-account attachment storage and
   /// returns the stored path and byte size.

@@ -4,7 +4,7 @@ import '../../l10n/app_localizations.dart';
 import '../../models/task_item.dart';
 import '../../theme/todo_theme.dart';
 import '../details/detail_cards.dart';
-import 'attachment_service.dart';
+import 'attachment_format.dart';
 
 enum AttachmentSourceChoice { camera, file }
 
@@ -122,7 +122,7 @@ class _AttachmentRow extends StatelessWidget {
     final theme = Theme.of(context);
     final badge = attachment.badgeLabel;
     final sizeText = attachment.size > 0
-        ? AttachmentService.formatFileSize(attachment.size)
+        ? formatFileSize(attachment.size)
         : null;
     final subtitleParts = [?sizeText, ?badge];
     final subtitle = subtitleParts.join(' · ');

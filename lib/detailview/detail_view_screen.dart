@@ -25,6 +25,8 @@ import 'header/details_header_view.dart';
 import 'note/note_card_view.dart';
 import '../ui/widgets/task_pickers.dart';
 import 'steps/steps_section.dart';
+import 'attachments/attachment_format.dart';
+import '../data/attachments/attachment_storage.dart';
 
 /// Task detail view matching `detailview/DetailViewFragment`.
 /// Route matching the original app's `DetailViewActivity` shared-element
@@ -181,7 +183,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
     required String sourcePath,
     required String fileName,
   }) async {
-    final resolvedName = AttachmentService.sanitizeFileName(
+    final resolvedName = AttachmentStorage.sanitizeFileName(
       fileName.isNotEmpty ? fileName : p.basename(sourcePath),
     );
     final sourceFile = File(sourcePath);
@@ -198,7 +200,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
     }
 
     final service = ref.read(attachmentServiceProvider);
-    if (service.exceedsTaskSizeLimit(task, fileSizeResult.getOrThrow())) {
+    if (exceedsTaskSizeLimit(task, fileSizeResult.getOrThrow())) {
       return const Failure(
         AppError.validation(message: 'Attachment total exceeds 25 MB limit'),
       );
@@ -263,7 +265,7 @@ class _DetailViewScreenState extends ConsumerState<DetailViewScreen> {
             id: staged.attachmentId,
             displayName: staged.fileName,
             entityType: 'file',
-            contentType: AttachmentService.guessContentType(staged.fileName),
+            contentType: guessContentType(staged.fileName),
             size: staged.size,
             lastModifiedDateTime: DateTime.now().toUtc(),
             localPath: staged.localPath,
