@@ -186,6 +186,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(SearchScreen), findsNothing);
       expect(find.byType(TaskEntrySheet), findsOneWidget);
+      // No list context from the shortcut, so the target list can be picked.
+      expect(find.byType(ActionChip), findsOneWidget);
 
       await tester.enterText(find.byType(TextField), 'Quick action task');
       await tester.pump();

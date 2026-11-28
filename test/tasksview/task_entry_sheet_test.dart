@@ -33,27 +33,30 @@ void main() {
     final tasksList = lists.firstWhere(
       (l) => l.smartType == SmartListType.tasks,
     );
+    final customList = lists.firstWhere((l) => l.id == 'custom_1');
 
-    await tester.pumpWidget(
-      _wrapSheet(
-        TaskEntrySheet(
-          lists: lists,
-          currentList: tasksList,
-          onSubmit: ({
-            required title,
-            targetListId,
-            dueDate,
-            reminderAt,
-            RecurrenceType recurrence = RecurrenceType.none,
-            rawRecurrence,
-          }) {},
+    for (final currentList in [tasksList, customList]) {
+      await tester.pumpWidget(
+        _wrapSheet(
+          TaskEntrySheet(
+            lists: lists,
+            currentList: currentList,
+            onSubmit: ({
+              required title,
+              targetListId,
+              dueDate,
+              reminderAt,
+              RecurrenceType recurrence = RecurrenceType.none,
+              rawRecurrence,
+            }) {},
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.byType(ActionChip), findsNothing);
-    expect(find.text('Add due date'), findsOneWidget);
+      expect(find.byType(ActionChip), findsNothing);
+      expect(find.text('Add due date'), findsOneWidget);
+    }
   });
 
   testWidgets('alwaysShowListPicker forces the target chip for a custom list', (
