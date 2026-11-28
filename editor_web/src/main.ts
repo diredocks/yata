@@ -41,6 +41,15 @@ styleEl.textContent = `
     word-wrap: break-word;
     overflow-wrap: break-word;
   }
+  html.preview-mode,
+  html.preview-mode body {
+    overflow: hidden;
+    scrollbar-width: none;
+  }
+  html.preview-mode::-webkit-scrollbar,
+  html.preview-mode body::-webkit-scrollbar {
+    display: none;
+  }
   .note-surface {
     width: 100%;
     padding: 0;
@@ -216,6 +225,7 @@ const YataEditor = {
   init(opts: InitOptions = {}) {
     applyTheme(opts.theme);
     const editable = Boolean(opts.editable);
+    document.documentElement.classList.toggle('preview-mode', !editable);
     const bodyHtml = extractBodyContent(opts.html || '');
 
     if (editable) {

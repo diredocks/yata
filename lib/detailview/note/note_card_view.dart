@@ -42,6 +42,7 @@ class _NoteCardViewState extends State<NoteCardView> {
   String? _loadedTaskId;
   String? _loadedHtml;
   double _previewHeight = 84;
+  bool _isPreviewOverflowing = false;
 
   // On Linux, webview_all renders behind an opaque Flutter window, so inline
   // card previews inside DetailViewScreen would be occluded or punch through
@@ -97,8 +98,13 @@ class _NoteCardViewState extends State<NoteCardView> {
         final h = (decoded['height'] as num?)?.toDouble();
         if (h != null && h > 0) {
           final clamped = h.clamp(60.0, 142.0);
-          if ((clamped - _previewHeight).abs() > 1) {
-            setState(() => _previewHeight = clamped);
+          final overflowing = h > 142.0;
+          if ((clamped - _previewHeight).abs() > 1 ||
+              overflowing != _isPreviewOverflowing) {
+            setState(() {
+              _previewHeight = clamped;
+              _isPreviewOverflowing = overflowing;
+            });
           }
         }
       case 'linkTap':
@@ -229,13 +235,38 @@ class _NoteCardViewState extends State<NoteCardView> {
                 if (_shouldUseHtmlPreview && _previewController != null)
                   SizedBox(
                     height: _previewHeight,
-                    child: WebViewWidget(controller: _previewController!),
+                    child: Stack(
+                      children: [
+                        WebViewWidget(controller: _previewController!),
+                        if (_isPreviewOverflowing)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            height: 36,
+                            child: IgnorePointer(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      widget.cardColor.withValues(alpha: 0),
+                                      widget.cardColor,
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   )
                 else
                   Text(
                     hasVisibleNote ? widget.task.note : l10n.addNotePlaceholder,
                     maxLines: 6,
-                    overflow: TextOverflow.ellipsis,
+                    overflow: TextOverflow.fade,
                     style: theme.textTheme.bodyLarge?.copyWith(
                       color: hasVisibleNote ? null : secondaryText,
                     ),
